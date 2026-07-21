@@ -100,7 +100,7 @@ export default function Home() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                 </span>
-                Fast &amp; John Roel Flamiano
+                Fast &amp; kahit anong text
               </motion.div>
 
               {/* Heading */}
