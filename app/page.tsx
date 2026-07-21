@@ -111,7 +111,7 @@ export default function Home() {
                 custom={1}
                 className="w-full max-w-[700px] text-[2rem] sm:text-[42px] md:text-[52px] lg:text-[60px] font-extrabold leading-[1.1] sm:leading-[1.15] md:leading-[1.2] lg:leading-[60px] tracking-[-0.03em] text-center font-bricolage text-[#262525]"
               >
-                Delivering your packages, on time, every time
+                BAHALA NA SI BATMAN
               </motion.h1>
 
               {/* Subtext */}
