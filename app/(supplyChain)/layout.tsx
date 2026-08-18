@@ -1,4 +1,4 @@
-'use client';
+  'use client';
 
 import "./supplyChain.css";
 import AceternityNavbar, { ShadUiNav } from "./components/global/Navbar";
@@ -6,10 +6,12 @@ import { AIProvider, useAI } from "./ai/services/AIContext";
 import AIChatbot from "./ai/services/AIChatbot";
 import { SessionGuard } from "./components/server/SessionGuard";
 import { OfflineDetector } from "./components/global/OfflineDetector";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster } from "sonner";
+import Lenis from "lenis";
+import CustomCursor from "./components/global/CustomCursor";
 
 function AIChatbotWrapper() {
   const { isOpen, closeChat } = useAI();
@@ -18,6 +20,8 @@ function AIChatbotWrapper() {
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lenisRef = useRef<Lenis | null>(null);
   const router = useRouter();
   const { isOpen: isAIOpen } = useAI();
 
@@ -31,6 +35,32 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
     setIsLoading(false);
   }, [router]);
+
+  // Initialize Lenis smooth scroll
+  useEffect(() => {
+    if (isLoading) return;
+
+    const lenis = new Lenis({
+      duration: 1.1,
+      smoothWheel: true,
+    });
+    lenisRef.current = lenis;
+    (window as unknown as { __lenis?: Lenis }).__lenis = lenis;
+
+    let rafId: number;
+    function raf(time: number) {
+      lenis.raf(time);
+      rafId = requestAnimationFrame(raf);
+    }
+    rafId = requestAnimationFrame(raf);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      lenis.destroy();
+      lenisRef.current = null;
+      delete (window as unknown as { __lenis?: Lenis }).__lenis;
+    };
+  }, [isLoading]);
 
   if (isLoading) {
     return (
@@ -49,7 +79,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       reconnectInterval={30000}
       blurAmount={4}
     >
-      <div className="font-rethink bg-[#FCFBF9] dark:bg-ink">
+      <CustomCursor containerRef={containerRef} />
+      <div ref={containerRef} className="supplychain-container font-rethink bg-[#FCFBF9] dark:bg-ink min-h-screen">
         <AnimatePresence mode="wait">
           {!isAIOpen && (
             <motion.div

@@ -54,7 +54,7 @@ export default function ArchivePage() {
     ];
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee']}>
+        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
             <div className={`p-6 space-y-6 max-w-[1600px] mx-auto animate-in fade-in duration-300 bgCard ${isAnimating ? 'opacity-50 transition-opacity duration-200' : 'opacity-100'}`}>
                 {/* Header Section */}
                 <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-slate-800 pb-5">

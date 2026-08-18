@@ -472,14 +472,14 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
             {/* Chat Drawer */}
             <div className="fixed top-0 right-0 h-full w-full sm:w-[440px] 
-                        bg-white dark:bg-ink 
+                        bg-white/90 dark:bg-slate-900/75 backdrop-blur-2xl
                         z-50 animate-in slide-in-from-right duration-300 
                         flex flex-col font-sans 
                         shadow-2xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.8),0_8px_10px_-6px_rgba(0,0,0,0.5)] 
-                        border-l border-slate-100 dark:border-ink/20">
+                        border-l border-slate-200/80 dark:border-white/10">
 
                 {/* Header with Robot */}
-                <div className="bg-gradient-to-r from-pink-600 via-pink-500 to-rose-500 dark:from-slate-900/95 dark:via-slate-900/90 dark:to-pink-950/40 backdrop-blur-md px-5 py-4 flex items-center justify-between shrink-0 shadow-md dark:shadow-black/50 z-10 border-b border-transparent dark:border-white/10 transition-colors">
+                <div className="bg-gradient-to-r from-pink-600 via-pink-500 to-rose-500 dark:from-slate-900/80 dark:via-slate-900/70 dark:to-pink-950/30 backdrop-blur-md px-5 py-4 flex items-center justify-between shrink-0 shadow-md dark:shadow-black/50 z-10 border-b border-transparent dark:border-white/10 transition-colors">
                     {/* Left: Assistant Status & Avatar */}
                     <div className="flex items-center gap-3.5">
                         <div className="relative flex items-center justify-center">
@@ -549,7 +549,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 </div>
 
                 {/* Messages Body */}
-                <div className="relative flex-1 overflow-hidden bg-slate-50/60 dark:bg-slate-950">
+                <div className="relative flex-1 overflow-hidden bg-slate-50/40 dark:bg-transparent">
                     <div
                         ref={messagesContainerRef}
                         className="h-full overflow-y-auto p-5 space-y-5 scroll-smooth scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800"
@@ -582,7 +582,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     <div
                                         className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm transition-colors ${msg.type === "user"
                                             ? "bg-gradient-to-tr from-pink-600 to-rose-500 text-white rounded-tr-none font-normal dark:shadow-pink-950/20"
-                                            : "bg-white dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-white/10 rounded-tl-none font-normal"
+                                            : "bg-white/90 dark:bg-slate-800/70 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-white/10 rounded-tl-none font-normal backdrop-blur-md"
                                             }`}
                                     >
                                         {renderMessageContent(msg)}
@@ -615,7 +615,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                                             setInput(suggestion);
                                                             setTimeout(() => handleSendMessage(), 100);
                                                         }}
-                                                        className="text-xs font-medium bg-white dark:bg-slate-900/80 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:border-pink-300 dark:hover:border-pink-500/40 border border-pink-100 dark:border-white/10 text-pink-700 dark:text-pink-300 px-3 py-1.5 rounded-xl transition-all shadow-xs dark:shadow-black/20 active:scale-95 text-left cursor-pointer"
+                                                        className="text-xs font-medium bg-white/90 dark:bg-slate-800/60 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:border-pink-300 dark:hover:border-pink-500/40 border border-pink-100 dark:border-white/10 text-pink-700 dark:text-pink-300 px-3 py-1.5 rounded-xl transition-all shadow-xs dark:shadow-black/20 active:scale-95 text-left cursor-pointer backdrop-blur-sm"
                                                     >
                                                         {suggestion}
                                                     </button>
@@ -629,7 +629,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
                         {/* Loading Indicator */}
                         {isLoading && messages[messages.length - 1]?.content && !isStreaming && (
-                            <div className="flex items-center gap-2 text-xs font-medium text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-500/30 px-3 py-1.5 rounded-full w-fit animate-pulse shadow-2xs">
+                            <div className="flex items-center gap-2 text-xs font-medium text-pink-600 dark:text-pink-400 bg-pink-50/80 dark:bg-pink-950/50 border border-pink-100 dark:border-pink-500/30 px-3 py-1.5 rounded-full w-fit animate-pulse shadow-2xs backdrop-blur-sm">
                                 <i className="fas fa-circle-notch fa-spin" />
                                 <span>Thinking...</span>
                             </div>
@@ -641,10 +641,10 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     {showScrollButton && (
                         <button
                             onClick={scrollToBottom}
-                            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl hover:bg-pink-50 dark:hover:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200/80 dark:border-white/10 dark:hover:border-pink-500/30 shadow-lg dark:shadow-black/50 rounded-full p-2.5 transition-all duration-200 hover:scale-105 active:scale-95 z-10 cursor-pointer"
+                            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl hover:bg-pink-50 dark:hover:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200/80 dark:border-white/10 dark:hover:border-pink-500/30 shadow-lg dark:shadow-black/50 rounded-full p-2.5 transition-all duration-200 hover:scale-105 active:scale-95 z-10 cursor-pointer"
                             aria-label="Scroll to bottom"
                         >
-                            <i className="fas fa-arrow-down text-sm" />
+                            <i className="fas fa-arrow-down text-xs" />
                             <span className="sr-only">Scroll to bottom</span>
                         </button>
                     )}
@@ -652,7 +652,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
                 {/* Quick Prompts */}
                 {messages.length < 3 && (
-                    <div className="px-5 py-3.5 border-t border-slate-100 dark:border-white/10 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shrink-0 transition-colors">
+                    <div className="px-5 py-3.5 border-t border-slate-100/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/60 backdrop-blur-md shrink-0 transition-colors">
                         {/* Header */}
                         <p className="text-[11px] font-bold text-pink-600 dark:text-pink-400 mb-2.5 flex items-center gap-1.5 uppercase tracking-wider">
                             <i className="fas fa-sparkles text-pink-500 dark:text-pink-400 text-[11px] dark:drop-shadow-[0_0_6px_rgba(244,63,94,0.4)]" />
@@ -666,7 +666,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     key={q}
                                     onClick={() => handleSuggested(q)}
                                     disabled={isLoading}
-                                    className="text-xs font-medium bg-slate-50 dark:bg-slate-800/60 hover:bg-pink-50/80 dark:hover:bg-pink-950/40 border border-slate-200/80 dark:border-white/10 hover:border-pink-300 dark:hover:border-pink-500/40 text-slate-700 dark:text-slate-200 hover:text-pink-700 dark:hover:text-pink-300 px-3 py-1.5 rounded-xl transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-pink-500/30 shadow-2xs dark:shadow-black/20"
+                                    className="text-xs font-medium bg-slate-50/80 dark:bg-slate-800/50 hover:bg-pink-50/80 dark:hover:bg-pink-950/40 border border-slate-200/80 dark:border-white/10 hover:border-pink-300 dark:hover:border-pink-500/40 text-slate-700 dark:text-slate-200 hover:text-pink-700 dark:hover:text-pink-300 px-3 py-1.5 rounded-xl transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-pink-500/30 shadow-2xs dark:shadow-black/20 backdrop-blur-sm"
                                 >
                                     {q}
                                 </button>
@@ -676,7 +676,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 )}
 
                 {/* Input Area */}
-                <div className="p-4 border-t border-slate-100 dark:border-white/10 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl shrink-0 shadow-lg dark:shadow-black/50 transition-all">
+                <div className="p-4 border-t border-slate-100/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/65 backdrop-blur-xl shrink-0 shadow-lg dark:shadow-black/50 transition-all">
                     <div className="relative flex items-center">
                         <input
                             ref={inputRef}
@@ -685,7 +685,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder="Ask about inventory, stock, or orders..."
-                            className="w-full bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/10 rounded-2xl pl-4 pr-12 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-pink-500 dark:focus:border-pink-500/80 focus:ring-4 focus:ring-pink-500/10 dark:focus:ring-pink-500/20 transition-all duration-200"
+                            className="w-full bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-white/10 rounded-2xl pl-4 pr-12 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-800/60 focus:border-pink-500 dark:focus:border-pink-500/80 focus:ring-4 focus:ring-pink-500/10 dark:focus:ring-pink-500/20 transition-all duration-200 backdrop-blur-sm"
                             disabled={isLoading}
                         />
 

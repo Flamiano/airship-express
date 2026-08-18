@@ -256,7 +256,7 @@ export default function Forecast() {
     }, []);
 
     return (
-        <SessionGuard requiredRole={['Admin']}>
+        <SessionGuard requiredRole={['Admin', 'Executive']}>
             <div className="p-4 sm:p-6 space-y-6 fade-in 
                             bg-white dark:bg-ink 
                             rounded-xl mx-4 sm:mx-6 my-4

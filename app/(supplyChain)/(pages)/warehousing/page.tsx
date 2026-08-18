@@ -9,7 +9,7 @@ import { SessionGuard } from '../../components/server/SessionGuard';
 export default function WarehousingPage() {
     return (
         <>
-            <SessionGuard requiredRole={['Admin', 'Manager', 'Operator']}>
+            <SessionGuard requiredRole={['Admin', 'Manager', 'Operator', 'Executive']}>
                 <div className="p-6 space-y-6 fade-in">
                     <div className="card">
                         <TabsWrapper>

@@ -1057,7 +1057,7 @@ export default function Documents() {
         return <PageSkeleton />;
     }
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee']}>
+        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 bgCard dark:bg-ink/90">
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-ink/20 pb-5">
                     <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">

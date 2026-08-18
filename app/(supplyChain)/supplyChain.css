@@ -28,6 +28,13 @@ body {
   overscroll-behavior: auto !important;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .supplychain-container,
+  .supplychain-container * {
+    cursor: none !important;
+  }
+}
+
 
 *::-webkit-scrollbar {
   width: 0 !important;

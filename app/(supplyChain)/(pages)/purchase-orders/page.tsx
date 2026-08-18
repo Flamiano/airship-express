@@ -848,7 +848,7 @@ export default function PurchaseOrders() {
     if (loading) return <PageSkeleton />;
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Employee']}>
+        <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 fade-in bgCard">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">

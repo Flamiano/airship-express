@@ -17,7 +17,7 @@ export default function InventoryPage() {
                 <PageSkeleton />
             }
         >
-            <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Operator']}>
+            <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Operator', 'Executive']}>
                 <InventoryClient />
             </SessionGuard>
         </Suspense>

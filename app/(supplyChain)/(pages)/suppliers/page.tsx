@@ -811,7 +811,7 @@ export default function Suppliers() {
     }, []);
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Employee']}>
+        <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <main className="main-shell bgCard">
                 <div className="p-6 space-y-6 fade-in">
                     {/* header */}

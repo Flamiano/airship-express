@@ -531,7 +531,7 @@ export default function MediaGallery() {
     }
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee']}>
+        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
             <div className="mx-auto p-6 bg-slate-50 dark:bg-ink/40 min-h-screen bgCard dark:bg-ink/80">
                 <div className="mb-8 space-y-4">
                     <div className="flex flex-col gap-4">
