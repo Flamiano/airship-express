@@ -9,6 +9,7 @@ import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
 import { sanitizeSearch, sanitizeText } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import Cards from '@/app/(supplyChain)/components/global/Cards';
 
 interface ArchivedSupplier {
     id: number;
@@ -311,36 +312,50 @@ export function SuppliersTab() {
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Archived</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{archivedSuppliers.length}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Suppliers</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-handshake"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categories</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{Math.max(0, supplierCategories.length - 1)}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distinct categories</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-tags"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Status</div>
-                        <div className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-0.5">Inactive</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">All archived are inactive</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-circle-exclamation"></i>
-                    </div>
-                </div>
+                <Cards
+                    frontIcon="fa-solid fa-handshake"
+                    header="Total Archived"
+                    data={String(archivedSuppliers.length)}
+                    arrow="fa-solid fa-folder-open"
+                    description="Suppliers"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Archived Suppliers"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Total Archived: ${archivedSuppliers.length} supplier(s)`}
+                    tooltip="View supplier archive"
+                    frontTextColor="text-pink-500 dark:text-pink-400"
+                    descriptionTextColor="text-pink-600 dark:text-pink-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-tags"
+                    header="Categories"
+                    data={String(Math.max(0, supplierCategories.length - 1))}
+                    arrow="fa-solid fa-layer-group"
+                    description="Distinct categories"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Supplier Categories"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Categories: ${supplierCategories.filter(c => c !== 'all').join(', ') || 'None'}`}
+                    tooltip="View supplier categories"
+                    frontTextColor="text-indigo-500 dark:text-indigo-400"
+                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-circle-exclamation"
+                    header="Status"
+                    data="Inactive"
+                    arrow="fa-solid fa-ban"
+                    description="All archived are inactive"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Status Info"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription="All archived suppliers are marked as inactive until restored."
+                    tooltip="View status explanation"
+                    frontTextColor="text-amber-500 dark:text-amber-400"
+                    descriptionTextColor="text-amber-600 dark:text-amber-400"
+                />
             </div>
 
             {/* Search & Filter */}

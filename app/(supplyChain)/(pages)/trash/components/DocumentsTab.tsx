@@ -9,6 +9,7 @@ import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
 import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import Cards from '@/app/(supplyChain)/components/global/Cards';
 
 interface ArchivedDocument {
     id: string;
@@ -390,38 +391,50 @@ export function DocumentsTab() {
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Archived</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{archivedDocuments.length}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Documents in storage</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-file-archive"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Document Types</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{Math.max(0, docTypes.length - 1)}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distinct classifications</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-tags"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Size</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">
-                            {formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Storage allocated</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-database"></i>
-                    </div>
-                </div>
+                <Cards
+                    frontIcon="fa-solid fa-file-archive"
+                    header="Total Archived"
+                    data={String(archivedDocuments.length)}
+                    arrow="fa-solid fa-folder-open"
+                    description="Documents in storage"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Archived Documents"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Total Archived: ${archivedDocuments.length} document(s)\nStorage size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}`}
+                    tooltip="View document details"
+                    frontTextColor="text-pink-500 dark:text-pink-400"
+                    descriptionTextColor="text-pink-600 dark:text-pink-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-tags"
+                    header="Document Types"
+                    data={String(Math.max(0, docTypes.length - 1))}
+                    arrow="fa-solid fa-layer-group"
+                    description="Distinct classifications"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Classifications"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Types: ${docTypes.filter(t => t !== 'all').join(', ') || 'None'}`}
+                    tooltip="View document categories"
+                    frontTextColor="text-indigo-500 dark:text-indigo-400"
+                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-database"
+                    header="Total Size"
+                    data={formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}
+                    arrow="fa-solid fa-hard-drive"
+                    description="Storage allocated"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Storage Details"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Total Size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}\nAcross ${archivedDocuments.length} files`}
+                    tooltip="View storage allocation"
+                    frontTextColor="text-blue-500 dark:text-blue-400"
+                    descriptionTextColor="text-blue-600 dark:text-blue-400"
+                />
             </div>
 
             {/* Search & Filter */}

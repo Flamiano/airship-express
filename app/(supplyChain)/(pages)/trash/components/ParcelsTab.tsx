@@ -9,6 +9,7 @@ import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
 import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import Cards from '@/app/(supplyChain)/components/global/Cards';
 
 interface ArchivedParcel {
     id: number;
@@ -367,38 +368,50 @@ export function ParcelsTab() {
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Archived</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{archivedParcels.length}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Parcels</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-boxes"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Couriers</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">
-                            {new Set(archivedParcels.map(p => p.courier)).size}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Unique couriers</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-truck"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Statuses</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{Math.max(0, parcelStatuses.length - 1)}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distinct statuses</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-tags"></i>
-                    </div>
-                </div>
+                <Cards
+                    frontIcon="fa-solid fa-boxes"
+                    header="Total Archived"
+                    data={String(archivedParcels.length)}
+                    arrow="fa-solid fa-folder-open"
+                    description="Parcels"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Archived Parcels"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Total Archived: ${archivedParcels.length} parcel(s)`}
+                    tooltip="View parcel archive"
+                    frontTextColor="text-pink-500 dark:text-pink-400"
+                    descriptionTextColor="text-pink-600 dark:text-pink-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-truck"
+                    header="Couriers"
+                    data={String(new Set(archivedParcels.map(p => p.courier)).size)}
+                    arrow="fa-solid fa-route"
+                    description="Unique couriers"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Courier Breakdown"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Couriers: ${Array.from(new Set(archivedParcels.map(p => p.courier))).filter(Boolean).join(', ') || 'None'}`}
+                    tooltip="View courier details"
+                    frontTextColor="text-blue-500 dark:text-blue-400"
+                    descriptionTextColor="text-blue-600 dark:text-blue-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-tags"
+                    header="Statuses"
+                    data={String(Math.max(0, parcelStatuses.length - 1))}
+                    arrow="fa-solid fa-layer-group"
+                    description="Distinct statuses"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Parcel Statuses"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Statuses: ${parcelStatuses.filter(s => s !== 'all').join(', ') || 'None'}`}
+                    tooltip="View status categories"
+                    frontTextColor="text-purple-500 dark:text-purple-400"
+                    descriptionTextColor="text-purple-600 dark:text-purple-400"
+                />
             </div>
 
             {/* Search & Filter */}

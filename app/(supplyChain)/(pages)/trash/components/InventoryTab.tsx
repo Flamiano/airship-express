@@ -8,6 +8,7 @@ import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
 import { sanitizeSearch, sanitizeText } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import Cards from '@/app/(supplyChain)/components/global/Cards';
 
 interface ArchivedItem {
     id: string;
@@ -264,38 +265,50 @@ export function InventoryTab() {
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Archived</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{archivedItems.length}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Inventory items</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-boxes-stacked"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categories</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{Math.max(0, itemCategories.length - 1)}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distinct categories</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-tags"></i>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-                    <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Stock</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">
-                            {archivedItems.reduce((sum, item) => sum + item.current_stock, 0)}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Units archived</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm shadow-2xs transition-transform duration-200 hover:scale-110">
-                        <i className="fas fa-cubes"></i>
-                    </div>
-                </div>
+                <Cards
+                    frontIcon="fa-solid fa-boxes-stacked"
+                    header="Total Archived"
+                    data={String(archivedItems.length)}
+                    arrow="fa-solid fa-folder-open"
+                    description="Inventory items"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Archived Inventory"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Total Archived: ${archivedItems.length} item(s)\nTotal Stock: ${archivedItems.reduce((sum, item) => sum + item.current_stock, 0)} units`}
+                    tooltip="View inventory archive"
+                    frontTextColor="text-pink-500 dark:text-pink-400"
+                    descriptionTextColor="text-pink-600 dark:text-pink-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-tags"
+                    header="Categories"
+                    data={String(Math.max(0, itemCategories.length - 1))}
+                    arrow="fa-solid fa-layer-group"
+                    description="Distinct categories"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Item Categories"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Categories: ${itemCategories.filter(c => c !== 'all').join(', ') || 'None'}`}
+                    tooltip="View item categories"
+                    frontTextColor="text-indigo-500 dark:text-indigo-400"
+                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-cubes"
+                    header="Total Stock"
+                    data={String(archivedItems.reduce((sum, item) => sum + item.current_stock, 0))}
+                    arrow="fa-solid fa-cubes-stacked"
+                    description="Units archived"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Stock Details"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Cumulative stock volume across all ${archivedItems.length} archived items`}
+                    tooltip="View stock details"
+                    frontTextColor="text-emerald-500 dark:text-emerald-400"
+                    descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                />
             </div>
 
             {/* Search & Filter */}
