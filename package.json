@@ -15,6 +15,7 @@
     "@google/generative-ai": "^0.24.1",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
+    "@sipemu/anofox-forecast": "^0.15.9",
     "@splinetool/react-spline": "^4.1.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
