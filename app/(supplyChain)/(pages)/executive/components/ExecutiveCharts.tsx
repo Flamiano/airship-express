@@ -85,7 +85,7 @@ const getBaseChartOptions = (isDark: boolean, textColor: string, mutedColor: str
             labels: {
                 boxWidth: 12,
                 padding: 8,
-                font: { size: 10, weight: '500' as const },
+                font: { size: 10, weight: 500 as const },
                 usePointStyle: true,
                 color: textColor,
             },
@@ -546,7 +546,7 @@ export default function ExecutiveCharts() {
                                     labels: {
                                         boxWidth: 12,
                                         padding: 8,
-                                        font: { size: 10, weight: '500' as const },
+                                        font: { size: 10, weight: 500 as const },
                                         usePointStyle: true,
                                         color: textColor
                                     },
@@ -625,7 +625,7 @@ export default function ExecutiveCharts() {
                                 }
                             },
                             scales: {
-                                x: { grid: { display: false }, ticks: { font: { size: 10, weight: '500' as const }, color: mutedColor } },
+                                x: { grid: { display: false }, ticks: { font: { size: 10, weight: 500 as const }, color: mutedColor } },
                                 y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 }, color: mutedColor }, grid: { color: gridColor } }
                             },
                             animation: { duration: 500 },
@@ -880,7 +880,7 @@ export default function ExecutiveCharts() {
                     {[1, 2, 3, 4, 5].map((i) => (
                         <div key={i} className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-slate-200/60 dark:border-slate-700/60 p-4 shadow-sm animate-pulse">
                             <div className="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded mb-3"></div>
-                            <div className="h-[200px] bg-slate-100 dark:bg-slate-800 rounded"></div>
+                            <div className="h-50 bg-slate-100 dark:bg-slate-800 rounded"></div>
                         </div>
                     ))}
                 </div>
@@ -1055,7 +1055,7 @@ export default function ExecutiveCharts() {
                                 <ChartLink href="/warehousing" label="View Details" />
                             </div>
 
-                            <div className="h-[200px] w-full">
+                            <div className="h-50 w-full">
                                 <canvas ref={chartRefs.parcels}></canvas>
                             </div>
 
@@ -1096,7 +1096,7 @@ export default function ExecutiveCharts() {
                                 <ChartLink href="/inventory" label="View All" />
                             </div>
 
-                            <div className="h-[200px] w-full flex items-center justify-center">
+                            <div className="h-50 w-full flex items-center justify-center">
                                 <canvas ref={chartRefs.inventory}></canvas>
                             </div>
                         </div>
@@ -1161,7 +1161,7 @@ export default function ExecutiveCharts() {
                             <ChartLink href="/forecast" label="View full forecast" />
                         </div>
 
-                        <div className="h-[220px] w-full pt-1">
+                        <div className="h-55 w-full pt-1">
                             <canvas ref={chartRefs.forecast}></canvas>
                         </div>
                     </div>
@@ -1244,7 +1244,7 @@ export default function ExecutiveCharts() {
                                 </h3>
                                 <ChartLink href="/kpi-dashboard" label="View All KPIs" />
                             </div>
-                            <div className="h-[300px] w-full">
+                            <div className="h-75 w-full">
                                 <canvas ref={chartRefs.kpi}></canvas>
                             </div>
                         </div>
@@ -1259,7 +1259,7 @@ export default function ExecutiveCharts() {
                         {/* AI Insights Header */}
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs transition-all duration-200">
                             <div className="flex flex-col md:flex-row items-center gap-6">
-                                <div className="flex-shrink-0">
+                                <div className="shrink-0">
                                     <div className="w-14 h-14 rounded-2xl bg-pink-500/10 dark:bg-pink-500/15 border border-pink-500/20 flex items-center justify-center text-pink-600 dark:text-pink-400">
                                         <i className="fas fa-robot text-2xl" />
                                     </div>
@@ -1277,7 +1277,7 @@ export default function ExecutiveCharts() {
                                 <button
                                     onClick={generateAISummary}
                                     disabled={isGeneratingAI}
-                                    className="flex-shrink-0 px-4 py-2.5 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 text-white rounded-xl transition-all duration-150 shadow-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold cursor-pointer"
+                                    className="shrink-0 px-4 py-2.5 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 text-white rounded-xl transition-all duration-150 shadow-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold cursor-pointer"
                                 >
                                     {isGeneratingAI ? (
                                         <>
@@ -1337,7 +1337,7 @@ export default function ExecutiveCharts() {
                                     >
                                         <div>
                                             <div className="flex items-start gap-3.5">
-                                                <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${currentStyle.iconBg}`}>
+                                                <div className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${currentStyle.iconBg}`}>
                                                     <i className={`fas ${iconMap[insight.type]} text-sm`} />
                                                 </div>
 
@@ -1499,7 +1499,7 @@ export default function ExecutiveCharts() {
                                 <ChartLink href="/forecast" label="View full forecast" />
                             </div>
 
-                            <div className="h-[300px] w-full pt-4">
+                            <div className="h-75 w-full pt-4">
                                 <canvas ref={chartRefs.forecast}></canvas>
                             </div>
 
