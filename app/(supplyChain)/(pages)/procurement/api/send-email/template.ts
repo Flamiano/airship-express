@@ -10,7 +10,7 @@ export function buildEmailTemplate({
     confirmLink,
     senderName = "Procurement Team",
     senderPosition = "Procurement Manager",
-    senderEmail = process.env.EMAIL_USER || "",
+    senderEmail = process.env.EMAIL_SUPPLYCHAIN_USER || "",
 }: {
     poNumber: string;
     supplierName: string;

@@ -7,8 +7,8 @@ import nodemailer from 'nodemailer';
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.EMAIL_SUPPLYCHAIN_USER,
+        pass: process.env.EMAIL_SUPPLYCHAIN_PASS,
     },
 });
 
@@ -29,12 +29,12 @@ export async function POST(request: NextRequest) {
 
         // send email
         const info = await transporter.sendMail({
-            from: `"AirshipExpress" <${process.env.EMAIL_USER}>`,
+            from: `"AirshipExpress" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
             to: to,
             subject: subject,
             text: text || '',
             html: html,
-            replyTo: process.env.EMAIL_USER,
+            replyTo: process.env.EMAIL_SUPPLYCHAIN_USER,
         });
 
         return NextResponse.json({

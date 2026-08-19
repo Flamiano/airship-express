@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = process.env.GEMINI_API_KEY;
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-2.5-flash";
 
 export async function POST(request: NextRequest) {
     try {
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
         if (!apiKey) {
             return NextResponse.json(
-                { success: false, error: "GEMINI_API_KEY is not configured in the environment." },
+                { success: false, error: "GEMINI_SUPPLYCHAIN_API_KEY is not configured in the environment." },
                 { status: 500 }
             );
         }

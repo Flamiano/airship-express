@@ -720,7 +720,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                 className="flex-1 py-2 px-3 text-xs font-semibold rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                                 <i className="fas fa-file-signature text-[11px]" />
-                                <span>Create as Draft ({selectedPRIds.size})</span>
+                                <span className="text-xs text-slate-900 dark:text-white">Create as Draft ({selectedPRIds.size})</span>
                             </button>
 
                             <button

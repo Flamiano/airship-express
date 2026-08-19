@@ -3,8 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 import { getRegisteredActions, getActionDescriptions } from './action-registry';
 import { getAllKnowledge, getKnowledgeSummaries } from './knowledge-registry';
 
-const apiKey = process.env.GEMINI_API_KEY;
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-3.5-flash-lite";
 
 export interface Resource {
     type: 'tool' | 'knowledge';

@@ -22,13 +22,13 @@ export interface GeminiStreamChunk {
 }
 
 let geminiClient: GoogleGenAI | null = null;
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-3.5-flash-lite";
 
 function getGeminiClient(): GoogleGenAI {
     if (!geminiClient) {
-        const apiKey = process.env.GEMINI_API_KEY;
+        const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
         if (!apiKey) {
-            throw new Error('GEMINI_API_KEY is not configured in environment variables');
+            throw new Error('GEMINI_SUPPLYCHAIN_API_KEY is not configured in environment variables');
         }
         geminiClient = new GoogleGenAI({ apiKey });
     }
@@ -173,8 +173,8 @@ export async function generateSimpleResponse(
 /**
  * Check if Gemini is properly configured
  */
-export function isGeminiConfigured(): boolean {
-    return !!process.env.GEMINI_API_KEY;
+export function isAIAvailable(): boolean {
+    return !!process.env.GEMINI_SUPPLYCHAIN_API_KEY;
 }
 
 

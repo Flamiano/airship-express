@@ -118,13 +118,13 @@ export async function POST(request: NextRequest) {
                 .eq("id", pr.id);
 
                 // If user selected to send via Gmail
-                if (send_email && supplier?.email && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+                if (send_email && supplier?.email && process.env.EMAIL_SUPPLYCHAIN_USER && process.env.EMAIL_SUPPLYCHAIN_PASS) {
                     try {
                         const transporter = nodemailer.createTransport({
                             service: "gmail",
                             auth: {
-                                user: process.env.EMAIL_USER,
-                                pass: process.env.EMAIL_PASS,
+                                user: process.env.EMAIL_SUPPLYCHAIN_USER,
+                                pass: process.env.EMAIL_SUPPLYCHAIN_PASS,
                             },
                         });
 
@@ -141,15 +141,15 @@ export async function POST(request: NextRequest) {
                             confirmLink: confirmLink,
                             senderName: user_name || "Procurement Team",
                             senderPosition: "Procurement Manager",
-                            senderEmail: process.env.EMAIL_USER,
+                            senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
                         });
 
                         const info = await transporter.sendMail({
-                            from: `"AirshipExpress Procurement" <${process.env.EMAIL_USER}>`,
+                            from: `"AirshipExpress Procurement" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
                             to: supplier.email,
                             subject: `Official Purchase Order: ${poNumber} from Airship Express`,
                             html: emailHtml,
-                            replyTo: process.env.EMAIL_USER,
+                            replyTo: process.env.EMAIL_SUPPLYCHAIN_USER,
                         });
 
                         emailResults.push({ po_number: poNumber, recipient: supplier.email, status: "sent", messageId: info.messageId });

@@ -5,8 +5,8 @@ import { GoogleGenAI } from "@google/genai";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-const apiKey = process.env.GEMINI_API_KEY;
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-3.5-flash-lite";
 
 export async function POST(request: NextRequest) {
     try {

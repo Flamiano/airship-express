@@ -237,7 +237,7 @@ export function PurchaseOrderModal({
                 confirmLink: confirmLink,
                 senderName: user.getName(),
                 senderPosition: user.getRole(),
-                senderEmail: process.env.EMAIL_USER || '',
+                senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER || '',
             });
 
             const response = await fetch('/procurement/api/send-email', {

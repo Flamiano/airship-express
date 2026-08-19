@@ -24,6 +24,8 @@ import { PurchaseRequestModal } from "@/app/(supplyChain)/components/modals/Purc
 import { ChartDetailModal } from "@/app/(supplyChain)/components/modals/ChartDetailModal";
 import { createPurchaseRequest } from "@/app/(supplyChain)/(pages)/procurement/utils/procurementApi";
 import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
 
 // ============================================================
 // 2. TYPES & INTERFACES
@@ -194,8 +196,57 @@ export default function PurchaseOrders() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isSelectAll, setIsSelectAll] = useState(false);
 
-    // Manage PO Action Modal (Status & Delete)
+    // Manage PO Action Modal (Status & Delete & Communication)
     const [actionModalOrder, setActionModalOrder] = useState<PurchaseOrder | null>(null);
+    const [actionModalAiMessage, setActionModalAiMessage] = useState('');
+    const [isGeneratingActionAI, setIsGeneratingActionAI] = useState(false);
+    const [actionSupplierEmail, setActionSupplierEmail] = useState('');
+    const [actionSupplierMessenger, setActionSupplierMessenger] = useState('');
+    const [isSendingActionComm, setIsSendingActionComm] = useState(false);
+
+    // Fetch supplier info & reset communication states when actionModalOrder changes
+    useEffect(() => {
+        if (actionModalOrder) {
+            setActionModalAiMessage('');
+            setActionSupplierEmail('');
+            setActionSupplierMessenger('');
+
+            const fetchSupplierDetails = async () => {
+                try {
+                    let supplierId = actionModalOrder.supplier_id;
+                    if (!supplierId && actionModalOrder.supplier_name) {
+                        const { data } = await supabase
+                            .from('suppliers')
+                            .select('id, email, fb_link')
+                            .eq('name', actionModalOrder.supplier_name)
+                            .maybeSingle();
+                        if (data) {
+                            setActionSupplierEmail(data.email || '');
+                            setActionSupplierMessenger(data.fb_link || '');
+                        }
+                        return;
+                    }
+
+                    if (supplierId) {
+                        const { data, error } = await supabase
+                            .from('suppliers')
+                            .select('email, fb_link')
+                            .eq('id', supplierId)
+                            .maybeSingle();
+
+                        if (!error && data) {
+                            setActionSupplierEmail(data.email || '');
+                            setActionSupplierMessenger(data.fb_link || '');
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error fetching supplier details for action modal:', err);
+                }
+            };
+
+            fetchSupplierDetails();
+        }
+    }, [actionModalOrder]);
 
     const [chartDetailModal, setChartDetailModal] = useState<{
         isOpen: boolean;
@@ -544,6 +595,16 @@ export default function PurchaseOrders() {
             return;
         }
 
+        // If trying to mark as Paid, only allow orders with Confirmed or Delivered status
+        if (paidState) {
+            const selectedOrders = datasetOrders.filter(po => selectedIds.has(po.id));
+            const invalidOrders = selectedOrders.filter(po => po.status === 'Draft' || po.status === 'Sent');
+            if (invalidOrders.length > 0) {
+                toast.warning(`Cannot mark ${invalidOrders.length} order(s) as Paid while status is Draft or Sent. Status must be Confirmed or Delivered.`);
+                return;
+            }
+        }
+
         const actionName = paidState ? "Paid" : "Unpaid";
         const confirmed = await confirm({
             title: `Mark Orders as ${actionName}`,
@@ -634,8 +695,15 @@ export default function PurchaseOrders() {
         }
     };
 
-    const handleTogglePaid = async (id: string, currentPaid: boolean, poNumber?: string) => {
+    const handleTogglePaid = async (id: string, currentPaid: boolean, poNumber?: string, status?: string) => {
         const nextPaid = !currentPaid;
+
+        // If trying to mark as Paid, verify status is not Draft or Sent
+        if (nextPaid && (status === 'Draft' || status === 'Sent')) {
+            toast.warning(`Cannot mark as Paid while status is ${status}. Status must be Confirmed or Delivered.`);
+            return;
+        }
+
         const actionLabel = nextPaid ? "Paid" : "Unpaid";
 
         const confirmed = await confirm({
@@ -674,6 +742,215 @@ export default function PurchaseOrders() {
             toast.error('Failed to update payment status');
         } finally {
             setPendingRowId(null);
+        }
+    };
+
+    const getActionModalFullMessage = () => {
+        if (!actionModalAiMessage || !actionModalOrder) return '';
+        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+        const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
+
+        const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${actionModalOrder.po_number}`;
+        return `${actionModalAiMessage}\n\n---\n\n📋 **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
+    };
+
+    const handleGenerateActionAIMessage = async () => {
+        if (!actionModalOrder) return;
+
+        setIsGeneratingActionAI(true);
+        try {
+            const formattedItems = (actionModalOrder.items || []).map((item: any) => ({
+                name: item.name || "Item",
+                quantity: Number(item.quantity) || 1,
+                unit_price: Number(item.unit_price) || 0,
+                total: (Number(item.quantity) || 1) * (Number(item.unit_price) || 0),
+            }));
+
+            const response = await fetch('/procurement/api/gemini', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    supplier_name: actionModalOrder.supplier_name,
+                    items: formattedItems,
+                    total_amount: actionModalOrder.total_amount,
+                    delivery_date: actionModalOrder.delivery_date,
+                    po_number: actionModalOrder.po_number,
+                    notes: actionModalOrder.notes,
+                    sender_name: user.getName(),
+                    sender_position: user.getRole(),
+                }),
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setActionModalAiMessage(data.message);
+                toast.success('AI message generated!');
+            } else {
+                toast.error('Failed to generate AI message');
+            }
+        } catch (error) {
+            console.error('Error generating AI message for PO:', error);
+            toast.error('Failed to generate AI message');
+        } finally {
+            setIsGeneratingActionAI(false);
+        }
+    };
+
+    const handleActionEmail = async () => {
+        if (!actionModalOrder) return;
+        if (!actionModalAiMessage) {
+            toast.warning('Please generate an AI message first');
+            return;
+        }
+
+        if (isSendingActionComm) return;
+
+        const emailTo = actionSupplierEmail || '';
+        if (!emailTo) {
+            toast.warning('No email found for this supplier. Please configure their email first.');
+            return;
+        }
+
+        const toastId = toast.loading(`Sending email to ${emailTo}...`, {
+            duration: Infinity,
+            position: 'top-center',
+        });
+
+        setIsSendingActionComm(true);
+
+        try {
+            const formattedItems = (actionModalOrder.items || []).map((item: any) => ({
+                name: item.name || "Item",
+                quantity: Number(item.quantity) || 1,
+                unit_price: Number(item.unit_price) || 0,
+                total: (Number(item.quantity) || 1) * (Number(item.unit_price) || 0),
+            }));
+
+            const confirmLink = `${window.location.origin}/procurement/confirm?po=${actionModalOrder.po_number}`;
+            const fullMessage = getActionModalFullMessage();
+
+            const emailHtml = buildEmailTemplate({
+                poNumber: actionModalOrder.po_number,
+                supplierName: actionModalOrder.supplier_name,
+                items: formattedItems,
+                totalAmount: actionModalOrder.total_amount,
+                deliveryDate: actionModalOrder.delivery_date || 'TBD',
+                notes: actionModalOrder.notes || '',
+                confirmLink: confirmLink,
+                senderName: user.getName(),
+                senderPosition: user.getRole(),
+                senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER || '',
+            });
+
+            const response = await fetch('/procurement/api/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: emailTo,
+                    subject: `Purchase Order ${actionModalOrder.po_number} - ${actionModalOrder.supplier_name}`,
+                    html: emailHtml,
+                    text: fullMessage,
+                    po_number: actionModalOrder.po_number,
+                    supplier_name: actionModalOrder.supplier_name,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Update status from Draft to Sent in database
+                await handleUpdateStatus(actionModalOrder.id, 'Sent');
+
+                toast.success(`Email sent to ${emailTo} and status updated to Sent!`, {
+                    id: toastId,
+                    duration: 6000,
+                });
+
+                try {
+                    await navigator.clipboard.writeText(fullMessage);
+                } catch (clipError) {
+                    console.warn('Could not copy to clipboard:', clipError);
+                }
+            } else {
+                throw new Error(data.error || 'Failed to send email');
+            }
+        } catch (error: any) {
+            console.error('Error sending email from manage modal:', error);
+            toast.error(error.message || 'Failed to send email. Please try again.', {
+                id: toastId,
+                duration: 8000,
+            });
+        } finally {
+            setIsSendingActionComm(false);
+        }
+    };
+
+    const handleActionMessenger = async () => {
+        if (!actionModalOrder) return;
+        if (!actionModalAiMessage) {
+            toast.warning('Please generate an AI message first');
+            return;
+        }
+
+        if (isSendingActionComm) return;
+
+        const toastId = toast.loading('Preparing Messenger message...', {
+            duration: Infinity,
+            position: 'top-center',
+        });
+
+        setIsSendingActionComm(true);
+
+        try {
+            const confirmLink = `${window.location.origin}/procurement/confirm?po=${actionModalOrder.po_number}`;
+            const message = `${actionModalAiMessage}\n\n---\nConfirm this order: ${confirmLink}`;
+
+            try {
+                await navigator.clipboard.writeText(message);
+            } catch (clipError) {
+                console.warn('Could not copy to clipboard:', clipError);
+            }
+
+            // Update status from Draft to Sent
+            await handleUpdateStatus(actionModalOrder.id, 'Sent');
+
+            if (actionSupplierMessenger) {
+                window.open(actionSupplierMessenger, '_blank');
+                toast.success(`Messenger opened and status updated to Sent!`, {
+                    id: toastId,
+                    duration: 5000,
+                });
+            } else {
+                const messengerUrl = `https://m.me/?text=${encodeURIComponent(message)}`;
+                window.open(messengerUrl, '_blank');
+                toast.success('Message copied to clipboard, Messenger opened and status updated to Sent!', {
+                    id: toastId,
+                    duration: 5000,
+                });
+            }
+        } catch (error) {
+            console.error('Error sending messenger from manage modal:', error);
+            toast.error('Failed to prepare Messenger. Please try again.', {
+                id: toastId,
+                duration: 8000,
+            });
+        } finally {
+            setIsSendingActionComm(false);
+        }
+    };
+
+    const handleActionCopyOnly = async () => {
+        if (!actionModalAiMessage) {
+            toast.warning('Please generate an AI message first');
+            return;
+        }
+        const fullMessage = getActionModalFullMessage();
+        try {
+            await navigator.clipboard.writeText(fullMessage);
+            toast.success('Message copied to clipboard!');
+        } catch (error) {
+            console.error('Failed to copy message:', error);
+            toast.error('Failed to copy message');
         }
     };
 
@@ -1378,7 +1655,7 @@ export default function PurchaseOrders() {
                                                         <td data-label="Payment" className="py-3.5 px-4 whitespace-nowrap">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleTogglePaid(order.id, order.paid, order.po_number)}
+                                                                onClick={() => handleTogglePaid(order.id, order.paid, order.po_number, order.status)}
                                                                 disabled={rowBusy}
                                                                 className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${order.paid
                                                                     ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
@@ -1594,6 +1871,127 @@ export default function PurchaseOrders() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Send via Email & Messenger (Shown when status is Draft) */}
+                                {actionModalOrder.status === 'Draft' && (
+                                    <div className="bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900 border border-indigo-100 dark:border-indigo-800/30 rounded-xl p-4 shadow-xs space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-300">
+                                                <span className="p-1.5 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg flex items-center justify-center shadow-xs">
+                                                    <i className="fas fa-paper-plane text-xs" />
+                                                </span>
+                                                <div>
+                                                    <h3 className="text-xs font-bold leading-none">
+                                                        Send PO to Supplier
+                                                    </h3>
+                                                    <span className="text-[10px] text-indigo-600/80 dark:text-indigo-400/80 mt-0.5 block">
+                                                        Send via Email or Messenger (sets status to Sent)
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleGenerateActionAIMessage}
+                                                    disabled={isGeneratingActionAI || isSendingActionComm}
+                                                    className="px-2 py-1 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-100/70 dark:bg-indigo-900/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                                >
+                                                    {isGeneratingActionAI ? (
+                                                        <i className="fas fa-spinner fa-spin text-[10px]" />
+                                                    ) : (
+                                                        <i className="fas fa-wand-magic-sparkles text-[10px]" />
+                                                    )}
+                                                    <span>{isGeneratingActionAI ? 'Generating...' : 'Generate with AI'}</span>
+                                                </button>
+                                                {actionModalAiMessage && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleActionCopyOnly}
+                                                        disabled={isSendingActionComm}
+                                                        className="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        title="Copy Message"
+                                                    >
+                                                        <i className="fas fa-copy text-[10px]" />
+                                                        <span>Copy</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* AI Message Preview */}
+                                        <div className="bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl p-3 border border-indigo-100/80 dark:border-indigo-800/20 text-xs text-slate-800 dark:text-slate-200 leading-relaxed shadow-2xs min-h-[70px] max-h-[140px] overflow-y-auto">
+                                            {isGeneratingActionAI ? (
+                                                <div className="flex items-center justify-center h-16">
+                                                    <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs">
+                                                        <i className="fas fa-spinner fa-spin" />
+                                                        <span>Generating message...</span>
+                                                    </div>
+                                                </div>
+                                            ) : actionModalAiMessage ? (
+                                                <div>
+                                                    <p className="whitespace-pre-wrap">{actionModalAiMessage}</p>
+                                                    <div className="mt-2 pt-2 border-t border-indigo-100 dark:border-indigo-800/30">
+                                                        <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                                            📋 Confirmation link is automatically attached
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-slate-400 dark:text-slate-500 italic text-center py-3">
+                                                    Click "Generate with AI" to create a supplier message
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Supplier Contact Info & Send Buttons */}
+                                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                                {actionSupplierEmail ? (
+                                                    <span className="truncate block" title={actionSupplierEmail}>
+                                                        <i className="fas fa-envelope text-blue-500 mr-1" />
+                                                        {actionSupplierEmail}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-amber-600 dark:text-amber-400">
+                                                        <i className="fas fa-exclamation-triangle mr-1" />
+                                                        No email configured
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleActionEmail}
+                                                    title="Send Email via Gmail"
+                                                    disabled={!actionModalAiMessage || isSendingActionComm || !actionSupplierEmail}
+                                                    className="px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                                                >
+                                                    {isSendingActionComm ? (
+                                                        <i className="fas fa-spinner fa-spin text-blue-500" />
+                                                    ) : (
+                                                        <i className="fas fa-envelope text-blue-500 dark:text-blue-400 text-[11px]" />
+                                                    )}
+                                                    <span>{isSendingActionComm ? 'Sending...' : 'Email'}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleActionMessenger}
+                                                    title="Send via Messenger"
+                                                    disabled={!actionModalAiMessage || isSendingActionComm}
+                                                    className="px-3 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200 dark:border-sky-800/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                                                >
+                                                    {isSendingActionComm ? (
+                                                        <i className="fas fa-spinner fa-spin text-sky-500" />
+                                                    ) : (
+                                                        <i className="fab fa-facebook-messenger text-sky-500 dark:text-sky-400 text-[11px]" />
+                                                    )}
+                                                    <span>Messenger</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Status Options */}
                                 <div>
