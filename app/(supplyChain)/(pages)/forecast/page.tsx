@@ -618,54 +618,6 @@ export default function Forecast() {
                     </div>
                 )}
 
-                {/* Peak Insights Banner Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
-                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                            <i className="fas fa-calendar-star"></i>
-                        </div>
-                        <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                {loading ? "..." : (peakInsights?.busiestMonth.month || "N/A")}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {loading ? "" : `${peakInsights?.busiestMonth.count || 0} parcels recorded`}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
-                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                            <i className="fas fa-calendar-day"></i>
-                        </div>
-                        <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                {loading ? "..." : (peakInsights?.busiestDay.day || "N/A")}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {loading ? "" : `${peakInsights?.busiestDay.count || 0} parcels peak`}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
-                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                            <i className="fas fa-clock"></i>
-                        </div>
-                        <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Time Window</div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                {loading ? "..." : (peakInsights?.busiestHour.timeRange || "N/A")}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {loading ? "" : `${peakInsights?.busiestHour.count || 0} parcels incoming`}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Cards
                         frontIcon="fa-solid fa-boxes-stacked"
@@ -728,6 +680,54 @@ export default function Forecast() {
                         frontTextColor="text-amber-500 dark:text-amber-400"
                         descriptionTextColor="text-pink-600 dark:text-pink-400"
                     />
+                </div>
+
+               {/* Peak Insights Banner Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                            <i className="fas fa-calendar-star"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {loading ? "..." : (peakInsights?.busiestMonth.month || "N/A")}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {loading ? "" : `${peakInsights?.busiestMonth.count || 0} parcels recorded`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                            <i className="fas fa-calendar-day"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {loading ? "..." : (peakInsights?.busiestDay.day || "N/A")}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {loading ? "" : `${peakInsights?.busiestDay.count || 0} parcels peak`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                            <i className="fas fa-clock"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Time Window</div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {loading ? "..." : (peakInsights?.busiestHour.timeRange || "N/A")}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {loading ? "" : `${peakInsights?.busiestHour.count || 0} parcels incoming`}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Full-Width Parcel Volume 7-Day Forecast */}

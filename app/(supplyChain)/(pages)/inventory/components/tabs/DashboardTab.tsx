@@ -29,16 +29,17 @@ export function DashboardTab({
     onCategoryClick,
     onStatusClick
 }: DashboardTabProps) {
-    // Use stats if available (from server), otherwise calculate from inventoryItems
     const totalItems = stats?.totalItems ?? inventoryItems.length;
     const lowStockItems = stats?.lowStock ?? inventoryItems.filter(i => i.status === 'low-stock').length;
     const outOfStockItems = stats?.outOfStock ?? inventoryItems.filter(i => i.status === 'out-of-stock').length;
+    const availableItems = Math.max(0, totalItems - lowStockItems - outOfStockItems);
     const criticalItems = stats?.lowStockItems ?? inventoryItems.filter(i => i.status === 'low-stock' || i.status === 'out-of-stock');
 
     return (
         <div className="space-y-6 text-slate-900 dark:text-slate-100">
             <StatsCards
                 totalItems={totalItems}
+                availableItems={availableItems}
                 lowStockItems={lowStockItems}
                 outOfStockItems={outOfStockItems}
             />

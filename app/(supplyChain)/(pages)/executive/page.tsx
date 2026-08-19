@@ -30,11 +30,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* AI Questions */}
-        <AiQuestions />
-
         {/* KPI Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <Cards
             header="Parcels received today"
             data="1,284"
@@ -64,6 +61,9 @@ export default function Home() {
             backDescription="Target floor is set at 98.0%. Minor delays occurred entirely due to late arrivals from third-party regional linehauls."
           />
         </div>
+
+        {/* AI Questions */}
+        <AiQuestions />
 
         {/* Executive Charts - Now includes all sections with tabs */}
         <ExecutiveCharts />
