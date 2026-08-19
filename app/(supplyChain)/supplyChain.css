@@ -66,13 +66,20 @@ div {
   scrollbar-width: none !important;
 }
 
-.scrollable {
-  overflow: auto;
+.scrollable,
+.scroll-area,
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
 
-.scrollable::-webkit-scrollbar {
+.scrollable::-webkit-scrollbar,
+.scroll-area::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-auto::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
   background: transparent !important;
@@ -205,36 +212,87 @@ div {
 
 
 
+  /* Universal Supply Chain Table styling */
+  table {
+    @apply w-full text-left border-collapse;
+  }
+
+  /* Light mode table headers */
+  thead th {
+    @apply text-slate-700 bg-slate-100/90 dark:text-slate-300 dark:bg-slate-800/80 font-bold uppercase tracking-wider text-[11px] py-3.5 px-4 border-b border-slate-300/80 dark:border-slate-700/80 select-none;
+  }
+
+  /* Light mode table cells & rows */
+  tbody td {
+    @apply text-slate-800 dark:text-slate-200 border-b border-slate-200/90 dark:border-slate-800/80 py-3.5 px-4 text-xs align-middle transition-colors;
+  }
+
+  tbody tr {
+    @apply bg-white dark:bg-[#1a1a1e] transition-colors duration-150;
+  }
+
+  /* Clear alternating zebra striping in light mode */
+  tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+  }
+
+  .dark tbody tr:nth-child(even) {
+    background-color: #202025 !important;
+  }
+
+  /* Distinct hover state for table rows */
+  tbody tr:hover {
+    background-color: #f1f5f9 !important;
+  }
+
+  .dark tbody tr:hover {
+    background-color: #27272d !important;
+  }
+
+  /* Selected row styling */
+  tbody tr.bg-pink-50\/40,
+  tbody tr.bg-pink-50\/50,
+  tbody tr.bg-pink-50\/30,
+  tbody tr[data-selected="true"] {
+    background-color: #fdf2f8 !important;
+    border-left: 3px solid #ec4899;
+  }
+
+  .dark tbody tr.bg-pink-50\/40,
+  .dark tbody tr.bg-pink-50\/50,
+  .dark tbody tr.bg-pink-50\/30,
+  .dark tbody tr[data-selected="true"] {
+    background-color: rgba(236, 72, 153, 0.15) !important;
+    border-left: 3px solid #ec4899;
+  }
+
   .table-pro {
     @apply w-full border-separate border-spacing-0 text-xs;
   }
 
   .table-pro thead th {
-    @apply text-left py-3.5 px-4;
+    @apply text-left py-3.5 px-4 font-bold uppercase tracking-wider text-[11px] text-slate-700 dark:text-slate-300 bg-slate-100/90 dark:bg-slate-800/80 border-b border-slate-300/80 dark:border-slate-700/80 select-none;
   }
 
   .table-pro thead tr {
-    @apply border-b border-slate-200/60 bg-slate-50/70 text-[10px] font-bold tracking-wider text-slate-400 uppercase select-none;
-  }
-
-  .table-pro tbody {
-    padding: 10px;
+    @apply border-b border-slate-300/80 dark:border-slate-700/80;
   }
 
   .table-pro tbody td {
-    @apply py-2 px-3 border-b border-slate-100 text-xs align-middle;
+    @apply py-3 px-4 border-b border-slate-200/90 dark:border-slate-800/80 text-xs align-middle text-slate-800 dark:text-slate-200;
   }
 
   .table-pro tbody tr {
-    @apply transition-all duration-200;
+    @apply bg-white dark:bg-[#1a1a1e] transition-colors duration-150;
+  }
+
+  .table-pro tbody tr:nth-child(even) {
+    background-color: #f8fafc !important;
   }
 
   /* Light mode hover */
   .table-pro tbody tr:hover {
-    background: #f8fafc !important;
-    border-color: #cbd5e1 !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04) !important;
-    transform: translateY(-1px);
+    background: #f1f5f9 !important;
   }
 
   .table-pro tbody tr:last-child td {
@@ -244,28 +302,16 @@ div {
   /* Dark mode table row styles */
   .dark .table-pro tbody tr {
     background: var(--slate-900) !important;
-    border-color: rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.2) !important;
-    transition: all 0.2s ease !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .dark .table-pro tbody tr:nth-child(even) {
+    background: #202025 !important;
   }
 
   /* Dark mode hover */
   .dark .table-pro tbody tr:hover {
     background: var(--slate-900-hover) !important;
-    border-color: rgba(236, 72, 153, 0.2) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-    transform: translateY(-1px);
-  }
-
-  /* Dark mode selected/highlighted row */
-  .dark .table-pro tbody tr.bg-pink-50\/30 {
-    background: rgba(236, 72, 153, 0.15) !important;
-    border-color: rgba(236, 72, 153, 0.3) !important;
-  }
-
-  .dark .table-pro tbody tr.bg-pink-50\/30:hover {
-    background: rgba(236, 72, 153, 0.22) !important;
-    border-color: rgba(236, 72, 153, 0.4) !important;
   }
 
 

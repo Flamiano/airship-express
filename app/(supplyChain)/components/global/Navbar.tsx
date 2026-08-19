@@ -109,14 +109,32 @@ export function AceternityNavbar() {
         return pathname.startsWith(href);
     };
 
-    const handleNavClick = (e: React.MouseEvent, item: any) => {
-        if (!item.isAuthorized) {
-            e.preventDefault();
-            e.stopPropagation();
-            toast.error('You do not have permission to access this page');
-            return;
+    const isSectionActive = (group: NavGroup) => {
+        return group.items.some((item) => isActive(item.href));
+    };
+
+    const getSectionIcon = (section: string) => {
+        switch (section) {
+            case "Operations":
+                return "fa-solid fa-gears";
+            case "Procurement":
+                return "fa-solid fa-cart-shopping";
+            case "Intelligence":
+                return "fa-solid fa-brain";
+            case "Others":
+                return "fa-solid fa-shapes";
+            default:
+                return "fa-solid fa-folder";
         }
-        setOpenDropdown(null);
+    };
+
+    const getSectionAccent = (section: string) => {
+        return {
+            badge: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-200/50 dark:border-pink-800/50",
+            active: "text-pink-600 dark:text-pink-400 bg-pink-50/70 dark:bg-pink-950/30 border-pink-200/80 dark:border-pink-800/60 shadow-sm",
+            indicator: "bg-pink-500 dark:bg-pink-400",
+            iconColor: "text-pink-500 dark:text-pink-400",
+        };
     };
 
     const handleLogout = async () => {
@@ -235,79 +253,97 @@ export function AceternityNavbar() {
                 </button>
 
                 <div className="hidden lg:flex flex-1 items-center justify-center gap-2">
-                    {filteredNav.map((group: any) => (
-                        <div key={group.section} className="relative group">
-                            <button
-                                className={cn(
-                                    "flex items-center gap-1 px-3 py-2 text-sm font-medium transition-colors rounded-lg",
-                                    openDropdown === group.section
-                                        ? "text-pink-600 dark:text-pink-400 bg-pink-50/50 dark:bg-pink-950/20"
-                                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
+                    {filteredNav.map((group: any) => {
+                        const isSectionCurrent = isSectionActive(group);
+                        const accent = getSectionAccent(group.section);
+                        const isDropdownOpen = openDropdown === group.section;
+
+                        return (
+                            <div key={group.section} className="relative group">
+                                <button
+                                    className={cn(
+                                        "flex items-center gap-2 px-3.5 py-2 text-sm font-medium transition-all duration-200 rounded-xl border",
+                                        isDropdownOpen
+                                            ? "text-pink-600 dark:text-pink-400 bg-pink-50/70 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800/60 shadow-sm"
+                                            : isSectionCurrent
+                                                ? accent.active
+                                                : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100/60 dark:hover:bg-slate-800/60 border-transparent"
+                                    )}
+                                    onClick={() =>
+                                        setOpenDropdown(isDropdownOpen ? null : group.section)
+                                    }
+                                >
+                                    <i className={cn(getSectionIcon(group.section), "text-xs", isSectionCurrent ? accent.iconColor : "text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors")} />
+                                    <span>{group.section}</span>
+                                    <IconChevronDown className={cn(
+                                        "h-3.5 w-3.5 opacity-70 transition-transform duration-200 ml-0.5",
+                                        isDropdownOpen && "rotate-180 opacity-100"
+                                    )} />
+                                </button>
+
+                                {isDropdownOpen && (
+                                    <div className="absolute left-0 top-full mt-1.5 w-64 rounded-xl 
+                                                bg-white dark:bg-[#2a2a2e] 
+                                                p-2 shadow-xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] 
+                                                border border-slate-200/80 dark:border-slate-700/80 
+                                                z-50 animate-in fade-in-0 zoom-in-95 duration-200">
+                                        <div className="px-3 py-1.5 mb-1 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50">
+                                            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-400 flex items-center gap-1.5">
+                                                <i className={cn(getSectionIcon(group.section), "text-xs", accent.iconColor)} />
+                                                {group.section}
+                                            </span>
+                                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-md font-medium border", accent.badge)}>
+                                                {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                                            </span>
+                                        </div>
+                                        {group.items.map((item: any) => {
+                                            const active = isActive(item.href);
+                                            const isAuthorized = item.isAuthorized !== false;
+
+                                            return (
+                                                <Link
+                                                    key={item.id}
+                                                    href={isAuthorized ? item.href : '#'}
+                                                    onClick={(e) => {
+                                                        if (!isAuthorized) {
+                                                            e.preventDefault();
+                                                            toast.error('You do not have permission to access this page');
+                                                            return;
+                                                        }
+                                                        setOpenDropdown(null);
+                                                    }}
+                                                    className={cn(
+                                                        "flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm transition-all duration-200 relative",
+                                                        active && isAuthorized
+                                                            ? "text-pink-600 bg-pink-50 dark:bg-pink-950/20 dark:text-pink-400 font-medium"
+                                                            : !isAuthorized
+                                                                ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
+                                                                : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
+                                                    )}
+                                                >
+                                                    {active && isAuthorized && (
+                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-full bg-pink-500 dark:bg-pink-400" />
+                                                    )}
+
+                                                    <i className={cn(
+                                                        item.icon,
+                                                        !isAuthorized && "opacity-50",
+                                                        active && isAuthorized ? "text-pink-500 dark:text-pink-400" : "text-slate-500 dark:text-slate-400"
+                                                    )}></i>
+                                                    <span className={!isAuthorized ? "line-through" : ""}>
+                                                        {isAuthorized ? item.label : "Unauthorized"}
+                                                    </span>
+                                                    {!isAuthorized && (
+                                                        <IconLock className="h-3.5 w-3.5 ml-auto text-slate-400 dark:text-slate-600" />
+                                                    )}
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
                                 )}
-                                onClick={() =>
-                                    setOpenDropdown(openDropdown === group.section ? null : group.section)
-                                }
-                            >
-                                {group.section}
-                                <IconChevronDown className={cn(
-                                    "h-3 w-3 transition-transform duration-200",
-                                    openDropdown === group.section && "rotate-180"
-                                )} />
-                            </button>
-
-                            {openDropdown === group.section && (
-                                <div className="absolute left-0 top-full  w-64 rounded-xl 
-                                            bg-white dark:bg-[#2a2a2e] 
-                                            p-2 shadow-lg dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] 
-                                            border border-slate-200/60 dark:border-slate-700/60 
-                                            z-50 animate-in fade-in-0 zoom-in-95 duration-200">
-                                    {group.items.map((item: any) => {
-                                        const active = isActive(item.href);
-                                        const isAuthorized = item.isAuthorized !== false;
-
-                                        return (
-                                            <Link
-                                                key={item.id}
-                                                href={isAuthorized ? item.href : '#'}
-                                                onClick={(e) => {
-                                                    if (!isAuthorized) {
-                                                        e.preventDefault();
-                                                        toast.error('You do not have permission to access this page');
-                                                        return;
-                                                    }
-                                                    setOpenDropdown(null);
-                                                }}
-                                                className={cn(
-                                                    "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-all duration-200 relative",
-                                                    active && isAuthorized
-                                                        ? "text-pink-600 bg-pink-50 dark:bg-pink-950/20 dark:text-pink-400"
-                                                        : !isAuthorized
-                                                            ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
-                                                            : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
-                                                )}
-                                            >
-                                                {active && isAuthorized && (
-                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-full bg-pink-500 dark:bg-pink-400" />
-                                                )}
-
-                                                <i className={cn(
-                                                    item.icon,
-                                                    !isAuthorized && "opacity-50",
-                                                    active && isAuthorized && "text-pink-500 dark:text-pink-400"
-                                                )}></i>
-                                                <span className={!isAuthorized ? "line-through" : ""}>
-                                                    {isAuthorized ? item.label : "Unauthorized"}
-                                                </span>
-                                                {!isAuthorized && (
-                                                    <IconLock className="h-3.5 w-3.5 ml-auto text-slate-400 dark:text-slate-600" />
-                                                )}
-                                            </Link>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 <div className="hidden lg:flex items-center gap-3">
@@ -392,13 +428,32 @@ export function AceternityNavbar() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-2 py-2">
-                            {filteredNav.map((group: any) => (
-                                <div key={group.section} className="w-full">
-                                    <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider 
-                                                text-slate-500 dark:text-slate-400">
-                                        {group.section}
-                                    </div>
-                                    {group.items.map((item: any) => {
+                            {filteredNav.map((group: any) => {
+                                const isSectionCurrent = isSectionActive(group);
+                                const accent = getSectionAccent(group.section);
+
+                                return (
+                                    <div key={group.section} className="w-full mb-3 last:mb-0">
+                                        <div className="px-3 py-2 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <i className={cn(getSectionIcon(group.section), "text-xs", accent.iconColor)} />
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                                                    {group.section}
+                                                </span>
+                                            </div>
+                                            {isSectionCurrent ? (
+                                                <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-semibold border flex items-center gap-1.5", accent.badge)}>
+                                                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full", accent.indicator)}></span>
+                                                    Active Section
+                                                </span>
+                                            ) : (
+                                                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-md font-medium border", accent.badge)}>
+                                                    {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            {group.items.map((item: any) => {
                                         const active = isActive(item.href);
                                         const isAuthorized = item.isAuthorized !== false;
 
@@ -449,8 +504,10 @@ export function AceternityNavbar() {
                                             </Link>
                                         );
                                     })}
-                                </div>
-                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         <div className="flex-shrink-0 px-4 py-3 border-t border-slate-200/60 dark:border-slate-700/60 

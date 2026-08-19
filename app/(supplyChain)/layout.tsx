@@ -41,8 +41,37 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     const lenis = new Lenis({
-      duration: 1.1,
+      duration: 1.0,
       smoothWheel: true,
+      allowNestedScroll: true,
+      prevent: (node: HTMLElement) => {
+        if (!node) return false;
+        if (node.hasAttribute?.('data-lenis-prevent')) return true;
+        if (node.closest?.('[data-lenis-prevent]')) return true;
+        if (node.closest?.('table, .table-pro, [role="dialog"], [role="menu"]')) return true;
+
+        let el: HTMLElement | null = node;
+        while (el && el !== document.body && el !== document.documentElement) {
+          const style = window.getComputedStyle(el);
+          const overflowY = style.overflowY;
+          const overflowX = style.overflowX;
+          if (
+            (overflowY === 'auto' || overflowY === 'scroll') &&
+            el.scrollHeight > el.clientHeight
+          ) {
+            return true;
+          }
+          if (
+            (overflowX === 'auto' || overflowX === 'scroll') &&
+            el.scrollWidth > el.clientWidth
+          ) {
+            return true;
+          }
+          el = el.parentElement;
+        }
+
+        return false;
+      },
     });
     lenisRef.current = lenis;
     (window as unknown as { __lenis?: Lenis }).__lenis = lenis;

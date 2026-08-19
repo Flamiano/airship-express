@@ -12,6 +12,7 @@ import { buildEmailTemplate } from "./api/send-email/template";
 import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import Cards from "@/app/(supplyChain)/components/global/Cards";
+import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
 import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
 import {
     Supplier,
@@ -889,66 +890,28 @@ export default function Procurement() {
                 </div>
 
                 {/* AI Suggested Questions */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4">
-                    <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold text-slate-900 text-sm">
-                            <i className="fas fa-robot text-pink-500 mr-2" /> AI Suggested Questions
-                        </span>
-                        <span className="text-xs text-slate-400">
-                            <i className="fas fa-mouse-pointer mr-1" /> Click to ask
-                        </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                        {[
-                            {
-                                label: 'Procurement summary',
-                                color: 'bg-pink-400',
-                                action: () => toast.info(`AI: Procurement summary...\n\nActive requests: ${totalCounts.all}\n⏳ Pending approvals: ${totalCounts.pending}\n Total spend: ₱${totalSpend.toLocaleString()}`)
-                            },
-                            {
-                                label: 'Top expenses?',
-                                color: 'bg-amber-400',
-                                action: () => {
-                                    const categoryData: Record<string, number> = requests.reduce<Record<string, number>>((acc, req) => {
-                                        const type = req.type || 'Other';
-                                        acc[type] = (acc[type] || 0) + (req.amount || 0);
-                                        return acc;
-                                    }, {});
-
-                                    const sorted = Object.entries(categoryData)
-                                        .sort((a, b) => b[1] - a[1])
-                                        .slice(0, 3)
-                                        .map(([key, value]) => `${key}: ₱${value.toLocaleString()}`)
-                                        .join('\n');
-
-                                    toast.info(`AI: Top expenses by category...\n\n${sorted || 'No data available'}`);
-                                }
-                            },
-                            {
-                                label: 'Any urgent requests?',
-                                color: 'bg-blue-400',
-                                action: () => {
-                                    const urgent = requests.filter(r => r.priority === 'Critical' && r.status === 'Pending');
-                                    toast.info(`AI: Urgent requests...\n\n${urgent.map(r => `${r.request_number} - ${r.description}`).join('\n') || 'No urgent requests'}`);
-                                }
-                            },
-                            {
-                                label: 'Supplier performance?',
-                                color: 'bg-emerald-400',
-                                action: () => toast.info(`AI: Supplier performance...\n\n${suppliers.slice(0, 3).map((s, i) => `${i + 1}. ${s.name}`).join('\n')}`)
-                            }
-                        ].map((item, index) => (
-                            <button
-                                key={index}
-                                className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:border-pink-200 hover:bg-pink-50 transition text-left"
-                                onClick={item.action}
-                            >
-                                <span className={`w-2 h-2 rounded-full ${item.color} shrink-0`} />
-                                <span className="text-xs text-slate-700">{item.label}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
+                <AiQuestions
+                    title="AI Suggested Questions"
+                    subtitle="Click to ask"
+                    questions={[
+                        {
+                            question: "Procurement summary",
+                            color: "bg-pink-400"
+                        },
+                        {
+                            question: "Top expenses by category?",
+                            color: "bg-amber-400"
+                        },
+                        {
+                            question: "Any urgent purchase requests?",
+                            color: "bg-blue-400"
+                        },
+                        {
+                            question: "Supplier performance overview",
+                            color: "bg-emerald-400"
+                        }
+                    ]}
+                />
 
                 {/* Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1152,9 +1115,9 @@ export default function Procurement() {
                     </div>
 
                     {/* Table Body */}
-                    <div className="flex-1 overflow-y-auto max-h-[500px] relative">
+                    <div data-lenis-prevent className="flex-1 overflow-y-auto max-h-[500px] relative overscroll-contain">
                         <div className={`transition-opacity duration-200 ${isTabTransitioning ? "opacity-30 pointer-events-none" : "opacity-100"}`}>
-                            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                            <div data-lenis-prevent className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overscroll-contain">
                                 {isTabTransitioning && <TableContentLoader />}
                                 <table className="table-pro w-full border-collapse text-left text-xs">
                                     <thead>

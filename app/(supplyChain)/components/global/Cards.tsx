@@ -92,6 +92,7 @@ export default function Cards({
     return (
         <div
             className="relative cursor-pointer perspective h-40 group"
+            data-interactive="true"
             onClick={() => setFlipped(!flipped)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}

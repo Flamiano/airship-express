@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Chart from "chart.js/auto";
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
 import Cards from "@/app/(supplyChain)/components/global/Cards";
+import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { toast } from "sonner";
 
 interface ForecastData {
@@ -21,11 +22,22 @@ interface ForecastData {
         };
         total_next_week: number;
         confidence: string;
+        model_used?: string;
+        engine?: string;
+        explanation?: string;
         dates: string[];
         historical: {
             dates: string[];
             counts: number[];
+            display_dates?: string[];
+            display_counts?: number[];
+            aggregation_type?: string;
             total_actual: number;
+        };
+        peak_insights?: {
+            busiestMonth: { month: string; count: number };
+            busiestDay: { day: string; count: number };
+            busiestHour: { timeRange: string; count: number };
         };
     };
     expense_next_month: {
@@ -35,6 +47,9 @@ interface ForecastData {
             upper: number;
         };
         confidence: string;
+        model_used?: string;
+        engine?: string;
+        explanation?: string;
         historical: {
             months: string[];
             amounts: number[];
@@ -49,6 +64,23 @@ export default function Forecast() {
     const [retraining, setRetraining] = useState(false);
     const [forecastData, setForecastData] = useState<ForecastData | null>(null);
 
+    // AI Summary state
+    const [aiSummary, setAiSummary] = useState<string | null>(null);
+    const [summarizing, setSummarizing] = useState(false);
+    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+
+    // Chart Deep Dive Modal State
+    const [activeChartModal, setActiveChartModal] = useState<{
+        isOpen: boolean;
+        type: 'parcels' | 'expense' | 'couriers';
+        title: string;
+        dataPointIndex?: number;
+    }>({
+        isOpen: false,
+        type: 'parcels',
+        title: '',
+    });
+
     const parcelChartRef = useRef<HTMLCanvasElement>(null);
     const expenseChartRef = useRef<HTMLCanvasElement>(null);
     const courierPieRef = useRef<HTMLCanvasElement>(null);
@@ -57,10 +89,38 @@ export default function Forecast() {
     const expenseChartInstance = useRef<Chart | null>(null);
     const courierPieInstance = useRef<Chart | null>(null);
 
+    const generateAiSummary = async () => {
+        if (!forecastData) {
+            toast.error("Forecast data is still loading.");
+            return;
+        }
+
+        try {
+            setSummarizing(true);
+            setIsAiModalOpen(true);
+            const res = await fetch("/forecast/api/summarize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ forecastData })
+            });
+            const data = await res.json();
+            if (data.success && data.summary) {
+                setAiSummary(data.summary);
+            } else {
+                throw new Error(data.error || "Failed to generate AI summary");
+            }
+        } catch (err: any) {
+            console.error("AI Summary error:", err);
+            toast.error(err.message || "Failed to generate AI summary");
+        } finally {
+            setSummarizing(false);
+        }
+    };
+
     const fetchForecast = useCallback(async (showNotification: boolean = false) => {
         try {
             if (showNotification) setRetraining(true);
-            const res = await fetch("/api/supplyChain/forecast", { cache: "no-store" });
+            const res = await fetch("/forecast/api", { cache: "no-store" });
             const data = await res.json();
             if (data.success) {
                 setForecastData(data);
@@ -91,7 +151,7 @@ export default function Forecast() {
             const gridColor = isDark ? "rgba(255,255,255,0.06)" : "#F1F5F9";
             const textColor = isDark ? "#8a8a8e" : "#64748B";
 
-            // 1. Next 7 Days Parcel Volume Chart
+            // 1. Next 7 Days Parcel Volume Chart with Dynamic Granularity
             if (parcelChartRef.current && forecastData?.parcel_7_day?.historical?.counts?.length) {
                 if (parcelChartInstance.current) {
                     parcelChartInstance.current.destroy();
@@ -100,24 +160,26 @@ export default function Forecast() {
 
                 const ctx = parcelChartRef.current.getContext("2d");
                 if (ctx) {
-                    const histDates = forecastData.parcel_7_day.historical.dates || [];
-                    const histCounts = forecastData.parcel_7_day.historical.counts || [];
+                    const histData = forecastData.parcel_7_day.historical;
+                    const histLabels = (histData.display_dates || histData.dates || []).map(d => {
+                        if (d.includes('-') && !d.includes('/')) {
+                            const parts = d.split('-');
+                            return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+                        }
+                        return d;
+                    });
+                    const histCounts = histData.display_counts || histData.counts || [];
                     const fcDates = forecastData.parcel_7_day.dates || [];
                     const fcValues = forecastData.parcel_7_day.predictions || [];
                     const fcUpper = forecastData.parcel_7_day.confidence_interval.upper || [];
                     const fcLower = forecastData.parcel_7_day.confidence_interval.lower || [];
 
-                    const histLabels = histDates.map(d => {
-                        const parts = d.split('-');
-                        return parts.length === 3 ? `${parts[1]}/${parts[2]} (Actual)` : d;
-                    });
                     const fcLabels = fcDates.map((d, i) => {
                         const parts = d.split('-');
                         return parts.length === 3 ? `${parts[1]}/${parts[2]} (Fcst D+${i+1})` : `D+${i+1}`;
                     });
 
                     const allLabels = [...histLabels, ...fcLabels];
-
                     const actualSeries = [...histCounts, ...Array(fcValues.length).fill(null)];
                     const lastHistValue = histCounts.length > 0 ? histCounts[histCounts.length - 1] : 0;
                     const forecastSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastHistValue, ...fcValues];
@@ -148,7 +210,7 @@ export default function Forecast() {
                                     tension: 0.3,
                                 },
                                 {
-                                    label: "Actual Data",
+                                    label: `Actual History (${histData.aggregation_type || 'Daily'})`,
                                     data: actualSeries,
                                     borderColor: isDark ? "#38bdf8" : "#0284C7",
                                     backgroundColor: isDark ? "#38bdf8" : "#0284C7",
@@ -173,6 +235,15 @@ export default function Forecast() {
                             responsive: true,
                             maintainAspectRatio: false,
                             interaction: { mode: "index", intersect: false },
+                            onClick: (event: any, elements: any) => {
+                                const index = elements && elements.length > 0 ? elements[0].index : undefined;
+                                setActiveChartModal({
+                                    isOpen: true,
+                                    type: 'parcels',
+                                    title: '7-Day Parcel Volume Forecast Analysis',
+                                    dataPointIndex: index,
+                                });
+                            },
                             plugins: {
                                 legend: {
                                     position: "bottom",
@@ -184,21 +255,13 @@ export default function Forecast() {
                                         filter: (item: any) => !/Bound/i.test(item.text),
                                     },
                                 },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context: any) {
-                                            if (context.raw === null || context.raw === undefined) return '';
-                                            return ` ${context.dataset.label}: ${context.raw} parcels`;
-                                        }
-                                    }
-                                }
                             },
                             scales: {
                                 x: { grid: { display: false }, ticks: { color: textColor } },
                                 y: {
                                     grid: { color: gridColor },
                                     ticks: { color: textColor },
-                                    title: { display: true, text: "Parcel Count", color: textColor }
+                                    title: { display: true, text: "Parcel Volume", color: textColor }
                                 },
                             },
                         },
@@ -260,25 +323,20 @@ export default function Forecast() {
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            onClick: (event: any, elements: any) => {
+                                const index = elements && elements.length > 0 ? elements[0].index : undefined;
+                                setActiveChartModal({
+                                    isOpen: true,
+                                    type: 'expense',
+                                    title: 'Procurement Outlay & Budget Projections',
+                                    dataPointIndex: index,
+                                });
+                            },
                             plugins: {
                                 legend: {
                                     position: "bottom",
                                     labels: { boxWidth: 12, boxHeight: 12, usePointStyle: true, color: textColor },
                                 },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context: any) {
-                                            if (context.raw === null) return '';
-                                            if (context.dataIndex === allMonths.length - 1) {
-                                                return [
-                                                    ` Predicted: ₱${Number(context.raw).toLocaleString()}`,
-                                                    ` 90% Range: ₱${nextLower.toLocaleString()} - ₱${nextUpper.toLocaleString()}`
-                                                ];
-                                            }
-                                            return ` Actual: ₱${Number(context.raw).toLocaleString()}`;
-                                        }
-                                    }
-                                }
                             },
                             scales: {
                                 x: { grid: { display: false }, ticks: { color: textColor } },
@@ -326,21 +384,18 @@ export default function Forecast() {
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            onClick: () => {
+                                setActiveChartModal({
+                                    isOpen: true,
+                                    type: 'couriers',
+                                    title: 'Courier Partner Volume Breakdown & Dispatch Allocation',
+                                });
+                            },
                             plugins: {
                                 legend: {
                                     position: "right",
                                     labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: textColor, font: { size: 11 } }
                                 },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context: any) {
-                                            const total = values.reduce((a, b) => a + b, 0);
-                                            const current = context.raw || 0;
-                                            const pct = total > 0 ? ((current / total) * 100).toFixed(1) : "0.0";
-                                            return ` ${context.label}: ${current} parcels (${pct}%)`;
-                                        }
-                                    }
-                                }
                             },
                             cutout: "60%"
                         }
@@ -379,12 +434,14 @@ export default function Forecast() {
             wasm_engine: "@sipemu/anofox-forecast (Rust/WASM)",
             total_db_parcels: forecastData.raw_db_stats.total_parcels_in_db,
             total_db_purchase_orders: forecastData.raw_db_stats.total_pos_in_db,
+            peak_traffic_insights: forecastData.parcel_7_day.peak_insights,
             next_7_day_parcel_forecast: {
                 predictions: forecastData.parcel_7_day.predictions,
                 confidence_interval_95_pct: forecastData.parcel_7_day.confidence_interval,
                 total_projected_volume: forecastData.parcel_7_day.total_next_week,
                 dates: forecastData.parcel_7_day.dates,
-                historical_counts: forecastData.parcel_7_day.historical.counts
+                historical_counts: forecastData.parcel_7_day.historical.counts,
+                display_aggregation: forecastData.parcel_7_day.historical.aggregation_type
             },
             next_month_expense_forecast: {
                 predicted_amount_php: forecastData.expense_next_month.prediction,
@@ -417,84 +474,209 @@ export default function Forecast() {
         return Object.entries(courierMap).sort((a, b) => b[1] - a[1]);
     }, [courierMap]);
 
+    const peakInsights = forecastData?.parcel_7_day?.peak_insights;
+    const aggregationType = forecastData?.parcel_7_day?.historical?.aggregation_type || 'Daily';
+
     const hasParcelData = (forecastData?.parcel_7_day?.historical?.counts?.length || 0) > 0 || (forecastData?.parcel_7_day?.predictions?.length || 0) > 0;
     const hasExpenseData = (forecastData?.expense_next_month?.historical?.amounts?.length || 0) > 0 || (forecastData?.expense_next_month?.prediction || 0) > 0;
     const hasCourierData = Object.keys(courierMap).length > 0;
 
+    if (loading && !forecastData) {
+        return <PageSkeleton />;
+    }
+
     return (
         <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
-            <div className="p-6 space-y-6 fade-in bgCard pb-16">
-                <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">
-                    <div className="flex items-start gap-3.5">
-                        <div className="w-12 h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-800/40 flex items-center justify-center text-pink-600 dark:text-pink-400 text-xl shadow-2xs shrink-0 mt-0.5 transition-colors">
+            <div className="p-6 space-y-6 bgCard dark:bg-ink/90 pb-16">
+                {/* Standard Page Header */}
+                <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-ink/20 pb-5">
+                    <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl 
+                                    bg-pink-50 dark:bg-pink-950/30 
+                                    border border-pink-100 dark:border-pink-800/30 
+                                    flex items-center justify-center text-pink-600 dark:text-pink-400 
+                                    text-lg sm:text-xl shadow-2xs shrink-0 mt-0.5">
                             <i className="fas fa-chart-line" />
                         </div>
-                        <div>
-                            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight transition-colors">
+
+                        <div className="w-full min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 text-[11px] font-semibold border border-slate-200/60 dark:border-slate-700/60">
+                                    <i className="fas fa-microchip text-pink-500 text-[10px]" />
+                                    <span>Airship Express</span>
+                                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                                    <span className="text-slate-500 dark:text-slate-400">Predictive WASM Engine</span>
+                                </div>
+                            </div>
+                            <h1 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
                                 Predictive Analytics &amp; Forecasting
                             </h1>
-                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 transition-colors">
-                                7-day parcel volume forecasts and monthly expenditure projections powered by <code>@sipemu/anofox-forecast</code> WASM.
+                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                6-month historical trends with adaptive {aggregationType.toLowerCase()} aggregation and 7-day WASM volume projections.
                             </p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2.5 flex-wrap shrink-0">
                         <button
-                            className="px-3.5 py-2 bg-white dark:bg-ink/60 border border-slate-200/80 dark:border-ink/20 hover:bg-slate-50 dark:hover:bg-ink text-slate-700 dark:text-slate-300 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-2 shadow-xs cursor-pointer active:scale-95"
+                            type="button"
+                            className="px-4 py-2 bg-pink-500 hover:bg-pink-600 dark:bg-pink-600 dark:hover:bg-pink-700 
+                                       text-white rounded-xl text-xs sm:text-sm font-semibold 
+                                       transition-all flex items-center gap-2 shadow-2xs hover:shadow-pink-500/20 active:scale-[0.98] cursor-pointer"
+                            onClick={generateAiSummary}
+                            disabled={loading || summarizing || !forecastData}
+                        >
+                            <i className={`fas ${summarizing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} text-xs`} />
+                            <span>{summarizing ? "Analyzing Models..." : "Summarize with AI"}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            className="px-3.5 py-2 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
                             onClick={() => fetchForecast(true)}
                             disabled={retraining || loading}
+                            title="Recalculate models from Supabase"
                         >
-                            <i className={`fas fa-rotate ${retraining ? "fa-spin text-pink-500" : "text-slate-400"}`} />
-                            <span>{retraining ? "Recalculating..." : "Sync Database"}</span>
+                            <i className={`fas fa-rotate text-xs ${retraining ? "fa-spin text-pink-500" : "text-slate-400"}`} />
+                            <span>{retraining ? "Recalculating..." : "Sync DB"}</span>
                         </button>
 
                         <button
-                            className="px-4 py-2 bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-2 shadow-xs hover:shadow-pink-500/25 active:scale-95 cursor-pointer"
+                            type="button"
+                            className="px-3.5 py-2 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
                             onClick={handleExport}
                             disabled={loading || !forecastData}
+                            title="Export Forecast Report"
                         >
-                            <i className="fas fa-download text-xs" />
-                            <span>Export Forecast Report</span>
+                            <i className="fas fa-download text-xs text-slate-400" />
+                            <span>Export</span>
                         </button>
                     </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-ink/60 border border-slate-200/60 dark:border-ink/20 shadow-xs">
-                    <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-xl brand-gradient text-white flex items-center justify-center text-xl shrink-0">
-                            ✨
+                {/* AI Executive Summary Card */}
+                {aiSummary && (
+                    <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900 border border-slate-200/80 dark:border-ink/30 shadow-2xs">
+                        <div className="flex items-center justify-between gap-4 mb-3 border-b border-slate-200/70 dark:border-ink/20 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-800/40 flex items-center justify-center text-pink-600 dark:text-pink-400 text-sm shadow-2xs">
+                                    <i className="fas fa-brain"></i>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">AI Executive Forecast Interpretation</h3>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Grounded strictly in active Supabase records and time-series models</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    className="text-xs text-pink-600 dark:text-pink-400 hover:underline font-semibold flex items-center gap-1.5 cursor-pointer"
+                                    onClick={() => setIsAiModalOpen(true)}
+                                >
+                                    <i className="fas fa-expand text-[11px]"></i>
+                                    <span>Expand</span>
+                                </button>
+                                <button
+                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 cursor-pointer"
+                                    onClick={() => setAiSummary(null)}
+                                    title="Close summary"
+                                >
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex-1">
-                            <div className="font-semibold text-slate-900 dark:text-white">Actual Data &amp; Forecast Status</div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                {loading ? (
-                                    "Querying Supabase database tables..."
-                                ) : (
-                                    <>
-                                        Loaded <b className="text-blue-600 dark:text-blue-400">{totalDbParcels} actual parcels</b> from the <code>parcels</code> table and <b className="text-blue-600 dark:text-blue-400">{forecastData?.raw_db_stats?.total_pos_in_db || 0} purchase orders</b>. 
-                                        Next 7-day predicted parcel volume is <b className="text-pink-600 dark:text-pink-400">{weeklyTotal.toLocaleString()} units</b> (95% CI). Next month&apos;s procurement expense is projected at <b className="text-blue-600 dark:text-blue-400">₱{expensePrediction.toLocaleString()}</b> (90% CI: ₱{expenseLower.toLocaleString()} – ₱{expenseUpper.toLocaleString()}).
-                                    </>
-                                )}
-                            </p>
+                        <div 
+                            className="space-y-3 max-h-56 overflow-y-auto pr-2 overscroll-contain"
+                            data-lenis-prevent
+                        >
+                            {(aiSummary || '').split('\n\n').map((section, idx) => {
+                                const lines = section.trim().split('\n');
+                                const title = lines[0];
+                                const content = lines.slice(1).join('\n');
+                                const isHeader = /^[A-Z\s&/–-]+$/.test(title) && title.length < 50;
+
+                                if (isHeader) {
+                                    return (
+                                        <div key={idx} className="p-3.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-ink/30 text-xs shadow-2xs">
+                                            <div className="font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 text-[11px]">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
+                                                {title}
+                                            </div>
+                                            <div className="text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed pl-3 border-l-2 border-pink-500/40">
+                                                {content}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div key={idx} className="whitespace-pre-line text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                                        {section}
+                                    </div>
+                                );
+                            })}
                         </div>
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border dark:border-emerald-800/30 shrink-0">
-                            100% DB Synced
-                        </span>
+                    </div>
+                )}
+
+                {/* Peak Insights Banner Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                            <i className="fas fa-calendar-star"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {loading ? "..." : (peakInsights?.busiestMonth.month || "N/A")}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {loading ? "" : `${peakInsights?.busiestMonth.count || 0} parcels recorded`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                            <i className="fas fa-calendar-day"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {loading ? "..." : (peakInsights?.busiestDay.day || "N/A")}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {loading ? "" : `${peakInsights?.busiestDay.count || 0} parcels peak`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                            <i className="fas fa-clock"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Time Window</div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {loading ? "..." : (peakInsights?.busiestHour.timeRange || "N/A")}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {loading ? "" : `${peakInsights?.busiestHour.count || 0} parcels incoming`}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Cards
                         frontIcon="fa-solid fa-boxes-stacked"
                         header="Actual Parcels in DB"
                         data={loading ? "..." : String(totalDbParcels)}
                         arrow="fa-solid fa-database"
-                        description="From parcels table"
+                        description="Max 6-month window"
                         backBg="bg-ink dark:bg-slate-900"
                         backHeader="Parcels Breakdown"
                         headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nHistorical dates active: ${forecastData?.parcel_7_day?.historical?.dates?.length || 0} days`}
+                        backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nAggregation View: ${aggregationType}`}
                         tooltip="View parcel records in Supabase"
                         tooltipLink="/parcels"
                         frontTextColor="text-blue-500 dark:text-blue-400"
@@ -506,12 +688,12 @@ export default function Forecast() {
                         header="7-Day Predicted Volume"
                         data={loading ? "..." : String(weeklyTotal)}
                         arrow="fa-solid fa-arrow-trend-up"
-                        description="95% Confidence Interval"
+                        description={`${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`}
                         backBg="bg-ink dark:bg-slate-900"
                         backHeader="Forecast Algorithm"
                         headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Algorithm: Holt-Winters Additive & AutoTheta\nPrediction Horizon: 7 Days\nConfidence Interval: 95%\nProjected Weekly Total: ${weeklyTotal} parcels`}
-                        tooltip="Model details: Holt-Winters (period 7) with AutoTheta fallback"
+                        backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units`}
+                        tooltip="Holt-Winters 7-day seasonality model"
                         frontTextColor="text-pink-500 dark:text-pink-400"
                         descriptionTextColor="text-emerald-600 dark:text-emerald-400"
                     />
@@ -521,11 +703,11 @@ export default function Forecast() {
                         header="Next Month PO Expense"
                         data={loading ? "..." : `₱${expensePrediction.toLocaleString()}`}
                         arrow="fa-solid fa-receipt"
-                        description={`90% CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}`}
+                        description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}` : "No qualifying paid POs"}
                         backBg="bg-ink dark:bg-slate-900"
                         backHeader="Expense Projections"
                         headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Projected next month expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nCalculated from paid purchase orders`}
+                        backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}\nCalculated from Confirmed/Delivered paid purchase orders`}
                         tooltip="View purchase orders"
                         tooltipLink="/procurement?tab=all"
                         frontTextColor="text-emerald-500 dark:text-emerald-400"
@@ -548,29 +730,47 @@ export default function Forecast() {
                     />
                 </div>
 
-                <div className="card p-5 bg-white dark:bg-ink/60 border border-slate-200/60 dark:border-ink/20 shadow-xs">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
+                {/* Full-Width Parcel Volume 7-Day Forecast */}
+                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
                         <div>
-                            <div className="font-semibold text-slate-900 dark:text-white text-base">
-                                Parcel Volume: Actual Data from Supabase &rarr; Next 7 Days Prediction
+                            <div className="font-bold text-slate-900 dark:text-white text-sm sm:text-base flex items-center gap-2">
+                                <span>Parcel Volume: Actual Supabase Data → 7-Day Prediction</span>
+                                <span className="text-[11px] font-normal text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 px-2 py-0.5 rounded-md border border-pink-200/50 dark:border-pink-800/40">
+                                    <i className="fas fa-hand-pointer mr-1"></i>Click chart to inspect
+                                </span>
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Showing exact historical timestamps from <code>parcels</code> table followed by the Holt-Winters / AutoTheta forecast with 95% Confidence Interval
+                                {totalDbParcels} actual parcels recorded (Max 6 Months) · {forecastData?.parcel_7_day?.model_used || "Holt-Winters Seasonal"} WASM with {forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 text-xs">
-                            <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-medium">
-                                <span className="w-3 h-3 rounded-full bg-blue-500 inline-block"></span>
-                                Actual Data ({totalDbParcels} total)
+                        <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                                (forecastData?.parcel_7_day?.confidence && forecastData.parcel_7_day.confidence !== '0%')
+                                    ? 'bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 border-pink-100 dark:border-pink-800/30'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}>
+                                <i className="fas fa-shield-halved text-[10px] mr-1"></i>
+                                {forecastData?.parcel_7_day?.confidence || "0%"} Confidence
                             </span>
-                            <span className="flex items-center gap-1.5 text-pink-600 dark:text-pink-400 font-medium">
-                                <span className="w-3 h-3 rounded-full bg-pink-500 inline-block"></span>
-                                7-Day Forecast (95% CI)
+                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
+                                {aggregationType} Resolution
                             </span>
+                            <button
+                                type="button"
+                                onClick={() => setActiveChartModal({
+                                    isOpen: true,
+                                    type: 'parcels',
+                                    title: '7-Day Parcel Volume Forecast Analysis',
+                                })}
+                                className="px-3 py-1 bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 text-pink-600 dark:text-pink-400 border border-pink-200/60 dark:border-pink-800/40 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            >
+                                <i className="fas fa-chart-line text-[10px]"></i>
+                                <span>Inspect Model</span>
+                            </button>
                         </div>
                     </div>
-
-                    <div className="mt-4 relative h-[320px] w-full">
+                    <div className="mt-4 relative h-80 w-full cursor-pointer">
                         {loading && (
                             <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-ink/70 z-10">
                                 <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
@@ -578,95 +778,142 @@ export default function Forecast() {
                         )}
 
                         {!loading && !hasParcelData && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-ink/30 rounded-xl border border-dashed border-slate-200 dark:border-white/10">
-                                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-2">
-                                    <i className="fas fa-box-open text-xl"></i>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60">
+                                <div className="w-12 h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-xl mb-2">
+                                    <i className="fas fa-chart-line"></i>
                                 </div>
-                                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No Parcel Data Found</h3>
+                                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No Parcel Data</h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
-                                    Add parcels into the system to generate daily historical patterns and 7-day predictive models.
+                                    Historical volume and predictions will render automatically once parcels are registered in Supabase.
                                 </p>
                             </div>
                         )}
 
                         <canvas ref={parcelChartRef} className={!hasParcelData ? "hidden" : "block"}></canvas>
                     </div>
+                    <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-ink/20 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                            <i className="fas fa-info-circle text-pink-500 mr-1.5"></i>
+                            Adaptive resolution groups data up to 6 months to ensure clear, uncluttered visualizations while preserving WASM model accuracy.
+                        </div>
+                        <span className="text-[11px] text-pink-600 dark:text-pink-400 font-semibold cursor-pointer" onClick={() => setActiveChartModal({ isOpen: true, type: 'parcels', title: '7-Day Parcel Volume Forecast Analysis' })}>
+                            Click chart or button to view math &amp; predictions →
+                        </span>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <div className="card p-5 bg-white dark:bg-ink/60 border border-slate-200/60 dark:border-ink/20 shadow-xs">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <div className="font-semibold text-slate-900 dark:text-white">
-                                    Purchase Order Expenses: Actual &rarr; Next Month Prediction
+                {/* Side-by-Side Lower Charts: Procurement Spend & Courier Share */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Procurement PO Expenses Forecast */}
+                    <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
+                                <div>
+                                    <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                                        <span>Procurement Spend: Monthly Paid POs → Next Month Forecast</span>
+                                    </div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                        Tracked across actual purchase orders in database
+                                    </div>
                                 </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Source: <code>purchase_orders</code> table (AutoTheta 90% CI)
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                                        (forecastData?.expense_next_month?.confidence && forecastData.expense_next_month.confidence !== '0%')
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30'
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                    }`}>
+                                        {forecastData?.expense_next_month?.confidence || "0%"} Confidence
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveChartModal({
+                                            isOpen: true,
+                                            type: 'expense',
+                                            title: 'Procurement Outlay & Budget Projections',
+                                        })}
+                                        className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    >
+                                        <i className="fas fa-calculator text-[10px]"></i>
+                                        <span>Inspect</span>
+                                    </button>
                                 </div>
                             </div>
-                            <span className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 font-medium">
-                                90% Confidence
-                            </span>
-                        </div>
-                        <div className="mt-4 relative h-[280px] w-full">
-                            {loading && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-ink/70 z-10">
-                                    <i className="fas fa-circle-notch fa-spin text-blue-500 text-2xl"></i>
-                                </div>
-                            )}
-
-                            {!loading && !hasExpenseData && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-ink/30 rounded-xl border border-dashed border-slate-200 dark:border-white/10">
-                                    <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-2">
-                                        <i className="fas fa-file-invoice-dollar text-xl"></i>
+                            <div className="mt-4 relative h-70 w-full cursor-pointer">
+                                {loading && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-ink/70 z-10">
+                                        <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
                                     </div>
-                                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No Purchase Order Records</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
-                                        Mark purchase orders as paid in Procurement to project next month&apos;s expenditures.
-                                    </p>
-                                </div>
-                            )}
+                                )}
 
-                            <canvas ref={expenseChartRef} className={!hasExpenseData ? "hidden" : "block"}></canvas>
+                                {!loading && !hasExpenseData && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60">
+                                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xl mb-2">
+                                            <i className="fas fa-money-bill-trend-up"></i>
+                                        </div>
+                                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No Purchase Order Records</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
+                                            Monthly financial outlay forecast will populate once purchase orders with valid costs exist.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <canvas ref={expenseChartRef} className={!hasExpenseData ? "hidden" : "block"}></canvas>
+                            </div>
+                        </div>
+                        <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-ink/20 text-xs text-slate-600 dark:text-slate-300">
+                            <i className="fas fa-chart-line text-emerald-500 mr-1.5"></i>
+                            Expense projections apply AutoTheta trend-fitting to paid purchase orders to assist procurement budgeting.
                         </div>
                     </div>
 
-                    <div className="card p-5 bg-white dark:bg-ink/60 border border-slate-200/60 dark:border-ink/20 shadow-xs">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <div className="font-semibold text-slate-900 dark:text-white">
-                                    Management Recommendations: Courier Volume Share
-                                </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Distribution breakdown across couriers from {totalDbParcels} actual parcels
-                                </div>
-                            </div>
-                            <span className="text-xs px-2.5 py-1 rounded-lg bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 font-medium">
-                                Live Share
-                            </span>
-                        </div>
-                        <div className="mt-4 relative h-[280px] w-full">
-                            {loading && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-ink/70 z-10">
-                                    <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
-                                </div>
-                            )}
-
-                            {!loading && !hasCourierData && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-ink/30 rounded-xl border border-dashed border-slate-200 dark:border-white/10">
-                                    <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-2">
-                                        <i className="fas fa-chart-pie text-xl"></i>
+                    {/* Courier Distribution Share */}
+                    <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
+                                <div>
+                                    <div className="font-bold text-slate-900 dark:text-white text-sm">
+                                        Courier Volume Share Distribution
                                     </div>
-                                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No Courier Share Data</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
-                                        Courier distribution will populate once parcels with assigned courier partners exist in the database.
-                                    </p>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                        Distribution breakdown across courier partners from {totalDbParcels} actual parcels
+                                    </div>
                                 </div>
-                            )}
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveChartModal({
+                                        isOpen: true,
+                                        type: 'couriers',
+                                        title: 'Courier Partner Volume Breakdown & Dispatch Allocation',
+                                    })}
+                                    className="px-2.5 py-1 bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 text-pink-600 dark:text-pink-400 border border-pink-200/60 dark:border-pink-800/40 rounded-xl text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                >
+                                    <i className="fas fa-pie-chart text-[10px]"></i>
+                                    <span>Details</span>
+                                </button>
+                            </div>
+                            <div className="mt-4 relative h-70 w-full cursor-pointer">
+                                {loading && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-ink/70 z-10">
+                                        <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
+                                    </div>
+                                )}
 
-                            <canvas ref={courierPieRef} className={!hasCourierData ? "hidden" : "block"}></canvas>
+                                {!loading && !hasCourierData && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60">
+                                        <div className="w-12 h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-xl mb-2">
+                                            <i className="fas fa-chart-pie"></i>
+                                        </div>
+                                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No Courier Share Data</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
+                                            Courier distribution will populate once parcels with assigned courier partners exist in the database.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <canvas ref={courierPieRef} className={!hasCourierData ? "hidden" : "block"}></canvas>
+                            </div>
                         </div>
-                        <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-ink/40 border border-slate-100 dark:border-ink/30 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-ink/20 text-xs text-slate-600 dark:text-slate-300">
                             <i className="fas fa-lightbulb text-amber-500 mr-1.5"></i>
                             <b>Recommendation:</b> {sortedCouriers.length > 0 ? (
                                 <>Focus dispatch sorting and dedicated staging areas for top couriers ({sortedCouriers.slice(0, 2).map(([name, count]) => `${name}: ${count}`).join(', ')}) to optimize throughput during upcoming volume surges.</>
@@ -676,6 +923,412 @@ export default function Forecast() {
                         </div>
                     </div>
                 </div>
+
+                {/* Chart Deep Dive Inspection Modal */}
+                {activeChartModal.isOpen && forecastData && (
+                    <div 
+                        className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget) setActiveChartModal(prev => ({ ...prev, isOpen: false }));
+                        }}
+                    >
+                        <div 
+                            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-ink/30 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+                            data-lenis-prevent
+                        >
+                            {/* Modal Header */}
+                            <div className="p-5 border-b border-slate-200 dark:border-ink/20 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/60 shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg text-white shadow-sm ${
+                                        activeChartModal.type === 'expense' ? 'bg-emerald-600' : 'bg-pink-600'
+                                    }`}>
+                                        <i className={`fas ${
+                                            activeChartModal.type === 'parcels' ? 'fa-boxes-stacked' :
+                                            activeChartModal.type === 'expense' ? 'fa-money-bill-wave' : 'fa-chart-pie'
+                                        }`}></i>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeChartModal.title}</h2>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Statistical breakdown, algorithmic explanation, and underlying database metrics</p>
+                                    </div>
+                                </div>
+                                <button
+                                    className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-ink/60 hover:bg-slate-200 dark:hover:bg-ink text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition cursor-pointer"
+                                    onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))}
+                                >
+                                    <i className="fas fa-times text-sm"></i>
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div 
+                                className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain"
+                                data-lenis-prevent
+                            >
+                                {activeChartModal.type === 'parcels' && (
+                                    <>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="p-3.5 rounded-2xl bg-pink-50/50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900/30">
+                                                <div className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 uppercase tracking-wider">7-Day Projected Total</div>
+                                                <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+                                                    {forecastData.parcel_7_day.total_next_week.toLocaleString()} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">parcels</span>
+                                                </div>
+                                                <div className="text-xs text-pink-600 dark:text-pink-400 mt-1">
+                                                    95% Statistical Confidence
+                                                </div>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Algorithm Used</div>
+                                                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
+                                                    {forecastData.parcel_7_day.model_used || "Holt-Winters Seasonal"}
+                                                </div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                                    {forecastData.parcel_7_day.engine || "Rust/WASM Core"}
+                                                </div>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data Sampling</div>
+                                                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                                                    {forecastData.raw_db_stats.total_parcels_in_db.toLocaleString()} Parcels
+                                                </div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                                    {forecastData.parcel_7_day.historical.dates.length} Days Sampled
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                                            <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
+                                                <i className="fas fa-lightbulb text-amber-500"></i>
+                                                How Did the System Compute This?
+                                            </div>
+                                            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                                {forecastData.parcel_7_day.explanation || "The system collects all logged parcels from your Supabase database over the past 6 months. It feeds the daily intake volumes into an in-memory Rust/WASM Holt-Winters seasonality forecaster, which decomposes past trends into weekly recurring cycles (Monday to Sunday) and projects the next 7 days."}
+                                            </p>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
+                                                <b>Confidence Level ({forecastData.parcel_7_day.confidence} CI):</b> The upper and lower bounds define where daily volume is statistically expected to fall, preparing warehouse operations for surge peaks or low volume days.
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                                                <i className="fas fa-calendar-week text-pink-500"></i>
+                                                Next 7 Days Day-by-Day Forecast Breakdown
+                                            </h4>
+                                            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-2xs">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold">
+                                                        <tr>
+                                                            <th className="py-2.5 px-4">Forecast Horizon</th>
+                                                            <th className="py-2.5 px-4">Projected Date</th>
+                                                            <th className="py-2.5 px-4 text-center">Lower {forecastData.parcel_7_day.confidence} Bound</th>
+                                                            <th className="py-2.5 px-4 text-right font-bold text-pink-600 dark:text-pink-400">Predicted Volume</th>
+                                                            <th className="py-2.5 px-4 text-center">Upper {forecastData.parcel_7_day.confidence} Bound</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {forecastData.parcel_7_day.dates.map((dateStr, idx) => {
+                                                            const pred = forecastData.parcel_7_day.predictions[idx] || 0;
+                                                            const lower = forecastData.parcel_7_day.confidence_interval.lower[idx] || 0;
+                                                            const upper = forecastData.parcel_7_day.confidence_interval.upper[idx] || 0;
+                                                            const dateObj = new Date(dateStr);
+                                                            const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                                                                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                                                                        Day +{idx + 1}
+                                                                    </td>
+                                                                    <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400">
+                                                                        {dayName}, {dateStr}
+                                                                    </td>
+                                                                    <td className="py-2.5 px-4 text-center text-slate-500 dark:text-slate-400 font-mono">
+                                                                        {lower}
+                                                                    </td>
+                                                                    <td className="py-2.5 px-4 text-right font-bold text-slate-900 dark:text-white font-mono text-sm">
+                                                                        {pred} <span className="text-[10px] font-normal text-slate-400">units</span>
+                                                                    </td>
+                                                                    <td className="py-2.5 px-4 text-center text-slate-500 dark:text-slate-400 font-mono">
+                                                                        {upper}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                {activeChartModal.type === 'expense' && (
+                                    <>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="p-3.5 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/30">
+                                                <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Next Month Projected Outlay</div>
+                                                <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+                                                    ₱{forecastData.expense_next_month.prediction.toLocaleString()}
+                                                </div>
+                                                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                                                    90% Confidence Boundary
+                                                </div>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Algorithm Used</div>
+                                                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
+                                                    {forecastData.expense_next_month.model_used || "AutoTheta Forecaster"}
+                                                </div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                                    Rust/WASM Engine
+                                                </div>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Estimated Outlay Range</div>
+                                                <div className="text-xs font-bold text-slate-900 dark:text-white mt-1">
+                                                    ₱{forecastData.expense_next_month.confidence_interval.lower.toLocaleString()} - ₱{forecastData.expense_next_month.confidence_interval.upper.toLocaleString()}
+                                                </div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                                    Based on paid PO history
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                                            <div className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                                <i className="fas fa-lightbulb text-amber-500"></i>
+                                                How Did the System Compute This?
+                                            </div>
+                                            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                                {forecastData.expense_next_month.explanation || "The system aggregates total expenditures strictly from paid purchase orders with status 'Confirmed' or 'Delivered' in Supabase. It uses the AutoTheta time-series algorithm to isolate long-term trends and seasonality across procurement billing cycles, generating a recommended financial reserve."}
+                                            </p>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
+                                                <b>Sampling Filter:</b> Only purchase orders where <code>status ∈ &#123;'Confirmed', 'Delivered'&#125;</code> and <code>paid = true</code> are included. Unpaid or pending draft orders are excluded from prediction math.
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                                                <i className="fas fa-history text-emerald-500"></i>
+                                                Historical Outlay vs Forecasted Budget
+                                            </h4>
+                                            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-2xs">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold">
+                                                        <tr>
+                                                            <th className="py-2.5 px-4">Period</th>
+                                                            <th className="py-2.5 px-4">Type</th>
+                                                            <th className="py-2.5 px-4 text-right">Expenditure Amount (₱)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {forecastData.expense_next_month.historical.months.map((monthStr, idx) => {
+                                                            const amt = forecastData.expense_next_month.historical.amounts[idx] || 0;
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                                                                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                                                                        {monthStr}
+                                                                    </td>
+                                                                    <td className="py-2.5 px-4 text-slate-500 dark:text-slate-400">
+                                                                        <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-semibold text-[10px]">
+                                                                            Actual Paid
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 dark:text-white">
+                                                                        ₱{amt.toLocaleString()}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                        <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold">
+                                                            <td className="py-3 px-4 text-emerald-700 dark:text-emerald-300">
+                                                                Next Month (Projected)
+                                                            </td>
+                                                            <td className="py-3 px-4">
+                                                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 font-bold text-[10px]">
+                                                                    WASM Forecast
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-4 text-right font-mono text-sm text-emerald-600 dark:text-emerald-400">
+                                                                ₱{forecastData.expense_next_month.prediction.toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                {activeChartModal.type === 'couriers' && (
+                                    <>
+                                        <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                                            <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
+                                                <i className="fas fa-truck text-pink-500"></i>
+                                                Carrier Network Distribution
+                                            </div>
+                                            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                                Calculated from direct parcel records in the database. Courier share metrics indicate operational dependence on individual shipping partners and guide warehouse dispatch lane staging.
+                                            </p>
+                                        </div>
+
+                                        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-2xs">
+                                            <table className="w-full text-xs text-left">
+                                                <thead className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold">
+                                                    <tr>
+                                                        <th className="py-2.5 px-4">Rank</th>
+                                                        <th className="py-2.5 px-4">Courier Partner</th>
+                                                        <th className="py-2.5 px-4 text-center">Dispatched Parcels</th>
+                                                        <th className="py-2.5 px-4 text-right">Volume Share</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                    {sortedCouriers.map(([name, count], idx) => {
+                                                        const pct = totalDbParcels > 0 ? ((count / totalDbParcels) * 100).toFixed(1) : '0';
+                                                        return (
+                                                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                                                                <td className="py-2.5 px-4 font-bold text-slate-700 dark:text-slate-300">
+                                                                    #{idx + 1}
+                                                                </td>
+                                                                <td className="py-2.5 px-4 font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                                                    <i className="fas fa-truck text-slate-400"></i>
+                                                                    <span>{name}</span>
+                                                                </td>
+                                                                <td className="py-2.5 px-4 text-center font-mono font-semibold">
+                                                                    {count.toLocaleString()}
+                                                                </td>
+                                                                <td className="py-2.5 px-4 text-right font-mono font-bold text-pink-600 dark:text-pink-400">
+                                                                    {pct}%
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-4 border-t border-slate-200 dark:border-ink/20 flex items-center justify-between bg-slate-50 dark:bg-ink/40 shrink-0">
+                                <div className="text-xs text-slate-400">
+                                    <i className="fas fa-microchip text-pink-500 mr-1"></i>
+                                    Powered by @sipemu/anofox-forecast (Rust/WASM)
+                                </div>
+                                <button
+                                    className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
+                                    onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))}
+                                >
+                                    Close Inspection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* AI Interpretation Modal */}
+                {isAiModalOpen && (
+                    <div 
+                        className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget) setIsAiModalOpen(false);
+                        }}
+                    >
+                        <div 
+                            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-ink/30 shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden"
+                            data-lenis-prevent
+                        >
+                            {/* Modal Header */}
+                            <div className="p-5 border-b border-slate-200 dark:border-ink/20 flex items-center justify-between bg-pink-50/60 dark:bg-pink-950/30 shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-pink-600 text-white flex items-center justify-center text-lg shadow-sm">
+                                        <i className="fas fa-brain"></i>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-900 dark:text-white">AI Forecasting &amp; Operational Interpretation</h2>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Deep analysis of parcel volume trajectories, confidence envelopes, and expense projections</p>
+                                    </div>
+                                </div>
+                                <button
+                                    className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-ink/60 hover:bg-slate-200 dark:hover:bg-ink text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition cursor-pointer"
+                                    onClick={() => setIsAiModalOpen(false)}
+                                >
+                                    <i className="fas fa-times text-sm"></i>
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div 
+                                className="p-6 overflow-y-auto space-y-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain"
+                                data-lenis-prevent
+                            >
+                                {summarizing ? (
+                                    <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
+                                        <div className="w-12 h-12 rounded-2xl bg-pink-100 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 flex items-center justify-center text-xl">
+                                            <i className="fas fa-wand-magic-sparkles fa-spin"></i>
+                                        </div>
+                                        <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Synthesizing Chart Data with Gemini AI...</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+                                            Evaluating 6-month historical counts, 95% surge boundaries, and paid procurement expenditures.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {(aiSummary || '').split('\n\n').map((section, idx) => {
+                                            const lines = section.trim().split('\n');
+                                            const title = lines[0];
+                                            const content = lines.slice(1).join('\n');
+                                            const isHeader = /^[A-Z\s&/–-]+$/.test(title) && title.length < 50;
+
+                                            if (isHeader) {
+                                                return (
+                                                    <div key={idx} className="p-4 rounded-2xl bg-pink-50/40 dark:bg-pink-950/20 border border-pink-100 dark:border-pink-900/30 space-y-2">
+                                                        <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-600"></span>
+                                                            {title}
+                                                        </div>
+                                                        <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed pl-3.5 border-l-2 border-pink-500">
+                                                            {content}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div key={idx} className="whitespace-pre-line text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                    {section}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-4 border-t border-slate-200 dark:border-ink/20 flex items-center justify-between bg-slate-50 dark:bg-ink/40 shrink-0">
+                                <div className="text-xs text-slate-400">
+                                    <i className="fas fa-shield-halved text-pink-500 mr-1"></i>
+                                    Grounded strictly in active Supabase records
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        className="px-4 py-2 bg-white dark:bg-ink/60 border border-slate-200 dark:border-ink/20 hover:bg-slate-100 dark:hover:bg-ink text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                                        onClick={generateAiSummary}
+                                        disabled={summarizing}
+                                    >
+                                        <i className="fas fa-rotate mr-1.5 text-xs"></i>
+                                        Regenerate
+                                    </button>
+                                    <button
+                                        className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
+                                        onClick={() => setIsAiModalOpen(false)}
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </SessionGuard>
     );

@@ -1093,7 +1093,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                                             <td className="p-3.5">
                                                 <span className={`inline-flex items-center gap-1.5 font-semibold ${getCourierColor(parcel.courier)}`}>
                                                     <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 17a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4Z mercancadosM4 9h11v6H4V9zm11 0h3l3 3v3h-6V9z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 17a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4M4 9h11v6H4V9zm11 0h3l3 3v3h-6V9z" />
                                                     </svg>
                                                     {getCourierDisplay(parcel.courier, parcel.courier_id)}
                                                 </span>
