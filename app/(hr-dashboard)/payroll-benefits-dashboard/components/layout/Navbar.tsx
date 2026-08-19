@@ -10,7 +10,7 @@ export default function Navbar() {
 
     return (
         <header className="sticky top-0 z-30 w-full border-b border-line bg-paper/95 backdrop-blur dark:border-paper/10">
-            <div className="flex w-full items-center gap-3 px-4 py-3.5 sm:gap-4 sm:px-6 lg:px-8">
+            <div className="flex h-16 w-full items-center gap-3 px-4 sm:gap-4 sm:px-6 lg:px-8">
                 <button
                     type="button"
                     onClick={toggle}

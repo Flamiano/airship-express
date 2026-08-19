@@ -51,7 +51,6 @@ export function PayrollDashboard() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div>
                 <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
                     AirshipExpress · Payroll &amp; Benefits
@@ -61,10 +60,8 @@ export function PayrollDashboard() {
                 </h1>
             </div>
 
-            {/* Content Grid */}
             <div className="grid w-full grid-cols-1 gap-5 xl:grid-cols-[1fr_340px]">
                 <div className="flex min-w-0 flex-col gap-5">
-                    {/* Banner */}
                     <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -95,10 +92,8 @@ export function PayrollDashboard() {
                         </div>
                     </motion.div>
 
-                    {/* Stats */}
                     <StatsCards />
 
-                    {/* Pay Cycle */}
                     <div className="w-full rounded-2xl border border-line px-5 py-6 sm:px-8 sm:py-7 dark:border-paper/10">
                         <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
                             Current pay cycle
@@ -136,7 +131,6 @@ export function PayrollDashboard() {
                         </ol>
                     </div>
 
-                    {/* Modules Quick Access */}
                     <div className="w-full rounded-2xl border border-line px-5 py-6 sm:px-8 sm:py-7 dark:border-paper/10">
                         <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
                             Modules
@@ -158,7 +152,6 @@ export function PayrollDashboard() {
                     </div>
                 </div>
 
-                {/* Aside */}
                 <div className="flex min-w-0 flex-col gap-5">
                     <PayrollCalendar />
                     <RecentPayrollRuns />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../utils/helpers/classNames';
+import { cn } from '@/payroll-benefits-dashboard/utils/helpers/classNames';
 
 const Table = React.forwardRef<
     HTMLTableElement,

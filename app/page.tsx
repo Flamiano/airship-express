@@ -93,12 +93,11 @@ export default function Home() {
         />
       )}
 
-
       <CustomCursor containerRef={scrollRef} />
 
       <div
         ref={scrollRef}
-        className={`scroll-container relative w-full h-[100dvh] overflow-x-hidden overscroll-none touch-pan-y ios-scroll-fix bg-[#FCFBF9] transition-colors duration-500 dark:bg-[#1C1B1F] lg:cursor-none ${menuOpen ? "overflow-y-hidden" : "overflow-y-auto"
+        className={`scroll-container relative w-full h-[100dvh] overflow-x-hidden overscroll-none touch-pan-y ios-scroll-fix bg-paper transition-colors duration-500 dark:bg-ink lg:cursor-none ${menuOpen ? "overflow-y-hidden" : "overflow-y-auto"
           }`}
       >
         <div>

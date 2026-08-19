@@ -201,17 +201,17 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
         variants={topBarVariants}
         initial="hidden"
         animate={ready ? "show" : "hidden"}
-        className="hidden border-b border-paper/10 bg-ink lg:block"
+        className="hidden border-b border-white/10 bg-[#1c1b1f] lg:block"
       >
-        <div className="mx-auto flex h-9 max-w-7xl items-center justify-between px-6 font-rethink text-xs text-paper/70 lg:px-8">
+        <div className="mx-auto flex h-9 max-w-7xl items-center justify-between px-6 font-rethink text-xs text-white/70 lg:px-8">
           <div className="flex items-center gap-5">
-            <a href="tel:+639454418789" className="flex items-center gap-1.5 transition-colors hover:text-paper">
+            <a href="tel:+639454418789" className="flex items-center gap-1.5 transition-colors hover:text-white">
               <Phone className="h-3 w-3" />
               0945 441 8789
             </a>
-            <a
-              href="mailto:airshipexpress.s@gmail.com"
-              className="flex items-center gap-1.5 transition-colors hover:text-paper"
+
+            <a href="mailto:airshipexpress.s@gmail.com"
+              className="flex items-center gap-1.5 transition-colors hover:text-white"
             >
               <Mail className="h-3 w-3" />
               airshipexpress.s@gmail.com
@@ -224,25 +224,26 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                 {isOpen ? "Open now" : "Closed now"} · Manila
               </span>
             )}
-            <a
-              href="https://web.facebook.com/profile.php?id=61571986650033"
+
+            <a href="https://web.facebook.com/profile.php?id=61571986650033"
               target="_blank"
               rel="noopener noreferrer"
-              className="transition-colors hover:text-paper"
+              className="transition-colors hover:text-white"
               aria-label="Facebook"
             >
               <FacebookIcon className="h-3.5 w-3.5" />
             </a>
           </div>
         </div>
-      </motion.div>
+      </motion.div >
 
       {/* main bar */}
       <div
         className={`relative z-50 w-full border-b transition-all duration-300 ${scrolled
           ? "border-line bg-paper/90 shadow-sm shadow-ink/5 backdrop-blur-md dark:border-paper/10 dark:bg-ink/90 dark:shadow-black/20"
           : "border-transparent bg-transparent backdrop-blur-0"
-          }`}
+          }`
+        }
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <motion.div variants={logoVariants} initial="hidden" animate={ready ? "show" : "hidden"}>
@@ -365,7 +366,7 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
             </button>
           </motion.div>
         </div>
-      </div>
+      </ div>
 
       <AnimatePresence>
         {mobileOpen && (
@@ -532,6 +533,6 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
           </motion.div>
         )}
       </AnimatePresence>
-    </header>
+    </header >
   );
 }

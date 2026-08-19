@@ -5,7 +5,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 
 interface LoaderProps {
-    onComplete: () => void;
+    onComplete?: () => void; 
 }
 
 const stages = [
@@ -74,15 +74,20 @@ export default function Loader({ onComplete }: LoaderProps) {
 
     const currentStage = [...stages].reverse().find((s) => progress >= s.at) ?? stages[0];
 
+    // Only run the animation complete handler when phase is "done"
+    const handleAnimationComplete = () => {
+        if (phase === "done" && onComplete) {
+            onComplete();
+        }
+    };
+
     return (
         <motion.div
             className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-10 bg-[#FCFBF9] px-6"
             initial={{ y: 0 }}
             animate={{ y: phase === "done" ? "-100%" : 0 }}
             transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
-            onAnimationComplete={() => {
-                if (phase === "done") onComplete();
-            }}
+            onAnimationComplete={handleAnimationComplete}
         >
             <Image
                 src="/images/logo-remove-bg.png"
