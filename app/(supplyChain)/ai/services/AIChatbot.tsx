@@ -3,10 +3,37 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAI } from "./AIContext";
 //  Import robot components
 import { RobotAvatar, RobotHeader } from "../components";
 import { motion } from "framer-motion";
+
+interface PendingRequestItem {
+    name: string;
+    quantity: number;
+    unit_price?: number;
+    total?: number;
+}
+
+interface PendingPRData {
+    id: string;
+    request_number: string;
+    type?: string;
+    description?: string;
+    requested_by: string;
+    department?: string;
+    supplier_id: string;
+    supplier_name: string;
+    supplier_email?: string;
+    amount: number;
+    priority: string;
+    date: string;
+    status: string;
+    items: PendingRequestItem[];
+    reason?: string;
+}
 
 interface Message {
     id: string;
@@ -15,6 +42,8 @@ interface Message {
     timestamp: Date;
     isThinking?: boolean;
     suggestions?: string[];
+    pendingRequests?: PendingPRData[];
+    createdPOs?: any[];
 }
 
 interface AIChatbotProps {
@@ -22,7 +51,10 @@ interface AIChatbotProps {
     onClose: () => void;
 }
 
+const STORAGE_KEY = 'airship_supply_chain_chat_history';
+
 const SUGGESTED_QUESTIONS = [
+    "Create purchase order",
     "What's the current inventory status?",
     "Show me low stock items",
     "What is the process of warehousing?",
@@ -66,28 +98,65 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         setRobotThinking,
         setRobotResponding,
     } = useAI();
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            id: 'welcome',
-            type: 'assistant',
-            content: 'Hello! I\'m your AI Warehouse Assistant. How can I help you?',
-            timestamp: new Date(),
-            suggestions: [
-                'How many parcels were received today?',
-                'Show me low stock items',
-            ]
+
+    const [messages, setMessages] = useState<Message[]>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    return parsed.map((m: any) => ({
+                        ...m,
+                        timestamp: new Date(m.timestamp)
+                    }));
+                }
+            } catch (e) {
+                console.error("Failed to load chat from localStorage:", e);
+            }
         }
-    ]);
+        return [
+            {
+                id: 'welcome',
+                type: 'assistant',
+                content: 'Hello! I\'m your AI Warehouse Assistant. How can I help you?',
+                timestamp: new Date(),
+                suggestions: [
+                    'Create purchase order',
+                    'How many parcels were received today?',
+                    'Show me low stock items',
+                ]
+            }
+        ];
+    });
+
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [selectedPRIds, setSelectedPRIds] = useState<Set<string>>(new Set());
+    const [isCreatingPO, setIsCreatingPO] = useState(false);
+    const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const [hasProcessedQuestion, setHasProcessedQuestion] = useState(false);
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [isAtBottom, setIsAtBottom] = useState(true);
+
+    // Save messages to localStorage on changes
+    useEffect(() => {
+        if (typeof window !== 'undefined' && messages.length > 0) {
+            try {
+                const cleanMessages = messages
+                    .filter(m => !m.isThinking && !m.content.startsWith('⏳'))
+                    .slice(-40);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanMessages));
+            } catch (e) {
+                console.error("Failed to save chat to localStorage:", e);
+            }
+        }
+    }, [messages]);
 
     // Check if user is at bottom
     const checkIfAtBottom = () => {
@@ -294,6 +363,12 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                         setSuggestions(metaData.suggestions);
                                     }
 
+                                    // Extract pending PR data if returned by action
+                                    let prData: PendingPRData[] | undefined = undefined;
+                                    if (metaData?.actionResults?.get_pending_purchase_requests?.requests) {
+                                        prData = metaData.actionResults.get_pending_purchase_requests.requests;
+                                    }
+
                                     //  Robot done responding
                                     setRobotResponding(false);
 
@@ -306,6 +381,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                                     timestamp: new Date(),
                                                     isThinking: false,
                                                     suggestions: metaData?.suggestions || [],
+                                                    pendingRequests: prData,
                                                 }
                                                 : msg
                                         )
@@ -383,6 +459,11 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 setSuggestions(data.meta.suggestions);
             }
 
+            let fallbackPRData: PendingPRData[] | undefined = undefined;
+            if (data.meta?.actionResults?.get_pending_purchase_requests?.requests) {
+                fallbackPRData = data.meta.actionResults.get_pending_purchase_requests.requests;
+            }
+
             //  Robot done responding
             setRobotResponding(false);
 
@@ -395,6 +476,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             timestamp: new Date(),
                             isThinking: false,
                             suggestions: data.meta?.suggestions || [],
+                            pendingRequests: fallbackPRData,
                         }
                         : msg
                 )
@@ -445,6 +527,276 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const handleBatchCreatePOs = async (messageId: string, sendEmail: boolean) => {
+        if (selectedPRIds.size === 0) {
+            setActionFeedback("Please select at least one purchase request.");
+            setTimeout(() => setActionFeedback(null), 3000);
+            return;
+        }
+
+        setIsCreatingPO(true);
+        setActionFeedback(sendEmail ? "Creating Purchase Orders and sending emails..." : "Creating Draft Purchase Orders...");
+
+        try {
+            const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'Manager') : 'Manager';
+            const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('user_name') || 'Procurement Team') : 'Procurement Team';
+
+            const res = await fetch('/ai/api/create-pos-from-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    request_ids: Array.from(selectedPRIds),
+                    send_email: sendEmail,
+                    role: currentRole,
+                    user_name: currentUserName,
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to create Purchase Orders');
+            }
+
+            // Update the message in state
+            setMessages(prev => prev.map(m => {
+                if (m.id === messageId && m.pendingRequests) {
+                    const remaining = m.pendingRequests.filter(pr => !selectedPRIds.has(pr.id));
+                    return {
+                        ...m,
+                        pendingRequests: remaining.length > 0 ? remaining : undefined,
+                        createdPOs: [...(m.createdPOs || []), ...(data.createdPOs || [])],
+                    };
+                }
+                return m;
+            }));
+
+            // Add an assistant confirmation message
+            const poList = (data.createdPOs || []).map((po: any) => `• **${po.po_number}** for ${po.supplier_name} (₱${(po.total_amount || 0).toLocaleString()}) - Status: ${po.status}`).join('\n');
+            const emailSummary = sendEmail ? '\n📧 Emails with confirmation links have been dispatched to suppliers.' : '\n📝 Orders are saved as **Drafts**. You can review them in the Purchase Orders page and choose to send whenever you are ready.';
+
+            const confirmationMsg: Message = {
+                id: `assistant-${Date.now()}`,
+                type: 'assistant',
+                content: `Successfully generated ${data.createdPOs?.length || 0} Purchase Order(s):\n\n${poList}${emailSummary}`,
+                timestamp: new Date(),
+                createdPOs: data.createdPOs || [],
+                suggestions: [
+                    'Show all purchase orders',
+                    'What is our total procurement spend?',
+                ]
+            };
+
+            setMessages(prev => [...prev, confirmationMsg]);
+            setSelectedPRIds(new Set());
+            setActionFeedback(null);
+        } catch (err: any) {
+            console.error("Error creating POs from chat:", err);
+            setActionFeedback(`Error: ${err.message || 'Failed'}`);
+            setTimeout(() => setActionFeedback(null), 5000);
+        } finally {
+            setIsCreatingPO(false);
+        }
+    };
+
+    const renderPendingRequestsWidget = (msg: Message) => {
+        if (!msg.pendingRequests || msg.pendingRequests.length === 0) return null;
+
+        const currentRole = (typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '').toLowerCase();
+        const canManagePOs = ['admin', 'manager', 'executive'].includes(currentRole);
+
+        const allSelected = msg.pendingRequests.length > 0 && msg.pendingRequests.every(pr => selectedPRIds.has(pr.id));
+
+        return (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/80 dark:border-white/10 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            Purchase Requests ({msg.pendingRequests.length})
+                        </span>
+                    </div>
+
+                    {canManagePOs && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (allSelected) {
+                                    setSelectedPRIds(new Set());
+                                } else {
+                                    setSelectedPRIds(new Set(msg.pendingRequests?.map(pr => pr.id) || []));
+                                }
+                            }}
+                            className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 hover:underline cursor-pointer"
+                        >
+                            {allSelected ? "Deselect All" : "Select All"}
+                        </button>
+                    )}
+                </div>
+
+                {/* PR Cards List */}
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
+                    {msg.pendingRequests.map(pr => {
+                        const isSelected = selectedPRIds.has(pr.id);
+                        return (
+                            <div
+                                key={pr.id}
+                                onClick={() => {
+                                    if (!canManagePOs) return;
+                                    const next = new Set(selectedPRIds);
+                                    if (next.has(pr.id)) next.delete(pr.id);
+                                    else next.add(pr.id);
+                                    setSelectedPRIds(next);
+                                }}
+                                className={`p-2.5 rounded-xl border transition-all ${canManagePOs ? 'cursor-pointer' : ''} ${isSelected
+                                    ? 'bg-pink-50/80 dark:bg-pink-950/40 border-pink-300 dark:border-pink-500/50 shadow-xs'
+                                    : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-white/10 hover:border-pink-200 dark:hover:border-pink-500/30'
+                                    }`}
+                            >
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-start gap-2 min-w-0">
+                                        {canManagePOs && (
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => { }}
+                                                className="mt-0.5 rounded border-slate-300 text-pink-600 focus:ring-pink-500 shrink-0 cursor-pointer"
+                                            />
+                                        )}
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                                    {pr.request_number}
+                                                </span>
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                                    {pr.priority}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                                Supplier: <strong className="text-slate-700 dark:text-slate-200">{pr.supplier_name}</strong>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <span className="text-xs font-bold text-pink-600 dark:text-pink-400">
+                                            ₱{(pr.amount || 0).toLocaleString()}
+                                        </span>
+                                        <p className="text-[10px] text-slate-400">
+                                            {pr.items?.length || 0} item(s)
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {pr.items && pr.items.length > 0 && (
+                                    <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-white/5 flex flex-wrap gap-1">
+                                        {pr.items.slice(0, 3).map((it, idx) => (
+                                            <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400">
+                                                {it.name} (x{it.quantity})
+                                            </span>
+                                        ))}
+                                        {pr.items.length > 3 && (
+                                            <span className="text-[10px] text-slate-400">+{pr.items.length - 3} more</span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Batch Action Buttons */}
+                {canManagePOs && (
+                    <div className="space-y-2 pt-1">
+                        {actionFeedback && (
+                            <p className="text-xs text-pink-600 dark:text-pink-400 font-medium animate-pulse text-center">
+                                {actionFeedback}
+                            </p>
+                        )}
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                disabled={selectedPRIds.size === 0 || isCreatingPO}
+                                onClick={() => handleBatchCreatePOs(msg.id, false)}
+                                className="flex-1 py-2 px-3 text-xs font-semibold rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <i className="fas fa-file-signature text-[11px]" />
+                                <span>Create as Draft ({selectedPRIds.size})</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={selectedPRIds.size === 0 || isCreatingPO}
+                                onClick={() => handleBatchCreatePOs(msg.id, true)}
+                                className="flex-1 py-2 px-3 text-xs font-semibold rounded-xl bg-gradient-to-r from-pink-600 to-rose-500 text-white hover:from-pink-500 hover:to-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <i className="fas fa-paper-plane text-[11px]" />
+                                <span>Create & Send via Gmail</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderCreatedPOsWidget = (msg: Message) => {
+        if (!msg.createdPOs || msg.createdPOs.length === 0) return null;
+
+        return (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/80 dark:border-white/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <i className="fas fa-check-circle text-emerald-500" />
+                        Generated Purchase Orders ({msg.createdPOs.length})
+                    </span>
+                    <Link
+                        href={`/purchase-orders?search=${encodeURIComponent(msg.createdPOs[0]?.po_number || '')}`}
+                        onClick={onClose}
+                        className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1"
+                    >
+                        <span>View in PO Page</span>
+                        <i className="fas fa-external-link-alt text-[10px]" />
+                    </Link>
+                </div>
+
+                <div className="space-y-2">
+                    {msg.createdPOs.map((po: any, idx: number) => (
+                        <div
+                            key={po.id || idx}
+                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3"
+                        >
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                        {po.po_number}
+                                    </span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${po.status === 'Sent'
+                                        ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                        }`}>
+                                        {po.status}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                    {po.supplier_name} • ₱{(po.total_amount || 0).toLocaleString()}
+                                </p>
+                            </div>
+
+                            <Link
+                                href={`/purchase-orders?search=${encodeURIComponent(po.po_number)}`}
+                                onClick={onClose}
+                                className="shrink-0 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-pink-500/10 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400 hover:bg-pink-500 hover:text-white dark:hover:bg-pink-500 dark:hover:text-white transition-all flex items-center gap-1 cursor-pointer"
+                            >
+                                <span>Filter PO</span>
+                                <i className="fas fa-arrow-right text-[10px]" />
+                            </Link>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     const renderMessageContent = (msg: Message) => {
         if (msg.isThinking) {
             return (
@@ -465,7 +817,11 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         }
 
         return (
-            <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+            <div>
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                {renderPendingRequestsWidget(msg)}
+                {renderCreatedPOsWidget(msg)}
+            </div>
         );
     };
 
@@ -538,8 +894,22 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         {messages.length > 1 && (
                             <button
                                 onClick={() => {
-                                    setMessages([messages[0]]);
+                                    const welcomeMsg: Message = {
+                                        id: 'welcome',
+                                        type: 'assistant',
+                                        content: 'Hello! I\'m your AI Warehouse Assistant. How can I help you?',
+                                        timestamp: new Date(),
+                                        suggestions: [
+                                            'Create purchase order',
+                                            'How many parcels were received today?',
+                                            'Show me low stock items',
+                                        ]
+                                    };
+                                    setMessages([welcomeMsg]);
                                     setSuggestions([]);
+                                    if (typeof window !== 'undefined') {
+                                        localStorage.removeItem(STORAGE_KEY);
+                                    }
                                 }}
                                 className="text-white/80 dark:text-slate-400 hover:text-white dark:hover:text-pink-400 p-2 rounded-xl hover:bg-white/15 dark:hover:bg-pink-950/40 dark:hover:border-white/10 border border-transparent transition-all duration-200 active:scale-95 cursor-pointer"
                                 title="Clear chat"

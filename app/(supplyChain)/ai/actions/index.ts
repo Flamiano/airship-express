@@ -21,6 +21,8 @@ export type { ReceivingQueueItem } from './get_receiving_queue';
 export { getSuppliers, getSuppliersSummary } from './get_suppliers';
 export type { Supplier } from './get_suppliers';
 
-// Purchase Orders
+// Purchase Orders & Requests
 export { getPurchaseOrders, getPurchaseOrdersSummary } from './get_purchase_orders';
 export type { PurchaseOrder } from './get_purchase_orders';
+export { getPendingPurchaseRequests } from './get_pending_purchase_requests';
+export type { PendingPurchaseRequest } from './get_pending_purchase_requests';

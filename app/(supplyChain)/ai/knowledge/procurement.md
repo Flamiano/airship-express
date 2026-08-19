@@ -24,6 +24,7 @@ Manages supplier relationships and purchase requests for warehouse operations.
 - Department tracking: Fleet, Warehouse, Operations, Office
 
 ### 3. Purchase Orders
+- **Direct AI Chat Creation**: Ask the AI assistant to "Create purchase order" to immediately pull all pending purchase requests without purchase orders. Select all or choose specific requests, then click "Create as Draft" or "Create & Send via Gmail".
 - Auto-generate PO numbers
 - AI-powered supplier message generation
 - Send via Email or Messenger

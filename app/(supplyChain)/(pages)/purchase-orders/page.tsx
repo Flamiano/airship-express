@@ -6,6 +6,7 @@
 // 1. IMPORTS
 // ============================================================
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Chart from "chart.js/auto";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { toast } from "sonner";
@@ -102,36 +103,55 @@ function EmptyState({
     description,
     icon = "fas fa-file-invoice",
     actionText,
-    onAction
+    onAction,
+    onClearSearch,
+    isFilterActive = false,
 }: {
-    title: string;
-    description: string;
+    title?: string;
+    description?: string;
     icon?: string;
     actionText?: string;
     onAction?: () => void;
+    onClearSearch?: () => void;
+    isFilterActive?: boolean;
 }) {
+    const displayTitle = title || (isFilterActive ? "No Purchase Orders Found" : "No Purchase Orders Yet");
+    const displayDescription = description || (
+        isFilterActive
+            ? "Try adjusting your search terms or filter criteria to find what you're looking for."
+            : "Create purchase requests or generate purchase orders to start managing your procurement."
+    );
+
     return (
-        <div className="flex flex-col items-center justify-center py-16 px-4">
-            <div className="w-20 h-20 rounded-3xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-white/10 flex items-center justify-center text-slate-400 dark:text-slate-400 mb-4 shadow-xs dark:shadow-black/40 transition-transform duration-300 hover:scale-105">
-                <i className={`${icon} text-3xl text-slate-400 dark:text-slate-400`} />
+        <div className="flex flex-col items-center justify-center p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xs">
+            <div className="w-16 h-16 rounded-full bg-pink-50 dark:bg-pink-950/40 flex items-center justify-center mb-4 text-pink-600 dark:text-pink-400">
+                <i className={`${icon} text-2xl`} />
             </div>
-
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2 text-center">
-                {title}
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">
+                {displayTitle}
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 text-center max-w-sm mb-6 leading-relaxed">
-                {description}
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-6">
+                {displayDescription}
             </p>
-
-            {actionText && onAction && (
-                <button
-                    onClick={onAction}
-                    className="px-4 py-2.5 bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 hover:bg-pink-100 dark:hover:bg-pink-900/50 border border-pink-200/60 dark:border-pink-800/40 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer shadow-2xs dark:shadow-pink-950/30"
-                >
-                    <i className="fas fa-plus text-xs" />
-                    <span>{actionText}</span>
-                </button>
-            )}
+            <div className="flex items-center gap-3">
+                {actionText && onAction && (
+                    <button
+                        onClick={onAction}
+                        className="px-4 py-2 text-xs font-semibold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 border border-pink-200 dark:border-pink-800/40 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+                    >
+                        <i className="fas fa-plus text-[10px]" />
+                        <span>{actionText}</span>
+                    </button>
+                )}
+                {isFilterActive && onClearSearch && (
+                    <button
+                        onClick={onClearSearch}
+                        className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all"
+                    >
+                        Clear Filters
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
@@ -140,6 +160,7 @@ function EmptyState({
 // 5. MAIN PURCHASE ORDERS COMPONENT
 // ============================================================
 export default function PurchaseOrders() {
+    const searchParams = useSearchParams();
     const { confirm } = useConfirm();
     const poChartRef = useRef<HTMLCanvasElement>(null);
     const poChartInstance = useRef<Chart | null>(null);
@@ -154,14 +175,16 @@ export default function PurchaseOrders() {
     const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
     const [allOrders, setAllOrders] = useState<PurchaseOrder[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [searchTerm, setSearchTerm] = useState("");
+    const initialSearch = searchParams?.get('search') || "";
+    const initialStatus = searchParams?.get('status') || "all";
+    const [searchTerm, setSearchTerm] = useState(initialSearch);
     const debouncedSearch = useDebounce(searchTerm, 300);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(15);
     const [totalItems, setTotalItems] = useState(0);
 
-    const [activeStatusFilter, setActiveStatusFilter] = useState<string>("all");
+    const [activeStatusFilter, setActiveStatusFilter] = useState<string>(initialStatus);
     const [isPurchaseOrderModalOpen, setIsPurchaseOrderModalOpen] = useState(false);
     const [isApprovedRequestsModalOpen, setIsApprovedRequestsModalOpen] = useState(false);
     const [isPurchaseRequestModalOpen, setIsPurchaseRequestModalOpen] = useState(false);

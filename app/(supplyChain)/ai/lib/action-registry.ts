@@ -15,6 +15,7 @@ import {
     getSuppliersSummary,
     getPurchaseOrders,
     getPurchaseOrdersSummary,
+    getPendingPurchaseRequests,
 } from '../actions';
 
 // Registry to store all actions
@@ -112,6 +113,11 @@ export function registerAllActions(): void {
             fn: getPurchaseOrdersSummary,
             description: 'Get purchase orders aggregate metrics, totals, spend, and status breakdown',
             keywords: ['po summary', 'purchase order summary', 'total spend', 'po metrics', 'procurement spend']
+        },
+        'get_pending_purchase_requests': {
+            fn: getPendingPurchaseRequests,
+            description: 'Get purchase requests that do not have a purchase order yet',
+            keywords: ['create purchase order', 'create po', 'generate po', 'pending request', 'purchase request without po', 'unfulfilled request', 'convert request']
         },
     };
 
@@ -211,6 +217,21 @@ export function detectActions(query: string): string[] {
     if (lowerQuery.includes('supplier') ||
         lowerQuery.includes('vendors')) {
         detected.push('get_suppliers');
+    }
+
+    if (lowerQuery.includes('create purchase order') ||
+        lowerQuery.includes('create po') ||
+        lowerQuery.includes('generate po') ||
+        lowerQuery.includes('request without po') ||
+        lowerQuery.includes('pending request') ||
+        lowerQuery.includes('no purchase order')) {
+        detected.push('get_pending_purchase_requests');
+    } else if (lowerQuery.includes('purchase order') ||
+        lowerQuery.includes('purchase orders') ||
+        lowerQuery.includes('po ') ||
+        lowerQuery.includes('spend') ||
+        lowerQuery.includes('procurement spend')) {
+        detected.push('get_purchase_orders_summary');
     }
 
     return [...new Set(detected)];

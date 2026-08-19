@@ -79,6 +79,25 @@ export async function classifyIntent(query: string): Promise<ClassificationResul
         };
     }
 
+    // Direct match for creating purchase order requests to guarantee tool execution
+    if (lowerQuery.includes('create purchase order') || 
+        lowerQuery.includes('create po') || 
+        lowerQuery.includes('generate po') || 
+        lowerQuery.includes('purchase request without po') || 
+        lowerQuery.includes('pending purchase request') ||
+        lowerQuery.includes('request without po') ||
+        lowerQuery.includes('no purchase order')) {
+        return {
+            is_related: true,
+            resources: [
+                { type: 'tool', name: 'get_pending_purchase_requests' },
+                { type: 'knowledge', name: 'procurement.md' }
+            ],
+            confidence: 1.0,
+            reason: 'Direct match for purchase order creation workflow'
+        };
+    }
+
     if (apiKey) {
         try {
             const result = await classifyWithAI(query);
@@ -271,7 +290,9 @@ function classifyWithKeywords(query: string): ClassificationResult {
                 if (lower.includes('supplier')) {
                     resources.push({ type: 'tool', name: 'get_suppliers' });
                 }
-                if (lower.includes('purchase order') || lower.includes(' po') || lower.includes('spend') || lower.includes('expense') || lower.includes('orders')) {
+                if (lower.includes('create purchase order') || lower.includes('create po') || lower.includes('generate po') || lower.includes('request without po') || lower.includes('no purchase order')) {
+                    resources.push({ type: 'tool', name: 'get_pending_purchase_requests' });
+                } else if (lower.includes('purchase order') || lower.includes(' po') || lower.includes('spend') || lower.includes('expense') || lower.includes('orders')) {
                     resources.push({ type: 'tool', name: 'get_purchase_orders_summary' });
                 }
             }

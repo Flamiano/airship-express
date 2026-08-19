@@ -130,6 +130,10 @@ ${knowledgeContext}
         systemPrompt += `**Live Data from Database:**
 ${JSON.stringify(actionResults, null, 2)}
 
+**Interactive Actions Guidance:**
+- When 'get_pending_purchase_requests' is returned, provide an organized overview of the purchase requests awaiting purchase order creation (mentioning request numbers, supplier name, and items). The system UI will automatically render interactive selectable cards for Manager, Admin, and Executive users so they can select requests, create draft purchase orders, review them, and choose to send via Gmail.
+- Remind users that once generated, the orders are saved as Drafts in the Purchase Orders page for review and can be dispatched to supplier emails with confirmation links.
+
 `;
     }
 
@@ -434,6 +438,19 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
     }
 
     const actionResults = await executeMatchingActions(query);
+
+    // Also execute any specific tools directly identified by classification
+    const toolResources = classification.resources?.filter(r => r.type === 'tool') || [];
+    for (const tool of toolResources) {
+        if (!actionResults[tool.name]) {
+            try {
+                const res = await executeAction(tool.name, query);
+                actionResults[tool.name] = res;
+            } catch (e: any) {
+                console.error(`Error executing tool ${tool.name}:`, e);
+            }
+        }
+    }
 
     let knowledgeResults: any[] = [];
     const knowledgeResources = classification.resources?.filter(r => r.type === 'knowledge') || [];
