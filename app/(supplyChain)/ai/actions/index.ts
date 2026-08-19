@@ -18,5 +18,9 @@ export { getReceivingQueue, getReceivingQueueSummary } from './get_receiving_que
 export type { ReceivingQueueItem } from './get_receiving_queue';
 
 // Suppliers
-// export { getSuppliers } from './get_suppliers';
-// export type { Supplier } from './get_suppliers';
+export { getSuppliers, getSuppliersSummary } from './get_suppliers';
+export type { Supplier } from './get_suppliers';
+
+// Purchase Orders
+export { getPurchaseOrders, getPurchaseOrdersSummary } from './get_purchase_orders';
+export type { PurchaseOrder } from './get_purchase_orders';

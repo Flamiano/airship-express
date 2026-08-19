@@ -271,6 +271,9 @@ function classifyWithKeywords(query: string): ClassificationResult {
                 if (lower.includes('supplier')) {
                     resources.push({ type: 'tool', name: 'get_suppliers' });
                 }
+                if (lower.includes('purchase order') || lower.includes(' po') || lower.includes('spend') || lower.includes('expense') || lower.includes('orders')) {
+                    resources.push({ type: 'tool', name: 'get_purchase_orders_summary' });
+                }
             }
         } else {
             for (const knowledge of knowledgeFiles) {

@@ -78,7 +78,7 @@ function analyzeQuery(query: string): QueryAnalysis {
 }
 
 /**
- * Build a flexible prompt based on query analysis
+ * Build a flexible prompt based on query analysis and user role access
  */
 function buildFlexiblePrompt(
     query: string,
@@ -86,9 +86,30 @@ function buildFlexiblePrompt(
     knowledgeContext: string,
     actionResults: any,
     historyContext: string,
-    resourcesUsed: any[]
+    resourcesUsed: any[],
+    userRole: string = "User"
 ): string {
-    let systemPrompt = `You are a warehouse management assistant with deep expertise in logistics and supply chain operations.
+    let systemPrompt = `You are an AI assistant for the Airship Express Supply Chain Management system.
+
+**Role-Based Access Control Rules:**
+You are communicating with a user whose authorized system access level is "${userRole}".
+Each functional module and page has strict access permissions:
+- Executive Overview (KPIs, executive intelligence, overall macro metrics, executive financial summaries): Accessible ONLY to Executive or Admin.
+- User Activities, System Sessions, Device Audits, Security Controls: Accessible ONLY to Executive or Admin.
+- Procurement & Purchase Orders (Supplier contracts, PO costs, approvals): Accessible to Executive, Admin, Manager, and authorized Employee.
+- Warehousing (Receiving, Sorting, Outgoing, Dispatch, Inventory): Accessible to Executive, Admin, Manager, Operator, Employee.
+
+**CRITICAL INSTRUCTIONS FOR ACCESS CONTROL:**
+1. If the user asks about a page, dataset, metrics, or information that is outside their authorized access level (for example, if a non-Executive/non-Admin asks about the Executive Overview or financial KPIs, or an unauthorized role asks about protected areas):
+   - You MUST deny access dynamically and naturally.
+   - Example responses:
+     - "You are not authorized to view or access this information."
+     - "You do not have permission to view this page or its records."
+     - "I cannot find this information or you may not have access to view it."
+     - "This section is not accessible from your current account."
+   - NEVER mention role names (e.g. do NOT say "You need to be an Executive" or "Your role is Operator").
+   - NEVER explain which roles have access to what. Simply state that the page/data is not accessible or not permitted.
+2. If the user is authorized for the requested data/page, provide a clear, helpful, and accurate response based on the Knowledge Base and Live Data.
 
 **User Query Analysis:**
 - Type: ${analysis.type}
@@ -375,7 +396,7 @@ ${knowledgeSummaries || 'No knowledge files loaded'}
 /**
  * Build the system prompt (EXPORTED for streaming)
  */
-export async function buildSystemPrompt(query: string, history: any[] = []) {
+export async function buildSystemPrompt(query: string, history: any[] = [], userRole: string = "User") {
     const systemResponse = handleSystemQuestion(query);
     if (systemResponse) {
         return {
@@ -447,7 +468,8 @@ export async function buildSystemPrompt(query: string, history: any[] = []) {
         knowledgeContext,
         actionResults,
         historyContext,
-        classification.resources || []
+        classification.resources || [],
+        userRole
     );
 
     return {
@@ -465,7 +487,7 @@ export async function buildSystemPrompt(query: string, history: any[] = []) {
 /**
  * Main orchestrator
  */
-export async function orchestrator(query: string, history: any[] = []): Promise<OrchestratorResult> {
+export async function orchestrator(query: string, history: any[] = [], userRole: string = "User"): Promise<OrchestratorResult> {
 
     try {
         const lowerQuery = query.toLowerCase().trim();
@@ -482,7 +504,8 @@ export async function orchestrator(query: string, history: any[] = []): Promise<
                 .map((msg: any) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
                 .join('\n');
             const genAI = new GoogleGenAI({ apiKey });
-            const contextualPrompt = `You are a warehouse management assistant. Continue the conversation naturally.
+            const contextualPrompt = `You are a warehouse management assistant for Airship Express. Continue the conversation naturally.
+The user has system access level "${userRole}". If they follow up asking about unauthorized or restricted areas, dynamically state that the page/data is not accessible without mentioning role names.
 
 Previous conversation:
 ${context}
@@ -495,6 +518,7 @@ Instructions:
 3. If they said "tell me more", elaborate on the previous topic
 4. Keep the response natural and conversational
 5. Do NOT list out-of-scope topics
+6. Do NOT mention roles or permission level names in the answer
 
 Response:`;
 
@@ -518,7 +542,7 @@ Response:`;
         }
 
 
-        const result = await buildSystemPrompt(query, history);
+        const result = await buildSystemPrompt(query, history, userRole);
 
         if (!result.isRelated) {
             return {

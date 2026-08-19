@@ -11,6 +11,10 @@ import {
     getInventoryItems,
     getReceivingQueue,
     getReceivingQueueSummary,
+    getSuppliers,
+    getSuppliersSummary,
+    getPurchaseOrders,
+    getPurchaseOrdersSummary,
 } from '../actions';
 
 // Registry to store all actions
@@ -88,6 +92,26 @@ export function registerAllActions(): void {
             fn: getReceivingQueueSummary,
             description: 'Get receiving queue summary',
             keywords: ['receiving', 'queue', 'summary']
+        },
+        'get_suppliers': {
+            fn: getSuppliers,
+            description: 'Get suppliers list and details',
+            keywords: ['supplier', 'suppliers', 'vendor', 'vendors', 'contractor', 'partner']
+        },
+        'get_suppliers_summary': {
+            fn: getSuppliersSummary,
+            description: 'Get supplier counts and category breakdown',
+            keywords: ['supplier summary', 'supplier count', 'how many suppliers', 'active suppliers']
+        },
+        'get_purchase_orders': {
+            fn: getPurchaseOrders,
+            description: 'Get purchase orders and details',
+            keywords: ['purchase order', 'purchase orders', 'po', 'pos', 'orders', 'spent', 'expense']
+        },
+        'get_purchase_orders_summary': {
+            fn: getPurchaseOrdersSummary,
+            description: 'Get purchase orders aggregate metrics, totals, spend, and status breakdown',
+            keywords: ['po summary', 'purchase order summary', 'total spend', 'po metrics', 'procurement spend']
         },
     };
 
