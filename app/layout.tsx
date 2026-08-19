@@ -29,25 +29,24 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${bricolage.variable} ${rethink.variable} h-full antialiased bg-[#FCFBF9]`}
+      className={`${bricolage.variable} ${rethink.variable} h-full antialiased bg-paper dark:bg-ink`}
       suppressHydrationWarning
     >
       <head>
         <Script id="theme-init" strategy="beforeInteractive">
-                {`
-          (function () {
-            try {
-              var theme = localStorage.getItem('airship-theme');
-              if (theme === 'dark') {
-                document.documentElement.classList.add('dark');
-              }
-            } catch (e) {}
-          })();
-        `}
+          {`
+            (function () {
+              try {
+                var theme = localStorage.getItem('airship-theme');
+                if (theme === 'dark') {
+                  document.documentElement.classList.add('dark');
+                }
+              } catch (e) {}
+            })();
+          `}
         </Script>
       </head>
-      <body className="h-[100dvh] overflow-hidden font-rethink bg-[#FCFBF9] dark:bg-ink">
-
+      <body className="h-[100dvh] overflow-hidden font-rethink bg-paper dark:bg-ink">
         <ThemeProvider>
           <ConfirmProvider>
             {children}
@@ -60,7 +59,7 @@ export default function RootLayout({
           closeButton
           duration={3000}
         />
-      </body >
-    </html >
+      </body>
+    </html>
   );
 }

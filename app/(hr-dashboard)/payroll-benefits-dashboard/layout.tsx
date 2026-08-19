@@ -1,6 +1,9 @@
 'use client';
 
+import './hrPayroll.css';
 import { SidebarProvider } from './components/layout/SidebarContext';
+import { Toaster } from 'sonner';
+
 
 export default function PayrollBenefitsLayout({
     children,
@@ -10,6 +13,7 @@ export default function PayrollBenefitsLayout({
     return (
         <SidebarProvider>
             {children}
+            <Toaster position="top-right" />
         </SidebarProvider>
     );
 }

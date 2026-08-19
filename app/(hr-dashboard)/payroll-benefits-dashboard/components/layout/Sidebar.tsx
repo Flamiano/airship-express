@@ -121,7 +121,7 @@ export default function Sidebar() {
 
                     {/* brand header */}
                     <div
-                        className={`flex items-center border-b border-line px-5 py-6 dark:border-line ${isCollapsed ? 'sm:justify-center sm:px-3' : ''
+                        className={`flex h-16 items-center border-b border-line px-5 dark:border-line ${isCollapsed ? 'sm:justify-center sm:px-3' : ''
                             }`}
                     >
                         <motion.div

@@ -3,12 +3,15 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/app/(hr-dashboard)/supabase/client';
+import ToastProvider, { useToast } from '@/app/(hr-dashboard)/payroll-benefits-dashboard/components/ui/Toast';
+import Loader from '@/app/components/Loader';
 
-export default function HRLoginPage() {
+function HRLoginContent() {
     const router = useRouter();
+    const toast = useToast();
     const [employeeId, setEmployeeId] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -21,6 +24,7 @@ export default function HRLoginPage() {
 
         if (!employeeId || !password) {
             setError('Enter your employee ID and password to continue.');
+            toast.showWarning('Please fill in all fields', 'Validation Error');
             return;
         }
 
@@ -37,8 +41,10 @@ export default function HRLoginPage() {
                 const base = data?.message ?? 'Employee ID or password is incorrect.';
                 const debug = data?.debug ? ` (${JSON.stringify(data.debug)})` : '';
                 setError(base + debug);
+                toast.showError(base + debug, 'Login Failed');
                 return;
             }
+
             const data = await res.json();
 
             if (data.session) {
@@ -48,13 +54,21 @@ export default function HRLoginPage() {
                 });
                 if (setSessionError) {
                     console.error('Failed to sync session client-side:', setSessionError);
+                    toast.showError('Failed to sync session. Please try again.', 'Session Error');
+                    return;
                 }
             }
 
-            router.push('/payroll-benefits-dashboard');
-            router.refresh();
-        } catch {
+            toast.showSuccess(`Welcome back, ${data.fullName || 'User'}!`, 'Login Successful');
+
+            setTimeout(() => {
+                router.push('/payroll-benefits-dashboard');
+                router.refresh();
+            }, 500);
+
+        } catch (err) {
             setError('Something went wrong. Try again.');
+            toast.showError('Something went wrong. Please try again.', 'Unexpected Error');
         } finally {
             setIsSubmitting(false);
         }
@@ -116,9 +130,22 @@ export default function HRLoginPage() {
                 </div>
             </div>
 
-            <div className="h-dvh overflow-y-auto flex items-center justify-center px-5 py-8 sm:px-12 sm:py-16">
+            <div className="h-dvh overflow-y-auto flex items-center justify-center px-5 py-8 sm:px-12 sm:py-16 relative">
+                <AnimatePresence>
+                    {isSubmitting && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-50 flex items-center justify-center bg-paper/80 backdrop-blur-sm"
+                        >
+                            <Loader />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <motion.div
-                    className="w-full max-w-sm"
+                    className="w-full max-w-sm relative z-10"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
@@ -239,5 +266,13 @@ export default function HRLoginPage() {
                 </motion.div>
             </div>
         </div>
+    );
+}
+
+export default function HRLoginPage() {
+    return (
+        <ToastProvider position="top-right" maxToasts={5}>
+            <HRLoginContent />
+        </ToastProvider>
     );
 }

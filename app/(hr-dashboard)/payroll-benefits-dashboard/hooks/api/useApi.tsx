@@ -20,7 +20,7 @@ export const useApi = (baseUrl: string = '') => {
         try {
             const url = endpoint ? `${baseUrl}${endpoint}` : baseUrl;
             const response = await fetch(url, {
-                credentials: 'include'
+                credentials: 'include' 
             });
             const data = await handleResponse(response);
             return data;
@@ -40,7 +40,7 @@ export const useApi = (baseUrl: string = '') => {
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
+                credentials: 'include', 
                 body: JSON.stringify(body),
             });
             const data = await handleResponse(response);
@@ -61,7 +61,7 @@ export const useApi = (baseUrl: string = '') => {
             const response = await fetch(url, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
+                credentials: 'include', 
                 body: JSON.stringify(body),
             });
             const data = await handleResponse(response);
@@ -81,7 +81,7 @@ export const useApi = (baseUrl: string = '') => {
             const url = endpoint ? `${baseUrl}${endpoint}` : baseUrl;
             const response = await fetch(url, {
                 method: 'DELETE',
-                credentials: 'include'
+                credentials: 'include' 
             });
             await handleResponse(response);
         } catch (err: any) {

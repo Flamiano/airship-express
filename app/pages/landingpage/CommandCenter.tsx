@@ -44,8 +44,8 @@ const fleet = [
 
 function statusClasses(status: string) {
     if (status === "Delivered") return "bg-accent/10 text-accent";
-    if (status === "In Transit") return "bg-paper/10 text-paper";
-    return "bg-paper/5 text-paper/70";
+    if (status === "In Transit") return "bg-white/10 text-white";
+    return "bg-white/5 text-white/70";
 }
 
 function TrendIcon({ trend }: { trend: "up" | "down" | "flat" }) {
@@ -83,13 +83,14 @@ export default function CommandCenter() {
                     </div>
                 </div>
 
-                <div className="rounded-t-2xl border border-paper/10 bg-ink p-6 sm:p-10">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-dashed border-paper/10 pb-5">
-                        <span className="flex items-center gap-2 font-rethink text-xs font-semibold uppercase tracking-[0.14em] text-paper">
+                {/* always-dark manifest panel — fixed colors, no theme flip */}
+                <div className="rounded-t-2xl border border-white/10 bg-[#1c1b1f] p-6 sm:p-10">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-dashed border-white/10 pb-5">
+                        <span className="flex items-center gap-2 font-rethink text-xs font-semibold uppercase tracking-[0.14em] text-white">
                             <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
                             System Operational
                         </span>
-                        <span className="rounded-full border border-paper/15 px-3 py-1 font-rethink text-[10px] font-medium uppercase tracking-[0.1em] text-paper/40">
+                        <span className="rounded-full border border-white/15 px-3 py-1 font-rethink text-[10px] font-medium uppercase tracking-[0.1em] text-white/40">
                             Sample data · Illustrative
                         </span>
                     </div>
@@ -102,17 +103,17 @@ export default function CommandCenter() {
                                 whileInView={{ opacity: 1, y: 0 }}
                                 viewport={{ once: true, margin: "-60px" }}
                                 transition={{ duration: 0.4, delay: i * 0.06 }}
-                                className="rounded-xl border border-paper/10 bg-paper/[0.03] p-4"
+                                className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
                             >
-                                <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.08em] text-paper/40">
+                                <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.08em] text-white/40">
                                     {k.label}
                                 </span>
                                 <div className="mt-2 flex items-end justify-between">
-                                    <span className="font-bricolage text-xl font-bold text-paper sm:text-2xl">
+                                    <span className="font-bricolage text-xl font-bold text-white sm:text-2xl">
                                         {k.value}
                                     </span>
                                     <span
-                                        className={`flex items-center gap-1 font-rethink text-xs font-medium ${k.trend === "flat" ? "text-paper/40" : "text-accent"
+                                        className={`flex items-center gap-1 font-rethink text-xs font-medium ${k.trend === "flat" ? "text-white/40" : "text-accent"
                                             }`}
                                     >
                                         <TrendIcon trend={k.trend} />
@@ -123,8 +124,8 @@ export default function CommandCenter() {
                         ))}
                     </div>
 
-                    <div className="mt-6 rounded-xl border border-paper/10 bg-paper/[0.03] p-5">
-                        <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.08em] text-paper/40">
+                    <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-5">
+                        <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.08em] text-white/40">
                             Deliveries this week
                         </span>
                         <div className="mt-4 flex h-20 items-end gap-2">
@@ -137,13 +138,13 @@ export default function CommandCenter() {
                                         transition={{ duration: 0.5, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] }}
                                         className="w-full rounded-t-md bg-accent/70"
                                     />
-                                    <span className="font-rethink text-[9px] font-medium text-paper/40">{b.day}</span>
+                                    <span className="font-rethink text-[9px] font-medium text-white/40">{b.day}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    <div className="mt-6 divide-y divide-paper/10 rounded-xl border border-paper/10">
+                    <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10">
                         {feed.map((f, i) => (
                             <motion.div
                                 key={f.code}
@@ -154,11 +155,11 @@ export default function CommandCenter() {
                                 className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
                             >
                                 <div className="flex items-center gap-3">
-                                    <span className="font-mono text-[10px] text-paper/40">{f.time}</span>
-                                    <span className="font-mono text-xs font-semibold text-paper/70">{f.code}</span>
+                                    <span className="font-mono text-[10px] text-white/40">{f.time}</span>
+                                    <span className="font-mono text-xs font-semibold text-white/70">{f.code}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <span className="font-rethink text-xs text-paper/50">{f.place}</span>
+                                    <span className="font-rethink text-xs text-white/50">{f.place}</span>
                                     <span
                                         className={`rounded-full px-2.5 py-1 font-rethink text-[10px] font-semibold uppercase tracking-[0.06em] ${statusClasses(
                                             f.status
@@ -171,8 +172,8 @@ export default function CommandCenter() {
                         ))}
                     </div>
 
-                    <div className="mt-8 border-t border-dashed border-paper/10 pt-6">
-                        <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.08em] text-paper/40">
+                    <div className="mt-8 border-t border-dashed border-white/10 pt-6">
+                        <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.08em] text-white/40">
                             Fleet on standby
                         </span>
                         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -183,29 +184,29 @@ export default function CommandCenter() {
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true, margin: "-60px" }}
                                     transition={{ duration: 0.4, delay: i * 0.08 }}
-                                    className="rounded-xl border border-paper/10 bg-paper/[0.03] p-4"
+                                    className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper/10 text-paper">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white">
                                             <v.icon className="h-4 w-4" />
                                         </div>
-                                        <span className="font-rethink text-sm font-semibold text-paper">{v.name}</span>
+                                        <span className="font-rethink text-sm font-semibold text-white">{v.name}</span>
                                     </div>
-                                    <p className="mt-2 font-bricolage text-lg font-bold text-paper">{v.capacity}</p>
-                                    <p className="font-rethink text-xs text-paper/50">{v.bestFor}</p>
+                                    <p className="mt-2 font-bricolage text-lg font-bold text-white">{v.capacity}</p>
+                                    <p className="font-rethink text-xs text-white/50">{v.bestFor}</p>
                                 </motion.div>
                             ))}
                         </div>
                     </div>
 
-                    <p className="mt-6 font-rethink text-xs text-paper/30">
+                    <p className="mt-6 font-rethink text-xs text-white/30">
                         Figures shown are for illustration. Connect this panel to your real dispatch data whenever you&apos;re ready.
                     </p>
                 </div>
 
                 <div
                     aria-hidden
-                    className="h-3 bg-ink"
+                    className="h-3 bg-[#1c1b1f]"
                     style={{
                         maskImage: "radial-gradient(circle 5px at 8px 50%, transparent 99%, black 100%)",
                         WebkitMaskImage: "radial-gradient(circle 5px at 8px 50%, transparent 99%, black 100%)",
