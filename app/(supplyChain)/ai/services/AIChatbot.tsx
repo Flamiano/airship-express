@@ -208,6 +208,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
             try {
                 setIsStreaming(true);
+                const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'User') : 'User';
 
                 const response = await fetch('/ai/api/chat/stream', {
                     method: 'POST',
@@ -217,6 +218,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     body: JSON.stringify({
                         question: trimmed,
                         history: history,
+                        role: currentRole,
                     }),
                 });
 
@@ -247,17 +249,21 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     )
                 );
 
+                let buffer = '';
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n\n');
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    // Keep the last partial line (if any) in the buffer
+                    buffer = lines.pop() || '';
 
                     for (const line of lines) {
-                        if (line.startsWith('data: ')) {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine.startsWith('data: ')) {
                             try {
-                                const jsonStr = line.slice(6);
+                                const jsonStr = trimmedLine.slice(6);
                                 if (jsonStr.trim() === '') continue;
 
                                 const data = JSON.parse(jsonStr);
@@ -348,6 +354,8 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 )
             );
 
+            const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'User') : 'User';
+
             const response = await fetch('/ai/api/chat', {
                 method: 'POST',
                 headers: {
@@ -356,6 +364,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 body: JSON.stringify({
                     question: trimmed,
                     history: history,
+                    role: currentRole,
                 }),
             });
 
@@ -471,12 +480,15 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             />
 
             {/* Chat Drawer */}
-            <div className="fixed top-0 right-0 h-full w-full sm:w-[440px] 
+            <div 
+                data-lenis-prevent
+                className="fixed top-0 right-0 h-full w-full sm:w-[440px] 
                         bg-white/90 dark:bg-slate-900/75 backdrop-blur-2xl
                         z-50 animate-in slide-in-from-right duration-300 
-                        flex flex-col font-sans 
+                        flex flex-col font-sans overscroll-contain
                         shadow-2xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.8),0_8px_10px_-6px_rgba(0,0,0,0.5)] 
-                        border-l border-slate-200/80 dark:border-white/10">
+                        border-l border-slate-200/80 dark:border-white/10"
+            >
 
                 {/* Header with Robot */}
                 <div className="bg-gradient-to-r from-pink-600 via-pink-500 to-rose-500 dark:from-slate-900/80 dark:via-slate-900/70 dark:to-pink-950/30 backdrop-blur-md px-5 py-4 flex items-center justify-between shrink-0 shadow-md dark:shadow-black/50 z-10 border-b border-transparent dark:border-white/10 transition-colors">
@@ -552,7 +564,8 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 <div className="relative flex-1 overflow-hidden bg-slate-50/40 dark:bg-transparent">
                     <div
                         ref={messagesContainerRef}
-                        className="h-full overflow-y-auto p-5 space-y-5 scroll-smooth scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800"
+                        data-lenis-prevent
+                        className="h-full overflow-y-auto overscroll-contain p-5 space-y-5 scroll-smooth scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800"
                         onScroll={checkIfAtBottom}
                     >
                         {messages.map((msg) => (

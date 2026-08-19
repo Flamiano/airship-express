@@ -6,7 +6,7 @@ import { orchestrator } from "../../lib/orchestrator";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { question, history } = body;
+        const { question, history, role } = body;
 
         if (!question || typeof question !== 'string') {
             return NextResponse.json(
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
         }
 
 
-        const result = await orchestrator(question, history);
+        const result = await orchestrator(question, history, role);
 
         return NextResponse.json({
             success: result.success,
