@@ -4,79 +4,6 @@ import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 import { createHash, randomBytes } from 'crypto';
 
-const HR_DUMMY_DATA = {
-    'Admin': [
-        {
-            id: '11111111-1111-1111-1111-111111111111',
-            employee_id: 'EMP-001',
-            display_name: 'John Smith',
-            email: 'supplychainandinventory@gmail.com',
-            role: 'Admin',
-            department: 'Management',
-            position: 'CEO',
-            password_hash: 'HR_Password_123'
-        },
-        {
-            id: '22222222-2222-2222-2222-222222222222',
-            employee_id: 'EMP-002',
-            display_name: 'Sarah Johnson',
-            email: 'janzeldols@gmail.com',
-            role: 'Admin',
-            department: 'Management',
-            position: 'COO',
-            password_hash: 'HR_Password_456'
-        }
-    ],
-    'Manager': [
-        {
-            id: '33333333-3333-3333-3333-333333333333',
-            employee_id: 'EMP-003',
-            display_name: 'Mike Brown',
-            email: 'mike.brown@company.com',
-            role: 'Manager',
-            department: 'Operations',
-            position: 'Warehouse Manager',
-            password_hash: 'HR_Password_789'
-        }
-    ],
-    'Employee': [
-        {
-            id: '55555555-5555-5555-5555-555555555555',
-            employee_id: 'EMP-005',
-            display_name: 'Tom Wilson',
-            email: 'tom.wilson@company.com',
-            role: 'Employee',
-            department: 'Warehouse',
-            position: 'Warehouse Staff',
-            password_hash: 'HR_Password_202'
-        }
-    ],
-    'Operator': [
-        {
-            id: '77777777-7777-7777-7777-777777777777',
-            employee_id: 'OPT-001',
-            display_name: 'SupplyChain Operator',
-            email: 'operator@company.com',
-            role: 'Operator',
-            department: 'Warehouse',
-            position: 'Business',
-            password_hash: 'HR_Password_404'
-        }
-    ],
-    'Executive': [
-        {
-            id: '88888888-8888-8888-8888-888888888888',
-            employee_id: 'EXC-001',
-            display_name: 'Executive User',
-            email: 'executive@company.com',
-            role: 'Executive',
-            department: 'Executive',
-            position: 'CEO',
-            password_hash: 'HR_Password_505'
-        }
-    ]
-};
-
 function generateTemporaryToken(): string {
     return randomBytes(16).toString('hex');
 }
@@ -159,15 +86,12 @@ export async function POST(request: Request) {
             .eq('email', email)
             .maybeSingle();
 
-        // get hr data for password check
-        let hrData = null;
-        for (const roleData of Object.values(HR_DUMMY_DATA)) {
-            const found = roleData.find(emp => emp.email === email);
-            if (found) {
-                hrData = found;
-                break;
-            }
-        }
+        // get hr data from mock_employees table for password check
+        const { data: hrData } = await supabase
+            .from('mock_employees')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
 
         // get client info
         const ipAddress = request.headers.get('x-forwarded-for') ||
