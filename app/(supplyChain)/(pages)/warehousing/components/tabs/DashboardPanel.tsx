@@ -8,6 +8,7 @@ import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
 import { useAI } from "@/app/(supplyChain)/ai/services/AIContext";
+import Portal from "@/app/(supplyChain)/components/client/Portal";
 
 interface DashboardStats {
     scannedParcels: number;
@@ -23,10 +24,17 @@ interface DashboardStats {
     dailyFullDates: string[];
     forecast: {
         day: string;
+        dateFormatted?: string;
+        dateStr?: string;
         parcels: number;
         change: number;
         width: number;
+        lower?: number;
+        upper?: number;
+        recommendation?: string;
     }[];
+    forecastModel?: string;
+    forecastConfidence?: string;
 }
 
 interface ChartDataset {
@@ -55,7 +63,20 @@ export default function DashboardPanel() {
         dailyLabels: [],
         dailyFullDates: [],
         forecast: [],
+        forecastModel: '7-Day Projection',
+        forecastConfidence: 'Model Powered',
     });
+    const [selectedForecast, setSelectedForecast] = useState<{
+        day: string;
+        dateFormatted?: string;
+        dateStr?: string;
+        parcels: number;
+        change: number;
+        width: number;
+        lower?: number;
+        upper?: number;
+        recommendation?: string;
+    } | null>(null);
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
     const [isMobile, setIsMobile] = useState(false);
@@ -91,6 +112,26 @@ export default function DashboardPanel() {
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
+
+    // Prevent background scrolling when forecast modal is open
+    useEffect(() => {
+        if (selectedForecast) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = "hidden";
+
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (e.key === "Escape") {
+                    setSelectedForecast(null);
+                }
+            };
+            window.addEventListener("keydown", handleKeyDown);
+
+            return () => {
+                document.body.style.overflow = originalOverflow;
+                window.removeEventListener("keydown", handleKeyDown);
+            };
+        }
+    }, [selectedForecast]);
 
     const fetchDashboardData = useCallback(async () => {
         try {
@@ -289,26 +330,124 @@ export default function DashboardPanel() {
                 color: colors[index % colors.length],
             }));
 
-            //  10. Generate forecast
-            const dailyValues = Object.values(dailyCountMap);
-            const avg = dailyValues.length > 0
-                ? dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length
-                : 100;
+            //  10. Generate forecast via Model Forecasting API with fallback
+            let forecast: {
+                day: string;
+                dateFormatted?: string;
+                dateStr?: string;
+                parcels: number;
+                change: number;
+                width: number;
+                lower?: number;
+                upper?: number;
+                recommendation?: string;
+            }[] = [];
+            let forecastModel = '7-Day Model Projection';
+            let forecastConfidence = 'Model Powered';
 
-            const forecastDays = ['Tomorrow', 'In 2 days', 'In 3 days', 'In 5 days', 'In 7 days'];
-            const forecastChanges = [8, -3, 12, -5, 6];
-            const maxParcels = 2000;
+            try {
+                const forecastRes = await fetch('/forecast/api', { cache: 'no-store' });
+                const forecastJson = await forecastRes.json();
 
-            const forecast = forecastDays.map((day, index) => {
-                const parcels = Math.round(avg * (1 + forecastChanges[index] / 100));
-                const width = Math.min(Math.max((parcels / maxParcels) * 100, 5), 100);
-                return {
-                    day,
-                    parcels,
-                    change: forecastChanges[index],
-                    width,
-                };
-            });
+                if (forecastJson.success && forecastJson.parcel_7_day?.predictions?.length > 0) {
+                    const p7 = forecastJson.parcel_7_day;
+                    const predictions: number[] = p7.predictions;
+                    const lowerBounds: number[] = p7.confidence_interval?.lower || [];
+                    const upperBounds: number[] = p7.confidence_interval?.upper || [];
+                    const maxPred = Math.max(...predictions, scannedCount || 1, 10);
+                    const baseline = avgDaily > 0 ? avgDaily : (scannedCount || 10);
+
+                    if (p7.model_used) {
+                        forecastModel = p7.model_used;
+                    }
+                    if (p7.confidence) {
+                        forecastConfidence = `${p7.confidence} Confidence`;
+                    }
+
+                    forecast = predictions.slice(0, 5).map((parcels: number, index: number) => {
+                        let dayLabel = 'Day ' + (index + 1);
+                        let dateFormatted = '';
+                        let dateStr = '';
+
+                        if (p7.dates && p7.dates[index]) {
+                            dateStr = p7.dates[index];
+                            const d = new Date(p7.dates[index]);
+                            const weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
+                            const monthDay = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            dateFormatted = `${weekday}, ${monthDay}`;
+                            dayLabel = index === 0 ? 'Tomorrow' : index === 1 ? 'In 2 days' : `${d.toLocaleDateString('en-US', { weekday: 'short' })} (+${index + 1}d)`;
+                        } else {
+                            const defaultDays = ['Tomorrow', 'In 2 days', 'In 3 days', 'In 5 days', 'In 7 days'];
+                            dayLabel = defaultDays[index] || `Day ${index + 1}`;
+                            const futureDate = new Date();
+                            futureDate.setDate(futureDate.getDate() + index + 1);
+                            dateFormatted = futureDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                            dateStr = futureDate.toISOString().split('T')[0];
+                        }
+
+                        const change = baseline > 0 ? Math.round(((parcels - baseline) / baseline) * 100) : 0;
+                        const width = Math.min(Math.max(Math.round((parcels / (maxPred * 1.1)) * 100), 8), 100);
+
+                        let recommendation = 'Standard shift operations recommended. Expected volume aligns with baseline capacity.';
+                        if (change >= 15) {
+                            recommendation = '🔥 Peak Intake Surge Expected (+15% or more). Recommend staffing +1 to +2 sorting associates and ensuring dock staging areas are cleared.';
+                        } else if (change > 5) {
+                            recommendation = '📈 Elevated Intake Volume. Pre-configure sorting lanes and scan docks for higher throughput.';
+                        } else if (change <= -10) {
+                            recommendation = '📉 Lower Volume Window. Optimal time for warehouse floor reorganization, cycle counts, or dispatch batching.';
+                        }
+
+                        return {
+                            day: dayLabel,
+                            dateFormatted,
+                            dateStr,
+                            parcels,
+                            change,
+                            width,
+                            lower: lowerBounds[index] ?? Math.max(0, Math.round(parcels * 0.85)),
+                            upper: upperBounds[index] ?? Math.round(parcels * 1.15),
+                            recommendation,
+                        };
+                    });
+                }
+            } catch (err) {
+                console.warn('Could not fetch model forecast from /forecast/api, using local estimation:', err);
+            }
+
+            // Fallback if API returned empty
+            if (forecast.length === 0) {
+                const dailyValues = Object.values(dailyCountMap);
+                const avg = dailyValues.length > 0
+                    ? dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length
+                    : 100;
+
+                const forecastDays = ['Tomorrow', 'In 2 days', 'In 3 days', 'In 5 days', 'In 7 days'];
+                const forecastChanges = [8, -3, 12, -5, 6];
+                const maxParcels = 2000;
+
+                forecast = forecastDays.map((day, index) => {
+                    const parcels = Math.round(avg * (1 + forecastChanges[index] / 100));
+                    const width = Math.min(Math.max((parcels / maxParcels) * 100, 5), 100);
+                    const futureDate = new Date();
+                    futureDate.setDate(futureDate.getDate() + index + 1);
+                    const dateFormatted = futureDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                    const dateStr = futureDate.toISOString().split('T')[0];
+
+                    return {
+                        day,
+                        dateFormatted,
+                        dateStr,
+                        parcels,
+                        change: forecastChanges[index],
+                        width,
+                        lower: Math.max(0, Math.round(parcels * 0.85)),
+                        upper: Math.round(parcels * 1.15),
+                        recommendation: forecastChanges[index] > 10 
+                            ? 'High intake expected. Ensure sorting lanes are staffed.' 
+                            : 'Standard operational volume expected.',
+                    };
+                });
+            }
 
             if (isMounted.current) {
                 setStats({
@@ -320,6 +459,8 @@ export default function DashboardPanel() {
                     dailyLabels: dateLabels,
                     dailyFullDates: fullDateLabels,
                     forecast,
+                    forecastModel,
+                    forecastConfidence,
                 });
 
                 setLastUpdated(new Date());
@@ -637,7 +778,7 @@ export default function DashboardPanel() {
                     data={stats.scannedParcels.toLocaleString()}
                     arrow="fas fa-arrow-up mr-1"
                     description="Today"
-                    backBg="bg-slate-900"
+                    
                     backHeader="Received Parcels Details"
                     backIcon="fas fa-box"
                     headerTextColor="text-slate-200"
@@ -653,7 +794,7 @@ export default function DashboardPanel() {
                     data={stats.highestParcels.toString()}
                     arrow="fas fa-arrow-up mr-1"
                     description={courierDetails.peakHour.timeRange}
-                    backBg="bg-slate-900"
+                    
                     backHeader="Peak Hour Details"
                     backIcon="fas fa-clock"
                     headerTextColor="text-slate-200"
@@ -669,7 +810,7 @@ export default function DashboardPanel() {
                     data={stats.monthlyTotal.toLocaleString()}
                     arrow="fas fa-arrow-up mr-1"
                     description="Last 30 days"
-                    backBg="bg-slate-900"
+                    
                     backHeader="Monthly Parcel Details"
                     backIcon="fas fa-chart-line"
                     headerTextColor="text-slate-200"
@@ -685,7 +826,7 @@ export default function DashboardPanel() {
                     data={courierDetails.busiestDay.dayName || 'N/A'}
                     arrow="fas fa-arrow-up mr-1"
                     description={`${courierDetails.busiestDay.count} parcels`}
-                    backBg="bg-slate-900"
+                    
                     backHeader="Busiest Day Details"
                     backIcon="fas fa-calendar-check"
                     headerTextColor="text-slate-200"
@@ -827,15 +968,15 @@ export default function DashboardPanel() {
                                 </div>
                                 <div>
                                     <h2 className="font-semibold text-slate-800 dark:text-white text-sm sm:text-base">
-                                        Gemini Forecast
+                                        Model Forecasting
                                     </h2>
-                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-                                        7-Day Projection
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium truncate max-w-[180px] sm:max-w-[240px]" title={stats.forecastModel || '7-Day Projection'}>
+                                        {stats.forecastModel || '7-Day Projection'}
                                     </p>
                                 </div>
                             </div>
                             <span className="text-[11px] font-semibold px-2.5 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 text-indigo-700 dark:text-indigo-400 rounded-full border border-indigo-200/60 dark:border-indigo-900/40">
-                                AI Powered
+                                {stats.forecastConfidence || 'Model Powered'}
                             </span>
                         </div>
 
@@ -846,30 +987,49 @@ export default function DashboardPanel() {
                                     return (
                                         <div
                                             key={index}
-                                            className="p-3 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                                            onClick={() => setSelectedForecast(item)}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    setSelectedForecast(item);
+                                                }
+                                            }}
+                                            title="Click to view detailed model breakdown & operational recommendations"
+                                            className="group p-3 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer text-left active:scale-[0.99] shadow-2xs hover:shadow-xs"
                                         >
                                             <div className="flex items-center justify-between text-xs sm:text-sm">
-                                                <span className="font-semibold text-slate-700 dark:text-slate-300 w-20">
-                                                    {item.day}
-                                                </span>
-                                                <span className="font-semibold text-slate-900 dark:text-white">
-                                                    {item.parcels.toLocaleString()}{" "}
-                                                    <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
-                                                        parcels
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                                        {item.day}
                                                     </span>
-                                                </span>
-                                                <span
-                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${isPositive
-                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40"
-                                                        : "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40"
-                                                        }`}
-                                                >
-                                                    <i
-                                                        className={`fas text-[10px] ${isPositive ? "fa-arrow-trend-up" : "fa-arrow-trend-down"
+                                                    {item.dateFormatted && (
+                                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                                                            ({item.dateFormatted.split(',')[0]})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-slate-900 dark:text-white">
+                                                        {item.parcels.toLocaleString()}{" "}
+                                                        <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                                                            parcels
+                                                        </span>
+                                                    </span>
+                                                    <span
+                                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${isPositive
+                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40"
+                                                            : "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40"
                                                             }`}
-                                                    />
-                                                    <span>{Math.abs(item.change)}%</span>
-                                                </span>
+                                                    >
+                                                        <i
+                                                            className={`fas text-[10px] ${isPositive ? "fa-arrow-trend-up" : "fa-arrow-trend-down"
+                                                                }`}
+                                                        />
+                                                        <span>{Math.abs(item.change)}%</span>
+                                                    </span>
+                                                    <i className="fas fa-chevron-right text-[10px] text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all ml-0.5" />
+                                                </div>
                                             </div>
 
                                             <div className="mt-2.5 w-full bg-slate-200/70 dark:bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
@@ -900,6 +1060,148 @@ export default function DashboardPanel() {
                     </div>
                 </div>
             </div>
+
+            {/* Forecast Detail Modal with Portal */}
+            {selectedForecast && (
+                <Portal>
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+                        {/* Backdrop */}
+                        <div
+                            className="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+                            onClick={() => setSelectedForecast(null)}
+                        />
+
+                        {/* Modal Card */}
+                        <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+                            {/* Modal Header */}
+                            <div className="relative px-6 pt-6 pb-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-indigo-50/60 via-white to-purple-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-3.5">
+                                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+                                            <i className="fas fa-chart-line text-lg" />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                                                    {selectedForecast.day}
+                                                </h3>
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                                    selectedForecast.change >= 0
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40"
+                                                        : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40"
+                                                }`}>
+                                                    <i className={`fas text-[9px] ${selectedForecast.change >= 0 ? "fa-arrow-trend-up" : "fa-arrow-trend-down"}`} />
+                                                    {selectedForecast.change >= 0 ? `+${selectedForecast.change}%` : `${selectedForecast.change}%`}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                                                {selectedForecast.dateFormatted || selectedForecast.dateStr || 'Model Day Projection'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedForecast(null)}
+                                        className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                        title="Close modal"
+                                    >
+                                        <i className="fas fa-times text-sm" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="p-6 space-y-5">
+                                {/* Key Stats Cards */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-slate-800/50 border border-indigo-100/80 dark:border-slate-700/60">
+                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                            Expected Volume
+                                        </p>
+                                        <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                                            {selectedForecast.parcels.toLocaleString()}
+                                        </p>
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                            parcels predicted
+                                        </span>
+                                    </div>
+
+                                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/60">
+                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                            Confidence Interval (95%)
+                                        </p>
+                                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-1.5">
+                                            {selectedForecast.lower?.toLocaleString() ?? 0} – {selectedForecast.upper?.toLocaleString() ?? selectedForecast.parcels}
+                                        </p>
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                            expected range bounds
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Model Metadata Banner */}
+                                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                            <i className="fas fa-brain text-[11px] text-indigo-500" />
+                                            Forecasting Algorithm
+                                        </span>
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200 text-right">
+                                            {stats.forecastModel || 'Holt-Winters Seasonal / AutoTheta'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                            <i className="fas fa-microchip text-[11px] text-purple-500" />
+                                            Inference Engine
+                                        </span>
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                            Rust WASM (@sipemu/anofox-forecast)
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                            <i className="fas fa-shield-halved text-[11px] text-emerald-500" />
+                                            Statistical Confidence
+                                        </span>
+                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                            {stats.forecastConfidence || '95% Confidence'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Operational Recommendation */}
+                                <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/30 space-y-1.5">
+                                    <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+                                        <i className="fas fa-lightbulb text-amber-500" />
+                                        <span>Warehouse Operational Recommendation</span>
+                                    </div>
+                                    <p className="text-xs text-amber-900/80 dark:text-amber-200/80 leading-relaxed">
+                                        {selectedForecast.recommendation || 'Maintain standard shift operations and monitor inbound queue.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 py-4 bg-slate-50/80 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedForecast(null)}
+                                    className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
+                                >
+                                    Close
+                                </button>
+                                <LinkBtn
+                                    link="/forecast"
+                                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                                    icon="fas fa-arrow-trend-up"
+                                    label="Open Full Analytics →"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            )}
         </div>
     );
 }

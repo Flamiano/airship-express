@@ -49,7 +49,7 @@ const AiQuestions = ({
 
     const QuestionButton = ({ question, color = "bg-pink-400" }: Question) => (
         <button
-            className="ai-question-btn flex items-center gap-2 p-2.5 rounded-lg 
+            className="ai-question-btn flex items-center gap-2 p-4 rounded-lg 
             border border-slate-200 dark:border-slate-700/60 
             hover:border-pink-200 dark:hover:border-pink-800/50 
             hover:bg-pink-50 dark:hover:bg-pink-950/20 
