@@ -367,7 +367,7 @@ export function ParcelsTab() {
     return (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-boxes"
                     header="Total Archived"
@@ -411,6 +411,21 @@ export function ParcelsTab() {
                     tooltip="View status categories"
                     frontTextColor="text-purple-500 dark:text-purple-400"
                     descriptionTextColor="text-purple-600 dark:text-purple-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-location-dot"
+                    header="Destinations"
+                    data={String(new Set(archivedParcels.map(p => p.destination || p.city).filter(Boolean)).size)}
+                    arrow="fa-solid fa-map-pin"
+                    description="Unique destinations"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Destination Breakdown"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Destinations: ${Array.from(new Set(archivedParcels.map(p => p.destination || p.city).filter(Boolean))).join(', ') || 'None'}`}
+                    tooltip="View destination details"
+                    frontTextColor="text-emerald-500 dark:text-emerald-400"
+                    descriptionTextColor="text-emerald-600 dark:text-emerald-400"
                 />
             </div>
 

@@ -771,7 +771,7 @@ export default function DashboardPanel() {
             </div>
 
             {/* Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
                 <Cards
                     frontIcon="fas fa-box mr-1"
                     header="Received Parcels"
@@ -786,6 +786,22 @@ export default function DashboardPanel() {
                     tooltip="Click to see details about received parcels"
                     tooltipLink="/warehousing?tab=incoming"
                     badge={stats.scannedParcels > 0 ? 'Live' : ''}
+                />
+
+                <Cards
+                    frontIcon="fas fa-truck mr-1"
+                    header="Top Courier"
+                    data={courierDetails.topCourier.name || 'N/A'}
+                    arrow="fas fa-trophy mr-1"
+                    description={`${courierDetails.topCourier.count} parcels today`}
+                    
+                    backHeader="Top Courier Details"
+                    backIcon="fas fa-truck"
+                    headerTextColor="text-slate-200"
+                    backDescription={`Top Courier: ${courierDetails.topCourier.name}\n\n📦 Today's Volume: ${courierDetails.topCourier.count} parcel(s)\n\n Active Couriers: ${courierDetails.courierBreakdown.length}`}
+                    tooltip="Click to see courier volume details"
+                    tooltipLink="/warehousing?tab=incoming"
+                    badge={courierDetails.topCourier.count > 0 ? `${courierDetails.topCourier.count} pkgs` : ''}
                 />
 
                 <Cards

@@ -311,7 +311,7 @@ export function SuppliersTab() {
     return (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-handshake"
                     header="Total Archived"
@@ -355,6 +355,21 @@ export function SuppliersTab() {
                     tooltip="View status explanation"
                     frontTextColor="text-amber-500 dark:text-amber-400"
                     descriptionTextColor="text-amber-600 dark:text-amber-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-location-dot"
+                    header="Locations"
+                    data={String(new Set(archivedSuppliers.map(s => s.location).filter(Boolean)).size)}
+                    arrow="fa-solid fa-map-pin"
+                    description="Distinct locations"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Supplier Locations"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Locations: ${Array.from(new Set(archivedSuppliers.map(s => s.location).filter(Boolean))).join(', ') || 'None'}`}
+                    tooltip="View location details"
+                    frontTextColor="text-blue-500 dark:text-blue-400"
+                    descriptionTextColor="text-blue-600 dark:text-blue-400"
                 />
             </div>
 

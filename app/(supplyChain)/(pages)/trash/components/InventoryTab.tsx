@@ -264,7 +264,7 @@ export function InventoryTab() {
     return (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-boxes-stacked"
                     header="Total Archived"
@@ -308,6 +308,21 @@ export function InventoryTab() {
                     tooltip="View stock details"
                     frontTextColor="text-emerald-500 dark:text-emerald-400"
                     descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-scale-balanced"
+                    header="Unit Types"
+                    data={String(new Set(archivedItems.map(item => item.unit).filter(Boolean)).size)}
+                    arrow="fa-solid fa-ruler-combined"
+                    description="Measurement units"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Unit Breakdown"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Units: ${Array.from(new Set(archivedItems.map(item => item.unit).filter(Boolean))).join(', ') || 'None'}`}
+                    tooltip="View unit types"
+                    frontTextColor="text-blue-500 dark:text-blue-400"
+                    descriptionTextColor="text-blue-600 dark:text-blue-400"
                 />
             </div>
 

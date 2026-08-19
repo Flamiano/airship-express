@@ -333,7 +333,7 @@ export function PurchaseOrdersTab() {
     return (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-file-invoice"
                     header="Total Archived"
@@ -377,6 +377,21 @@ export function PurchaseOrdersTab() {
                     tooltip="View status categories"
                     frontTextColor="text-purple-500 dark:text-purple-400"
                     descriptionTextColor="text-purple-600 dark:text-purple-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-handshake"
+                    header="Suppliers"
+                    data={String(new Set(archivedPurchaseOrders.map(po => po.supplier_name).filter(Boolean)).size)}
+                    arrow="fa-solid fa-building"
+                    description="Distinct suppliers"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Supplier Summary"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Suppliers: ${Array.from(new Set(archivedPurchaseOrders.map(po => po.supplier_name).filter(Boolean))).join(', ') || 'None'}`}
+                    tooltip="View supplier details"
+                    frontTextColor="text-blue-500 dark:text-blue-400"
+                    descriptionTextColor="text-blue-600 dark:text-blue-400"
                 />
             </div>
 

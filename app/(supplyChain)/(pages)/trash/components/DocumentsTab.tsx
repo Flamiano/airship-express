@@ -390,7 +390,7 @@ export function DocumentsTab() {
     return (
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-file-archive"
                     header="Total Archived"
@@ -434,6 +434,21 @@ export function DocumentsTab() {
                     tooltip="View storage allocation"
                     frontTextColor="text-blue-500 dark:text-blue-400"
                     descriptionTextColor="text-blue-600 dark:text-blue-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-handshake"
+                    header="Linked Suppliers"
+                    data={String(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean)).size)}
+                    arrow="fa-solid fa-building"
+                    description="Associated suppliers"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Supplier Links"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Suppliers: ${Array.from(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean))).join(', ') || 'None'}`}
+                    tooltip="View associated suppliers"
+                    frontTextColor="text-amber-500 dark:text-amber-400"
+                    descriptionTextColor="text-amber-600 dark:text-amber-400"
                 />
             </div>
 
