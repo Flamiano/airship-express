@@ -5,7 +5,7 @@ import GlobalFooter from "../components/GlobalFooter";
 import RoleRestricted from "../components/RoleRestricted";
 
 import { useEffect, useMemo, useState } from "react";
-import { getDashboardSnapshot } from "../lib/api";
+import { createVehicle, getDashboardSnapshot } from "../lib/api";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -33,7 +33,7 @@ type DashboardSnapshot = {
     bookings?: number;
     drivers?: number;
   };
-  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; fuel_level?: number }>;
+  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; fuel_level?: number; driver?: string; location?: string }>;
   trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; destination?: string }>;
 };
 
@@ -117,6 +117,22 @@ export default function FvmOverviewPage() {
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "maintenance" | "idle">("all");
   const [quickAlertDismissed, setQuickAlertDismissed] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [vehicleForm, setVehicleForm] = useState({
+    id: "",
+    plateNumber: "",
+    vehicleType: "",
+    status: "Active",
+    driver: "",
+    location: "",
+    capacityKg: "",
+    fuelEfficiency: "",
+    mileage: "",
+    lastService: "",
+    nextService: "",
+  });
+  const [vehicleSubmitError, setVehicleSubmitError] = useState("");
+  const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
 
   const handleExportReport = () => {
     setShowExportNotice(true);
@@ -145,6 +161,48 @@ export default function FvmOverviewPage() {
   const activeRoutes = trips.filter((trip) => isInTransitStatus(trip.status)).length;
   const maintenanceCount = vehicles.filter((vehicle) => /maintenance|service|repair/i.test(vehicle.status || "")).length;
   const idleCount = Math.max(0, totalVehicles - activeRoutes - maintenanceCount);
+
+  const nextVehicleId = () => {
+    const highestNumber = vehicles.reduce((highest, vehicle) => {
+      const match = String(vehicle.id || "").match(/(\d+)$/);
+      return match ? Math.max(highest, Number(match[1])) : highest;
+    }, 0);
+    return `TRK-${String(highestNumber + 1).padStart(3, "0")}`;
+  };
+
+  const openAddVehicle = () => {
+    setVehicleSubmitError("");
+    setVehicleForm((current) => ({ ...current, id: current.id || nextVehicleId() }));
+    setShowAddVehicle(true);
+  };
+
+  const handleAddVehicle = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setVehicleSubmitError("");
+    setVehicleSubmitting(true);
+    try {
+      await createVehicle({
+        id: vehicleForm.id.trim(),
+        plate_number: vehicleForm.plateNumber.trim(),
+        vehicle_type: vehicleForm.vehicleType.trim(),
+        status: vehicleForm.status,
+        driver: vehicleForm.driver.trim() || null,
+        location: vehicleForm.location.trim() || null,
+        capacity_kg: vehicleForm.capacityKg ? Number(vehicleForm.capacityKg) : null,
+        fuel_efficiency: vehicleForm.fuelEfficiency ? Number(vehicleForm.fuelEfficiency) : null,
+        mileage: vehicleForm.mileage ? Number(vehicleForm.mileage) : null,
+        last_service: vehicleForm.lastService || null,
+        next_service: vehicleForm.nextService || null,
+      });
+      setShowAddVehicle(false);
+      setVehicleForm((current) => ({ ...current, id: "", plateNumber: "", vehicleType: "", driver: "", location: "", capacityKg: "", fuelEfficiency: "", mileage: "", lastService: "", nextService: "" }));
+      window.location.reload();
+    } catch (error) {
+      setVehicleSubmitError(error instanceof Error ? error.message : "Unable to add vehicle.");
+    } finally {
+      setVehicleSubmitting(false);
+    }
+  };
   
   const fleetActivityTrend = useMemo(() => buildFleetActivityTrend(trips, vehicles), [trips, vehicles]);
   const fleetPerformanceRadar = useMemo(() => buildFleetPerformanceRadar(trips, vehicles), [trips, vehicles]);
@@ -241,6 +299,14 @@ export default function FvmOverviewPage() {
                 </button>
               ))}
             </div>
+
+            <button
+              onClick={openAddVehicle}
+              className="flex items-center gap-1.5 bg-pink-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-pink-700 transition-all shadow-sm cursor-pointer active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              Add Vehicle
+            </button>
 
             <button
               onClick={handleExportReport}
@@ -632,6 +698,74 @@ export default function FvmOverviewPage() {
 
         </div>
       </main>
+
+        {showAddVehicle && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4" onClick={() => !vehicleSubmitting && setShowAddVehicle(false)}>
+            <form onSubmit={handleAddVehicle} onClick={(event) => event.stopPropagation()} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-pink-600">Fleet onboarding</p>
+                  <h2 className="mt-1 text-2xl font-black text-slate-900">Add Company Vehicle</h2>
+                  <p className="mt-1 text-sm text-slate-500">Register the vehicle once and make it available across fleet operations.</p>
+                </div>
+                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full p-2 text-slate-500 hover:bg-pink-50" aria-label="Close">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {([
+                  ["id", "Vehicle ID", "TRK-015", "text", true],
+                  ["plateNumber", "Plate Number", "ABC-1234", "text", true],
+                  ["vehicleType", "Vehicle Type", "Truck, van, or pickup", "text", true],
+                  ["status", "Initial Status", "", "select", true],
+                  ["driver", "Assigned Driver", "Optional", "text", false],
+                  ["location", "Current Location", "Manila Hub", "text", false],
+                  ["capacityKg", "Capacity (kg)", "1500", "number", false],
+                  ["fuelEfficiency", "Fuel Efficiency (km/L)", "8.5", "number", false],
+                  ["mileage", "Mileage (km)", "0", "number", false],
+                  ["lastService", "Last Service", "", "date", false],
+                  ["nextService", "Next Service", "", "date", false],
+                ] as const).map(([field, label, placeholder, inputType, required]) => (
+                  <label key={field} className="text-xs font-bold text-slate-700">
+                    {label}
+                    {inputType === "select" ? (
+                      <select
+                        value={vehicleForm.status}
+                        onChange={(event) => setVehicleForm((current) => ({ ...current, status: event.target.value }))}
+                        className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-100"
+                      >
+                        <option>Active</option>
+                        <option>Idle</option>
+                        <option>Maintenance</option>
+                      </select>
+                    ) : (
+                      <input
+                        required={required}
+                        type={inputType}
+                        min={inputType === "number" ? "0" : undefined}
+                        step={field === "fuelEfficiency" ? "0.1" : "1"}
+                        placeholder={placeholder}
+                        value={vehicleForm[field]}
+                        onChange={(event) => setVehicleForm((current) => ({ ...current, [field]: event.target.value }))}
+                        className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-100"
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+
+              <p className="mt-4 text-xs text-slate-500">Vehicle ID is automatically suggested from the next available fleet number. You can change it before saving.</p>
+              {vehicleSubmitError && <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{vehicleSubmitError}</p>}
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={vehicleSubmitting} className="rounded-full bg-pink-600 px-5 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {vehicleSubmitting ? "Registering..." : "Register Vehicle"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <GlobalFooter />
       </div>

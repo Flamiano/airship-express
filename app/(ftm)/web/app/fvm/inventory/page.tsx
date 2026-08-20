@@ -3,7 +3,7 @@
 import GlobalFooter from "../../components/GlobalFooter";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import RoleRestricted from "../../components/RoleRestricted";
-import { createVehicle, getInventoryItems } from "../../lib/api";
+import { getInventoryItems } from "../../lib/api";
 import { useEffect, useMemo, useState } from "react";
 
 const vehicleKeywords = ["vehicle", "car", "truck", "bus", "van", "motor", "engine", "tire", "brake", "battery", "filter", "sensor", "wheel", "fuel", "axle", "belt", "hose", "oil", "spark", "radiator", "shock", "lamp", "mirror", "wiper", "part", "component", "assembly", "kit", "spare"];
@@ -65,10 +65,6 @@ export default function FvmInventoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [showAddVehicle, setShowAddVehicle] = useState(false);
-  const [vehicleForm, setVehicleForm] = useState({ id: "", plateNumber: "", vehicleType: "", capacityKg: "", fuelEfficiency: "", mileage: "" });
-  const [vehicleSubmitError, setVehicleSubmitError] = useState("");
-  const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
   const pageSize = 8;
 
   useEffect(() => {
@@ -221,30 +217,6 @@ export default function FvmInventoryPage() {
 
   const toggleLastServiceSort = () => setLastServiceSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
 
-  const handleAddVehicle = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setVehicleSubmitError("");
-    setVehicleSubmitting(true);
-    try {
-      await createVehicle({
-        id: vehicleForm.id.trim(),
-        plate_number: vehicleForm.plateNumber.trim(),
-        vehicle_type: vehicleForm.vehicleType.trim(),
-        capacity_kg: vehicleForm.capacityKg ? Number(vehicleForm.capacityKg) : null,
-        fuel_efficiency: vehicleForm.fuelEfficiency ? Number(vehicleForm.fuelEfficiency) : null,
-        mileage: vehicleForm.mileage ? Number(vehicleForm.mileage) : null,
-        status: "Active",
-      });
-      setShowAddVehicle(false);
-      setVehicleForm({ id: "", plateNumber: "", vehicleType: "", capacityKg: "", fuelEfficiency: "", mileage: "" });
-      window.location.reload();
-    } catch (error) {
-      setVehicleSubmitError(error instanceof Error ? error.message : "Unable to add vehicle.");
-    } finally {
-      setVehicleSubmitting(false);
-    }
-  };
-
   // Metric Calculations for Summary Cards & Mini-Charts
   const totalCount = vessels.length;
   const vehiclePartsCount = vessels.filter((v) => isVehicleRelatedText(`${v.category ?? ""} ${v.model ?? ""}`)).length;
@@ -281,16 +253,6 @@ export default function FvmInventoryPage() {
                 className="bg-white border border-[#b80049]/20 rounded-full py-2 pl-9 pr-4 text-sm text-[#141d23] focus:outline-none focus:ring-2 focus:ring-[#b80049] w-full lg:w-64"
               />
             </div>
-            <button
-              onClick={() => {
-                setVehicleSubmitError("");
-                setShowAddVehicle(true);
-              }}
-              className="bg-[#b80049] text-white px-4 py-2.5 rounded-full hover:bg-[#8f0039] transition-all flex items-center justify-center gap-2 shadow-sm text-sm font-semibold"
-            >
-              <span className="material-symbols-outlined text-sm">add</span>
-              Add Vehicle
-            </button>
             <button
               onClick={() => window.location.reload()}
               className="bg-[#141d23] text-white p-2.5 rounded-full hover:bg-[#b80049] transition-all flex items-center justify-center shadow-sm"
@@ -553,60 +515,6 @@ export default function FvmInventoryPage() {
           </div>
         </div>
       </main>
-
-        {showAddVehicle && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4" onClick={() => !vehicleSubmitting && setShowAddVehicle(false)}>
-            <form
-              onSubmit={handleAddVehicle}
-              onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-[#b80049]">Fleet record</p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-[#141d23]">Add Vehicle</h2>
-                  <p className="mt-1 text-sm text-[#5b6b79]">Register a new company vehicle in the active fleet.</p>
-                </div>
-                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full p-2 text-[#5b6b79] hover:bg-[#fff7fc]" aria-label="Close">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {([
-                  ["id", "Vehicle ID", "TRK-015", true],
-                  ["plateNumber", "Plate Number", "ABC-1234", true],
-                  ["vehicleType", "Vehicle Type", "Truck or Van", true],
-                  ["capacityKg", "Capacity (kg)", "1500", false],
-                  ["fuelEfficiency", "Fuel Efficiency (km/L)", "8.5", false],
-                  ["mileage", "Mileage (km)", "42000", false],
-                ] as const).map(([field, label, placeholder, required]) => (
-                  <label key={field} className="text-sm font-semibold text-[#141d23]">
-                    {label}
-                    <input
-                      required={required}
-                      type={field === "id" || field === "plateNumber" || field === "vehicleType" ? "text" : "number"}
-                      min={field === "id" || field === "plateNumber" || field === "vehicleType" ? undefined : "0"}
-                      step={field === "fuelEfficiency" ? "0.1" : "1"}
-                      placeholder={placeholder}
-                      value={vehicleForm[field]}
-                      onChange={(event) => setVehicleForm((current) => ({ ...current, [field]: event.target.value }))}
-                      className="mt-1.5 w-full rounded-xl border border-[#b80049]/20 px-3 py-2.5 font-normal outline-none focus:border-[#b80049] focus:ring-2 focus:ring-[#b80049]/15"
-                    />
-                  </label>
-                ))}
-              </div>
-
-              {vehicleSubmitError && <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{vehicleSubmitError}</p>}
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-[#5b6b79] hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={vehicleSubmitting} className="rounded-full bg-[#b80049] px-5 py-2 text-sm font-semibold text-white hover:bg-[#8f0039] disabled:cursor-not-allowed disabled:opacity-60">
-                  {vehicleSubmitting ? "Saving..." : "Save Vehicle"}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
 
       <GlobalFooter />
     </div>
