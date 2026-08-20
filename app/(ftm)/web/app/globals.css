@@ -1,0 +1,618 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #fcfbf9;
+  --foreground: #1c1b1f;
+
+  --color-ink: #1c1b1f;
+  --color-muted: #6b6b76;
+  --color-accent: #e5167e;
+  --color-accent-dark: #b3115f;
+  --color-paper: #fcfbf9;
+  --color-line: #eaeaea;
+
+  /* Derived tokens for UI semantics */
+  --on-primary: #ffffff;
+  --primary-container: rgba(229,22,126,0.12);
+  --primary-container-20: rgba(229,22,126,0.2);
+  --surface-container: #ffffff;
+  --surface-container-low: #fbfaf9;
+  --surface-container-lowest: #fcfbf9;
+
+  --font-bricolage: "Bricolage Grotesque", sans-serif;
+  --font-rethink: "Rethink Sans", sans-serif;
+}
+
+.dark {
+  --background: #05060a;
+  --foreground: #e6eef8;
+
+  --color-ink: #e6eef8;
+  --color-muted: #7b8aa0;
+  --color-accent: #e5167e;
+  --color-accent-dark: #b3115f;
+  --color-paper: #111827;
+  --color-line: #0f1724;
+
+  /* Dark-mode derived tokens */
+  --on-primary: #000000;
+  --primary-container: rgba(229,22,126,0.12);
+  --primary-container-20: rgba(229,22,126,0.22);
+  --surface-container: #06070b;
+  --surface-container-low: rgba(230,238,248,0.03);
+  --surface-container-lowest: #04050a;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+.dark body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.dark [class*="bg-white"] {
+  background-color: var(--color-paper) !important;
+}
+
+.dark [class*="bg-slate-50"] {
+  background-color: rgba(148, 163, 184, 0.08) !important;
+}
+
+.dark [class*="bg-slate-100"] {
+  background-color: rgba(148, 163, 184, 0.12) !important;
+}
+
+.dark [class*="bg-pink-50"] {
+  background-color: rgba(229, 22, 126, 0.08) !important;
+}
+
+.dark [class*="bg-pink-100"] {
+  background-color: rgba(229, 22, 126, 0.12) !important;
+}
+
+.dark [class*="bg-surface-container-lowest"] {
+  background-color: var(--color-paper) !important;
+}
+
+.dark [class*="bg-surface-container-low"] {
+  background-color: rgba(148, 163, 184, 0.08) !important;
+}
+
+.dark [class*="bg-surface-container"] {
+  background-color: rgba(148, 163, 184, 0.12) !important;
+}
+
+.dark [class*="bg-surface-container-high"] {
+  background-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.dark [class*="bg-surface-container-highest"] {
+  background-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+.dark [class*="bg-surface-variant"] {
+  background-color: rgba(148, 163, 184, 0.10) !important;
+}
+
+.dark [class*="text-on-surface"] {
+  color: var(--foreground) !important;
+}
+
+.dark [class*="text-on-surface-variant"] {
+  color: var(--color-muted) !important;
+}
+
+.dark [class*="border-outline-variant"] {
+  border-color: var(--color-line) !important;
+}
+
+.dark [class*="bg-[#fff7fc]"] ,
+.dark [class*="bg-[#fcf7fa]"] {
+  background-color: var(--color-paper) !important;
+}
+
+.dark [class*="text-[#141d23]"] ,
+.dark [class*="text-slate-900"] ,
+.dark [class*="text-slate-800"] {
+  color: var(--foreground) !important;
+}
+
+.dark [class*="text-slate-700"] ,
+.dark [class*="text-slate-600"] ,
+.dark [class*="text-[#5b6b79]"] {
+  color: var(--color-muted) !important;
+}
+
+.dark [class*="border-pink-200"] ,
+.dark [class*="border-pink-100"] ,
+.dark [class*="border-slate-200"] ,
+.dark [class*="border-slate-100"] ,
+.dark [class*="border-[#ec2188]"] {
+  border-color: var(--color-line) !important;
+}
+
+.dark [class*="shadow-sm"] ,
+.dark [class*="shadow-xl"] ,
+.dark [class*="shadow-[0_30px_80px_rgba(184,0,73,0.12)]"] ,
+.dark [class*="shadow-[0_8px_30px_rgba(184,0,73,0.08)]"] ,
+.dark [class*="shadow-[0_18px_45px_rgba(20,29,35,0.16)]"] {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22) !important;
+}
+
+/* Additional direct utility overrides for cost page elements */
+.dark .bg-slate-50 { background-color: var(--surface-container-low) !important; }
+.dark .bg-slate-100 { background-color: var(--surface-container-low) !important; }
+.dark .bg-white { background-color: var(--surface-container) !important; }
+.dark [class*="bg-[#fff7fc]"],
+.dark [class*="bg-[#fcf7fa]"] { background-color: var(--surface-container) !important; }
+
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark [class*="text-[#141d23]"] { color: var(--foreground) !important; }
+
+.dark .border-slate-200,
+.dark .border-slate-100,
+.dark .border-pink-100,
+.dark .border-pink-200 { border-color: var(--color-line) !important; }
+
+.dark .shadow-soft { box-shadow: 0 10px 30px rgba(15,23,42,0.18) !important; }
+
+html,
+body {
+  min-height: 100dvh;
+}
+
+.scroll-container.lenis {
+  scroll-behavior: auto;
+}
+
+.scroll-container.lenis.lenis-stopped {
+  overflow: hidden;
+}
+/* ── Airship Express — Leaflet map overrides ───────────────────────── */
+
+.leaflet-container {
+  font-family: var(--font-rethink), sans-serif;
+  background: transparent;
+}
+
+/* Semantic utility mappings (use CSS variables so components respond to .dark) */
+.bg-surface-container-lowest { background-color: var(--surface-container-lowest) !important; }
+.bg-surface-container-low { background-color: var(--surface-container-low) !important; }
+.bg-surface-container { background-color: var(--surface-container) !important; }
+.bg-surface-container-high { background-color: var(--surface-container) !important; }
+.bg-surface-container-highest { background-color: var(--surface-container) !important; }
+
+.text-on-surface { color: var(--foreground) !important; }
+.text-secondary { color: var(--color-muted) !important; }
+.text-primary { color: var(--color-accent) !important; }
+.text-on-primary { color: var(--on-primary) !important; }
+
+.border-outline-variant { border-color: var(--color-line) !important; }
+
+.bg-primary { background-color: var(--color-accent) !important; }
+.bg-primary-container { background-color: var(--primary-container) !important; }
+
+/* Custom semantic classes for SpecializedLogistics and other dashboard panels */
+.text-text { color: var(--foreground) !important; }
+.text-text-muted { color: var(--color-muted) !important; }
+.bg-surface { background-color: var(--surface-container) !important; }
+.bg-panel-gradient { background: linear-gradient(135deg, var(--surface-container-low), var(--surface-container)) !important; }
+.bg-brand { background-color: var(--color-accent) !important; }
+.text-brand { color: var(--color-accent) !important; }
+.bg-accent1 { background-color: #10b981 !important; }
+.text-accent1 { color: #10b981 !important; }
+.bg-border { background-color: var(--color-line) !important; }
+.text-border { color: var(--color-line) !important; }
+
+.panel {
+  background-color: var(--surface-container);
+  color: var(--foreground);
+}
+
+.panel-title {
+  color: var(--foreground);
+}
+
+.dark .panel {
+  background-color: var(--surface-container);
+  color: var(--foreground);
+}
+
+.dark .panel-title {
+  color: var(--foreground);
+}
+
+.data-value {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.dark .data-value {
+  color: var(--foreground);
+}
+
+/* Dark mode overrides for custom semantic classes */
+.dark .text-text { color: var(--foreground) !important; }
+.dark .text-text-muted { color: var(--color-muted) !important; }
+.dark .bg-surface { background-color: var(--surface-container) !important; }
+.dark .bg-panel-gradient { background: linear-gradient(135deg, var(--surface-container-low), var(--surface-container)) !important; }
+.dark .bg-brand { background-color: var(--color-accent) !important; }
+.dark .text-brand { color: var(--color-accent) !important; }
+.dark .bg-border { background-color: var(--color-line) !important; }
+.bg-primary-container\/20,
+[class*="bg-primary-container/20"] { background-color: var(--primary-container-20) !important; }
+.border-primary { border-color: var(--color-accent) !important; }
+.text-primary-container { color: var(--color-accent) !important; }
+
+/* Root / page-level tokens */
+.bg-background { background-color: var(--background) !important; }
+.text-on-background { color: var(--foreground) !important; }
+
+.airship-city-pin {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--pin-color, #e5167e);
+  border: 2.5px solid #fff;
+  box-shadow: 0 2px 6px rgba(28, 27, 31, 0.3);
+}
+
+.airship-hq-pin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: #1c1b1f;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(28, 27, 31, 0.35);
+}
+
+.airship-hq-pin-pulse {
+  position: absolute;
+  inset: -8px;
+  border-radius: 9999px;
+  background: rgba(229, 22, 126, 0.35);
+  animation: airship-pulse 2s ease-out infinite;
+}
+
+@keyframes airship-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  box-shadow: 0 12px 30px -10px rgba(28, 27, 31, 0.3);
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px;
+}
+
+.airship-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-rethink), sans-serif;
+}
+
+.airship-popup-code {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.airship-popup-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.airship-popup-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 8px 20px -8px rgba(28, 27, 31, 0.3) !important;
+  overflow: hidden;
+  border-radius: 10px !important;
+}
+
+.leaflet-control-zoom a {
+  background: #fcfbf9 !important;
+  color: #1c1b1f !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: #e5167e !important;
+  color: #fff !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .scroll-container,
+  .scroll-container * {
+    cursor: none !important;
+  }
+}
+
+.cursor-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -24px;
+  pointer-events: none;
+  z-index: 99999 !important;
+  opacity: 0;
+  will-change: opacity;
+  transition: opacity 200ms ease;
+}
+
+.cursor-glow-tail,
+.cursor-glow-ring,
+.cursor-glow-dot {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  left: 50%;
+  top: 50%;
+}
+
+.cursor-glow-tail {
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(184, 0, 73, 0.32) 0%, rgba(184, 0, 73, 0.18) 28%, rgba(184, 0, 73, 0.07) 52%, transparent 72%);
+  filter: blur(5px);
+  opacity: 0.9;
+}
+
+.cursor-glow-ring {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(184, 0, 73, 0.58);
+  box-shadow: 0 0 0 5px rgba(184, 0, 73, 0.06);
+  transition: width 180ms ease, height 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.cursor-glow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #b80049;
+  box-shadow: 0 0 8px rgba(184, 0, 73, 0.65);
+}
+
+.cursor-glow-visible {
+  opacity: 1;
+}
+
+.cursor-glow-interactive .cursor-glow-ring {
+  width: 26px;
+  height: 26px;
+  border-color: rgba(184, 0, 73, 0.8);
+  box-shadow: 0 0 0 7px rgba(184, 0, 73, 0.06);
+}
+
+.cursor-glow-interactive .cursor-glow-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.cursor-glow-pressed .cursor-glow-ring {
+  width: 18px;
+  height: 18px;
+  border-color: rgba(184, 0, 73, 0.9);
+}
+
+.cursor-glow-pressed .cursor-glow-dot {
+  transform: scale(0.92);
+}
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .custom-cursor-hidden,
+  .custom-cursor-hidden * {
+    cursor: none !important;
+  }
+
+  /* keep native cursor for form controls to avoid custom cursor artifacts */
+  .custom-cursor-hidden select,
+  .custom-cursor-hidden input,
+  .custom-cursor-hidden textarea {
+    cursor: auto !important;
+  }
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .cursor-glow {
+    display: none;
+  }
+}
+
+.glass-card,
+.glass-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(228, 189, 194, 0.3);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.gauge-arc {
+  stroke-dasharray: 283;
+  stroke-dashoffset: 283;
+  animation: fillGauge 1.4s ease-out forwards;
+}
+@keyframes fillGauge {
+  to {
+    stroke-dashoffset: 16;
+  }
+}
+
+.bar-fill {
+  width: 0;
+  animation: fillBar 1s ease-out forwards;
+  animation-delay: 0.2s;
+}
+@keyframes fillBar {
+  to {
+    width: var(--target-width);
+  }
+}
+
+.pulse-dot {
+  animation: pulseDot 2s ease-in-out infinite;
+}
+@keyframes pulseDot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(184, 0, 73, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(184, 0, 73, 0);
+  }
+}
+/* ==========================================================================
+   LEAFLET MAP ANIMATIONS & GLOW EFFECTS
+   ========================================================================== */
+
+/* 1. Pulsing / Glowing Marker Container */
+.leaflet-glow-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Base glowing dot */
+.marker-pin-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 0 12px currentColor, inset 0 0 4px rgba(255, 255, 255, 0.8);
+  position: relative;
+  z-index: 2;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Radar ping / blinking aura ring */
+.marker-ping-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  margin-left: -14px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.6;
+  z-index: 1;
+  animation: leaflet-ping-pulse 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Fast blinking beacon badge for stop numbers */
+.marker-badge-pulse {
+  animation: leaflet-blink 1.2s ease-in-out infinite alternate;
+}
+
+/* 2. Keyframe Animations */
+@keyframes leaflet-ping-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  70%, 100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes leaflet-blink {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.92);
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+}
+
+/* 3. Flowing Route Polyline Animation */
+@keyframes leaflet-dash-stream {
+  from {
+    stroke-dashoffset: 40;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Flowing dash class applied to route polylines */
+.animated-route-flow {
+  stroke-dasharray: 8, 8;
+  animation: leaflet-dash-stream 1.2s linear infinite;
+}
+
+/* Glowing route halo filter */
+.glow-path-layer {
+  filter: drop-shadow(0px 0px 6px currentColor);
+  opacity: 0.85;
+}
+
+/* Smooth Leaflet Popup Transitions */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  backdrop-filter: blur(8px);
+}

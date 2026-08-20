@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Post selection to Taskade (clipboard)",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/scripts/taskade-post.js",
+        "--clipboard"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "No-op",
+			"type": "shell",
+			"command": "echo done",
+			"isBackground": false
+		}
+	]
+}

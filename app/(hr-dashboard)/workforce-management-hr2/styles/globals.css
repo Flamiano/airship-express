@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Brand palette.
+ * Neutral off-white / soft-gray surfaces (#FAFAFA / #F4F4F6), brand magenta
+ * accents (#E6007A), and charcoal primary text (#1A1A1E) instead of pure black.
+ */
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    @apply bg-pink-50 text-pink-950 antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+      Helvetica, Arial, sans-serif;
+  }
+
+  /* Scrollbars styled to match palette */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-pink-50;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-pink-200 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-pink-300;
+  }
+}
+
+@layer utilities {
+  .shadow-2xs {
+    box-shadow: 0 1px 2px 0 rgb(26 26 30 / 0.05);
+  }
+  .shadow-pink-200 {
+    --tw-shadow-color: #e5e7eb;
+  }
+
+  /* Simple modal entrance animation (replaces tailwindcss-animate dependency) */
+  @keyframes wf-fade-zoom {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .animate-modal {
+    animation: wf-fade-zoom 0.16s ease-out;
+  }
+}
