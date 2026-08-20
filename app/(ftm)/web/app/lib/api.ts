@@ -101,6 +101,13 @@ export async function getVehicles() {
   }
 }
 
+export async function createVehicle(payload: Record<string, unknown>) {
+  return fetchJson('/api/vehicles', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getBookings() {
   try {
     return await fetchJson('/api/bookings');
