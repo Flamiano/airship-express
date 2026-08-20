@@ -84,6 +84,10 @@ function isPermissionError(error) {
   return message.includes('permission denied') || message.includes('not authorized') || message.includes('rls') || message.includes('jwt');
 }
 
+function isInTransitStatus(status) {
+  return /in transit|in_transit|transit|assigned|scheduled|dispatch|moving|en route|active|delayed|late/i.test(String(status || ''));
+}
+
 function normalizeStopPoint(stop) {
   if (!stop) return null;
 
@@ -378,7 +382,7 @@ async function createTrip(req, res) {
   try {
     const bookingId = data?.booking_id;
     if (bookingId) {
-      const parcelStatus = data?.status === 'In Transit' ? 'in_transit' : 'assigned';
+      const parcelStatus = isInTransitStatus(data?.status) ? 'in_transit' : 'assigned';
       await updateRemoteParcelStatus(bookingId, parcelStatus);
     }
   } catch (e) {
@@ -469,7 +473,7 @@ async function updateTripStatus(req, res, status, progress) {
 
   const bookingId = data?.booking_id;
   if (bookingId) {
-    const parcelStatus = status === 'In Transit' ? 'in_transit' : status === 'Completed' ? 'delivered' : null;
+    const parcelStatus = isInTransitStatus(status) ? 'in_transit' : status === 'Completed' ? 'delivered' : null;
     if (parcelStatus) {
       await updateRemoteParcelStatus(bookingId, parcelStatus);
     }

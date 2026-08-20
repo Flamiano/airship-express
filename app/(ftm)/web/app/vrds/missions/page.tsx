@@ -447,7 +447,7 @@ export default function VrdsMissionsPage() {
   }, [DELIVERIES]);
 
   const critical = DELIVERIES.find((m) => m.status === "critical");
-  const others = DELIVERIES.filter((m) => m.status !== "critical");
+  const others = DELIVERIES.filter((m) => m.id !== critical?.id);
 
   // Courier colors for visual distinction on map
   const courierColors = useMemo(() => {
