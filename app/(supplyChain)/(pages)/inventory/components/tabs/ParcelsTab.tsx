@@ -9,6 +9,8 @@ import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 
+import { ParcelTrackingCard } from '../tracking/ParcelTrackingCard';
+
 interface ParcelsTabProps {
     parcels: Parcel[];
     groupedParcels: GroupedParcels[];
@@ -35,6 +37,7 @@ const STATUS_FLOW = [
     { key: 'ready_for_pickup', label: 'Ready for Pickup', icon: 'fa-check-circle', color: 'emerald' },
     { key: 'picked_up', label: 'Picked Up', icon: 'fa-truck', color: 'purple' },
     { key: 'in_transit', label: 'In Transit', icon: 'fa-truck-moving', color: 'indigo' },
+    { key: 'out_for_delivery', label: 'Out for Delivery', icon: 'fa-shipping-fast', color: 'pink' },
     { key: 'delivered', label: 'Delivered', icon: 'fa-home', color: 'green' },
 ];
 
@@ -44,6 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
     'ready_for_pickup': 'bg-emerald-500',
     'picked_up': 'bg-purple-500',
     'in_transit': 'bg-indigo-500',
+    'out_for_delivery': 'bg-pink-500',
     'delivered': 'bg-green-500',
 };
 
@@ -214,6 +218,7 @@ export function ParcelsTab({
                                 <option value="ready_for_pickup" className="dark:bg-slate-900">Ready</option>
                                 <option value="picked_up" className="dark:bg-slate-900">Picked Up</option>
                                 <option value="in_transit" className="dark:bg-slate-900">In Transit</option>
+                                <option value="out_for_delivery" className="dark:bg-slate-900">Out for Delivery</option>
                                 <option value="delivered" className="dark:bg-slate-900">Delivered</option>
                             </select>
                             <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none"></i>
@@ -392,7 +397,7 @@ export function ParcelsTab({
                         onClick={() => setShowModal(false)}
                     >
                         <div
-                            className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl dark:shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden transform transition-all duration-300 animate-in zoom-in-95 slide-in-from-bottom-4"
+                            className="bg-white dark:bg-slate-900 rounded-2xl max-w-3xl lg:max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl dark:shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden transform transition-all duration-300 animate-in zoom-in-95 slide-in-from-bottom-4"
                             onClick={(e) => e.stopPropagation()}
                         >
 
@@ -401,12 +406,14 @@ export function ParcelsTab({
                                 <div>
                                     <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
                                         <span className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-500 dark:text-pink-400 inline-flex items-center justify-center">
-                                            <i className="fas fa-box text-xs"></i>
+                                            <i className="fas fa-route text-xs"></i>
                                         </span>
-                                        Parcel Timeline
+                                        Parcel Delivery Tracking
                                     </h3>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
                                         <span>Tracking: <code className="font-mono font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/50">{selectedParcel.tracking_number}</code></span>
+                                        <span className="text-slate-300 dark:text-slate-700">•</span>
+                                        <span>Courier: <strong className="font-semibold text-slate-700 dark:text-slate-200">{selectedParcel.courier || 'Airship Express'}</strong></span>
                                         <span className="text-slate-300 dark:text-slate-700">•</span>
                                         <span>Barcode: <code className="font-mono font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/50">{selectedParcel.barcode}</code></span>
                                     </p>
@@ -421,7 +428,10 @@ export function ParcelsTab({
                             </div>
 
                             {/* Modal Scrollable Body */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/30 overscroll-contain">
+                            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/30 overscroll-contain">
+
+                                {/* Interactive Leaflet Delivery Tracking Map */}
+                                <ParcelTrackingCard parcel={selectedParcel} />
 
                                 {/* Overall Progress & Metadata Card */}
                                 <div className="p-5 bg-white dark:bg-slate-900/90 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4">
