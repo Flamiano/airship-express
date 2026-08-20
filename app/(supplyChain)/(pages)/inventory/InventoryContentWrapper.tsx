@@ -15,6 +15,7 @@ import { AddItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/m
 import { EditItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/EditItemModal';
 import { StockInModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockInModal';
 import { StockOutModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockOutModal';
+import { ScopedPORequestModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/ScopedPORequestModal';
 
 import { GroupedParcels, InventoryItem } from '@/app/(supplyChain)/(pages)/inventory/types';
 import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
@@ -75,8 +76,11 @@ export default function InventoryClient() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [showStockInModal, setShowStockInModal] = useState(false);
     const [showStockOutModal, setShowStockOutModal] = useState(false);
+    const [showScopedPOModal, setShowScopedPOModal] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [selectedItemForStock, setSelectedItemForStock] = useState<string>('');
+    const [selectedItemObjectForStock, setSelectedItemObjectForStock] = useState<InventoryItem | null>(null);
+    const [selectedItemForPO, setSelectedItemForPO] = useState<InventoryItem | null>(null);
 
     const [loading, setLoading] = useState(true);
     const [loadingInventory, setLoadingInventory] = useState(false);
@@ -353,9 +357,15 @@ export default function InventoryClient() {
         setShowEditModal(true);
     };
 
-    const openStockInModal = (itemName: string) => {
+    const openStockInModal = (itemName: string, itemObj?: InventoryItem) => {
         setSelectedItemForStock(itemName);
+        setSelectedItemObjectForStock(itemObj || inventoryItems.find(i => i.item_name === itemName) || null);
         setShowStockInModal(true);
+    };
+
+    const openScopedPOModal = (item: InventoryItem) => {
+        setSelectedItemForPO(item);
+        setShowScopedPOModal(true);
     };
 
     const handleCategoryClick = (category: string) => {
@@ -454,6 +464,7 @@ export default function InventoryClient() {
                 onEdit={openEditModal}
                 onDelete={handleDeleteItem}
                 onStockIn={openStockInModal}
+                onOrderPO={openScopedPOModal}
                 onStockOut={(itemName) => {
                     setSelectedItemForStock(itemName);
                     setShowStockOutModal(true);
@@ -617,11 +628,31 @@ export default function InventoryClient() {
                 onClose={() => {
                     setShowStockInModal(false);
                     setSelectedItemForStock('');
+                    setSelectedItemObjectForStock(null);
                 }}
                 onStockIn={handleStockIn}
+                onSuccess={() => {
+                    fetchDashboardData();
+                    fetchInventoryData(false);
+                }}
                 inventoryItems={inventoryItems}
                 preSelectedItem={selectedItemForStock}
+                targetItem={selectedItemObjectForStock}
                 loading={saving}
+            />
+
+            <ScopedPORequestModal
+                isOpen={showScopedPOModal}
+                onClose={() => {
+                    setShowScopedPOModal(false);
+                    setSelectedItemForPO(null);
+                }}
+                item={selectedItemForPO}
+                suppliers={suppliers}
+                onSuccess={() => {
+                    fetchDashboardData();
+                    fetchInventoryData(false);
+                }}
             />
 
             <StockOutModal

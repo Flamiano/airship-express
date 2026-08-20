@@ -6,6 +6,23 @@ import { headers } from 'next/headers';
 import { isRateLimited } from '@/app/(supplyChain)/components/global/rateLimit';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 
+export interface LatestPOInfo {
+    poi_id?: string;
+    purchase_order_id?: string;
+    po_number?: string;
+    status?: string;
+    paid?: boolean;
+    fully_received?: boolean;
+    quantity_ordered?: number;
+    quantity_received?: number;
+    unit_price?: number;
+    supplier_name?: string;
+    delivery_date?: string;
+    is_request?: boolean;
+    request_number?: string;
+    request_id?: string;
+}
+
 // types
 export interface InventoryItem {
     id: string;
@@ -22,6 +39,11 @@ export interface InventoryItem {
     supplier?: string;
     purchase_price?: number;
     created_at?: string;
+    latest_po?: LatestPOInfo | null;
+    force_updated_by?: string | null;
+    force_updated_by_name?: string | null;
+    force_updated_at?: string | null;
+    force_reason?: string | null;
 }
 
 export interface Parcel {
@@ -50,6 +72,153 @@ export interface Supplier {
     email: string;
     location: string;
     is_active: boolean;
+}
+
+/**
+ * Attaches the latest PO / PO item or pending PR info to each inventory item
+ */
+async function attachLatestPOToItems(items: any[]) {
+    if (!items || items.length === 0) return items;
+
+    const itemIds = items.map(item => item.id).filter(Boolean);
+
+    try {
+        // 1. Fetch latest POIs for these items
+        const { data: poiData } = await supabase
+            .from('purchase_order_items')
+            .select(`
+                id,
+                purchase_order_id,
+                inventory_item_id,
+                item_name,
+                quantity_ordered,
+                quantity_received,
+                unit_price,
+                stocked_in_at,
+                purchase_orders (
+                    id,
+                    po_number,
+                    status,
+                    paid,
+                    fully_received,
+                    supplier_name,
+                    delivery_date,
+                    created_at
+                )
+            `)
+            .in('inventory_item_id', itemIds)
+            .order('created_at', { ascending: false });
+
+        // Map PO by item id (first occurrence is latest due to ordering)
+        const latestPoMap = new Map<string, LatestPOInfo>();
+
+        if (poiData) {
+            for (const poi of poiData) {
+                const key = String(poi.inventory_item_id);
+                if (!latestPoMap.has(key)) {
+                    const po = (poi as any).purchase_orders;
+                    latestPoMap.set(key, {
+                        poi_id: poi.id,
+                        purchase_order_id: poi.purchase_order_id,
+                        po_number: po?.po_number,
+                        status: po?.status,
+                        paid: po?.paid,
+                        fully_received: po?.fully_received,
+                        quantity_ordered: poi.quantity_ordered,
+                        quantity_received: poi.quantity_received,
+                        unit_price: poi.unit_price,
+                        supplier_name: po?.supplier_name,
+                        delivery_date: po?.delivery_date,
+                        is_request: false,
+                    });
+                }
+            }
+        }
+
+        // 2. For items with no PO yet, check pending purchase_requests
+        const itemsWithoutPo = items.filter(item => !latestPoMap.has(String(item.id)));
+
+        if (itemsWithoutPo.length > 0) {
+            const { data: prData } = await supabase
+                .from('purchase_requests')
+                .select('id, request_number, status, supplier_name, items, created_at')
+                .in('status', ['Pending', 'Approved'])
+                .order('created_at', { ascending: false });
+
+            if (prData && prData.length > 0) {
+                for (const item of itemsWithoutPo) {
+                    const key = String(item.id);
+                    if (latestPoMap.has(key)) continue;
+
+                    for (const pr of prData) {
+                        const prItems = Array.isArray(pr.items) ? pr.items : [];
+                        const matchingItem = prItems.find((pi: any) =>
+                            String(pi.inventory_item_id) === String(item.id) ||
+                            (pi.name && pi.name.toLowerCase() === item.item_name?.toLowerCase()) ||
+                            (pi.item_name && pi.item_name.toLowerCase() === item.item_name?.toLowerCase())
+                        );
+
+                        if (matchingItem) {
+                            latestPoMap.set(key, {
+                                is_request: true,
+                                request_id: pr.id,
+                                request_number: pr.request_number,
+                                status: pr.status,
+                                supplier_name: pr.supplier_name,
+                                quantity_ordered: matchingItem.quantity || 0,
+                                quantity_received: 0,
+                                unit_price: matchingItem.unit_price || 0,
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return items.map(item => ({
+            ...item,
+            latest_po: latestPoMap.get(String(item.id)) || null,
+        }));
+    } catch (err) {
+        console.warn('Error attaching latest PO to items:', err);
+        return items;
+    }
+}
+
+/**
+ * Attaches the display name/email of the user who performed a force update
+ */
+async function attachForceUpdateDetails(items: any[]) {
+    if (!items || items.length === 0) return items;
+
+    const userIds = items
+        .map(i => i.force_updated_by)
+        .filter((id): id is string => Boolean(id) && typeof id === 'string');
+
+    if (userIds.length === 0) return items;
+
+    try {
+        const { data: usersData } = await supabase
+            .from('users')
+            .select('id, display_name, email, role')
+            .in('id', userIds);
+
+        const userMap = new Map<string, string>();
+        if (usersData) {
+            for (const u of usersData) {
+                userMap.set(u.id, u.display_name || u.email || 'Admin');
+            }
+        }
+
+        return items.map(item => ({
+            ...item,
+            force_updated_by_name: item.force_updated_by ? (userMap.get(item.force_updated_by) || 'Admin') : null,
+        }));
+    } catch (err) {
+        console.warn('Error attaching force update details:', err);
+        return items;
+    }
 }
 
 // get inventory items with pagination and filters
@@ -105,10 +274,14 @@ export async function fetchInventoryItems(params: {
 
         if (error) throw error;
 
+        // Enrich items with latest PO / POI and PR tracking
+        const itemsWithPo = await attachLatestPOToItems(data || []);
+        const enrichedItems = await attachForceUpdateDetails(itemsWithPo);
+
         return {
             success: true,
             data: {
-                items: data || [],
+                items: enrichedItems,
                 totalItems: totalCount || 0,
                 page,
                 limit,

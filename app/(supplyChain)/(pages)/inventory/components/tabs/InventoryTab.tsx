@@ -3,7 +3,6 @@
 'use client';
 
 import { InventoryItem } from '../../types';
-import { getStatusBadge } from '../../utils/helpers';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
@@ -28,9 +27,10 @@ interface InventoryTabProps {
     onClearFilters: () => void;
     onEdit: (item: InventoryItem) => void;
     onDelete: (id: string, name: string) => void;
-    onStockIn: (itemName: string) => void;
+    onStockIn: (itemName: string, item?: InventoryItem) => void;
     onStockOut: (itemName: string) => void;
     onAddItem: () => void;
+    onOrderPO?: (item: InventoryItem) => void;
 }
 
 export function InventoryTab({
@@ -56,6 +56,7 @@ export function InventoryTab({
     onStockIn,
     onStockOut,
     onAddItem,
+    onOrderPO,
 }: InventoryTabProps) {
     const allSelected = items.length > 0 && selectedIds.size === items.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < items.length;
@@ -110,23 +111,22 @@ export function InventoryTab({
                 </div>
 
                 <button
-                    className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-500/10 active:scale-95 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5"
+                    className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-500/10 active:scale-95 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
                     onClick={onClearFilters}
                 >
-                    <i className="fas fa-times text-[11px]"></i>
-                    Clear filters
+                    <i className="fas fa-rotate-left text-[10px]"></i>
+                    <span>Reset</span>
                 </button>
             </div>
 
-            {/* Scrollable Table Container - Only this scrolls */}
-            <div className="flex-1 overflow-y-auto max-h-[500px] relative">
-
+            {/* Scrollable Table Container */}
+            <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[560px] relative">
                 {isLoading && <TableContentLoader />}
 
-                <table className="table-pro p-1">
-                    <thead>
+                <table className="w-full border-collapse text-left">
+                    <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider select-none">
                         <tr>
-                            <th className="w-10 text-center">
+                            <th className="w-10 px-3.5 py-3 text-center">
                                 <input
                                     type="checkbox"
                                     checked={allSelected}
@@ -139,39 +139,52 @@ export function InventoryTab({
                                     className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 transition-colors"
                                 />
                             </th>
-                            <th className="w-12">#</th>
-                            <th>Item Name</th>
-                            <th>Category</th>
-                            <th>Stock</th>
-                            <th>Status</th>
-                            <th className="text-right">Actions</th>
+                            <th className="w-10 px-2 py-3">#</th>
+                            <th className="px-4 py-3 min-w-[200px]">Item Information</th>
+                            <th className="px-3.5 py-3 min-w-[130px]">Category</th>
+                            <th className="px-3.5 py-3 min-w-[110px]">Stock Level</th>
+                            <th className="px-3.5 py-3 min-w-[110px]">Status</th>
+                            <th className="px-4 py-3 min-w-[180px]">Latest PO / Request</th>
+                            <th className="px-4 py-3 min-w-[200px]">Audit / Overrides</th>
+                            <th className="px-4 py-3 text-right min-w-[170px]">Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                         {items.length === 0 ? (
                             <tr>
-                                <td colSpan={7} className="py-16 text-center text-slate-400 dark:text-slate-500">
-                                    <div className="flex flex-col items-center justify-center gap-2.5">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-inner">
-                                            <i className="fas fa-box-open text-xl"></i>
+                                <td colSpan={9} className="py-20 text-center text-slate-400 dark:text-slate-500">
+                                    <div className="flex flex-col items-center justify-center gap-3">
+                                        <div className="w-14 h-14 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-inner">
+                                            <i className="fas fa-box-open text-2xl"></i>
                                         </div>
-                                        <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">No inventory items found</p>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs">Try adjusting your active filters or search parameters</p>
+                                        <div>
+                                            <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">No inventory items found</p>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Try adjusting your search keywords or active filters</p>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
                         ) : (
                             items.map((item, index) => {
                                 const isSelected = selectedIds.has(item.id);
+                                const po = item.latest_po;
+                                const isDelivered = po?.status === 'Delivered';
+                                const hasReceivableStock = isDelivered && ((po?.quantity_received || 0) < (po?.quantity_ordered || 0));
+                                const isForced = Boolean(item.force_updated_at || item.force_updated_by || item.force_reason);
+
+                                const isStockCritical = item.current_stock === 0;
+                                const isStockLow = item.current_stock > 0 && item.current_stock <= (item.minimum_stock || 10);
+
                                 return (
                                     <tr
                                         key={item.id}
                                         className={`transition-colors duration-150 group ${isSelected
-                                            ? 'bg-pink-50/50 dark:bg-pink-500/10'
-                                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                                            ? 'bg-pink-50/40 dark:bg-pink-950/20'
+                                            : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
                                             }`}
                                     >
-                                        <td data-label="" className="text-center">
+                                        {/* Checkbox */}
+                                        <td className="px-3.5 py-3 text-center">
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
@@ -179,30 +192,91 @@ export function InventoryTab({
                                                 className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 transition-colors"
                                             />
                                         </td>
-                                        <td data-label="#" className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">
+
+                                        {/* Row Index */}
+                                        <td className="px-2 py-3 text-slate-400 dark:text-slate-500 font-mono text-[11px]">
                                             {(currentPage - 1) * itemsPerPage + index + 1}
                                         </td>
-                                        <td data-label="Item Name" className="text-slate-900 dark:text-slate-100 font-semibold whitespace-nowrap">
-                                            {item.item_name}
+
+                                        {/* Item Name & Item Code */}
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-900 dark:text-slate-100 hover:text-pink-600 transition-colors">
+                                                        {item.item_name}
+                                                    </span>
+                                                    {isForced && (
+                                                        <span
+                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700/60 shadow-2xs cursor-help"
+                                                            title={`OVERRIDE AUDIT:\n• Performed by: ${item.force_updated_by_name || 'Admin'}\n• Timestamp: ${item.force_updated_at ? new Date(item.force_updated_at).toLocaleString() : 'N/A'}\n• Reason: "${item.force_reason || 'Manual override'}"`}
+                                                        >
+                                                            <i className="fas fa-shield-halved text-[8px] text-amber-600 dark:text-amber-400"></i>
+                                                            <span>FORCED</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-[10px]">
+                                                    <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-700/50">
+                                                        {item.item_code}
+                                                    </span>
+                                                    {item.storage_location && (
+                                                        <span className="text-slate-400 flex items-center gap-1">
+                                                            <i className="fas fa-location-dot text-[8px]"></i>
+                                                            {item.storage_location}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </td>
-                                        <td data-label="Category" className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 text-[11px] font-medium border border-slate-200/60 dark:border-slate-700/50">
+
+                                        {/* Category */}
+                                        <td className="px-3.5 py-3 whitespace-nowrap">
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium border border-slate-200/60 dark:border-slate-700/50">
                                                 {item.category}
                                             </span>
                                         </td>
-                                        <td data-label="Stock" className="text-slate-900 dark:text-slate-100 font-bold whitespace-nowrap font-mono">
-                                            {item.current_stock}
+
+                                        {/* Stock Level */}
+                                        <td className="px-3.5 py-3 whitespace-nowrap">
+                                            <div className="space-y-0.5">
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className={`text-sm font-extrabold font-mono ${
+                                                        isStockCritical
+                                                            ? 'text-rose-600 dark:text-rose-400'
+                                                            : isStockLow
+                                                                ? 'text-amber-600 dark:text-amber-400'
+                                                                : 'text-slate-900 dark:text-slate-100'
+                                                    }`}>
+                                                        {item.current_stock}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400 font-medium">
+                                                        {item.unit}
+                                                    </span>
+                                                </div>
+                                                <span className="block text-[10px] text-slate-400 font-mono">
+                                                    Min: {item.minimum_stock || 10}
+                                                </span>
+                                            </div>
                                         </td>
-                                        <td data-label="Status" className="whitespace-nowrap">
+
+                                        {/* Status Badge */}
+                                        <td className="px-3.5 py-3 whitespace-nowrap">
                                             <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border
-                                    ${item.status === 'available'
-                                                        ? 'bg-emerald-100 text-emerald-700 border-emerald-600 dark:bg-emerald-500/40 dark:text-emerald-200 dark:border-emerald-800'
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                                                    item.status === 'available'
+                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/40'
                                                         : item.status === 'low-stock'
-                                                            ? 'bg-amber-100 text-amber-700 border-amber-600 dark:bg-amber-500/40 dark:text-amber-200 dark:border-amber-800'
-                                                            : 'bg-rose-100 text-rose-700 border-rose-600 dark:bg-rose-500/40 dark:text-rose-200 dark:border-rose-800'
-                                                    }`}
+                                                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/40'
+                                                            : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/40'
+                                                }`}
                                             >
+                                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                                    item.status === 'available'
+                                                        ? 'bg-emerald-500'
+                                                        : item.status === 'low-stock'
+                                                            ? 'bg-amber-500'
+                                                            : 'bg-rose-500'
+                                                }`}></span>
                                                 {item.status === 'available'
                                                     ? 'Available'
                                                     : item.status === 'low-stock'
@@ -210,40 +284,130 @@ export function InventoryTab({
                                                         : 'Out of Stock'}
                                             </span>
                                         </td>
-                                        <td data-label="Actions" className="text-right whitespace-nowrap">
+
+                                        {/* Latest PO / Request */}
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            {po ? (
+                                                po.is_request ? (
+                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40 shadow-2xs">
+                                                        <i className="fas fa-clock text-[10px] text-amber-500"></i>
+                                                        <span className="font-mono">{po.request_number}</span>
+                                                        <span className="text-[10px] opacity-75">({po.status})</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col space-y-1">
+                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
+                                                            isDelivered
+                                                                ? 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200/80 dark:border-pink-800/40'
+                                                                : po.status === 'Confirmed'
+                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/40'
+                                                                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/40'
+                                                        }`}>
+                                                            <i className={`fas ${isDelivered ? 'fa-truck-ramp-box' : 'fa-file-invoice'} text-[9px]`}></i>
+                                                            <span className="font-mono">{po.po_number}</span>
+                                                            <span>• {po.status}</span>
+                                                        </div>
+                                                        {po.quantity_ordered && po.quantity_ordered > 0 && (
+                                                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                                                <span className="font-bold text-slate-700 dark:text-slate-300">
+                                                                    {po.quantity_received || 0} / {po.quantity_ordered}
+                                                                </span>
+                                                                <span className="text-[9px] text-slate-400">received</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )
+                                            ) : (
+                                                <span className="text-slate-300 dark:text-slate-600 text-xs font-mono pl-2">-</span>
+                                            )}
+                                        </td>
+
+                                        {/* Audit / Overrides Column */}
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            {isForced ? (
+                                                <div className="p-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 space-y-1 max-w-[220px]">
+                                                    <div className="flex items-center gap-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 truncate">
+                                                        <i className="fas fa-user-shield text-[10px] text-amber-600 dark:text-amber-400 shrink-0"></i>
+                                                        <span className="truncate">{item.force_updated_by_name || 'Admin'}</span>
+                                                    </div>
+                                                    {item.force_updated_at && (
+                                                        <div className="text-[9px] text-slate-400 font-mono">
+                                                            {new Date(item.force_updated_at).toLocaleString([], {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit',
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                    {item.force_reason && (
+                                                        <p className="text-[10px] text-slate-600 dark:text-slate-300 italic truncate" title={item.force_reason}>
+                                                            "{item.force_reason}"
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-300 dark:text-slate-600 text-xs font-mono pl-2">-</span>
+                                            )}
+                                        </td>
+
+                                        {/* Actions */}
+                                        <td className="px-4 py-3 text-right whitespace-nowrap">
                                             <div className="flex items-center justify-end gap-1.5">
+                                                {/* Add / Request PO Button (2.1) */}
                                                 <button
-                                                    onClick={() => onStockIn(item.item_name)}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-500/10 hover:bg-emerald-100/70 dark:hover:bg-emerald-500/20 active:scale-95 rounded-lg transition-all border border-emerald-100 dark:border-emerald-500/20 shadow-2xs"
-                                                    title="Stock In"
+                                                    onClick={() => onOrderPO?.(item)}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 bg-pink-50 hover:bg-pink-100/80 dark:bg-pink-950/30 dark:hover:bg-pink-900/50 active:scale-95 rounded-xl transition-all border border-pink-200/80 dark:border-pink-800/40 shadow-2xs cursor-pointer"
+                                                    title="Order / Purchase Request"
                                                 >
-                                                    <i className="fas fa-arrow-down text-[10px]"></i>
+                                                    <i className="fas fa-cart-plus text-[10px]"></i>
+                                                    <span>Order</span>
+                                                </button>
+
+                                                {/* Stock In Button (2.3) */}
+                                                <button
+                                                    onClick={() => onStockIn(item.item_name, item)}
+                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold active:scale-95 rounded-xl transition-all shadow-2xs cursor-pointer ${
+                                                        hasReceivableStock
+                                                            ? 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/80 ring-2 ring-emerald-500/20'
+                                                            : 'bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/40'
+                                                    }`}
+                                                    title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
+                                                >
+                                                    {hasReceivableStock ? (
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                    ) : (
+                                                        <i className="fas fa-arrow-down text-[10px]"></i>
+                                                    )}
                                                     <span>In</span>
                                                 </button>
 
+                                                {/* Stock Out Button */}
                                                 <button
                                                     onClick={() => onStockOut(item.item_name)}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100/70 dark:hover:bg-amber-500/20 active:scale-95 rounded-lg transition-all border border-amber-100 dark:border-amber-500/20 shadow-2xs"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 dark:bg-amber-950/20 dark:hover:bg-amber-900/40 active:scale-95 rounded-xl transition-all border border-amber-200/70 dark:border-amber-800/40 shadow-2xs cursor-pointer"
                                                     title="Stock Out"
                                                 >
                                                     <i className="fas fa-arrow-up text-[10px]"></i>
                                                     <span>Out</span>
                                                 </button>
 
+                                                {/* Edit Button */}
                                                 <button
                                                     onClick={() => onEdit(item)}
-                                                    className="inline-flex items-center justify-center p-1.5 text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all active:scale-95"
+                                                    className="w-8 h-8 rounded-xl bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/60 dark:hover:bg-slate-700/60 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-all flex items-center justify-center active:scale-95 cursor-pointer"
                                                     title="Edit Item"
                                                 >
-                                                    <i className="fas fa-edit text-[11px]"></i>
+                                                    <i className="fas fa-pen-to-square text-xs"></i>
                                                 </button>
 
+                                                {/* Delete Button */}
                                                 <button
                                                     onClick={() => onDelete(item.id, item.item_name)}
-                                                    className="inline-flex items-center justify-center p-1.5 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-all active:scale-95"
+                                                    className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 text-rose-500 dark:text-rose-400 hover:text-rose-700 transition-all flex items-center justify-center active:scale-95 cursor-pointer"
                                                     title="Delete Item"
                                                 >
-                                                    <i className="fas fa-trash text-[11px]"></i>
+                                                    <i className="fas fa-trash-can text-xs"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -255,12 +419,12 @@ export function InventoryTab({
                 </table>
             </div>
 
-            {/* Pagination Bar - FIXED - Stays fixed */}
+            {/* Pagination Bar - FIXED */}
             <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/60 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Showing <span className="font-semibold text-slate-700 dark:text-slate-200">{startIndex}</span> to{' '}
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">{endIndex}</span> of{' '}
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">{totalItems}</span> items
+                    Showing <span className="font-bold text-slate-800 dark:text-slate-200">{startIndex}</span> to{' '}
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{endIndex}</span> of{' '}
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{totalItems}</span> items
                 </span>
                 <Pagination
                     currentPage={currentPage}

@@ -13,6 +13,23 @@ export interface Parcel {
     updated_at: string
 }
 
+export interface LatestPOInfo {
+    poi_id?: string;
+    purchase_order_id?: string;
+    po_number?: string;
+    status?: string; // 'Draft' | 'Sent' | 'Confirmed' | 'Delivered' | 'Cancelled' | 'Pending'
+    paid?: boolean;
+    fully_received?: boolean;
+    quantity_ordered?: number;
+    quantity_received?: number;
+    unit_price?: number;
+    supplier_name?: string;
+    is_request?: boolean;
+    request_number?: string;
+    request_id?: string;
+    delivery_date?: string;
+}
+
 export interface InventoryItem {
     id: string;
     item_code: string;
@@ -27,6 +44,11 @@ export interface InventoryItem {
     description?: string;
     supplier?: string;
     purchase_price?: number;
+    latest_po?: LatestPOInfo | null;
+    force_updated_by?: string | null;
+    force_updated_by_name?: string | null;
+    force_updated_at?: string | null;
+    force_reason?: string | null;
 }
 
 export interface Supplier {
