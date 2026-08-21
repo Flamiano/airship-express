@@ -49,7 +49,7 @@ export interface ExecutiveChartModalProps {
     maxDisplayCount?: number;
 }
 
-// Sanitize user input for safe string operations & prevent formula injection or malformed chars
+// sanitize search query input
 function sanitizeSearchQuery(input: string): string {
     if (!input) return "";
     return input
@@ -83,7 +83,7 @@ export default function ExecutiveChartModal({
     const [selectedFilter, setSelectedFilter] = useState("all");
     const [showAllItems, setShowAllItems] = useState(false);
 
-    // Debounce search input with 300ms delay & sanitize input
+    // debounce search query
     useEffect(() => {
         const timer = setTimeout(() => {
             const sanitized = sanitizeSearchQuery(rawSearchTerm);
@@ -93,7 +93,7 @@ export default function ExecutiveChartModal({
         return () => clearTimeout(timer);
     }, [rawSearchTerm]);
 
-    // Reset filters on open/close
+    // reset filters when modal opens
     useEffect(() => {
         if (isOpen) {
             setRawSearchTerm("");
@@ -103,7 +103,7 @@ export default function ExecutiveChartModal({
         }
     }, [isOpen]);
 
-    // Handle ESC key to close
+    // close modal on escape key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Escape" && isOpen) {
@@ -114,11 +114,10 @@ export default function ExecutiveChartModal({
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isOpen, onClose]);
 
-    // Compute automatic filter tags if none explicitly passed
+    // extract unique filter options
     const activeFilterOptions = useMemo(() => {
         if (filters.length > 0) return filters;
 
-        // Auto extract unique tags or categories from items
         const tagsMap = new Map<string, number>();
         items.forEach(item => {
             if (item.category) {
@@ -139,7 +138,7 @@ export default function ExecutiveChartModal({
         return list;
     }, [filters, items]);
 
-    // Filter items based on active debounced search & filter selection
+    // filter items by search and category
     const filteredItems = useMemo(() => {
         return items.filter(item => {
             const query = debouncedSearch.toLowerCase();
@@ -161,7 +160,7 @@ export default function ExecutiveChartModal({
         });
     }, [items, debouncedSearch, selectedFilter]);
 
-    // Limit displayed items to maxDisplayCount (default 15) unless showAllItems is toggled
+    // limit displayed items
     const displayedItems = useMemo(() => {
         if (showAllItems || filteredItems.length <= maxDisplayCount) {
             return filteredItems;

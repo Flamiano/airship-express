@@ -77,7 +77,7 @@ export function NotificationBell() {
         return `${CACHE_KEY_BASE}_${userEmail || 'anon'}`;
     }, [userEmail]);
 
-    // gets current user role and email from local storage
+    // get user role and email from storage
     useEffect(() => {
         if (typeof window !== 'undefined') {
             if (localStorage.getItem(LEGACY_CACHE_KEY)) {
@@ -91,7 +91,7 @@ export function NotificationBell() {
         }
     }, []);
 
-    // locks page scrolling while dropdown is open
+    // lock page scroll when dropdown is open
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
@@ -103,7 +103,7 @@ export function NotificationBell() {
         };
     }, [isOpen]);
 
-    // closes dropdown when clicking outside the panel
+    // close dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (
@@ -125,7 +125,7 @@ export function NotificationBell() {
         };
     }, [isOpen]);
 
-    // loads cached notifications to speed up initial render
+    // load cached notifications
     const loadCachedNotifications = useCallback(() => {
         try {
             const cached = localStorage.getItem(getCacheKey());
@@ -149,7 +149,7 @@ export function NotificationBell() {
         return false;
     }, [userRole, getCacheKey]);
 
-    // saves notifications list to local cache
+    // save notifications to cache
     const saveToCache = useCallback((data: Notification[]) => {
         try {
             localStorage.setItem(getCacheKey(), JSON.stringify({
@@ -161,7 +161,7 @@ export function NotificationBell() {
         }
     }, [getCacheKey]);
 
-    // counts unread notifications for current role
+    // count unread notifications
     const fetchUnreadCount = useCallback(async () => {
         try {
             const { count, error } = await supabase
@@ -179,7 +179,7 @@ export function NotificationBell() {
         }
     }, [userRole]);
 
-    // fetches paginated notifications from database
+    // fetch notifications with pagination
     const fetchNotifications = useCallback(async (pageNum: number, append: boolean = false) => {
         if (pageNum === 0) {
             setIsLoading(true);
@@ -248,7 +248,7 @@ export function NotificationBell() {
         }
     }, [userRole, saveToCache, fetchUnreadCount]);
 
-    // loads notifications on mount
+    // load initial notifications
     useEffect(() => {
         if (!userRole || !userEmail) return;
 
@@ -263,7 +263,7 @@ export function NotificationBell() {
         }
     }, [userRole, userEmail, loadCachedNotifications, fetchNotifications, fetchUnreadCount]);
 
-    // listens for realtime changes to the notifications table
+    // listen for realtime notification updates
     useEffect(() => {
         if (!userRole) return;
 
@@ -313,14 +313,14 @@ export function NotificationBell() {
 
     const handleMarkAsRead = async (id: string) => {
         try {
-            // updates notification read status in local state
+            // mark notification read in state
             setNotifications(prev => prev.map(n =>
                 n.id === id ? { ...n, is_read: true } : n
             ));
             setUnreadCount(prev => Math.max(0, prev - 1));
             setTotalUnread(prev => Math.max(0, prev - 1));
 
-            // marks notification as read in the database
+            // mark notification read in database
             const { error } = await supabase
                 .from('notifications')
                 .update({ is_read: true, read_at: new Date().toISOString() })
@@ -328,7 +328,7 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            // saves updated state to local cache
+            // save updated state to cache
             const cacheKey = getCacheKey();
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
@@ -344,7 +344,7 @@ export function NotificationBell() {
         } catch (error) {
             console.error('Error marking as read:', error);
             toast.error('Failed to mark as read');
-            // refetches list if the database update fails
+            // refetch on error
             fetchNotifications(0, false);
         }
     };
@@ -360,12 +360,12 @@ export function NotificationBell() {
                 return;
             }
 
-            // marks all notifications as read in local state
+            // mark all read in state
             setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
             setUnreadCount(0);
             setTotalUnread(0);
 
-            // updates all unread notifications in the database
+            // mark all read in database
             const { error } = await supabase
                 .from('notifications')
                 .update({ is_read: true, read_at: new Date().toISOString() })
@@ -373,7 +373,7 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            // saves updated state to local cache
+            // save updated state to cache
             const cacheKey = getCacheKey();
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
@@ -389,19 +389,19 @@ export function NotificationBell() {
         } catch (error) {
             console.error('Error marking all as read:', error);
             toast.error('Failed to mark all as read');
-            // refetches list if bulk update fails
+            // refetch on error
             fetchNotifications(0, false);
         }
     };
 
-    // deletes a single notification
+    // delete single notification
     const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         try {
             const target = notifications.find(n => n.id === id);
             const wasUnread = target && !target.is_read;
 
-            // removes notification from local state
+            // remove notification from state
             setNotifications(prev => prev.filter(n => n.id !== id));
             setTotalCount(prev => Math.max(0, prev - 1));
             if (wasUnread) {
@@ -409,7 +409,7 @@ export function NotificationBell() {
                 setTotalUnread(prev => Math.max(0, prev - 1));
             }
 
-            // deletes notification from database
+            // delete notification from database
             const { error } = await supabase
                 .from('notifications')
                 .delete()
@@ -417,7 +417,7 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            // updates cache
+            // update cache
             const cacheKey = getCacheKey();
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
@@ -437,7 +437,7 @@ export function NotificationBell() {
         }
     };
 
-    // deletes all loaded notifications
+    // delete all notifications
     const handleDeleteAll = async () => {
         if (notifications.length === 0) return;
 
@@ -458,7 +458,7 @@ export function NotificationBell() {
             setUnreadCount(0);
             setTotalUnread(0);
 
-            // deletes notifications from database
+            // delete notifications from database
             const { error } = await supabase
                 .from('notifications')
                 .delete()
@@ -466,7 +466,7 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            // clears cache
+            // clear cache
             const cacheKey = getCacheKey();
             localStorage.removeItem(cacheKey);
 

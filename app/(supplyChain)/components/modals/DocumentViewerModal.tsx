@@ -33,7 +33,7 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
     const [rotation, setRotation] = useState<number>(0);
     const [isDownloading, setIsDownloading] = useState<boolean>(false);
 
-    // Reset view settings and load URL ONLY when modal opens with active data
+    // reset view settings and load document url
     useEffect(() => {
         if (!isOpen || !data) {
             setResolvedUrl(null);
@@ -64,7 +64,7 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
                 }
 
                 if (data?.storagePath) {
-                    // Try getting public URL from documents bucket
+                    // get public url from documents bucket
                     const { data: publicUrlData } = supabase.storage
                         .from('documents')
                         .getPublicUrl(data.storagePath);
@@ -147,7 +147,7 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
                     return;
                 }
             }
-            // Final fallback: trigger browser download
+            // fallback to browser download
             const a = document.createElement('a');
             a.href = resolvedUrl;
             a.download = data.fileName || `receipt_${data.poNumber || 'document'}.png`;

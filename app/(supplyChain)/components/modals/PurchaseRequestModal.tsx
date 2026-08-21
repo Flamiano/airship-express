@@ -1,5 +1,3 @@
-// app/(supplyChain)/components/modals/PurchaseRequestModal.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";

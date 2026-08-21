@@ -1,5 +1,3 @@
-// app/(supplyChain)/components/global/BulkActionsToolbar.tsx
-
 "use client";
 
 import { ReactNode } from "react";
@@ -24,7 +22,6 @@ interface BulkActionsToolbarProps {
     actions: BulkAction[];
     onClear: () => void;
     className?: string;
-    /** If true, the toolbar will be fixed/sticky. If false, it will be inline */
     floating?: boolean;
 }
 
@@ -59,10 +56,8 @@ export function BulkActionsToolbar({
         }
     };
 
-    // Shared content renderer
     const renderContent = () => (
         <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Selected Counter & Deselect */}
             <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 text-xs font-semibold">
                     <span
@@ -95,7 +90,6 @@ export function BulkActionsToolbar({
                 </button>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex items-center gap-2">
                 {visibleActions.map((action, index) => {
                     const isLoading = action.isLoading || false;
@@ -140,7 +134,6 @@ export function BulkActionsToolbar({
         </div>
     );
 
-    // If not floating, use inline positioning
     if (!floating) {
         return (
             <div
@@ -165,7 +158,6 @@ export function BulkActionsToolbar({
         );
     }
 
-    // Floating version (fixed/sticky)
     return (
         <div
             role="region"

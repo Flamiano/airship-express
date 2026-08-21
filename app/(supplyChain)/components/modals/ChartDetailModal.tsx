@@ -1,5 +1,3 @@
-// app/(supplyChain)/components/modals/ChartDetailModal.tsx
-
 "use client";
 
 import {

@@ -1,5 +1,3 @@
-// app/(supplyChain)/components/modals/ApprovedRequestsModal.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -38,7 +36,7 @@ export function ApprovedRequestsModal({
     const fetchApprovedRequests = async () => {
         setLoading(true);
         try {
-            // Fetch requests that are approved or completed
+            // fetch approved or completed requests
             const { data: requestsData, error: reqError } = await supabase
                 .from('purchase_requests')
                 .select('*')
@@ -47,7 +45,7 @@ export function ApprovedRequestsModal({
 
             if (reqError) throw reqError;
 
-            // Fetch existing purchase orders to see which requests already have a PO
+            // fetch existing po request ids
             const { data: poData, error: poError } = await supabase
                 .from('purchase_orders')
                 .select('request_id');
@@ -56,7 +54,7 @@ export function ApprovedRequestsModal({
 
             const existingPoRequestIds = new Set((poData || []).map((po: any) => po.request_id));
 
-            // Filter out requests that already have a PO created
+            // exclude requests that already have a po
             const availableRequests = (requestsData || []).filter(
                 (req: any) => !existingPoRequestIds.has(req.id)
             );

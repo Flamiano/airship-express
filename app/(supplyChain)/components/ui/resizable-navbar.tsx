@@ -1,5 +1,3 @@
-// app/(supplyChain)/components/ui/resizable-navbar.tsx
-
 "use client";
 import { cn } from "@/app/(supplyChain)/lib/utils";
 import { IconMenu2, IconX } from "@tabler/icons-react";

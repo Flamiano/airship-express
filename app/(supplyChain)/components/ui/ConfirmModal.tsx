@@ -16,7 +16,6 @@ interface ConfirmContextType {
 
 const ConfirmContext = createContext<ConfirmContextType | null>(null);
 
-// Provider Component
 export function ConfirmProvider({ children }: { children: ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
     const [resolve, setResolve] = useState<((value: boolean) => void) | null>(null);
@@ -86,18 +85,15 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
             {isOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    {/* Backdrop */}
                     <div
                         className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
                         onClick={handleCancel}
                     />
 
-                    {/* Modal */}
                     <div className="relative bg-white dark:bg-ink rounded-2xl max-w-md w-full p-6 
                                     shadow-2xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.8),0_8px_10px_-6px_rgba(0,0,0,0.5)]
                                     border border-slate-100 dark:border-ink/20 
                                     animate-in fade-in zoom-in duration-200">
-                        {/* Icon */}
                         <div
                             className={`w-14 h-14 rounded-2xl ${colors.bg} ${colors.border} border-2 
                                     flex items-center justify-center mx-auto mb-4`}
@@ -105,17 +101,14 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                             <i className={`fas ${iconMap[options.confirmVariant || 'danger']} text-2xl ${colors.icon}`}></i>
                         </div>
 
-                        {/* Title */}
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-1.5">
                             {modalTitle}
                         </h3>
 
-                        {/* Message - Changed from <p> to <div> to allow block elements */}
                         <div className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
                             {modalMessage}
                         </div>
 
-                        {/* Buttons */}
                         <div className="flex gap-3">
                             <button
                                 onClick={handleCancel}
@@ -146,7 +139,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     );
 }
 
-// Hook to use confirmation
+// use confirm dialog context
 export function useConfirm() {
     const context = useContext(ConfirmContext);
     if (!context) {

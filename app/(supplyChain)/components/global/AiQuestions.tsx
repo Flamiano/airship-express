@@ -1,4 +1,3 @@
-// app/components/ai/AiQuestions.tsx
 'use client'
 
 import React from 'react'

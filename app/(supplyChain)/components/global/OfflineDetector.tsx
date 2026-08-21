@@ -40,11 +40,11 @@ export function OfflineDetector({
     const toastShownRef = useRef<{ offline: boolean; online: boolean }>({ offline: false, online: false });
     const isOfflineRef = useRef(false);
 
-    // Motion values for drag
+    // track drag motion
     const x = useMotionValue(0);
     const y = useMotionValue(0);
 
-    // Check connectivity
+    // check network connectivity
     const checkConnectivity = useCallback(async (): Promise<boolean> => {
         try {
             const controller = new AbortController();
@@ -64,7 +64,7 @@ export function OfflineDetector({
         }
     }, [pingUrl, pingTimeout]);
 
-    // Load saved position
+    // load saved position
     useEffect(() => {
         const savedPosition = localStorage.getItem('offlineIndicatorPosition');
         if (savedPosition) {
@@ -75,7 +75,7 @@ export function OfflineDetector({
                 y.set(pos.y);
                 setIsPositioned(true);
             } catch (e) {
-                // Ignore
+                // ignore
             }
         }
     }, []);
@@ -87,7 +87,7 @@ export function OfflineDetector({
         setIsPositioned(true);
     }, []);
 
-    // Disable background interaction when offline
+    // disable background interaction when offline
     useEffect(() => {
         if (!isOnline) {
             document.body.style.pointerEvents = 'none';
@@ -115,7 +115,7 @@ export function OfflineDetector({
         };
     }, [isOnline]);
 
-    // Continuous connectivity check
+    // continuous network check
     const checkConnection = useCallback(async () => {
         if (!isMountedRef.current) return;
 
@@ -123,40 +123,13 @@ export function OfflineDetector({
 
         if (!isMountedRef.current) return;
 
-        if (connected && !isOnline) {
-            setIsOnline(true);
-            setConnectionQuality('good');
-            setShowBanner(false);
-            isOfflineRef.current = false;
+        setIsOnline(connected);
 
-            setTimeout(() => {
-                toastShownRef.current.offline = false;
-            }, 2000);
-
-            if (wasOffline) {
-                setWasOffline(false);
-                if (showToast && !toastShownRef.current.online) {
-                    toastShownRef.current.online = true;
-                    toast.success('Connection restored!', {
-                        duration: 3000,
-                        position: 'bottom-center',
-                        id: 'online-toast',
-                    });
-                    setTimeout(() => {
-                        toastShownRef.current.online = false;
-                    }, 3000);
-                }
-            }
-        } else if (!connected && isOnline) {
-            setIsOnline(false);
+        if (!connected) {
             setWasOffline(true);
             setShowBanner(true);
             setConnectionQuality('none');
             isOfflineRef.current = true;
-
-            setTimeout(() => {
-                toastShownRef.current.online = false;
-            }, 2000);
 
             if (showToast && !toastShownRef.current.offline) {
                 toastShownRef.current.offline = true;
@@ -166,7 +139,21 @@ export function OfflineDetector({
                     id: 'offline-toast',
                 });
             }
-        } else if (!connected && !isOnline) {
+        } else {
+            if (wasOffline) {
+                setShowBanner(false);
+                setConnectionQuality('good');
+                isOfflineRef.current = false;
+
+                if (showToast && !toastShownRef.current.online) {
+                    toastShownRef.current.online = true;
+                    toast.success('Back online', {
+                        duration: 3000,
+                        position: 'bottom-center',
+                        id: 'online-toast',
+                    });
+                }
+            }
             const offlineDuration = Date.now() - (wasOffline ? Date.now() - 1000 : Date.now());
             if (offlineDuration > 30000) {
                 setConnectionQuality('poor');
@@ -174,7 +161,7 @@ export function OfflineDetector({
         }
     }, [isOnline, wasOffline, showToast, checkConnectivity]);
 
-    // Listen for online/offline events
+    // listen for network events
     useEffect(() => {
         isMountedRef.current = true;
 
@@ -257,7 +244,7 @@ export function OfflineDetector({
         };
     }, [checkConnection, autoReconnect, reconnectInterval, isOnline, showToast]);
 
-    // Update auto reconnect timer
+    // update auto reconnect timer
     useEffect(() => {
         if (autoReconnect && !isOnline) {
             if (reconnectTimerRef.current) {

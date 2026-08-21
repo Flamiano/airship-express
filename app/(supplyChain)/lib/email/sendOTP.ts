@@ -48,7 +48,7 @@ export async function sendOTPEmail(
 
         const transporter = getTransporter();
 
-        // Verify connection first
+        // verify transporter connection
         await transporter.verify();
 
         const mailOptions = {

@@ -26,7 +26,7 @@ export async function createNotification(params: CreateNotificationParams) {
             po_request_id: params.poRequestId || null,
         };
 
-        // attaches user id when specified
+        // attach user id if provided
         if (params.userId) {
             insertData.user_id = params.userId;
         }
@@ -47,7 +47,7 @@ export async function createNotification(params: CreateNotificationParams) {
 
 export async function getNotifications(userId: string, limit: number = 50) {
     try {
-        // retrieves notifications and filters by user id when provided
+        // filter notifications by user id if provided
         let query = supabase
             .from('notifications')
             .select('*')
@@ -184,7 +184,7 @@ export async function updatePurchaseRequestStatus(poRequestId: string, status: '
     }
 }
 
-// creates specific notification types for workflows
+// create workflow notifications
 export async function createPurchaseRequestNotification(params: {
     userId: string;
     creatorName: string;

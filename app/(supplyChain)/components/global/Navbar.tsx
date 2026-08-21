@@ -162,7 +162,7 @@ export function AceternityNavbar() {
             }
 
             if (typeof window !== 'undefined') {
-                // Clear main session data
+                // clear session and storage data
                 localStorage.removeItem('session_token');
                 localStorage.removeItem('user_role');
                 localStorage.removeItem('session_expires');
@@ -173,19 +173,16 @@ export function AceternityNavbar() {
                 localStorage.removeItem('user_ip');
                 localStorage.removeItem('user_id');
 
-                // Clear all backup data
                 localStorage.removeItem('session_backup');
                 localStorage.removeItem('session_backup_2');
                 localStorage.removeItem('session_backup_3');
 
-                // Clear sessionStorage backup
                 try {
                     sessionStorage.removeItem('session_backup');
                 } catch (e) {
-                    // sessionStorage might not be available
                 }
 
-                // Clear cookie backups
+                // clear cookie backups
                 document.cookie = 'session_token=; path=/; max-age=0';
                 document.cookie = 'session_backup=; path=/; max-age=0';
                 document.cookie = 'session_backup_2=; path=/; max-age=0';
@@ -209,17 +206,15 @@ export function AceternityNavbar() {
                 localStorage.removeItem('user_ip');
                 localStorage.removeItem('user_id');
 
-                // Clear all backup data
                 localStorage.removeItem('session_backup');
                 localStorage.removeItem('session_backup_2');
                 localStorage.removeItem('session_backup_3');
 
-
                 try {
                     sessionStorage.removeItem('session_backup');
                 } catch (e) {
-
                 }
+
                 document.cookie = 'session_token=; path=/; max-age=0';
                 document.cookie = 'session_backup=; path=/; max-age=0';
                 document.cookie = 'session_backup_2=; path=/; max-age=0';

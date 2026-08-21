@@ -1,5 +1,3 @@
-// app/(supplyChain)/components/global/ReceiptProcessingIndicator.tsx
-
 'use client';
 
 import { VerificationJob } from '../modals/UploadReceiptModal';
