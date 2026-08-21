@@ -25,6 +25,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isOpen: isAIOpen } = useAI();
 
+  // checks if the user has an active session token
   useEffect(() => {
     const sessionToken = localStorage.getItem('session_token');
 
@@ -36,7 +37,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, [router]);
 
-  // Initialize Lenis smooth scroll
+  // initializes smooth scrolling and skips nested scroll areas
   useEffect(() => {
     if (isLoading) return;
 
@@ -83,6 +84,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     }
     rafId = requestAnimationFrame(raf);
 
+    // cleans up animation frame and lenis instance on unmount
     return () => {
       cancelAnimationFrame(rafId);
       lenis.destroy();

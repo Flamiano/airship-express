@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package } from 'lucide-react';
+import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
@@ -77,7 +77,7 @@ export function NotificationBell() {
         return `${CACHE_KEY_BASE}_${userEmail || 'anon'}`;
     }, [userEmail]);
 
-    // Get user data from localStorage
+    // gets current user role and email from local storage
     useEffect(() => {
         if (typeof window !== 'undefined') {
             if (localStorage.getItem(LEGACY_CACHE_KEY)) {
@@ -91,7 +91,7 @@ export function NotificationBell() {
         }
     }, []);
 
-    // Prevent body scroll when dropdown is open
+    // locks page scrolling while dropdown is open
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
@@ -103,7 +103,7 @@ export function NotificationBell() {
         };
     }, [isOpen]);
 
-    // Close dropdown when clicking outside
+    // closes dropdown when clicking outside the panel
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (
@@ -125,7 +125,7 @@ export function NotificationBell() {
         };
     }, [isOpen]);
 
-    // Load cached notifications
+    // loads cached notifications to speed up initial render
     const loadCachedNotifications = useCallback(() => {
         try {
             const cached = localStorage.getItem(getCacheKey());
@@ -149,7 +149,7 @@ export function NotificationBell() {
         return false;
     }, [userRole, getCacheKey]);
 
-    // Save to cache
+    // saves notifications list to local cache
     const saveToCache = useCallback((data: Notification[]) => {
         try {
             localStorage.setItem(getCacheKey(), JSON.stringify({
@@ -161,7 +161,7 @@ export function NotificationBell() {
         }
     }, [getCacheKey]);
 
-    // Fetch total unread count
+    // counts unread notifications for current role
     const fetchUnreadCount = useCallback(async () => {
         try {
             const { count, error } = await supabase
@@ -179,7 +179,7 @@ export function NotificationBell() {
         }
     }, [userRole]);
 
-    // Fetch notifications with pagination
+    // fetches paginated notifications from database
     const fetchNotifications = useCallback(async (pageNum: number, append: boolean = false) => {
         if (pageNum === 0) {
             setIsLoading(true);
@@ -188,7 +188,6 @@ export function NotificationBell() {
         }
 
         try {
-            // Get filtered count first
             const { count, error: countError } = await supabase
                 .from('notifications')
                 .select('*', { count: 'exact', head: true })
@@ -208,16 +207,13 @@ export function NotificationBell() {
                 return;
             }
 
-            // Calculate range
             const from = pageNum * PAGE_SIZE;
             const to = Math.min(from + PAGE_SIZE - 1, total - 1);
 
-            // Build query - prioritize unread first
             const { data, error } = await supabase
                 .from('notifications')
                 .select('*')
                 .or(`role.eq.All,role.eq.${userRole}`)
-                .order('is_read', { ascending: true }) // Unread first
                 .order('created_at', { ascending: false })
                 .range(from, to);
 
@@ -225,19 +221,20 @@ export function NotificationBell() {
 
             const notificationsData = data || [];
 
-            // Check if we have more data
-            const totalFetched = append ? notifications.length + notificationsData.length : notificationsData.length;
-            setHasMore(totalFetched < total);
-
             if (append) {
-                setNotifications(prev => [...prev, ...notificationsData]);
+                setNotifications(prev => {
+                    const existingIds = new Set(prev.map(n => n.id));
+                    const freshItems = notificationsData.filter(n => !existingIds.has(n.id));
+                    const merged = [...prev, ...freshItems];
+                    setHasMore(merged.length < total);
+                    return merged;
+                });
             } else {
                 setNotifications(notificationsData);
                 saveToCache(notificationsData);
-
+                setHasMore(notificationsData.length < total);
                 const unread = notificationsData.filter(n => !n.is_read).length;
                 setUnreadCount(unread);
-                setTotalUnread(unread);
             }
 
             await fetchUnreadCount();
@@ -249,9 +246,9 @@ export function NotificationBell() {
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [userRole, saveToCache, fetchUnreadCount, notifications.length]);
+    }, [userRole, saveToCache, fetchUnreadCount]);
 
-    // Initial load
+    // loads notifications on mount
     useEffect(() => {
         if (!userRole || !userEmail) return;
 
@@ -266,16 +263,64 @@ export function NotificationBell() {
         }
     }, [userRole, userEmail, loadCachedNotifications, fetchNotifications, fetchUnreadCount]);
 
+    // listens for realtime changes to the notifications table
+    useEffect(() => {
+        if (!userRole) return;
+
+        const channelId = `navbar_notifs_${userRole}_${Math.random().toString(36).substring(2, 9)}`;
+        const channel = supabase
+            .channel(channelId)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'notifications' },
+                (payload) => {
+                    if (payload.eventType === 'INSERT') {
+                        const newNotif = payload.new as Notification;
+                        if (newNotif.role === 'All' || newNotif.role === userRole) {
+                            setNotifications(prev => {
+                                if (prev.some(n => n.id === newNotif.id)) return prev;
+                                return [newNotif, ...prev];
+                            });
+                            setTotalCount(prev => prev + 1);
+                            if (!newNotif.is_read) {
+                                setUnreadCount(prev => prev + 1);
+                                setTotalUnread(prev => prev + 1);
+                            }
+                            toast.info(newNotif.title, {
+                                description: newNotif.message
+                            });
+                        }
+                    } else if (payload.eventType === 'UPDATE') {
+                        const updatedNotif = payload.new as Notification;
+                        setNotifications(prev => prev.map(n => n.id === updatedNotif.id ? updatedNotif : n));
+                        fetchUnreadCount();
+                    } else if (payload.eventType === 'DELETE') {
+                        const deletedId = (payload.old as { id: string })?.id;
+                        if (deletedId) {
+                            setNotifications(prev => prev.filter(n => n.id !== deletedId));
+                            setTotalCount(prev => Math.max(0, prev - 1));
+                            fetchUnreadCount();
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [userRole, fetchUnreadCount]);
+
     const handleMarkAsRead = async (id: string) => {
         try {
-            // Optimistically update UI
+            // updates notification read status in local state
             setNotifications(prev => prev.map(n =>
                 n.id === id ? { ...n, is_read: true } : n
             ));
             setUnreadCount(prev => Math.max(0, prev - 1));
             setTotalUnread(prev => Math.max(0, prev - 1));
 
-            // Update in database
+            // marks notification as read in the database
             const { error } = await supabase
                 .from('notifications')
                 .update({ is_read: true, read_at: new Date().toISOString() })
@@ -283,7 +328,7 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            // Update cache
+            // saves updated state to local cache
             const cacheKey = getCacheKey();
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
@@ -299,7 +344,7 @@ export function NotificationBell() {
         } catch (error) {
             console.error('Error marking as read:', error);
             toast.error('Failed to mark as read');
-            // Revert on error
+            // refetches list if the database update fails
             fetchNotifications(0, false);
         }
     };
@@ -315,12 +360,12 @@ export function NotificationBell() {
                 return;
             }
 
-            // Optimistically update UI
+            // marks all notifications as read in local state
             setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
             setUnreadCount(0);
             setTotalUnread(0);
 
-            // Update in database
+            // updates all unread notifications in the database
             const { error } = await supabase
                 .from('notifications')
                 .update({ is_read: true, read_at: new Date().toISOString() })
@@ -328,7 +373,7 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            // Update cache
+            // saves updated state to local cache
             const cacheKey = getCacheKey();
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
@@ -344,7 +389,91 @@ export function NotificationBell() {
         } catch (error) {
             console.error('Error marking all as read:', error);
             toast.error('Failed to mark all as read');
-            // Revert on error
+            // refetches list if bulk update fails
+            fetchNotifications(0, false);
+        }
+    };
+
+    // deletes a single notification
+    const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            const target = notifications.find(n => n.id === id);
+            const wasUnread = target && !target.is_read;
+
+            // removes notification from local state
+            setNotifications(prev => prev.filter(n => n.id !== id));
+            setTotalCount(prev => Math.max(0, prev - 1));
+            if (wasUnread) {
+                setUnreadCount(prev => Math.max(0, prev - 1));
+                setTotalUnread(prev => Math.max(0, prev - 1));
+            }
+
+            // deletes notification from database
+            const { error } = await supabase
+                .from('notifications')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+
+            // updates cache
+            const cacheKey = getCacheKey();
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const { data, timestamp } = JSON.parse(cached);
+                const updated = data.filter((n: Notification) => n.id !== id);
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    data: updated,
+                    timestamp
+                }));
+            }
+
+            toast.success('Notification removed');
+        } catch (error) {
+            console.error('Error deleting notification:', error);
+            toast.error('Failed to delete notification');
+            fetchNotifications(0, false);
+        }
+    };
+
+    // deletes all loaded notifications
+    const handleDeleteAll = async () => {
+        if (notifications.length === 0) return;
+
+        const confirmed = await confirm({
+            title: 'Clear Notifications',
+            message: 'Are you sure you want to delete all notifications?',
+            confirmText: 'Delete All',
+            cancelText: 'Cancel',
+            confirmVariant: 'danger',
+        });
+
+        if (!confirmed) return;
+
+        try {
+            const ids = notifications.map(n => n.id);
+            setNotifications([]);
+            setTotalCount(0);
+            setUnreadCount(0);
+            setTotalUnread(0);
+
+            // deletes notifications from database
+            const { error } = await supabase
+                .from('notifications')
+                .delete()
+                .in('id', ids);
+
+            if (error) throw error;
+
+            // clears cache
+            const cacheKey = getCacheKey();
+            localStorage.removeItem(cacheKey);
+
+            toast.success('All notifications deleted');
+        } catch (error) {
+            console.error('Error deleting notifications:', error);
+            toast.error('Failed to delete notifications');
             fetchNotifications(0, false);
         }
     };
@@ -614,6 +743,21 @@ export function NotificationBell() {
                                         </button>
                                     )}
 
+                                    {notifications.length > 0 && (
+                                        <button
+                                            onClick={handleDeleteAll}
+                                            className="p-1.5 text-xs font-medium 
+                            text-slate-400 dark:text-slate-500 
+                            hover:text-red-600 dark:hover:text-red-400 
+                            hover:bg-red-50 dark:hover:bg-red-950/30 
+                            rounded-lg transition-colors flex items-center"
+                                            title="Clear all notifications"
+                                            aria-label="Clear all notifications"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    )}
+
                                     {/* Close button for mobile screen view */}
                                     <button
                                         onClick={() => setIsOpen(false)}
@@ -647,10 +791,10 @@ export function NotificationBell() {
                                 ) : (
                                     <>
                                         {notifications.map((notification) => (
-                                            <button
+                                            <div
                                                 key={notification.id}
                                                 onClick={() => handleNotificationClick(notification)}
-                                                className={`w-full text-left p-4 transition-all duration-150 flex items-start gap-3.5 
+                                                className={`group w-full text-left p-4 transition-all duration-150 flex items-start gap-3.5 cursor-pointer 
                                 hover:bg-slate-50/80 dark:hover:bg-slate-700/30 
                                 active:bg-slate-100 dark:active:bg-slate-700/50 
                                 focus:outline-none focus:bg-slate-50 dark:focus:bg-slate-700/30 
@@ -672,7 +816,7 @@ export function NotificationBell() {
                                                             {notification.title}
                                                         </p>
 
-                                                        <div className="shrink-0 pt-0.5">
+                                                        <div className="shrink-0 pt-0.5 flex items-center gap-1.5">
                                                             {!notification.is_read ? (
                                                                 <span className="inline-flex items-center gap-1 text-[10px] font-medium 
                                             bg-pink-100 dark:bg-pink-950/50 
@@ -684,6 +828,16 @@ export function NotificationBell() {
                                                             ) : (
                                                                 <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">Read</span>
                                                             )}
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleDeleteNotification(notification.id, e)}
+                                                                className="opacity-70 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-all"
+                                                                title="Delete notification"
+                                                                aria-label="Delete notification"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </button>
                                                         </div>
                                                     </div>
 
@@ -720,7 +874,7 @@ export function NotificationBell() {
                                                         )}
                                                     </div>
                                                 </div>
-                                            </button>
+                                            </div>
                                         ))}
 
                                         {/* Load More Button */}

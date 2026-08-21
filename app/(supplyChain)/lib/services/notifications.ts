@@ -1,7 +1,7 @@
 import { supabase } from './client/supabase';
 
 interface CreateNotificationParams {
-    userId?: string; // Make optional
+    userId?: string;
     creatorName: string;
     creatorEmail: string;
     title: string;
@@ -26,7 +26,7 @@ export async function createNotification(params: CreateNotificationParams) {
             po_request_id: params.poRequestId || null,
         };
 
-        // Only add user_id if provided
+        // attaches user id when specified
         if (params.userId) {
             insertData.user_id = params.userId;
         }
@@ -47,7 +47,7 @@ export async function createNotification(params: CreateNotificationParams) {
 
 export async function getNotifications(userId: string, limit: number = 50) {
     try {
-        // If userId is provided, filter by it
+        // retrieves notifications and filters by user id when provided
         let query = supabase
             .from('notifications')
             .select('*')
@@ -184,7 +184,7 @@ export async function updatePurchaseRequestStatus(poRequestId: string, status: '
     }
 }
 
-// Notification creation helpers
+// creates specific notification types for workflows
 export async function createPurchaseRequestNotification(params: {
     userId: string;
     creatorName: string;
