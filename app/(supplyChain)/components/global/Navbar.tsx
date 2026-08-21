@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { NAV } from "../../lib/navigation";
 import Image from "next/image";
@@ -56,6 +56,17 @@ export function AceternityNavbar() {
     const pathname = usePathname();
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const { confirm } = useConfirm();
+    const navRef = useRef<HTMLDivElement>(null);
+
+    // format name into initials (e.g. Janzel -> J, Jana Mendez -> JM)
+    const getInitials = (name: string): string => {
+        if (!name || !name.trim()) return "U";
+        const parts = name.trim().split(/\s+/).filter(Boolean);
+        if (parts.length === 1) {
+            return parts[0].charAt(0).toUpperCase();
+        }
+        return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    };
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -70,6 +81,17 @@ export function AceternityNavbar() {
             }
         }
     }, []);
+
+    // close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (openDropdown && navRef.current && !navRef.current.contains(e.target as Node)) {
+                setOpenDropdown(null);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [openDropdown]);
 
     const filterNavigation = (role: string) => {
         const filtered = (NAV as NavGroup[]).map((group: NavGroup) => {
@@ -228,26 +250,26 @@ export function AceternityNavbar() {
     };
 
     return (
-        <Navbar className="top-0 dark:border-slate-700/60 bg-white/10 dark:bg-[#1c1b1f]/10 backdrop-blur-sm cursor-pointer">
+        <Navbar className="top-0 dark:border-slate-700/60 bg-white/10 dark:bg-[#1c1b1f]/10 backdrop-blur-sm">
             <NavBody visible={false}>
                 <button
                     onClick={() => router.back()}
-                    className="flex items-center gap-3 group"
+                    className="flex items-center gap-2.5 group shrink-0 focus:outline-none"
                 >
                     <Image
                         src="/images/logo-remove-bg.png"
                         alt="Airship"
-                        width={48}
-                        height={48}
+                        width={40}
+                        height={40}
                         priority
-                        className="dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300"
+                        className="dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300 object-contain"
                     />
-                    <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm tracking-tight">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm tracking-tight whitespace-nowrap">
                         Airship <span className="text-pink-500 dark:text-pink-400">Express</span>
                     </span>
                 </button>
 
-                <div className="hidden lg:flex flex-1 items-center justify-center gap-2">
+                <div ref={navRef} className="hidden lg:flex items-center justify-center gap-1 xl:gap-2 shrink-0">
                     {filteredNav.map((group: any) => {
                         const isSectionCurrent = isSectionActive(group);
                         const accent = getSectionAccent(group.section);
@@ -257,7 +279,7 @@ export function AceternityNavbar() {
                             <div key={group.section} className="relative group">
                                 <button
                                     className={cn(
-                                        "flex items-center gap-2 px-3.5 py-2 text-sm font-medium transition-all duration-200 rounded-xl border",
+                                        "flex items-center gap-1.5 px-2.5 xl:px-3.5 py-1.5 xl:py-2 text-xs xl:text-sm font-medium transition-all duration-200 rounded-xl border whitespace-nowrap",
                                         isDropdownOpen
                                             ? "text-pink-600 dark:text-pink-400 bg-pink-50/70 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800/60 shadow-sm"
                                             : isSectionCurrent
@@ -341,15 +363,17 @@ export function AceternityNavbar() {
                     })}
                 </div>
 
-                <div className="hidden lg:flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full 
-                                bg-slate-50 dark:bg-slate-800/50 
-                                border border-slate-200/60 dark:border-slate-700/60">
-                        <IconUser className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                        <span className="text-sm text-slate-600 dark:text-slate-300 truncate max-w-[120px] font-medium">
-                            {userName}
-                        </span>
-                        <span className="text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/50 px-2 py-0.5 rounded-full">
+                <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
+                    <div 
+                        title={`${userName} (${userRole})`}
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-full 
+                            bg-slate-50/80 dark:bg-slate-800/60 
+                            border border-slate-200/60 dark:border-slate-700/60 shadow-xs cursor-default"
+                    >
+                        <div className="flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-xs font-bold shadow-xs select-none">
+                            {getInitials(userName)}
+                        </div>
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 max-w-[80px] truncate">
                             {userRole}
                         </span>
                     </div>
@@ -361,7 +385,8 @@ export function AceternityNavbar() {
                     <button
                         onClick={handleLogout}
                         disabled={isLoggingOut}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm 
+                        title="Logout"
+                        className="flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 text-xs xl:text-sm font-medium
                                text-red-600 dark:text-red-400 
                                hover:bg-red-50 dark:hover:bg-red-950/20 
                                rounded-lg transition-all duration-200 
@@ -369,13 +394,13 @@ export function AceternityNavbar() {
                     >
                         {isLoggingOut ? (
                             <>
-                                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-red-600 dark:border-red-400 border-t-transparent"></span>
-                                Logging out...
+                                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-600 dark:border-red-400 border-t-transparent"></span>
+                                <span className="hidden xl:inline">Logging out...</span>
                             </>
                         ) : (
                             <>
                                 <IconLogout className="h-4 w-4" />
-                                Logout
+                                <span className="hidden xl:inline">Logout</span>
                             </>
                         )}
                     </button>
@@ -386,17 +411,17 @@ export function AceternityNavbar() {
                 <MobileNavHeader>
                     <button
                         onClick={() => router.back()}
-                        className="flex items-center gap-3 group"
+                        className="flex items-center gap-2.5 group"
                     >
                         <Image
                             src="/images/logo-remove-bg.png"
                             alt="Airship"
-                            width={48}
-                            height={48}
+                            width={36}
+                            height={36}
                             priority
-                            className="h-auto w-auto rounded-lg ring-1 ring-slate-200/60 dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300"
+                            className="h-auto w-auto rounded-lg ring-1 ring-slate-200/60 dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300 object-contain"
                         />
-                        <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm tracking-tight">
+                        <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm tracking-tight whitespace-nowrap">
                             Airship <span className="text-pink-500 dark:text-pink-400">Express</span>
                         </span>
                     </button>
@@ -411,14 +436,18 @@ export function AceternityNavbar() {
                 <MobileNavMenu isOpen={isOpen} onClose={() => setIsOpen(false)}>
                     <div className="flex flex-col h-full bg-white dark:bg-[#1c1b1f]">
                         <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60">
-                            <div className="flex items-center gap-2">
-                                <IconUser className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                    {userName}
-                                </span>
-                                <span className="text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/50 px-2 py-0.5 rounded-full ml-2">
-                                    {userRole}
-                                </span>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-center h-9 w-9 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-sm font-bold shadow-xs select-none">
+                                    {getInitials(userName)}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                        {userName}
+                                    </span>
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                        {userRole}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
