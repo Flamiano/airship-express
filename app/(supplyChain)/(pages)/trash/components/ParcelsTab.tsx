@@ -309,17 +309,17 @@ export function ParcelsTab() {
 
     const getStatusBadge = useCallback((status: string) => {
         const sanitizedStatus = sanitizeText(status);
-        const statusMap: Record<string, { bg: string; text: string; dot: string }> = {
-            'received': { bg: "bg-blue-50 dark:bg-blue-900/20", text: "text-blue-600 dark:text-blue-400", dot: "bg-blue-400 dark:bg-blue-500" },
-            'sorting': { bg: "bg-amber-50 dark:bg-amber-900/20", text: "text-amber-600 dark:text-amber-400", dot: "bg-amber-400 dark:bg-amber-500" },
-            'ready_for_pickup': { bg: "bg-emerald-50 dark:bg-emerald-900/20", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-400 dark:bg-emerald-500" },
-            'picked_up': { bg: "bg-purple-50 dark:bg-purple-900/20", text: "text-purple-600 dark:text-purple-400", dot: "bg-purple-400 dark:bg-purple-500" },
-            'in_transit': { bg: "bg-indigo-50 dark:bg-indigo-900/20", text: "text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-400 dark:bg-indigo-500" },
-            'returned': { bg: "bg-rose-50 dark:bg-rose-900/20", text: "text-rose-600 dark:text-rose-400", dot: "bg-rose-400 dark:bg-rose-500" },
+        const statusMap: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+            'received': { bg: "bg-pink-50 dark:bg-pink-950/40", text: "text-pink-700 dark:text-pink-300", border: "border-pink-200/80 dark:border-pink-800/50", dot: "bg-pink-500 dark:bg-pink-400" },
+            'sorting': { bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200/80 dark:border-amber-800/50", dot: "bg-amber-500 dark:bg-amber-400" },
+            'ready_for_pickup': { bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200/80 dark:border-emerald-800/50", dot: "bg-emerald-500 dark:bg-emerald-400" },
+            'picked_up': { bg: "bg-purple-50 dark:bg-purple-950/40", text: "text-purple-700 dark:text-purple-300", border: "border-purple-200/80 dark:border-purple-800/50", dot: "bg-purple-500 dark:bg-purple-400" },
+            'in_transit': { bg: "bg-indigo-50 dark:bg-indigo-950/40", text: "text-indigo-700 dark:text-indigo-300", border: "border-indigo-200/80 dark:border-indigo-800/50", dot: "bg-indigo-500 dark:bg-indigo-400" },
+            'returned': { bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-300", border: "border-rose-200/80 dark:border-rose-800/50", dot: "bg-rose-500 dark:bg-rose-400" },
         };
         const style = statusMap[sanitizedStatus] || statusMap['sorting'];
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${style.bg} ${style.text} ${style.border} shadow-2xs`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                 {sanitizedStatus.charAt(0).toUpperCase() + sanitizedStatus.slice(1).replace(/_/g, ' ')}
             </span>

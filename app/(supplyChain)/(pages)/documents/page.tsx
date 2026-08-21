@@ -1080,10 +1080,10 @@ export default function Documents() {
 
     const getActionColor = (action: string) => {
         switch (action) {
-            case 'upload': return 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30';
-            case 'update': return 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-800/30';
-            case 'delete': return 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-100 dark:border-red-800/30';
-            default: return 'bg-slate-50 dark:bg-slate-800/30 text-slate-700 dark:text-slate-300 border-slate-100 dark:border-slate-700/30';
+            case 'upload': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs';
+            case 'update': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs';
+            case 'delete': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs';
+            default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs';
         }
     };
 
@@ -1613,7 +1613,7 @@ export default function Documents() {
                                                         )}
                                                     </td>
                                                     <td data-label="Category" className="py-3 px-4">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-accent/15 text-accent border border-accent/30">
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs">
                                                             {doc.document_type}
                                                         </span>
                                                     </td>
@@ -1625,34 +1625,37 @@ export default function Documents() {
                                                         {new Date(doc.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                                     </td>
                                                     <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap">
-                                                        <div className="inline-flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
+                                                        <div className="inline-flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
                                                             <button
                                                                 onClick={() => handleViewDocument(doc)}
-                                                                className="p-1.5 text-muted hover:text-accent hover:bg-accent/10 rounded-lg transition-colors cursor-pointer"
+                                                                className="px-2 py-1 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 dark:hover:border-pink-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
                                                                 title="View File"
                                                             >
-                                                                <i className="fas fa-eye"></i>
+                                                                <i className="fas fa-eye text-[11px]"></i>
+                                                                <span className="hidden sm:inline">View</span>
                                                             </button>
                                                             <button
                                                                 onClick={() => handleEditDocument(doc)}
-                                                                className="p-1.5 text-muted hover:text-accent hover:bg-accent/10 rounded-lg transition-colors cursor-pointer"
+                                                                className="px-2 py-1 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 dark:hover:border-purple-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
                                                                 title="Edit Metadata"
                                                             >
-                                                                <i className="fas fa-pen-to-square"></i>
+                                                                <i className="fas fa-pen-to-square text-[11px]"></i>
+                                                                <span className="hidden sm:inline">Edit</span>
                                                             </button>
                                                             <button
                                                                 onClick={() => downloadFile(doc)}
-                                                                className="p-1.5 text-muted hover:text-ink hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                                                className="px-2 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
                                                                 title="Download File"
                                                             >
-                                                                <i className="fas fa-download"></i>
+                                                                <i className="fas fa-download text-[11px]"></i>
+                                                                <span className="hidden sm:inline">Download</span>
                                                             </button>
                                                             <button
                                                                 onClick={() => handleDelete(doc)}
-                                                                className="p-1.5 text-muted hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                                                className="px-2 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 dark:hover:border-rose-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
                                                                 title="Delete File"
                                                             >
-                                                                <i className="fas fa-trash"></i>
+                                                                <i className="fas fa-trash text-[11px]"></i>
                                                             </button>
                                                         </div>
                                                     </td>
@@ -1906,7 +1909,7 @@ export default function Documents() {
                                                         })}
                                                     </td>
                                                     <td data-label="Status" className="py-3 px-4 text-right whitespace-nowrap">
-                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 text-[11px] font-medium">
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 text-[11px] font-semibold shadow-2xs">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"></span>
                                                             {activity.status}
                                                         </span>

@@ -87,34 +87,34 @@ const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 
 const getPOStatusColor = (status: string) => {
     switch (status) {
-        case 'Draft': return 'bg-slate-100 text-slate-600';
-        case 'Sent': return 'bg-blue-100 text-blue-600';
-        case 'Confirmed': return 'bg-emerald-100 text-emerald-600';
-        case 'Delivered': return 'bg-pink-100 text-pink-600';
-        case 'Cancelled': return 'bg-red-100 text-red-600';
-        default: return 'bg-slate-100 text-slate-600';
+        case 'Draft': return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
+        case 'Sent': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
+        case 'Confirmed': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
+        case 'Delivered': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
+        case 'Cancelled': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
+        default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
     }
 };
 
 const getStatusBadgeColor = (status: string) => {
     switch (status) {
-        case 'Draft': return 'bg-slate-50 text-slate-700 border-slate-200';
-        case 'Sent': return 'bg-blue-50 text-blue-700 border-blue-200';
-        case 'Confirmed': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        case 'Delivered': return 'bg-pink-50 text-pink-700 border-pink-200';
-        case 'Cancelled': return 'bg-red-50 text-red-700 border-red-200';
-        default: return 'bg-slate-50 text-slate-700 border-slate-200';
+        case 'Draft': return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
+        case 'Sent': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
+        case 'Confirmed': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
+        case 'Delivered': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
+        case 'Cancelled': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
+        default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
     }
 };
 
 const getStatusDotColor = (status: string) => {
     switch (status) {
-        case 'Draft': return 'bg-slate-400';
-        case 'Sent': return 'bg-blue-500';
-        case 'Confirmed': return 'bg-emerald-500';
-        case 'Delivered': return 'bg-pink-500';
-        case 'Cancelled': return 'bg-red-500';
-        default: return 'bg-slate-400';
+        case 'Draft': return 'bg-slate-400 dark:bg-slate-500';
+        case 'Sent': return 'bg-indigo-500 dark:bg-indigo-400';
+        case 'Confirmed': return 'bg-purple-500 dark:bg-purple-400';
+        case 'Delivered': return 'bg-pink-500 dark:bg-pink-400';
+        case 'Cancelled': return 'bg-rose-500 dark:bg-rose-400';
+        default: return 'bg-slate-400 dark:bg-slate-500';
     }
 };
 
@@ -338,7 +338,11 @@ export default function PurchaseOrders() {
         totalAmount: 0,
     });
 
-    const userRole = "admin";
+    const currentUserRole = user.getRole();
+    const rawRole = (currentUserRole || '').toLowerCase().trim();
+    const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(rawRole);
+    const canUpdateStatus = ['admin', 'super_admin', 'superadmin', 'manager', 'executive'].includes(rawRole);
+    const userRole = currentUserRole;
 
     const scrollToTable = useCallback(() => {
         if (tableContainerRef.current) {
@@ -665,17 +669,27 @@ export default function PurchaseOrders() {
     };
 
     const handleBulkUpdateStatus = async (newStatus: string) => {
+        if (!canUpdateStatus) {
+            toast.error("Permission denied: Only Managers, Executives, and Admins can update purchase order status.");
+            return;
+        }
+
+        if (newStatus === 'Confirmed' && !isAdmin) {
+            toast.error("Permission denied: Only Administrators can set the 'Confirmed' status of purchase orders.");
+            return;
+        }
+
         if (selectedIds.size === 0) {
             toast.warning("Please select at least one purchase order");
             return;
         }
 
         const confirmed = await confirm({
-            title: `Change Status to ${newStatus}`,
+            title: `Confirm Bulk Status Change`,
             message: `Are you sure you want to change the status of ${selectedIds.size} selected purchase order(s) to "${newStatus}"?`,
             confirmText: `Update to ${newStatus}`,
             cancelText: "Cancel",
-            confirmVariant: "info",
+            confirmVariant: newStatus === 'Cancelled' ? "danger" : "info",
         });
 
         if (!confirmed) return;
@@ -783,7 +797,35 @@ export default function PurchaseOrders() {
         setIsSelectAll(filteredOrders.length > 0 && filteredOrders.every(o => next.has(o.id)));
     };
 
-    const handleUpdateStatus = async (id: string, newStatus: string) => {
+    const handleUpdateStatus = async (id: string, newStatus: string, options?: { skipConfirm?: boolean }) => {
+        if (!canUpdateStatus) {
+            toast.error("Permission denied: Only Managers, Executives, and Admins can update purchase order status.");
+            return;
+        }
+
+        const targetOrder = purchaseOrders.find(p => p.id === id) || allOrders.find(p => p.id === id) || (actionModalOrder?.id === id ? actionModalOrder : null);
+        const currentStatus = targetOrder?.status || 'Draft';
+
+        if (currentStatus === newStatus) return;
+
+        // Changing to or from Confirmed requires Admin
+        if ((newStatus === 'Confirmed' || currentStatus === 'Confirmed') && !isAdmin) {
+            toast.error("Permission denied: Only Administrators can set or modify the 'Confirmed' status of a purchase order.");
+            return;
+        }
+
+        if (!options?.skipConfirm) {
+            const confirmed = await confirm({
+                title: `Confirm Status Change`,
+                message: `Are you sure you want to change the status of PO #${targetOrder?.po_number || id} from "${currentStatus}" to "${newStatus}"?`,
+                confirmText: `Change to ${newStatus}`,
+                cancelText: "Cancel",
+                confirmVariant: newStatus === 'Cancelled' ? "danger" : "info",
+            });
+
+            if (!confirmed) return;
+        }
+
         setPendingRowId(id);
         try {
             const { error } = await supabase
@@ -804,7 +846,7 @@ export default function PurchaseOrders() {
                 setActionModalOrder(prev => prev ? { ...prev, status: newStatus } : null);
             }
 
-            toast.success(`PO status updated to ${newStatus}`);
+            toast.success(`PO #${targetOrder?.po_number || id} status updated to ${newStatus}`);
         } catch (error) {
             console.error('Error updating PO status:', error);
             toast.error('Failed to update PO status');
@@ -947,7 +989,7 @@ export default function PurchaseOrders() {
 
             if (data.success) {
                 // Update status from Draft to Sent in database
-                await handleUpdateStatus(actionModalOrder.id, 'Sent');
+                await handleUpdateStatus(actionModalOrder.id, 'Sent', { skipConfirm: true });
 
                 toast.success(`Email sent to ${emailTo} and status updated to Sent!`, {
                     id: toastId,
@@ -1000,7 +1042,7 @@ export default function PurchaseOrders() {
             }
 
             // Update status from Draft to Sent
-            await handleUpdateStatus(actionModalOrder.id, 'Sent');
+            await handleUpdateStatus(actionModalOrder.id, 'Sent', { skipConfirm: true });
 
             if (actionSupplierMessenger) {
                 window.open(actionSupplierMessenger, '_blank');
@@ -1094,13 +1136,13 @@ export default function PurchaseOrders() {
             const sortedLabels = allStatuses.filter(st => (statusData[st] || 0) > 0 || allStatuses.indexOf(st) < 5);
             const sortedData = sortedLabels.map(label => statusData[label] || 0);
 
-            // Status color mapping for the chart
+            // Status color mapping matching Supplier Categories palette
             const colorMap: Record<string, string> = {
-                'Draft': '#94A3B8',      // Gray - Draft
-                'Sent': '#F9A8D4',       // Lighter Pink - Sent
-                'Confirmed': '#F472B6',  // Light Pink - Confirmed
-                'Delivered': '#EC4899',  // Pink - Delivered
-                'Cancelled': '#9D174D'   // Dark Pink / Rose - Cancelled
+                'Draft': '#64748B',      // Slate
+                'Sent': '#6366F1',       // Indigo
+                'Confirmed': '#8B5CF6',  // Violet / Purple
+                'Delivered': '#EC4899',  // Vibrant Pink
+                'Cancelled': '#E11D48'   // Rose
             };
 
             const backgroundColor = sortedLabels.map((label: string) => colorMap[label] || '#94A3B8');
@@ -1746,12 +1788,12 @@ export default function PurchaseOrders() {
                                                                 type="button"
                                                                 onClick={() => handleTogglePaid(order.id, order.paid, order.po_number, order.status)}
                                                                 disabled={rowBusy}
-                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1.5 ${
+                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1.5 shadow-2xs ${
                                                                     order.paid
-                                                                        ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 cursor-default"
+                                                                        ? "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 cursor-default"
                                                                         : order.status === 'Delivered'
-                                                                            ? "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/50 hover:bg-pink-100 dark:hover:bg-pink-900/40 cursor-pointer shadow-2xs hover:scale-102 active:scale-98"
-                                                                            : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75"
+                                                                            ? "bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 cursor-pointer shadow-2xs hover:scale-102 active:scale-98"
+                                                                            : "bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/60 cursor-not-allowed opacity-75"
                                                                 }`}
                                                                 title={
                                                                     order.paid
@@ -1763,17 +1805,17 @@ export default function PurchaseOrders() {
                                                             >
                                                                 {order.paid ? (
                                                                     <>
-                                                                        <i className="fas fa-check-circle text-emerald-500" />
+                                                                        <i className="fas fa-check-circle text-purple-600 dark:text-purple-400 text-[10px]" />
                                                                         <span>Paid ✓</span>
                                                                     </>
                                                                 ) : order.status === 'Delivered' ? (
                                                                     <>
-                                                                        <i className="fas fa-receipt text-pink-500" />
+                                                                        <i className="fas fa-receipt text-pink-600 dark:text-pink-400 text-[10px]" />
                                                                         <span>Upload Receipt</span>
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        <i className="fas fa-lock text-slate-400" />
+                                                                        <i className="fas fa-lock text-slate-400 dark:text-slate-500 text-[10px]" />
                                                                         <span>Unpaid</span>
                                                                     </>
                                                                 )}
@@ -1800,10 +1842,10 @@ export default function PurchaseOrders() {
                                                                         });
                                                                         setIsDocViewerOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
                                                                     title="Receipt verified. Click to view document."
                                                                 >
-                                                                    <i className="fas fa-check-circle text-emerald-500 text-[10px]" />
+                                                                    <i className="fas fa-check-circle text-pink-600 dark:text-pink-400 text-[10px]" />
                                                                     <span>Matched ✓</span>
                                                                 </button>
                                                             ) : order.verification?.match_result === 'mismatched' ? (
@@ -1814,10 +1856,10 @@ export default function PurchaseOrders() {
                                                                         setReceiptVerificationId(order.verification?.id || null);
                                                                         setIsReceiptModalOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
                                                                     title="Receipt mismatch detected. Click to review differences or force insert."
                                                                 >
-                                                                    <i className="fas fa-exclamation-triangle text-amber-500 text-[10px]" />
+                                                                    <i className="fas fa-exclamation-triangle text-amber-500 dark:text-amber-400 text-[10px]" />
                                                                     <span>Mismatch ⚠</span>
                                                                 </button>
                                                             ) : order.verification?.match_result === 'forced' ? (
@@ -1840,10 +1882,10 @@ export default function PurchaseOrders() {
                                                                         });
                                                                         setIsDocViewerOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
                                                                     title="Admin forced override. Click to view document."
                                                                 >
-                                                                    <i className="fas fa-shield-alt text-purple-500 text-[10px]" />
+                                                                    <i className="fas fa-shield-alt text-indigo-600 dark:text-indigo-400 text-[10px]" />
                                                                     <span>Forced ✓</span>
                                                                 </button>
                                                             ) : order.verification?.match_result === 'pending' ? (
@@ -1854,14 +1896,14 @@ export default function PurchaseOrders() {
                                                                         setReceiptVerificationId(order.verification?.id || null);
                                                                         setIsReceiptModalOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
                                                                     title="Receipt verification is processing..."
                                                                 >
-                                                                    <i className="fas fa-spinner fa-spin text-blue-500 text-[10px]" />
+                                                                    <i className="fas fa-spinner fa-spin text-indigo-600 dark:text-indigo-400 text-[10px]" />
                                                                     <span>Processing...</span>
                                                                 </button>
                                                             ) : order.paid ? (
-                                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs">
                                                                     <i className="fas fa-check text-[10px]" /> Paid
                                                                 </span>
                                                             ) : order.status === 'Delivered' ? (
@@ -1872,10 +1914,10 @@ export default function PurchaseOrders() {
                                                                         setReceiptVerificationId(null);
                                                                         setIsReceiptModalOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
                                                                     title="Click to upload receipt for OCR verification"
                                                                 >
-                                                                    <i className="fas fa-arrow-up-from-bracket text-pink-500 text-[10px]" />
+                                                                    <i className="fas fa-arrow-up-from-bracket text-pink-600 dark:text-pink-400 text-[10px]" />
                                                                     <span>Upload</span>
                                                                 </button>
                                                             ) : (
@@ -1913,7 +1955,7 @@ export default function PurchaseOrders() {
                                                                             setIsDocViewerOpen(true);
                                                                         }}
                                                                         disabled={rowBusy}
-                                                                        className="px-2.5 py-1 text-xs font-semibold text-pink-700 dark:text-pink-300 hover:text-white bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-500 dark:hover:bg-pink-600 rounded-lg border border-pink-200/80 dark:border-pink-800/50 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-2xs group"
+                                                                        className="px-2.5 py-1 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 rounded-lg border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 group"
                                                                         title="View Receipt Document"
                                                                     >
                                                                         <i className="fas fa-file-invoice text-[11px] group-hover:scale-110 transition-transform" />
@@ -1926,7 +1968,7 @@ export default function PurchaseOrders() {
                                                                     type="button"
                                                                     onClick={() => setActionModalOrder(order)}
                                                                     disabled={rowBusy}
-                                                                    className="px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 bg-slate-100 dark:bg-slate-800 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-lg border border-slate-200/80 dark:border-slate-700 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
+                                                                    className="px-2.5 py-1 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 rounded-lg border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                                                                     title="Manage Purchase Order"
                                                                 >
                                                                     <i className="fas fa-ellipsis-h text-[11px]" />
@@ -2247,31 +2289,86 @@ export default function PurchaseOrders() {
 
                                 {/* Status Options */}
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                                        Update Order Status
-                                    </label>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                                            Update Order Status
+                                        </label>
+                                        {!canUpdateStatus ? (
+                                            <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/40 flex items-center gap-1">
+                                                <i className="fas fa-lock text-[9px]" /> Managers, Execs & Admins Only
+                                            </span>
+                                        ) : !isAdmin ? (
+                                            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                                Confirmed requires Admin
+                                            </span>
+                                        ) : null}
+                                    </div>
                                     <div className="grid grid-cols-1 gap-2">
                                         {['Draft', 'Sent', 'Confirmed', 'Delivered', 'Cancelled'].map((status) => {
                                             const isCurrent = actionModalOrder.status === status;
+                                            const requiresAdmin = status === 'Confirmed' || actionModalOrder.status === 'Confirmed';
+                                            const isRestricted = !canUpdateStatus || (requiresAdmin && !isAdmin);
+                                            const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted;
+
+                                            // Solid background styles
+                                            const getSolidButtonStyles = () => {
+                                                if (isCurrent) {
+                                                    switch (status) {
+                                                        case 'Draft': return "bg-slate-700 text-white border-slate-800 shadow-sm ring-2 ring-slate-400/50 cursor-default";
+                                                        case 'Sent': return "bg-blue-600 text-white border-blue-700 shadow-sm ring-2 ring-blue-400/50 cursor-default";
+                                                        case 'Confirmed': return "bg-indigo-600 text-white border-indigo-700 shadow-sm ring-2 ring-indigo-400/50 cursor-default";
+                                                        case 'Delivered': return "bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-400/50 cursor-default";
+                                                        case 'Cancelled': return "bg-rose-600 text-white border-rose-700 shadow-sm ring-2 ring-rose-400/50 cursor-default";
+                                                        default: return "bg-slate-700 text-white border-slate-800 shadow-sm cursor-default";
+                                                    }
+                                                }
+
+                                                if (isRestricted) {
+                                                    return "bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60";
+                                                }
+
+                                                // Available status buttons (solid vibrant style on interaction)
+                                                switch (status) {
+                                                    case 'Draft': return "bg-slate-100 hover:bg-slate-700 text-slate-800 hover:text-white dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700/80 shadow-2xs hover:shadow-sm cursor-pointer";
+                                                    case 'Sent': return "bg-blue-50 hover:bg-blue-600 text-blue-800 hover:text-white dark:bg-blue-950/40 dark:hover:bg-blue-600 dark:text-blue-200 border-blue-200 dark:border-blue-800/40 shadow-2xs hover:shadow-sm cursor-pointer";
+                                                    case 'Confirmed': return "bg-indigo-50 hover:bg-indigo-600 text-indigo-800 hover:text-white dark:bg-indigo-950/40 dark:hover:bg-indigo-600 dark:text-indigo-200 border-indigo-200 dark:border-indigo-800/40 shadow-2xs hover:shadow-sm cursor-pointer";
+                                                    case 'Delivered': return "bg-emerald-50 hover:bg-emerald-600 text-emerald-800 hover:text-white dark:bg-emerald-950/40 dark:hover:bg-emerald-600 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800/40 shadow-2xs hover:shadow-sm cursor-pointer";
+                                                    case 'Cancelled': return "bg-rose-50 hover:bg-rose-600 text-rose-800 hover:text-white dark:bg-rose-950/40 dark:hover:bg-rose-600 dark:text-rose-200 border-rose-200 dark:border-rose-800/40 shadow-2xs hover:shadow-sm cursor-pointer";
+                                                    default: return "bg-slate-100 hover:bg-slate-700 text-slate-800 hover:text-white border-slate-200 cursor-pointer";
+                                                }
+                                            };
+
                                             return (
                                                 <button
                                                     key={status}
                                                     type="button"
-                                                    disabled={pendingRowId === actionModalOrder.id || isCurrent}
+                                                    disabled={isDisabled}
                                                     onClick={() => handleUpdateStatus(actionModalOrder.id, status)}
-                                                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between border ${isCurrent
-                                                        ? "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800/40 cursor-default"
-                                                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-750 cursor-pointer"
-                                                        }`}
+                                                    title={
+                                                        isCurrent
+                                                            ? `Current status is ${status}`
+                                                            : isRestricted
+                                                                ? requiresAdmin && !isAdmin
+                                                                    ? "Admin Only: Only Administrators can set or modify Confirmed status"
+                                                                    : "Only Managers, Executives, and Admins can update status"
+                                                                : `Click to change status to ${status}`
+                                                    }
+                                                    className={`w-full px-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between border ${getSolidButtonStyles()}`}
                                                 >
                                                     <div className="flex items-center gap-2.5">
-                                                        <span className={`w-2 h-2 rounded-full ${getStatusDotColor(status)}`} />
-                                                        <span className="font-semibold">{status}</span>
+                                                        <span className={`w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-white shadow-xs' : getStatusDotColor(status)}`} />
+                                                        <span className="font-bold">{status}</span>
                                                     </div>
                                                     {isCurrent ? (
-                                                        <span className="text-[11px] font-bold text-pink-600 dark:text-pink-400">Current</span>
+                                                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white/25 text-white tracking-wider">
+                                                            Current ✓
+                                                        </span>
+                                                    ) : isRestricted ? (
+                                                        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                                            <i className="fas fa-lock text-[9px]" /> {requiresAdmin && !isAdmin ? 'Admin' : 'Locked'}
+                                                        </span>
                                                     ) : (
-                                                        <i className="fas fa-arrow-right text-[10px] text-slate-400" />
+                                                        <i className="fas fa-arrow-right text-[10px] opacity-60" />
                                                     )}
                                                 </button>
                                             );

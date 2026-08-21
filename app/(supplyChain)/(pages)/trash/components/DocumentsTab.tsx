@@ -625,7 +625,7 @@ export function DocumentsTab() {
                                                 )}
                                             </td>
                                             <td data-label="Type" className="py-3 px-4 whitespace-nowrap">
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-400 border border-pink-200/60 dark:border-pink-900/40">
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs">
                                                     {doc.document_type}
                                                 </span>
                                             </td>
@@ -640,11 +640,11 @@ export function DocumentsTab() {
                                             </td>
                                             <td data-label="Role" className="py-3 px-4 whitespace-nowrap">
                                                 {doc.role ? (
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-semibold ${doc.role === 'Admin'
-                                                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400 border border-purple-200/60 dark:border-purple-900/40'
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${doc.role === 'Admin'
+                                                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50'
                                                         : doc.role === 'Manager'
-                                                            ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/40'
-                                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60'
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50'
+                                                            : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60'
                                                         }`}>
                                                         {doc.role}
                                                     </span>
@@ -661,7 +661,7 @@ export function DocumentsTab() {
                                             <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     <button
-                                                        className="px-2.5 py-1 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all duration-200 font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer hover:scale-105"
+                                                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
                                                         onClick={() => handleRestoreDocument(doc)}
                                                         disabled={docsLoading}
                                                         title="Restore Document"
@@ -670,7 +670,7 @@ export function DocumentsTab() {
                                                         <span>Restore</span>
                                                     </button>
                                                     <button
-                                                        className="px-2.5 py-1 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all duration-200 font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer hover:scale-105"
+                                                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
                                                         onClick={() => handleDeleteDocumentPermanently(doc)}
                                                         disabled={docsLoading}
                                                         title="Delete Permanently"

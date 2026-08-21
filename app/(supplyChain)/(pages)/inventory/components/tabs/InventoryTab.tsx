@@ -262,20 +262,20 @@ export function InventoryTab({
                                         {/* Status Badge */}
                                         <td className="px-3.5 py-3 whitespace-nowrap">
                                             <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${
                                                     item.status === 'available'
-                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/40'
+                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50'
                                                         : item.status === 'low-stock'
-                                                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/40'
-                                                            : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/40'
+                                                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50'
+                                                            : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50'
                                                 }`}
                                             >
                                                 <span className={`w-1.5 h-1.5 rounded-full ${
                                                     item.status === 'available'
-                                                        ? 'bg-emerald-500'
+                                                        ? 'bg-emerald-500 dark:bg-emerald-400'
                                                         : item.status === 'low-stock'
-                                                            ? 'bg-amber-500'
-                                                            : 'bg-rose-500'
+                                                            ? 'bg-amber-500 dark:bg-amber-400'
+                                                            : 'bg-rose-500 dark:bg-rose-400'
                                                 }`}></span>
                                                 {item.status === 'available'
                                                     ? 'Available'
@@ -289,21 +289,27 @@ export function InventoryTab({
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             {po ? (
                                                 po.is_request ? (
-                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40 shadow-2xs">
-                                                        <i className="fas fa-clock text-[10px] text-amber-500"></i>
+                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50 shadow-2xs">
+                                                        <i className="fas fa-clock text-[10px] text-amber-600 dark:text-amber-400"></i>
                                                         <span className="font-mono">{po.request_number}</span>
-                                                        <span className="text-[10px] opacity-75">({po.status})</span>
+                                                        <span className="text-[10px] opacity-85">({po.status})</span>
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col space-y-1">
-                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
+                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold shadow-2xs ${
                                                             isDelivered
-                                                                ? 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200/80 dark:border-pink-800/40'
+                                                                ? 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50'
                                                                 : po.status === 'Confirmed'
-                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/40'
-                                                                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/40'
+                                                                    ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50'
+                                                                    : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50'
                                                         }`}>
-                                                            <i className={`fas ${isDelivered ? 'fa-truck-ramp-box' : 'fa-file-invoice'} text-[9px]`}></i>
+                                                            <i className={`fas ${isDelivered ? 'fa-truck-ramp-box' : 'fa-file-invoice'} text-[9px] ${
+                                                                isDelivered
+                                                                    ? 'text-pink-600 dark:text-pink-400'
+                                                                    : po.status === 'Confirmed'
+                                                                        ? 'text-purple-600 dark:text-purple-400'
+                                                                        : 'text-indigo-600 dark:text-indigo-400'
+                                                            }`}></i>
                                                             <span className="font-mono">{po.po_number}</span>
                                                             <span>• {po.status}</span>
                                                         </div>
@@ -318,7 +324,7 @@ export function InventoryTab({
                                                     </div>
                                                 )
                                             ) : (
-                                                <span className="text-slate-300 dark:text-slate-600 text-xs font-mono pl-2">-</span>
+                                                <span className="text-slate-400 dark:text-slate-500 text-xs italic">No PO</span>
                                             )}
                                         </td>
 
@@ -357,7 +363,7 @@ export function InventoryTab({
                                                 {/* Add / Request PO Button (2.1) */}
                                                 <button
                                                     onClick={() => onOrderPO?.(item)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 bg-pink-50 hover:bg-pink-100/80 dark:bg-pink-950/30 dark:hover:bg-pink-900/50 active:scale-95 rounded-xl transition-all border border-pink-200/80 dark:border-pink-800/40 shadow-2xs cursor-pointer"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 active:scale-95 rounded-xl transition-all border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs cursor-pointer"
                                                     title="Order / Purchase Request"
                                                 >
                                                     <i className="fas fa-cart-plus text-[10px]"></i>
@@ -367,11 +373,7 @@ export function InventoryTab({
                                                 {/* Stock In Button (2.3) */}
                                                 <button
                                                     onClick={() => onStockIn(item.item_name, item)}
-                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold active:scale-95 rounded-xl transition-all shadow-2xs cursor-pointer ${
-                                                        hasReceivableStock
-                                                            ? 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/80 ring-2 ring-emerald-500/20'
-                                                            : 'bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/40'
-                                                    }`}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 active:scale-95 rounded-xl transition-all border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 shadow-2xs hover:shadow-xs cursor-pointer"
                                                     title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
                                                 >
                                                     {hasReceivableStock ? (
@@ -385,7 +387,7 @@ export function InventoryTab({
                                                 {/* Stock Out Button */}
                                                 <button
                                                     onClick={() => onStockOut(item.item_name)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 dark:bg-amber-950/20 dark:hover:bg-amber-900/40 active:scale-95 rounded-xl transition-all border border-amber-200/70 dark:border-amber-800/40 shadow-2xs cursor-pointer"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 active:scale-95 rounded-xl transition-all border border-amber-200/80 dark:border-amber-800/50 hover:border-amber-300 shadow-2xs hover:shadow-xs cursor-pointer"
                                                     title="Stock Out"
                                                 >
                                                     <i className="fas fa-arrow-up text-[10px]"></i>
@@ -395,7 +397,7 @@ export function InventoryTab({
                                                 {/* Edit Button */}
                                                 <button
                                                     onClick={() => onEdit(item)}
-                                                    className="w-8 h-8 rounded-xl bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/60 dark:hover:bg-slate-700/60 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-all flex items-center justify-center active:scale-95 cursor-pointer"
+                                                    className="w-8 h-8 rounded-xl text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-2xs hover:shadow-xs"
                                                     title="Edit Item"
                                                 >
                                                     <i className="fas fa-pen-to-square text-xs"></i>
@@ -404,7 +406,7 @@ export function InventoryTab({
                                                 {/* Delete Button */}
                                                 <button
                                                     onClick={() => onDelete(item.id, item.item_name)}
-                                                    className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 text-rose-500 dark:text-rose-400 hover:text-rose-700 transition-all flex items-center justify-center active:scale-95 cursor-pointer"
+                                                    className="w-8 h-8 rounded-xl text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-2xs hover:shadow-xs"
                                                     title="Delete Item"
                                                 >
                                                     <i className="fas fa-trash-can text-xs"></i>

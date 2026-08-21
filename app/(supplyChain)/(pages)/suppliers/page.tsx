@@ -471,16 +471,17 @@ export default function Suppliers() {
     const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A";
 
     const getStatusBadge = (status: string) => {
-        const statusMap: Record<string, { bg: string; text: string; dot: string }> = {
-            'Draft': { bg: "bg-slate-50 dark:bg-slate-700/50", text: "text-slate-600 dark:text-slate-300", dot: "bg-slate-400 dark:bg-slate-500" },
-            'Sent': { bg: "bg-blue-50 dark:bg-blue-900/20", text: "text-blue-600 dark:text-blue-400", dot: "bg-blue-400 dark:bg-blue-500" },
-            'Confirmed': { bg: "bg-indigo-50 dark:bg-indigo-900/20", text: "text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-400 dark:bg-indigo-500" },
-            'Delivered': { bg: "bg-emerald-50 dark:bg-emerald-900/20", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-400 dark:bg-emerald-500" },
-            'Cancelled': { bg: "bg-red-50 dark:bg-red-900/20", text: "text-red-600 dark:text-red-400", dot: "bg-red-400 dark:bg-red-500" },
+        const statusMap: Record<string, { bg: string; dot: string }> = {
+            'Draft': { bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold", dot: "bg-slate-400 dark:bg-slate-500" },
+            'Sent': { bg: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold", dot: "bg-indigo-500 dark:bg-indigo-400" },
+            'Confirmed': { bg: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold", dot: "bg-purple-500 dark:bg-purple-400" },
+            'Delivered': { bg: "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold", dot: "bg-pink-500 dark:bg-pink-400" },
+            'Cancelled': { bg: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold", dot: "bg-rose-500 dark:bg-rose-400" },
         };
         const style = statusMap[status] || statusMap['Draft'];
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs ${style.bg}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                 {status}
             </span>
         );
@@ -488,13 +489,13 @@ export default function Suppliers() {
 
     const getPaidBadge = (paid: boolean) => {
         return paid ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dark:bg-emerald-500"></span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400"></span>
                 Paid
             </span>
         ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 dark:bg-amber-500"></span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500"></span>
                 Unpaid
             </span>
         );
@@ -1123,18 +1124,19 @@ export default function Suppliers() {
                                                     <td data-label="Status" className="py-3 px-4">
                                                         <button
                                                             onClick={() => handleToggleActive(supplier.id, supplier.is_active)}
-                                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${supplier.is_active
-                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40 dark:hover:bg-emerald-900/40'
-                                                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/60 dark:hover:bg-slate-800'
+                                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-98 ${supplier.is_active
+                                                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                                                                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/60 hover:bg-slate-200/80'
                                                                 }`}
                                                         >
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${supplier.is_active ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-slate-400 dark:bg-slate-500'}`} />
                                                             <span>{supplier.is_active ? 'Active' : 'Inactive'}</span>
                                                         </button>
                                                     </td>
                                                     <td data-label="Action" className="py-3 px-4 text-right">
-                                                        <div className="flex items-center justify-end gap-1">
+                                                        <div className="flex items-center justify-end gap-1.5">
                                                             <button
-                                                                className="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-medium cursor-pointer"
+                                                                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
                                                                 onClick={() => {
                                                                     setSelectedSupplier(supplier);
                                                                     setShowModal(true);
@@ -1143,7 +1145,7 @@ export default function Suppliers() {
                                                                 View
                                                             </button>
                                                             <button
-                                                                className="px-2.5 py-1 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors font-medium cursor-pointer"
+                                                                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
                                                                 onClick={() => {
                                                                     setEditingSupplier({ ...supplier });
                                                                     setShowEditSupplierModal(true);
@@ -1152,7 +1154,7 @@ export default function Suppliers() {
                                                                 Edit
                                                             </button>
                                                             <button
-                                                                className="px-2.5 py-1 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors font-medium cursor-pointer"
+                                                                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
                                                                 onClick={() => handleDeleteSupplier(supplier.id, supplier.name)}
                                                             >
                                                                 Delete
@@ -1330,16 +1332,16 @@ export default function Suppliers() {
                                                             <div className="flex items-center justify-end gap-1.5">
                                                                 <button
                                                                     onClick={() => handleViewPurchaseOrder(order)}
-                                                                    className="px-2.5 py-1 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors font-medium cursor-pointer text-xs"
+                                                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
                                                                 >
-                                                                    <i className="fas fa-eye mr-1.5" />
+                                                                    <i className="fas fa-eye mr-1.5 text-[11px]" />
                                                                     View
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeletePurchaseOrder(order.id, order.po_number)}
-                                                                    className="px-2.5 py-1 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors font-medium cursor-pointer text-xs"
+                                                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
                                                                 >
-                                                                    <i className="fas fa-trash-alt mr-1.5" />
+                                                                    <i className="fas fa-trash-alt mr-1.5 text-[11px]" />
                                                                     Delete
                                                                 </button>
                                                             </div>

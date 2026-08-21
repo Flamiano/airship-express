@@ -41,29 +41,29 @@ const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 
 const getPriorityColor = (priority: string) => {
     switch (priority) {
-        case 'Critical': return 'bg-red-100 text-red-700';
-        case 'Urgent': return 'bg-amber-100 text-amber-700';
-        default: return 'bg-blue-100 text-blue-700';
+        case 'Critical': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
+        case 'Urgent': return 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50 shadow-2xs font-semibold';
+        default: return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
     }
 };
 
 const getStatusColor = (status: string) => {
     switch (status) {
-        case 'Pending': return 'bg-amber-50 text-amber-700';
-        case 'Approved': return 'bg-emerald-50 text-emerald-700';
-        case 'Rejected': return 'bg-red-50 text-red-700';
-        case 'Completed': return 'bg-blue-50 text-blue-700';
-        default: return 'bg-slate-50 text-slate-700';
+        case 'Pending': return 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50 shadow-2xs font-semibold';
+        case 'Approved': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
+        case 'Rejected': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
+        case 'Completed': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
+        default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
     }
 };
 
 const getPOStatusColor = (status: string) => {
     switch (status) {
-        case 'Draft': return 'bg-slate-100 text-slate-600';
-        case 'Sent': return 'bg-blue-100 text-blue-600';
-        case 'Confirmed': return 'bg-emerald-100 text-emerald-600';
-        case 'Delivered': return 'bg-pink-100 text-pink-600';
-        default: return 'bg-red-100 text-red-600';
+        case 'Draft': return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
+        case 'Sent': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
+        case 'Confirmed': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
+        case 'Delivered': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
+        default: return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
     }
 };
 
@@ -1264,7 +1264,7 @@ export default function Procurement() {
                                                                         onClick={() => handleCreateOrder(req)}
                                                                         disabled={rowBusy}
                                                                         title="Create Purchase Order"
-                                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/50 rounded-xl transition-all shadow-2xs disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 active:scale-95 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 rounded-xl transition-all shadow-2xs hover:shadow-xs disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                                                                     >
                                                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

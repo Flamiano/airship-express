@@ -215,11 +215,11 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                         {/* Status Badge */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
                                             <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${isPending
-                                                    ? 'bg-amber-50/80 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/40 shadow-2xs'
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${isPending
+                                                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50'
                                                     : appeal.status === 'approved'
-                                                        ? 'bg-emerald-50/80 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/40 shadow-2xs'
-                                                        : 'bg-rose-50/80 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/40 shadow-2xs'
+                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50'
+                                                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50'
                                                     }`}
                                             >
                                                 <span
@@ -247,7 +247,7 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                                         <button
                                                             onClick={() => onApproveAppeal(appeal.id)}
                                                             title="Approve Appeal"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
+                                                            className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
                                                         >
                                                             <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                                                             Approve
@@ -255,7 +255,7 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                                         <button
                                                             onClick={() => onRejectAppeal(appeal.id)}
                                                             title="Reject Appeal"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
+                                                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
                                                         >
                                                             <X className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                                                             Reject
@@ -263,9 +263,9 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                                         <button
                                                             onClick={() => onOpenResponseModal(appeal)}
                                                             title="Send Custom Response"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-400 border border-blue-200/80 dark:border-blue-900/40 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
+                                                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
                                                         >
-                                                            <Send className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                                            <Send className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
                                                             Respond
                                                         </button>
                                                     </>
@@ -277,18 +277,18 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                                             <button
                                                                 onClick={() => onOpenResponseModal(appeal)}
                                                                 title="View Response Details"
-                                                                className="px-2.5 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
+                                                                className="px-2.5 py-1 text-xs font-semibold bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
                                                             >
-                                                                <Eye className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+                                                                <Eye className="w-3 h-3 text-pink-600 dark:text-pink-400" />
                                                                 View
                                                             </button>
                                                         )}
                                                         <button
                                                             onClick={() => onDeleteAppeal(appeal.id)}
                                                             title="Delete Record"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-slate-50 dark:bg-slate-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200/80 dark:border-slate-700 hover:border-rose-200 dark:hover:border-rose-900/40 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
+                                                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
                                                         >
-                                                            <Trash2 className="w-3 h-3" />
+                                                            <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                                                             Delete
                                                         </button>
                                                     </>

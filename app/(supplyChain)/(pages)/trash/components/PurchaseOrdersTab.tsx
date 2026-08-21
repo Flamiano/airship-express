@@ -277,16 +277,16 @@ export function PurchaseOrdersTab() {
 
     const getStatusBadge = useCallback((status: string) => {
         const sanitizedStatus = sanitizeText(status);
-        const statusMap: Record<string, { bg: string; text: string; dot: string }> = {
-            'Draft': { bg: "bg-slate-50 dark:bg-slate-700/50", text: "text-slate-600 dark:text-slate-300", dot: "bg-slate-400 dark:bg-slate-500" },
-            'Sent': { bg: "bg-blue-50 dark:bg-blue-900/20", text: "text-blue-600 dark:text-blue-400", dot: "bg-blue-400 dark:bg-blue-500" },
-            'Confirmed': { bg: "bg-indigo-50 dark:bg-indigo-900/20", text: "text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-400 dark:bg-indigo-500" },
-            'Delivered': { bg: "bg-emerald-50 dark:bg-emerald-900/20", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-400 dark:bg-emerald-500" },
-            'Cancelled': { bg: "bg-red-50 dark:bg-red-900/20", text: "text-red-600 dark:text-red-400", dot: "bg-red-400 dark:bg-red-500" },
+        const statusMap: Record<string, { bg: string; dot: string }> = {
+            'Draft': { bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold", dot: "bg-slate-400 dark:bg-slate-500" },
+            'Sent': { bg: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold", dot: "bg-indigo-500 dark:bg-indigo-400" },
+            'Confirmed': { bg: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold", dot: "bg-purple-500 dark:bg-purple-400" },
+            'Delivered': { bg: "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold", dot: "bg-pink-500 dark:bg-pink-400" },
+            'Cancelled': { bg: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold", dot: "bg-rose-500 dark:bg-rose-400" },
         };
         const style = statusMap[sanitizedStatus] || statusMap['Draft'];
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs ${style.bg}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                 {sanitizedStatus.charAt(0).toUpperCase() + sanitizedStatus.slice(1).replace(/_/g, ' ')}
             </span>
@@ -574,7 +574,7 @@ export function PurchaseOrdersTab() {
                                             <td className="py-3 px-4 text-right whitespace-nowrap">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     <button
-                                                        className="px-2.5 py-1 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all duration-200 font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer hover:scale-105"
+                                                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
                                                         onClick={() => handleRestorePurchaseOrder(po)}
                                                         disabled={poLoading}
                                                         title="Restore Purchase Order"
@@ -583,7 +583,7 @@ export function PurchaseOrdersTab() {
                                                         <span>Restore</span>
                                                     </button>
                                                     <button
-                                                        className="px-2.5 py-1 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all duration-200 font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer hover:scale-105"
+                                                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
                                                         onClick={() => handleDeletePurchaseOrderPermanently(po)}
                                                         disabled={poLoading}
                                                         title="Delete Permanently"

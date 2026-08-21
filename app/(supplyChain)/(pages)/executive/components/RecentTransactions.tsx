@@ -65,27 +65,27 @@ const StatusBadge = ({ status }: { status: string }) => {
     const getStatusStyles = (status: string) => {
         switch (status) {
             case "Received":
-                return "bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/40";
+                return "bg-pink-50 text-pink-700 border-pink-200/80 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800/50 shadow-2xs";
             case "Waiting":
-                return "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40";
+                return "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50 shadow-2xs";
             case "Dispatched":
-                return "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40";
+                return "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 shadow-2xs";
             case "Ready for Dispatch":
-                return "bg-purple-50 text-purple-700 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800/40";
+                return "bg-purple-50 text-purple-700 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/50 shadow-2xs";
             default:
-                return "bg-slate-50 text-slate-700 border-slate-200/80 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-700/60";
+                return "bg-slate-100 text-slate-700 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700/60 shadow-2xs";
         }
     };
 
     const dotColor = {
-        "Received": "bg-blue-500 dark:bg-blue-400",
+        "Received": "bg-pink-500 dark:bg-pink-400",
         "Waiting": "bg-amber-500 dark:bg-amber-400",
         "Dispatched": "bg-emerald-500 dark:bg-emerald-400",
         "Ready for Dispatch": "bg-purple-500 dark:bg-purple-400"
-    }[status] || "bg-slate-500 dark:bg-slate-400";
+    }[status] || "bg-slate-400 dark:bg-slate-500";
 
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusStyles(status)}`}>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusStyles(status)}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
             {status}
         </span>

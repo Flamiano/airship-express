@@ -158,12 +158,12 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                         <td className="py-3 px-4">
                                             <span className="font-semibold text-slate-800 dark:text-slate-200">{userName}</span>
                                             {isAdmin && (
-                                                <span className="ml-2 text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200/60 dark:border-purple-900/40 px-1.5 py-0.5 rounded-full">
+                                                <span className="ml-2 text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200/60 dark:border-purple-900/40 px-2 py-0.5 rounded-full shadow-2xs">
                                                     Admin
                                                 </span>
                                             )}
                                             {isBlocked && (
-                                                <span className="ml-2 text-[10px] font-semibold bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200/60 dark:border-red-900/40 px-1.5 py-0.5 rounded-full">
+                                                <span className="ml-2 text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/40 px-2 py-0.5 rounded-full shadow-2xs">
                                                     Blocked
                                                 </span>
                                             )}
@@ -193,10 +193,10 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
 
                                         <td className="py-3 px-4">
                                             <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${session.is_active && !isBlocked
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${session.is_active && !isBlocked
                                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40'
                                                     : isBlocked
-                                                        ? 'bg-red-50 text-red-700 border-red-200/80 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800/40'
+                                                        ? 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/40'
                                                         : 'bg-slate-100 text-slate-600 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700/60'
                                                     }`}
                                             >
@@ -204,7 +204,7 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                                     className={`w-1.5 h-1.5 rounded-full ${session.is_active && !isBlocked
                                                         ? 'bg-emerald-500 dark:bg-emerald-400'
                                                         : isBlocked
-                                                            ? 'bg-red-500 dark:bg-red-400'
+                                                            ? 'bg-rose-500 dark:bg-rose-400'
                                                             : 'bg-slate-400 dark:bg-slate-500'
                                                         }`}
                                                 />
@@ -232,11 +232,11 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                                             )
                                                         }
                                                         disabled={isAdmin}
-                                                        className={`px-2.5 py-1 text-xs font-semibold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200/80 dark:border-red-900/40 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-all flex items-center gap-1.5 ${isAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                                                        className={`px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs hover:shadow-xs active:scale-98 ${isAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                                                             }`}
                                                         title={isAdmin ? 'Cannot block admin users' : 'Block this device'}
                                                     >
-                                                        <Ban className="w-3 h-3" />
+                                                        <Ban className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                                                         <span>Block</span>
                                                     </button>
                                                 )}
