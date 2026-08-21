@@ -32,6 +32,17 @@ interface Document {
     version: number;
     session_id?: string | null;
     role?: string | null;
+    purchase_id?: string | null;
+    force_inserted_by?: string | null;
+    document_verification_id?: string | null;
+    purchase_orders?: {
+        id: string;
+        po_number: string;
+        supplier_name: string;
+        status: string;
+        total_amount: number;
+    } | null;
+    force_user_name?: string | null;
 }
 
 interface Supplier {
@@ -180,7 +191,11 @@ export default function Documents() {
             }
 
             if (typeFilter) {
-                query = query.eq('document_type', typeFilter);
+                if (typeFilter === 'Official Receipt' || typeFilter === 'Purchase Receipt') {
+                    query = query.in('document_type', ['Official Receipt', 'Purchase Receipt']);
+                } else {
+                    query = query.eq('document_type', typeFilter);
+                }
             }
 
             if (categoryFilter) {
@@ -206,11 +221,63 @@ export default function Documents() {
 
             if (error) throw error;
 
-            setDocuments(data || []);
+            const rawDocs = data || [];
+
+            // 1. Resolve forced user names
+            const forcedIds = rawDocs
+                .map((d: any) => d.force_inserted_by)
+                .filter((id: string | null): id is string => Boolean(id));
+
+            let forcedUserMap: Record<string, string> = {};
+            if (forcedIds.length > 0) {
+                try {
+                    const { data: usersData } = await supabase
+                        .from('users')
+                        .select('id, display_name, email')
+                        .in('id', Array.from(new Set(forcedIds)));
+                    if (usersData) {
+                        usersData.forEach((u: any) => {
+                            forcedUserMap[u.id] = u.display_name || u.email || 'Admin';
+                        });
+                    }
+                } catch (userErr) {
+                    console.warn('Could not load forced user names:', userErr);
+                }
+            }
+
+            // 2. Resolve linked Purchase Orders safely
+            const purchaseIds = rawDocs
+                .map((d: any) => d.purchase_id)
+                .filter((id: string | null): id is string => Boolean(id));
+
+            let poMap: Record<string, any> = {};
+            if (purchaseIds.length > 0) {
+                try {
+                    const { data: pos } = await supabase
+                        .from('purchase_orders')
+                        .select('id, po_number, supplier_name, status, total_amount')
+                        .in('id', Array.from(new Set(purchaseIds)));
+                    if (pos) {
+                        pos.forEach((p: any) => {
+                            poMap[p.id] = p;
+                        });
+                    }
+                } catch (poErr) {
+                    console.warn('Could not load linked purchase orders:', poErr);
+                }
+            }
+
+            const enrichedDocs = rawDocs.map((d: any) => ({
+                ...d,
+                purchase_orders: d.purchase_id ? (poMap[d.purchase_id] || null) : null,
+                force_user_name: d.force_inserted_by ? (forcedUserMap[d.force_inserted_by] || 'Authorized Administrator') : null,
+            }));
+
+            setDocuments(enrichedDocs);
             setTotalItems(count || 0);
             setTotalPages(Math.ceil((count || 0) / itemsPerPage));
 
-            const currentIds = new Set((data || []).map(d => d.id));
+            const currentIds = new Set((enrichedDocs).map(d => d.id));
             setSelectedDocIds(prev => new Set([...prev].filter(id => currentIds.has(id))));
         } catch (error) {
             console.error('Error fetching documents:', error);
@@ -1250,6 +1317,7 @@ export default function Documents() {
                         <div className="flex items-center gap-1.5 pl-1 shrink-0">
                             {[
                                 "Official Receipt",
+                                "Purchase Receipt",
                                 "Invoice",
                                 "Delivery Receipt",
                                 "Parcel Condition",
@@ -1324,6 +1392,7 @@ export default function Documents() {
                                 >
                                     <option value="">All Types</option>
                                     <option value="Official Receipt">Official Receipt</option>
+                                    <option value="Purchase Receipt">Purchase Receipt</option>
                                     <option value="Invoice">Invoice</option>
                                     <option value="Delivery Receipt">Delivery Receipt</option>
                                     <option value="Parcel Condition">Parcel Condition</option>
@@ -1513,10 +1582,35 @@ export default function Documents() {
                                                         </div>
                                                     </td>
                                                     <td data-label="Document Title" className="py-3 px-4">
-                                                        <div className="font-semibold text-ink truncate max-w-[220px]" title={doc.title}>
+                                                        <div className="font-semibold text-ink truncate max-w-[240px]" title={doc.title}>
                                                             {doc.title}
                                                         </div>
                                                         <div className="text-[10px] text-muted font-mono tracking-tight mt-0.5">ID: {doc.id.substring(0, 8)}</div>
+
+                                                        {/* Phase 5: PO Link Inline Display */}
+                                                        {(doc.purchase_orders || doc.purchase_id || doc.po_number) && (
+                                                            <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-900/40" title="Linked Purchase Order">
+                                                                    <i className="fas fa-file-invoice text-[9px]" />
+                                                                    <span>PO #{doc.purchase_orders?.po_number || doc.po_number}</span>
+                                                                </span>
+                                                                {doc.purchase_orders?.status && (
+                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                                                        {doc.purchase_orders.status}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Phase 5: Force Insert Audit Flag */}
+                                                        {doc.force_inserted_by && (
+                                                            <div className="mt-1">
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/80 dark:border-amber-800" title={`Force inserted by ${doc.force_user_name || 'Admin'}`}>
+                                                                    <i className="fas fa-triangle-exclamation text-amber-600 dark:text-amber-400 text-[9px]" />
+                                                                    <span>⚠ Forced by {doc.force_user_name || 'Admin'}</span>
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td data-label="Category" className="py-3 px-4">
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-accent/15 text-accent border border-accent/30">
@@ -1524,7 +1618,9 @@ export default function Documents() {
                                                         </span>
                                                     </td>
                                                     <td data-label="Size" className="py-3 px-4 text-ink font-medium">{formatFileSize(doc.file_size)}</td>
-                                                    <td data-label="Supplier" className="py-3 px-4 text-ink">{doc.supplier || <span className="text-muted">—</span>}</td>
+                                                    <td data-label="Supplier" className="py-3 px-4 text-ink">
+                                                        {doc.supplier || doc.purchase_orders?.supplier_name || <span className="text-muted">—</span>}
+                                                    </td>
                                                     <td data-label="Date Uploaded" className="py-3 px-4 text-muted whitespace-nowrap">
                                                         {new Date(doc.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                                     </td>

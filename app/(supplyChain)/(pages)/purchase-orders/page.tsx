@@ -26,6 +26,9 @@ import { createPurchaseRequest } from "@/app/(supplyChain)/(pages)/procurement/u
 import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
 import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
+import { UploadReceiptModal, VerificationJob } from "@/app/(supplyChain)/components/modals/UploadReceiptModal";
+import { ReceiptProcessingIndicator } from "@/app/(supplyChain)/components/global/ReceiptProcessingIndicator";
+import DocumentViewerModal, { ViewDocumentData } from "@/app/(supplyChain)/components/modals/DocumentViewerModal";
 
 // ============================================================
 // 2. TYPES & INTERFACES
@@ -44,6 +47,24 @@ interface PurchaseOrder {
     paid: boolean;
     created_at?: string;
     updated_at?: string;
+    verification?: {
+        id: string;
+        purchase_order_id: string;
+        match_result: 'pending' | 'matched' | 'mismatched' | 'forced';
+        uploaded_file_url?: string;
+        compared_fields?: any;
+        extracted_json?: any;
+        created_at: string;
+    } | null;
+    document?: {
+        id: string;
+        title: string;
+        file_name: string;
+        storage_path: string;
+        file_type: string;
+        notes?: string;
+        uploaded_by?: string;
+    } | null;
 }
 
 interface Supplier {
@@ -204,6 +225,61 @@ export default function PurchaseOrders() {
     const [actionSupplierMessenger, setActionSupplierMessenger] = useState('');
     const [isSendingActionComm, setIsSendingActionComm] = useState(false);
 
+    // Phase 4: OCR Receipt Verification Modal & Minimized Indicator states
+    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+    const [receiptModalPO, setReceiptModalPO] = useState<PurchaseOrder | null>(null);
+    const [receiptVerificationId, setReceiptVerificationId] = useState<string | null>(null);
+    const [activeVerificationJob, setActiveVerificationJob] = useState<VerificationJob | null>(null);
+    const [viewingDocData, setViewingDocData] = useState<ViewDocumentData | null>(null);
+    const [isDocViewerOpen, setIsDocViewerOpen] = useState(false);
+    const ACTIVE_OCR_STORAGE_KEY = 'supplychain_active_verification_job';
+
+    // Load active verification job from localStorage on initial render
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(ACTIVE_OCR_STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                setActiveVerificationJob(parsed);
+            }
+        } catch (e) {
+            console.error('Failed to load saved verification job', e);
+        }
+    }, []);
+
+    const updateActiveVerificationJob = useCallback((job: VerificationJob | null) => {
+        setActiveVerificationJob(job);
+        try {
+            if (job) {
+                localStorage.setItem(ACTIVE_OCR_STORAGE_KEY, JSON.stringify(job));
+            } else {
+                localStorage.removeItem(ACTIVE_OCR_STORAGE_KEY);
+            }
+        } catch (e) {
+            console.error('Failed to persist verification job', e);
+        }
+    }, []);
+
+    // Deep link detection for ?po_id= and ?verification=
+    useEffect(() => {
+        const poParam = searchParams.get('po_id');
+        const verificationParam = searchParams.get('verification');
+        if (poParam && purchaseOrders.length > 0) {
+            const target = purchaseOrders.find(p => p.id === poParam);
+            if (target) {
+                setReceiptModalPO(target);
+                setReceiptVerificationId(verificationParam || null);
+                setIsReceiptModalOpen(true);
+            }
+        } else if (verificationParam) {
+            setReceiptVerificationId(verificationParam);
+            if (purchaseOrders.length > 0) {
+                setReceiptModalPO(purchaseOrders[0]);
+            }
+            setIsReceiptModalOpen(true);
+        }
+    }, [searchParams, purchaseOrders]);
+
     // Fetch supplier info & reset communication states when actionModalOrder changes
     useEffect(() => {
         if (actionModalOrder) {
@@ -343,7 +419,49 @@ export default function PurchaseOrders() {
                     throw ordersError;
                 }
             } else {
-                setPurchaseOrders(orders || []);
+                let enrichedOrders = orders || [];
+                if (enrichedOrders.length > 0) {
+                    try {
+                        const orderIds = enrichedOrders.map(o => o.id);
+                        
+                        // 1. Fetch document_verifications
+                        const { data: verifs } = await supabase
+                            .from('document_verifications')
+                            .select('id, purchase_order_id, match_result, uploaded_file_url, compared_fields, extracted_json, created_at')
+                            .in('purchase_order_id', orderIds)
+                            .order('created_at', { ascending: false });
+
+                        const verifMap: Record<string, any> = {};
+                        (verifs || []).forEach((v: any) => {
+                            if (!verifMap[v.purchase_order_id]) {
+                                verifMap[v.purchase_order_id] = v;
+                            }
+                        });
+
+                        // 2. Fetch linked records in documents table
+                        const { data: linkedDocs } = await supabase
+                            .from('documents')
+                            .select('id, title, file_name, storage_path, file_type, notes, uploaded_by, purchase_id')
+                            .in('purchase_id', orderIds)
+                            .order('created_at', { ascending: false });
+
+                        const docMap: Record<string, any> = {};
+                        (linkedDocs || []).forEach((d: any) => {
+                            if (d.purchase_id && !docMap[d.purchase_id]) {
+                                docMap[d.purchase_id] = d;
+                            }
+                        });
+
+                        enrichedOrders = enrichedOrders.map(o => ({
+                            ...o,
+                            verification: verifMap[o.id] || null,
+                            document: docMap[o.id] || null,
+                        }));
+                    } catch (vErr) {
+                        console.warn('Could not load verifications or documents for orders:', vErr);
+                    }
+                }
+                setPurchaseOrders(enrichedOrders);
                 setTotalItems(totalCount || 0);
             }
 
@@ -696,52 +814,22 @@ export default function PurchaseOrders() {
     };
 
     const handleTogglePaid = async (id: string, currentPaid: boolean, poNumber?: string, status?: string) => {
-        const nextPaid = !currentPaid;
-
-        // If trying to mark as Paid, verify status is not Draft or Sent
-        if (nextPaid && (status === 'Draft' || status === 'Sent')) {
-            toast.warning(`Cannot mark as Paid while status is ${status}. Status must be Confirmed or Delivered.`);
+        if (currentPaid) {
+            toast.info(`Purchase order #${poNumber || id} is already paid & verified via receipt.`);
             return;
         }
 
-        const actionLabel = nextPaid ? "Paid" : "Unpaid";
-
-        const confirmed = await confirm({
-            title: `Mark as ${actionLabel}`,
-            message: `Are you sure you want to mark ${poNumber ? `purchase order ${poNumber}` : 'this purchase order'} as ${actionLabel}?`,
-            confirmText: `Mark as ${actionLabel}`,
-            cancelText: "Cancel",
-            confirmVariant: nextPaid ? "success" : "warning",
-        });
-
-        if (!confirmed) return;
-
-        setPendingRowId(id);
-        try {
-            const { error } = await supabase
-                .from('purchase_orders')
-                .update({ paid: nextPaid, updated_at: new Date().toISOString() })
-                .eq('id', id);
-
-            if (error) throw error;
-
-            setPurchaseOrders(prev => prev.map(po =>
-                po.id === id ? { ...po, paid: nextPaid } : po
-            ));
-            setAllOrders(prev => prev.map(po =>
-                po.id === id ? { ...po, paid: nextPaid } : po
-            ));
-
-            if (actionModalOrder && actionModalOrder.id === id) {
-                setActionModalOrder(prev => prev ? { ...prev, paid: nextPaid } : null);
+        if (status === 'Delivered') {
+            const target = purchaseOrders.find(p => p.id === id);
+            if (target) {
+                setReceiptModalPO(target);
+                setReceiptVerificationId(null);
+                setIsReceiptModalOpen(true);
+            } else {
+                toast.error('Could not find order details');
             }
-
-            toast.success(`Purchase order marked as ${actionLabel}`);
-        } catch (error) {
-            console.error('Error updating payment status:', error);
-            toast.error('Failed to update payment status');
-        } finally {
-            setPendingRowId(null);
+        } else {
+            toast.warning(`Cannot verify payment for PO #${poNumber || id} until status is Delivered (currently ${status || 'Draft'}).`);
         }
     };
 
@@ -1587,6 +1675,7 @@ export default function PurchaseOrders() {
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Delivery Date</th>
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Status</th>
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Payment</th>
+                                            <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-center">OCR Result</th>
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -1594,7 +1683,7 @@ export default function PurchaseOrders() {
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                                         {filteredOrders.length === 0 ? (
                                             <tr>
-                                                <td colSpan={9} className="py-12">
+                                                <td colSpan={10} className="py-12">
                                                     <EmptyState
                                                         title="No purchase orders found"
                                                         description={
@@ -1657,23 +1746,141 @@ export default function PurchaseOrders() {
                                                                 type="button"
                                                                 onClick={() => handleTogglePaid(order.id, order.paid, order.po_number, order.status)}
                                                                 disabled={rowBusy}
-                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${order.paid
-                                                                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
-                                                                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
-                                                                    }`}
+                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1.5 ${
+                                                                    order.paid
+                                                                        ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 cursor-default"
+                                                                        : order.status === 'Delivered'
+                                                                            ? "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/50 hover:bg-pink-100 dark:hover:bg-pink-900/40 cursor-pointer shadow-2xs hover:scale-102 active:scale-98"
+                                                                            : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75"
+                                                                }`}
+                                                                title={
+                                                                    order.paid
+                                                                        ? "Payment verified via receipt"
+                                                                        : order.status === 'Delivered'
+                                                                            ? "PO Delivered: Click to upload receipt & verify payment"
+                                                                            : `Locked: Order must be Delivered before receipt verification (currently ${order.status})`
+                                                                }
                                                             >
                                                                 {order.paid ? (
                                                                     <>
                                                                         <i className="fas fa-check-circle text-emerald-500" />
-                                                                        <span>Paid</span>
+                                                                        <span>Paid ✓</span>
+                                                                    </>
+                                                                ) : order.status === 'Delivered' ? (
+                                                                    <>
+                                                                        <i className="fas fa-receipt text-pink-500" />
+                                                                        <span>Upload Receipt</span>
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        <i className="fas fa-hourglass-half text-amber-500" />
+                                                                        <i className="fas fa-lock text-slate-400" />
                                                                         <span>Unpaid</span>
                                                                     </>
                                                                 )}
                                                             </button>
+                                                        </td>
+                                                        <td data-label="OCR Result" className="py-3.5 px-4 text-center whitespace-nowrap">
+                                                            {order.verification?.match_result === 'matched' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setViewingDocData({
+                                                                            id: order.document?.id || order.verification?.id,
+                                                                            title: order.document?.title || `Receipt - PO #${order.po_number}`,
+                                                                            fileName: order.document?.file_name || `receipt_${order.po_number}.png`,
+                                                                            fileUrl: order.verification?.uploaded_file_url,
+                                                                            storagePath: order.document?.storage_path,
+                                                                            fileType: order.document?.file_type,
+                                                                            poNumber: order.po_number,
+                                                                            supplierName: order.supplier_name,
+                                                                            verifiedStatus: 'matched',
+                                                                            totalAmount: order.total_amount,
+                                                                            notes: order.document?.notes || 'Verified via Gemini OCR (Matched)',
+                                                                            uploadedBy: order.document?.uploaded_by,
+                                                                        });
+                                                                        setIsDocViewerOpen(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    title="Receipt verified. Click to view document."
+                                                                >
+                                                                    <i className="fas fa-check-circle text-emerald-500 text-[10px]" />
+                                                                    <span>Matched ✓</span>
+                                                                </button>
+                                                            ) : order.verification?.match_result === 'mismatched' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setReceiptModalPO(order);
+                                                                        setReceiptVerificationId(order.verification?.id || null);
+                                                                        setIsReceiptModalOpen(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    title="Receipt mismatch detected. Click to review differences or force insert."
+                                                                >
+                                                                    <i className="fas fa-exclamation-triangle text-amber-500 text-[10px]" />
+                                                                    <span>Mismatch ⚠</span>
+                                                                </button>
+                                                            ) : order.verification?.match_result === 'forced' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setViewingDocData({
+                                                                            id: order.document?.id || order.verification?.id,
+                                                                            title: order.document?.title || `Receipt (Forced) - PO #${order.po_number}`,
+                                                                            fileName: order.document?.file_name || `receipt_${order.po_number}.png`,
+                                                                            fileUrl: order.verification?.uploaded_file_url,
+                                                                            storagePath: order.document?.storage_path,
+                                                                            fileType: order.document?.file_type,
+                                                                            poNumber: order.po_number,
+                                                                            supplierName: order.supplier_name,
+                                                                            verifiedStatus: 'forced',
+                                                                            totalAmount: order.total_amount,
+                                                                            notes: order.document?.notes || 'Admin Forced Override',
+                                                                            uploadedBy: order.document?.uploaded_by,
+                                                                        });
+                                                                        setIsDocViewerOpen(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    title="Admin forced override. Click to view document."
+                                                                >
+                                                                    <i className="fas fa-shield-alt text-purple-500 text-[10px]" />
+                                                                    <span>Forced ✓</span>
+                                                                </button>
+                                                            ) : order.verification?.match_result === 'pending' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setReceiptModalPO(order);
+                                                                        setReceiptVerificationId(order.verification?.id || null);
+                                                                        setIsReceiptModalOpen(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    title="Receipt verification is processing..."
+                                                                >
+                                                                    <i className="fas fa-spinner fa-spin text-blue-500 text-[10px]" />
+                                                                    <span>Processing...</span>
+                                                                </button>
+                                                            ) : order.paid ? (
+                                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                                    <i className="fas fa-check text-[10px]" /> Paid
+                                                                </span>
+                                                            ) : order.status === 'Delivered' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setReceiptModalPO(order);
+                                                                        setReceiptVerificationId(null);
+                                                                        setIsReceiptModalOpen(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 transition-all cursor-pointer shadow-2xs"
+                                                                    title="Click to upload receipt for OCR verification"
+                                                                >
+                                                                    <i className="fas fa-arrow-up-from-bracket text-pink-500 text-[10px]" />
+                                                                    <span>Upload</span>
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-slate-400 dark:text-slate-600 text-xs font-medium italic">—</span>
+                                                            )}
                                                         </td>
                                                         <td data-label="Actions" className="py-3.5 px-4 text-right whitespace-nowrap">
                                                             <div className="flex items-center justify-end gap-1.5">
@@ -1682,6 +1889,36 @@ export default function PurchaseOrders() {
                                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                                     </svg>
+                                                                )}
+
+                                                                {/* View Document Button (Lazy loaded: Image only renders on click) */}
+                                                                {(order.verification?.uploaded_file_url || order.document?.storage_path) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setViewingDocData({
+                                                                                id: order.document?.id || order.verification?.id,
+                                                                                title: order.document?.title || `Receipt - PO #${order.po_number}`,
+                                                                                fileName: order.document?.file_name || `receipt_${order.po_number}.png`,
+                                                                                fileUrl: order.verification?.uploaded_file_url,
+                                                                                storagePath: order.document?.storage_path,
+                                                                                fileType: order.document?.file_type,
+                                                                                poNumber: order.po_number,
+                                                                                supplierName: order.supplier_name,
+                                                                                verifiedStatus: order.verification?.match_result,
+                                                                                totalAmount: order.total_amount,
+                                                                                notes: order.document?.notes || (order.verification?.match_result === 'matched' ? 'OCR Verified Matched' : undefined),
+                                                                                uploadedBy: order.document?.uploaded_by,
+                                                                            });
+                                                                            setIsDocViewerOpen(true);
+                                                                        }}
+                                                                        disabled={rowBusy}
+                                                                        className="px-2.5 py-1 text-xs font-semibold text-pink-700 dark:text-pink-300 hover:text-white bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-500 dark:hover:bg-pink-600 rounded-lg border border-pink-200/80 dark:border-pink-800/50 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-2xs group"
+                                                                        title="View Receipt Document"
+                                                                    >
+                                                                        <i className="fas fa-file-invoice text-[11px] group-hover:scale-110 transition-transform" />
+                                                                        <span className="hidden sm:inline">View Doc</span>
+                                                                    </button>
                                                                 )}
 
                                                                 {/* Manage Order Modal Trigger Button */}
@@ -1854,12 +2091,12 @@ export default function PurchaseOrders() {
                                     </div>
                                     <div>
                                         <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Payment Status</span>
-                                        <div className="mt-1">
+                                        <div className="mt-1 flex items-center justify-between">
                                             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${actionModalOrder.paid ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
                                                 {actionModalOrder.paid ? (
                                                     <>
                                                         <i className="fas fa-check-circle text-emerald-500" />
-                                                        <span>Paid</span>
+                                                        <span>Paid ✓</span>
                                                     </>
                                                 ) : (
                                                     <>
@@ -1869,6 +2106,21 @@ export default function PurchaseOrders() {
                                                 )}
                                             </span>
                                         </div>
+                                        {!actionModalOrder.paid && actionModalOrder.status === 'Delivered' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setReceiptModalPO(actionModalOrder);
+                                                    setReceiptVerificationId(null);
+                                                    setIsReceiptModalOpen(true);
+                                                    setActionModalOrder(null);
+                                                }}
+                                                className="mt-2 w-full px-2.5 py-1.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                            >
+                                                <i className="fas fa-receipt text-[10px]" />
+                                                <span>Verify Receipt (OCR)</span>
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -2043,6 +2295,52 @@ export default function PurchaseOrders() {
                         </div>
                     </div>
                 )}
+
+                {/* Phase 4: OCR Receipt Verification Modal */}
+                {isReceiptModalOpen && receiptModalPO && (
+                    <UploadReceiptModal
+                        isOpen={isReceiptModalOpen}
+                        onClose={() => setIsReceiptModalOpen(false)}
+                        po={receiptModalPO}
+                        initialVerificationId={receiptVerificationId}
+                        onMinimize={(job) => {
+                            updateActiveVerificationJob(job);
+                            setIsReceiptModalOpen(false);
+                        }}
+                        onSuccess={() => {
+                            fetchData({ silent: true });
+                        }}
+                    />
+                )}
+
+                {/* Phase 4: Minimized Persistent Verification Indicator */}
+                <ReceiptProcessingIndicator
+                    job={activeVerificationJob}
+                    onClick={() => {
+                        if (activeVerificationJob) {
+                            const target = purchaseOrders.find(p => p.id === activeVerificationJob.poId) || {
+                                id: activeVerificationJob.poId,
+                                po_number: activeVerificationJob.poNumber,
+                                supplier_name: 'Supplier',
+                                total_amount: 0,
+                            } as any;
+                            setReceiptModalPO(target);
+                            setReceiptVerificationId(activeVerificationJob.verificationId);
+                            setIsReceiptModalOpen(true);
+                        }
+                    }}
+                    onDismiss={() => updateActiveVerificationJob(null)}
+                />
+
+                {/* On-Demand Lazy Document Viewer Modal */}
+                <DocumentViewerModal
+                    isOpen={isDocViewerOpen}
+                    onClose={() => {
+                        setIsDocViewerOpen(false);
+                        setViewingDocData(null);
+                    }}
+                    data={viewingDocData}
+                />
             </div>
         </SessionGuard>
     );
