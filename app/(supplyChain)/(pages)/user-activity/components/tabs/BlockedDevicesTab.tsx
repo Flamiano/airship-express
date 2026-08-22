@@ -4,6 +4,8 @@ import React from 'react';
 import { Undo, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { BlockedDevice } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -48,20 +50,24 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                         {selectedDevices.size} device(s) selected
                     </span>
                     <div className="flex items-center gap-2 flex-wrap">
-                        <button
+                        <AppButton
+                            type="button"
+                            variant="success"
+                            size="xs"
                             onClick={onBulkUnblock}
-                            className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
                         >
                             <Undo className="w-3 h-3" />
-                            Unblock Selected
-                        </button>
-                        <button
+                            <span>Unblock Selected</span>
+                        </AppButton>
+                        <AppButton
+                            type="button"
+                            variant="danger"
+                            size="xs"
                             onClick={onBulkDelete}
-                            className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
                         >
                             <Trash2 className="w-3 h-3" />
-                            Delete Selected
-                        </button>
+                            <span>Delete Selected</span>
+                        </AppButton>
                     </div>
                 </div>
             )}
@@ -133,9 +139,9 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                                             {device.user_agent}
                                         </td>
                                         <td className="py-3 px-4">
-                                            <code className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60 text-slate-700 dark:text-slate-300">
-                                                {device.ip_address || 'Unknown'}
-                                            </code>
+                                            <StatusBadge tone="neutral" size="xs">
+                                                <span className="font-mono">{device.ip_address || 'Unknown'}</span>
+                                            </StatusBadge>
                                         </td>
                                         <td className="py-3 px-4 text-center">
                                             <span className="font-bold text-slate-700 dark:text-slate-300">{device.blocked_count || 0}</span>
@@ -147,14 +153,13 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                                             {device.reason || 'No reason provided'}
                                         </td>
                                         <td className="py-3 px-4">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${device.status === 'blocked'
-                                                ? 'bg-red-50 text-red-700 border-red-200/80 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800/40'
-                                                : 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40'
-                                                }`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${device.status === 'blocked' ? 'bg-red-500 dark:bg-red-400' : 'bg-emerald-500 dark:bg-emerald-400'
-                                                    }`} />
-                                                <span>{device.status === 'blocked' ? 'Blocked' : 'Unblocked'}</span>
-                                            </span>
+                                            <StatusBadge
+                                                tone={device.status === 'blocked' ? 'rose' : 'emerald'}
+                                                dot
+                                                size="xs"
+                                            >
+                                                {device.status === 'blocked' ? 'Blocked' : 'Unblocked'}
+                                            </StatusBadge>
                                         </td>
                                         <td className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
                                             <div className="flex items-center justify-end gap-2.5">

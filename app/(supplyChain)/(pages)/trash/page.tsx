@@ -74,14 +74,14 @@ export default function ArchivePage() {
                 </div>
 
                 {/* Tab Switcher */}
-                <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/60 shadow-2xs overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 p-1.5 rounded-full border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] overflow-x-auto no-scrollbar w-fit">
                     {tabs.map((tab) => (
                         <button
                             key={tab.key}
                             onClick={() => updateTab(tab.key)}
-                            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer ${activeTab === tab.key
-                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs scale-105'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 hover:scale-105'
+                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer ${activeTab === tab.key
+                                ? 'bg-white dark:bg-slate-800 text-pink-600 dark:text-pink-400 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                                 }`}
                         >
                             <i className={`fas ${tab.icon} text-xs transition-colors duration-200 ${activeTab === tab.key ? 'text-pink-500 dark:text-pink-400' : 'text-slate-400 dark:text-slate-500'

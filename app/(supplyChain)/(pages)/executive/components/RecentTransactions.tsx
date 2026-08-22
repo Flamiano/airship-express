@@ -1,4 +1,5 @@
 import ViewLink from "@/app/(supplyChain)/components/global/Links";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 interface Transaction {
     id: string;
@@ -60,36 +61,19 @@ const transactions: Transaction[] = [
     }
 ];
 
-const StatusBadge = ({ status }: { status: string }) => {
-    // Map status to appropriate color scheme
-    const getStatusStyles = (status: string) => {
-        switch (status) {
-            case "Received":
-                return "bg-pink-50 text-pink-700 border-pink-200/80 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800/50 shadow-2xs";
-            case "Waiting":
-                return "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50 shadow-2xs";
-            case "Dispatched":
-                return "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 shadow-2xs";
-            case "Ready for Dispatch":
-                return "bg-purple-50 text-purple-700 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/50 shadow-2xs";
-            default:
-                return "bg-slate-100 text-slate-700 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700/60 shadow-2xs";
-        }
-    };
-
-    const dotColor = {
-        "Received": "bg-pink-500 dark:bg-pink-400",
-        "Waiting": "bg-amber-500 dark:bg-amber-400",
-        "Dispatched": "bg-emerald-500 dark:bg-emerald-400",
-        "Ready for Dispatch": "bg-purple-500 dark:bg-purple-400"
-    }[status] || "bg-slate-400 dark:bg-slate-500";
-
-    return (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusStyles(status)}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
-            {status}
-        </span>
-    );
+const getTxTone = (status: string): "pink" | "amber" | "emerald" | "purple" | "neutral" => {
+    switch (status) {
+        case "Received":
+            return "pink";
+        case "Waiting":
+            return "amber";
+        case "Dispatched":
+            return "emerald";
+        case "Ready for Dispatch":
+            return "purple";
+        default:
+            return "neutral";
+    }
 };
 
 export default function RecentTransactions() {
@@ -98,7 +82,7 @@ export default function RecentTransactions() {
             {/* Card Header */}
             <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80">
                 <div className="flex items-center gap-2.5 font-semibold text-slate-900 dark:text-white text-sm">
-                    <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-500 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
+                    <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-500 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30 shadow-2xs">
                         <i className="fas fa-list text-xs"></i>
                     </div>
                     <span>Recent transactions</span>
@@ -132,7 +116,9 @@ export default function RecentTransactions() {
                                 <td className="px-6 py-3.5 text-slate-600 dark:text-slate-300">{tx.courier}</td>
                                 <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{tx.area}</td>
                                 <td className="px-6 py-3.5">
-                                    <StatusBadge status={tx.status} />
+                                    <StatusBadge tone={getTxTone(tx.status)} dot size="xs">
+                                        {tx.status}
+                                    </StatusBadge>
                                 </td>
                                 <td className="px-6 py-3.5 text-slate-400 dark:text-slate-500 font-mono text-[11px]">{tx.received}</td>
                             </tr>

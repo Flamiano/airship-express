@@ -14,6 +14,7 @@ import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 interface Document {
     id: string;
@@ -1147,18 +1148,19 @@ export default function Documents() {
                             </p>
 
                             <div className="inline-flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2.5 
-                                          px-2.5 py-1.5 sm:py-1 rounded-lg 
-                                          bg-slate-100/80 dark:bg-slate-800/50 
-                                          border border-slate-200/60 dark:border-ink/20 
-                                          text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 max-w-full">
+                                          px-3 py-1.5 rounded-full 
+                                          bg-slate-50 dark:bg-slate-900 
+                                          border border-slate-200/90 dark:border-slate-800 
+                                          shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]
+                                          text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 max-w-full">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
                                 <i className="fa-solid fa-user text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500"></i>
                                 <span>Logged in as:</span>
-                                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[140px] sm:max-w-none">
+                                <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-none">
                                     {userName}
                                 </span>
                                 {userEmail && (
-                                    <span className="text-slate-400 dark:text-slate-500 font-normal sm:border-l sm:border-slate-300/60 sm:pl-2 sm:ml-0.5 truncate max-w-[180px] sm:max-w-none">
+                                    <span className="text-slate-400 dark:text-slate-400 font-normal sm:border-l sm:border-slate-300/60 dark:sm:border-slate-700 sm:pl-2 sm:ml-0.5 truncate max-w-[180px] sm:max-w-none">
                                         {userEmail}
                                     </span>
                                 )}
@@ -1166,15 +1168,15 @@ export default function Documents() {
                         </div>
                     </div>
 
-                    <button
-                        className="px-4 py-2 bg-pink-500 hover:bg-pink-600 dark:bg-pink-600 dark:hover:bg-pink-700 
-                                   text-white rounded-xl text-xs sm:text-sm font-semibold 
-                                   transition-all flex items-center gap-2 shadow-2xs hover:shadow-pink-500/20 active:scale-[0.98] shrink-0"
+                    <AppButton
+                        type="button"
+                        variant="primary"
+                        size="md"
                         onClick={() => setIsUploadModalOpen(true)}
                     >
-                        <i className="fas fa-cloud-arrow-up text-xs"></i>
+                        <i className="fas fa-cloud-arrow-up text-xs" />
                         <span>Upload Files</span>
-                    </button>
+                    </AppButton>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
@@ -1241,27 +1243,27 @@ export default function Documents() {
                     />
                 </div>
 
-                <div className="mt-4 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-xs dark:shadow-black/40 p-2.5 transition-all">
+                <div className="mt-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] p-2.5 transition-all">
                     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-0.5">
                         {/* Category Filters */}
-                        <div className="flex items-center gap-1.5 pr-3 border-r border-slate-200/60 dark:border-white/10 shrink-0">
+                        <div className="flex items-center gap-1.5 pr-3 border-r border-slate-200/60 dark:border-slate-800 shrink-0">
                             <button
                                 onClick={() => {
                                     setCategoryFilter("");
                                     setTypeFilter("");
                                     setCurrentPage(1);
                                 }}
-                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 whitespace-nowrap cursor-pointer ${!categoryFilter && !typeFilter
-                                    ? "bg-pink-500 text-white shadow-sm shadow-pink-500/25 dark:shadow-pink-500/20 ring-2 ring-pink-500/20 dark:ring-pink-500/40"
-                                    : "bg-slate-100/80 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white dark:border dark:border-white/5"
+                                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 whitespace-nowrap cursor-pointer active:scale-95 ${!categoryFilter && !typeFilter
+                                    ? "bg-pink-500 text-white shadow-sm"
+                                    : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/70 dark:border-slate-700/60 shadow-xs"
                                     }`}
                             >
-                                <i className="fas fa-folder-open text-xs opacity-90" />
+                                <i className="fas fa-folder-open text-xs" />
                                 <span>All Files</span>
                                 <span
-                                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${!categoryFilter && !typeFilter
-                                        ? "bg-white/20 text-white"
-                                        : "bg-slate-200 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200"
+                                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${!categoryFilter && !typeFilter
+                                        ? "bg-white/25 text-white"
+                                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
                                         }`}
                                 >
                                     {totalFiles}
@@ -1274,17 +1276,17 @@ export default function Documents() {
                                     setTypeFilter("");
                                     setCurrentPage(1);
                                 }}
-                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 whitespace-nowrap cursor-pointer ${categoryFilter === "photos"
-                                    ? "bg-pink-500 text-white shadow-sm shadow-pink-500/25 dark:shadow-pink-500/20 ring-2 ring-pink-500/20 dark:ring-pink-500/40"
-                                    : "bg-slate-100/80 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white dark:border dark:border-white/5"
+                                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 whitespace-nowrap cursor-pointer active:scale-95 ${categoryFilter === "photos"
+                                    ? "bg-pink-500 text-white shadow-sm"
+                                    : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/70 dark:border-slate-700/60 shadow-xs"
                                     }`}
                             >
-                                <i className="fas fa-image text-xs opacity-90" />
+                                <i className="fas fa-image text-xs" />
                                 <span>Photos</span>
                                 <span
-                                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${categoryFilter === "photos"
-                                        ? "bg-white/20 text-white"
-                                        : "bg-slate-200 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200"
+                                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${categoryFilter === "photos"
+                                        ? "bg-white/25 text-white"
+                                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
                                         }`}
                                 >
                                     {totalPhotos}
@@ -1297,17 +1299,17 @@ export default function Documents() {
                                     setTypeFilter("");
                                     setCurrentPage(1);
                                 }}
-                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 whitespace-nowrap cursor-pointer ${categoryFilter === "documents"
-                                    ? "bg-pink-500 text-white shadow-sm shadow-pink-500/25 dark:shadow-pink-500/20 ring-2 ring-pink-500/20 dark:ring-pink-500/40"
-                                    : "bg-slate-100/80 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white dark:border dark:border-white/5"
+                                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 whitespace-nowrap cursor-pointer active:scale-95 ${categoryFilter === "documents"
+                                    ? "bg-pink-500 text-white shadow-sm"
+                                    : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/70 dark:border-slate-700/60 shadow-xs"
                                     }`}
                             >
-                                <i className="fas fa-file-alt text-xs opacity-90" />
+                                <i className="fas fa-file-alt text-xs" />
                                 <span>Documents</span>
                                 <span
-                                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${categoryFilter === "documents"
-                                        ? "bg-white/20 text-white"
-                                        : "bg-slate-200 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200"
+                                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${categoryFilter === "documents"
+                                        ? "bg-white/25 text-white"
+                                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
                                         }`}
                                 >
                                     {totalFiles - totalPhotos}
@@ -1337,9 +1339,9 @@ export default function Documents() {
                                             setCategoryFilter("");
                                             setCurrentPage(1);
                                         }}
-                                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 whitespace-nowrap cursor-pointer ${isActive
-                                            ? "bg-pink-500 text-white shadow-sm shadow-pink-500/25 dark:shadow-pink-500/20 ring-2 ring-pink-500/20 dark:ring-pink-500/40"
-                                            : "bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-600 dark:hover:text-pink-400 border border-slate-200/60 dark:border-white/10 dark:hover:border-pink-500/30"
+                                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 whitespace-nowrap cursor-pointer active:scale-95 ${isActive
+                                            ? "bg-pink-500 text-white shadow-sm"
+                                            : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-slate-200/70 dark:border-slate-700/60 shadow-xs"
                                             }`}
                                     >
                                         <i
@@ -1348,8 +1350,8 @@ export default function Documents() {
                                         />
                                         <span>{type}</span>
                                         <span
-                                            className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${isActive
-                                                ? "bg-white/20 text-white"
+                                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${isActive
+                                                ? "bg-white/25 text-white"
                                                 : "bg-slate-100 dark:bg-slate-700/60 text-slate-500 dark:text-slate-300"
                                                 }`}
                                         >
@@ -1449,26 +1451,26 @@ export default function Documents() {
                             </div>
 
                             <div className="flex items-center justify-end gap-2 border-t border-line pt-2 lg:border-t-0 lg:pt-0">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={clearAllFilters}
                                     title="Reset filters"
-                                    aria-label="Reset filters"
-                                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-muted hover:bg-accent/10 hover:text-accent transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
                                 >
-                                    <i className="fas fa-filter-circle-xmark" aria-hidden="true"></i>
+                                    <i className="fas fa-filter-circle-xmark text-xs" />
                                     <span>Reset</span>
-                                </button>
+                                </AppButton>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={() => fetchDocuments(false)}
                                     title="Refresh list"
-                                    aria-label="Refresh list"
-                                    className="inline-flex items-center justify-center rounded-xl p-2 text-xs text-muted hover:bg-slate-200/60 dark:hover:bg-slate-800 hover:text-ink transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-400/20"
                                 >
-                                    <i className="fas fa-rotate" aria-hidden="true"></i>
-                                </button>
+                                    <i className="fas fa-rotate text-xs" />
+                                </AppButton>
                             </div>
                         </div>
                     </div>
@@ -1592,14 +1594,13 @@ export default function Documents() {
                                                         {/* Phase 5: PO Link Inline Display */}
                                                         {(doc.purchase_orders || doc.purchase_id || doc.po_number) && (
                                                             <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-900/40" title="Linked Purchase Order">
-                                                                    <i className="fas fa-file-invoice text-[9px]" />
+                                                                <StatusBadge tone="pink" icon="fas fa-file-invoice" size="xs">
                                                                     <span>PO #{doc.purchase_orders?.po_number || doc.po_number}</span>
-                                                                </span>
+                                                                </StatusBadge>
                                                                 {doc.purchase_orders?.status && (
-                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                                                    <StatusBadge tone="neutral" size="xs">
                                                                         {doc.purchase_orders.status}
-                                                                    </span>
+                                                                    </StatusBadge>
                                                                 )}
                                                             </div>
                                                         )}
@@ -1607,17 +1608,16 @@ export default function Documents() {
                                                         {/* Phase 5: Force Insert Audit Flag */}
                                                         {doc.force_inserted_by && (
                                                             <div className="mt-1">
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/80 dark:border-amber-800" title={`Force inserted by ${doc.force_user_name || 'Admin'}`}>
-                                                                    <i className="fas fa-triangle-exclamation text-amber-600 dark:text-amber-400 text-[9px]" />
+                                                                <StatusBadge tone="amber" icon="fas fa-triangle-exclamation" size="xs">
                                                                     <span>⚠ Forced by {doc.force_user_name || 'Admin'}</span>
-                                                                </span>
+                                                                </StatusBadge>
                                                             </div>
                                                         )}
                                                     </td>
                                                     <td data-label="Category" className="py-3 px-4">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs">
+                                                        <StatusBadge tone="pink" size="xs">
                                                             {doc.document_type}
-                                                        </span>
+                                                        </StatusBadge>
                                                     </td>
                                                     <td data-label="Size" className="py-3 px-4 text-ink font-medium">{formatFileSize(doc.file_size)}</td>
                                                     <td data-label="Supplier" className="py-3 px-4 text-ink">
@@ -1695,7 +1695,10 @@ export default function Documents() {
                                 </div>
                             </div>
 
-                            <button
+                            <AppButton
+                                type="button"
+                                variant="neutral"
+                                size="sm"
                                 onClick={() => {
                                     setActivitySearch("");
                                     setActivityFilter("");
@@ -1704,12 +1707,11 @@ export default function Documents() {
                                     setActivityPage(1);
                                     setSelectedActivityIds(new Set());
                                 }}
-                                className="px-3 py-1.5 text-xs font-semibold text-muted hover:text-accent hover:bg-accent/10 rounded-xl transition-all flex items-center gap-1.5 self-start sm:self-center cursor-pointer"
                                 title="Reset active filters"
                             >
-                                <i className="fas fa-rotate-left text-[11px]"></i>
+                                <i className="fas fa-rotate-left text-xs" />
                                 <span>Reset Filters</span>
-                            </button>
+                            </AppButton>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2.5">
@@ -1870,10 +1872,21 @@ export default function Documents() {
                                                         </div>
                                                     </td>
                                                     <td data-label="Action Type" className="py-3 px-4 whitespace-nowrap">
-                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${getActionColor(activity.action_type)}`}>
-                                                            <i className={`fas text-[9px] ${getActionIcon(activity.action_type)}`}></i>
+                                                        <StatusBadge
+                                                            tone={
+                                                                activity.action_type === 'upload'
+                                                                    ? 'emerald'
+                                                                    : activity.action_type === 'update'
+                                                                        ? 'blue'
+                                                                        : activity.action_type === 'delete'
+                                                                            ? 'rose'
+                                                                            : 'neutral'
+                                                            }
+                                                            icon={`fas ${getActionIcon(activity.action_type)}`}
+                                                            size="xs"
+                                                        >
                                                             {activity.action_type.charAt(0).toUpperCase() + activity.action_type.slice(1)}
-                                                        </span>
+                                                        </StatusBadge>
                                                     </td>
                                                     <td data-label="Target Resource" className="py-3 px-4 text-ink font-medium whitespace-nowrap">
                                                         {activity.target_resource}
@@ -1904,10 +1917,9 @@ export default function Documents() {
                                                         })}
                                                     </td>
                                                     <td data-label="Status" className="py-3 px-4 text-right whitespace-nowrap">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 text-[11px] font-semibold shadow-2xs">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"></span>
+                                                        <StatusBadge tone="emerald" dot size="xs">
                                                             {activity.status}
-                                                        </span>
+                                                        </StatusBadge>
                                                     </td>
                                                 </tr>
                                             );

@@ -1,5 +1,7 @@
 "use client";
 
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+
 interface ScanSummaryProps {
     lastScan: string;
     trackingNumber?: string;
@@ -7,15 +9,16 @@ interface ScanSummaryProps {
 }
 
 export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSummaryProps) {
-    const getStatusColor = (status?: string) => {
-        if (!status) return 'text-slate-500';
+    const getStatusTone = (status?: string) => {
+        if (!status) return 'neutral' as const;
         switch (status) {
             case 'verified':
-                return 'text-emerald-600';
+            case 'received':
+                return 'emerald' as const;
             case 'rejected':
-                return 'text-red-600';
+                return 'rose' as const;
             default:
-                return 'text-yellow-600';
+                return 'amber' as const;
         }
     };
 
@@ -23,6 +26,7 @@ export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSu
         if (!status) return 'fa-circle';
         switch (status) {
             case 'verified':
+            case 'received':
                 return 'fa-check-circle';
             case 'rejected':
                 return 'fa-times-circle';
@@ -30,7 +34,6 @@ export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSu
                 return 'fa-clock';
         }
     };
-
 
     return (
         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2 sm:gap-4 font-medium">
@@ -42,9 +45,14 @@ export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSu
                     </span>
                 )}
                 {lastScanStatus && (
-                    <span className={`ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${getStatusColor(lastScanStatus)}`}>
-                        <i className={`fas ${getStatusIcon(lastScanStatus)} text-[10px]`}></i>
-                        <span>{lastScanStatus}</span>
+                    <span className="ml-2 inline-flex align-middle">
+                        <StatusBadge
+                            tone={getStatusTone(lastScanStatus)}
+                            icon={`fas ${getStatusIcon(lastScanStatus)}`}
+                            size="xs"
+                        >
+                            {lastScanStatus}
+                        </StatusBadge>
                     </span>
                 )}
             </span>

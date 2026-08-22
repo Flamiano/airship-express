@@ -11,6 +11,8 @@ import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface ArchivedDocument {
     id: string;
@@ -479,17 +481,19 @@ export function DocumentsTab() {
                         </select>
                     </div>
                     {(docSearchTerm || docTypeFilter !== 'all' || selectedDocIds.size > 0) && (
-                        <button
-                            className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="xs"
                             onClick={() => {
                                 setDocSearchTerm('');
                                 setDocTypeFilter('all');
                                 setSelectedDocIds(new Set());
                             }}
                         >
-                            <i className="fas fa-rotate-left text-[11px]"></i>
+                            <i className="fas fa-rotate-left text-[11px]" />
                             <span>Reset Filters</span>
-                        </button>
+                        </AppButton>
                     )}
                 </div>
             </div>
@@ -625,9 +629,9 @@ export function DocumentsTab() {
                                                 )}
                                             </td>
                                             <td data-label="Type" className="py-3 px-4 whitespace-nowrap">
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs">
+                                                <StatusBadge tone="pink" size="xs">
                                                     {doc.document_type}
-                                                </span>
+                                                </StatusBadge>
                                             </td>
                                             <td data-label="Size" className="py-3 px-4 text-slate-600 dark:text-slate-300 whitespace-nowrap font-medium">
                                                 {formatFileSize(doc.file_size)}
@@ -636,18 +640,28 @@ export function DocumentsTab() {
                                                 {doc.supplier || <span className="text-slate-300 dark:text-slate-700">—</span>}
                                             </td>
                                             <td data-label="PO Number" className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono text-[11px] whitespace-nowrap">
-                                                {doc.po_number || <span className="text-slate-300 dark:text-slate-700">—</span>}
+                                                {doc.po_number ? (
+                                                    <StatusBadge tone="pink" size="xs">
+                                                        <span className="font-mono">{doc.po_number}</span>
+                                                    </StatusBadge>
+                                                ) : (
+                                                    <span className="text-slate-300 dark:text-slate-700">—</span>
+                                                )}
                                             </td>
                                             <td data-label="Role" className="py-3 px-4 whitespace-nowrap">
                                                 {doc.role ? (
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${doc.role === 'Admin'
-                                                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50'
-                                                        : doc.role === 'Manager'
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50'
-                                                            : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60'
-                                                        }`}>
+                                                    <StatusBadge
+                                                        tone={
+                                                            doc.role === 'Admin'
+                                                                ? 'purple'
+                                                                : doc.role === 'Manager'
+                                                                    ? 'indigo'
+                                                                    : 'neutral'
+                                                        }
+                                                        size="xs"
+                                                    >
                                                         {doc.role}
-                                                    </span>
+                                                    </StatusBadge>
                                                 ) : (
                                                     <span className="text-slate-300 dark:text-slate-700">—</span>
                                                 )}

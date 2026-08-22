@@ -11,6 +11,8 @@ import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface ArchivedPurchaseOrder {
     id: string;
@@ -279,19 +281,18 @@ export function PurchaseOrdersTab() {
 
     const getStatusBadge = useCallback((status: string) => {
         const sanitizedStatus = sanitizeText(status);
-        const statusMap: Record<string, { bg: string; dot: string }> = {
-            'Draft': { bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold", dot: "bg-slate-400 dark:bg-slate-500" },
-            'Sent': { bg: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold", dot: "bg-indigo-500 dark:bg-indigo-400" },
-            'Confirmed': { bg: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold", dot: "bg-purple-500 dark:bg-purple-400" },
-            'Delivered': { bg: "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold", dot: "bg-pink-500 dark:bg-pink-400" },
-            'Cancelled': { bg: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold", dot: "bg-rose-500 dark:bg-rose-400" },
+        const toneMap: Record<string, 'neutral' | 'indigo' | 'purple' | 'pink' | 'rose'> = {
+            'Draft': 'neutral',
+            'Sent': 'indigo',
+            'Confirmed': 'purple',
+            'Delivered': 'pink',
+            'Cancelled': 'rose',
         };
-        const style = statusMap[sanitizedStatus] || statusMap['Draft'];
+        const tone = toneMap[sanitizedStatus] || 'neutral';
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs ${style.bg}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+            <StatusBadge tone={tone} dot size="xs">
                 {sanitizedStatus.charAt(0).toUpperCase() + sanitizedStatus.slice(1).replace(/_/g, ' ')}
-            </span>
+            </StatusBadge>
         );
     }, []);
 
@@ -303,8 +304,7 @@ export function PurchaseOrdersTab() {
         const search = sanitizeSearch(debouncedPoSearchTerm);
         return archivedPurchaseOrders.filter(po => {
             const matchesSearch = po.po_number.toLowerCase().includes(search.toLowerCase()) ||
-                po.supplier_name.toLowerCase().includes(search.toLowerCase()) ||
-                (po.notes && po.notes.toLowerCase().includes(search.toLowerCase()));
+                po.supplier_name.toLowerCase().includes(search.toLowerCase());
             const matchesStatus = poStatusFilter === 'all' || po.status === poStatusFilter;
             return matchesSearch && matchesStatus;
         });
@@ -333,7 +333,7 @@ export function PurchaseOrdersTab() {
     }, []);
 
     return (
-        <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
@@ -341,64 +341,64 @@ export function PurchaseOrdersTab() {
                     header="Total Archived"
                     data={String(archivedPurchaseOrders.length)}
                     arrow="fa-solid fa-folder-open"
-                    description="Purchase orders"
+                    description="POs in storage"
                     backBg="bg-ink dark:bg-ink/90"
                     backHeader="Archived POs"
                     headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Total Archived: ${archivedPurchaseOrders.length} order(s)\nTotal Value: ₱${archivedPurchaseOrders.reduce((sum, po) => sum + po.total_amount, 0).toLocaleString()}`}
-                    tooltip="View purchase order archive"
+                    backDescription={`Total Archived: ${archivedPurchaseOrders.length} PO(s)\nTotal value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}`}
+                    tooltip="View PO details"
                     frontTextColor="text-pink-500 dark:text-pink-400"
                     descriptionTextColor="text-pink-600 dark:text-pink-400"
                 />
 
                 <Cards
-                    frontIcon="fa-solid fa-coins"
+                    frontIcon="fa-solid fa-peso-sign"
                     header="Total Value"
-                    data={`₱${archivedPurchaseOrders.reduce((sum, po) => sum + po.total_amount, 0).toLocaleString()}`}
-                    arrow="fa-solid fa-chart-line"
-                    description="Archived value"
+                    data={formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}
+                    arrow="fa-solid fa-wallet"
+                    description="Combined value"
                     backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Financial Summary"
+                    backHeader="Value Details"
                     headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Cumulative value of ${archivedPurchaseOrders.length} archived purchase orders`}
-                    tooltip="View value details"
+                    backDescription={`Combined Value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}\nAcross ${archivedPurchaseOrders.length} orders`}
+                    tooltip="View total amount"
                     frontTextColor="text-emerald-500 dark:text-emerald-400"
                     descriptionTextColor="text-emerald-600 dark:text-emerald-400"
                 />
 
                 <Cards
-                    frontIcon="fa-solid fa-tags"
-                    header="Statuses"
-                    data={String(Math.max(0, poStatuses.length - 1))}
-                    arrow="fa-solid fa-layer-group"
-                    description="Distinct statuses"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Status Categories"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Statuses: ${poStatuses.filter(s => s !== 'all').join(', ') || 'None'}`}
-                    tooltip="View status categories"
-                    frontTextColor="text-purple-500 dark:text-purple-400"
-                    descriptionTextColor="text-purple-600 dark:text-purple-400"
-                />
-
-                <Cards
                     frontIcon="fa-solid fa-handshake"
                     header="Suppliers"
-                    data={String(new Set(archivedPurchaseOrders.map(po => po.supplier_name).filter(Boolean)).size)}
+                    data={String(new Set(archivedPurchaseOrders.map(p => p.supplier_name)).size)}
                     arrow="fa-solid fa-building"
                     description="Distinct suppliers"
                     backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Supplier Summary"
+                    backHeader="Supplier Info"
                     headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Suppliers: ${Array.from(new Set(archivedPurchaseOrders.map(po => po.supplier_name).filter(Boolean))).join(', ') || 'None'}`}
-                    tooltip="View supplier details"
+                    backDescription={`Suppliers: ${Array.from(new Set(archivedPurchaseOrders.map(p => p.supplier_name))).join(', ') || 'None'}`}
+                    tooltip="View suppliers involved"
+                    frontTextColor="text-indigo-500 dark:text-indigo-400"
+                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-clock-rotate-left"
+                    header="Avg. Value"
+                    data={formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}
+                    arrow="fa-solid fa-calculator"
+                    description="Per purchase order"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Averages"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Average Order Value: ${formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}`}
+                    tooltip="View averages"
                     frontTextColor="text-blue-500 dark:text-blue-400"
                     descriptionTextColor="text-blue-600 dark:text-blue-400"
                 />
             </div>
 
             {/* Search & Filter */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-3.5">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="relative flex-1 min-w-[220px]">
                         <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
@@ -423,17 +423,19 @@ export function PurchaseOrdersTab() {
                         </select>
                     </div>
                     {(poSearchTerm || poStatusFilter !== 'all' || selectedPoIds.size > 0) && (
-                        <button
-                            className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="xs"
                             onClick={() => {
                                 setPoSearchTerm('');
                                 setPoStatusFilter('all');
                                 setSelectedPoIds(new Set());
                             }}
                         >
-                            <i className="fas fa-rotate-left text-[11px]"></i>
+                            <i className="fas fa-rotate-left text-[11px]" />
                             <span>Reset Filters</span>
-                        </button>
+                        </AppButton>
                     )}
                 </div>
             </div>

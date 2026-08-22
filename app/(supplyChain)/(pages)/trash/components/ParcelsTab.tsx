@@ -11,6 +11,8 @@ import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface ArchivedParcel {
     id: number;
@@ -310,20 +312,19 @@ export function ParcelsTab() {
 
     const getStatusBadge = useCallback((status: string) => {
         const sanitizedStatus = sanitizeText(status);
-        const statusMap: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-            'received': { bg: "bg-pink-50 dark:bg-pink-950/40", text: "text-pink-700 dark:text-pink-300", border: "border-pink-200/80 dark:border-pink-800/50", dot: "bg-pink-500 dark:bg-pink-400" },
-            'sorting': { bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200/80 dark:border-amber-800/50", dot: "bg-amber-500 dark:bg-amber-400" },
-            'ready_for_pickup': { bg: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200/80 dark:border-emerald-800/50", dot: "bg-emerald-500 dark:bg-emerald-400" },
-            'picked_up': { bg: "bg-purple-50 dark:bg-purple-950/40", text: "text-purple-700 dark:text-purple-300", border: "border-purple-200/80 dark:border-purple-800/50", dot: "bg-purple-500 dark:bg-purple-400" },
-            'in_transit': { bg: "bg-indigo-50 dark:bg-indigo-950/40", text: "text-indigo-700 dark:text-indigo-300", border: "border-indigo-200/80 dark:border-indigo-800/50", dot: "bg-indigo-500 dark:bg-indigo-400" },
-            'returned': { bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-300", border: "border-rose-200/80 dark:border-rose-800/50", dot: "bg-rose-500 dark:bg-rose-400" },
+        const toneMap: Record<string, 'pink' | 'amber' | 'emerald' | 'purple' | 'indigo' | 'rose'> = {
+            'received': 'pink',
+            'sorting': 'amber',
+            'ready_for_pickup': 'emerald',
+            'picked_up': 'purple',
+            'in_transit': 'indigo',
+            'returned': 'rose',
         };
-        const style = statusMap[sanitizedStatus] || statusMap['sorting'];
+        const tone = toneMap[sanitizedStatus] || 'amber';
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${style.bg} ${style.text} ${style.border} shadow-2xs`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+            <StatusBadge tone={tone} dot size="xs">
                 {sanitizedStatus.charAt(0).toUpperCase() + sanitizedStatus.slice(1).replace(/_/g, ' ')}
-            </span>
+            </StatusBadge>
         );
     }, []);
 
@@ -366,7 +367,7 @@ export function ParcelsTab() {
     }, []);
 
     return (
-        <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
@@ -374,12 +375,12 @@ export function ParcelsTab() {
                     header="Total Archived"
                     data={String(archivedParcels.length)}
                     arrow="fa-solid fa-folder-open"
-                    description="Parcels"
+                    description="Parcels in storage"
                     backBg="bg-ink dark:bg-ink/90"
                     backHeader="Archived Parcels"
                     headerTextColor="text-muted dark:text-white/80"
                     backDescription={`Total Archived: ${archivedParcels.length} parcel(s)`}
-                    tooltip="View parcel archive"
+                    tooltip="View parcel details"
                     frontTextColor="text-pink-500 dark:text-pink-400"
                     descriptionTextColor="text-pink-600 dark:text-pink-400"
                 />
@@ -389,12 +390,27 @@ export function ParcelsTab() {
                     header="Couriers"
                     data={String(new Set(archivedParcels.map(p => p.courier)).size)}
                     arrow="fa-solid fa-route"
-                    description="Unique couriers"
+                    description="Distinct couriers"
                     backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Courier Breakdown"
+                    backHeader="Courier Info"
                     headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Couriers: ${Array.from(new Set(archivedParcels.map(p => p.courier))).filter(Boolean).join(', ') || 'None'}`}
+                    backDescription={`Couriers: ${Array.from(new Set(archivedParcels.map(p => p.courier))).join(', ') || 'None'}`}
                     tooltip="View courier details"
+                    frontTextColor="text-indigo-500 dark:text-indigo-400"
+                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                />
+
+                <Cards
+                    frontIcon="fa-solid fa-city"
+                    header="Destinations"
+                    data={String(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean)).size)}
+                    arrow="fa-solid fa-map-location-dot"
+                    description="Distinct destinations"
+                    backBg="bg-ink dark:bg-ink/90"
+                    backHeader="Destinations"
+                    headerTextColor="text-muted dark:text-white/80"
+                    backDescription={`Destinations: ${Array.from(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean))).join(', ') || 'None'}`}
+                    tooltip="View destinations"
                     frontTextColor="text-blue-500 dark:text-blue-400"
                     descriptionTextColor="text-blue-600 dark:text-blue-400"
                 />
@@ -406,32 +422,17 @@ export function ParcelsTab() {
                     arrow="fa-solid fa-layer-group"
                     description="Distinct statuses"
                     backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Parcel Statuses"
+                    backHeader="Status Categories"
                     headerTextColor="text-muted dark:text-white/80"
                     backDescription={`Statuses: ${parcelStatuses.filter(s => s !== 'all').join(', ') || 'None'}`}
                     tooltip="View status categories"
                     frontTextColor="text-purple-500 dark:text-purple-400"
                     descriptionTextColor="text-purple-600 dark:text-purple-400"
                 />
-
-                <Cards
-                    frontIcon="fa-solid fa-location-dot"
-                    header="Destinations"
-                    data={String(new Set(archivedParcels.map(p => p.destination || p.city).filter(Boolean)).size)}
-                    arrow="fa-solid fa-map-pin"
-                    description="Unique destinations"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Destination Breakdown"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Destinations: ${Array.from(new Set(archivedParcels.map(p => p.destination || p.city).filter(Boolean))).join(', ') || 'None'}`}
-                    tooltip="View destination details"
-                    frontTextColor="text-emerald-500 dark:text-emerald-400"
-                    descriptionTextColor="text-emerald-600 dark:text-emerald-400"
-                />
             </div>
 
             {/* Search & Filter */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-3.5">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="relative flex-1 min-w-[220px]">
                         <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
@@ -450,23 +451,25 @@ export function ParcelsTab() {
                         >
                             {parcelStatuses.map(status => (
                                 <option key={status} value={status} className="dark:bg-slate-900">
-                                    {status === 'all' ? 'All Statuses' : status.replace(/_/g, ' ').toUpperCase()}
+                                    {status === 'all' ? 'All Statuses' : status.replace(/_/g, ' ')}
                                 </option>
                             ))}
                         </select>
                     </div>
                     {(parcelSearchTerm || parcelStatusFilter !== 'all' || selectedParcelIds.size > 0) && (
-                        <button
-                            className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="xs"
                             onClick={() => {
                                 setParcelSearchTerm('');
                                 setParcelStatusFilter('all');
                                 setSelectedParcelIds(new Set());
                             }}
                         >
-                            <i className="fas fa-rotate-left text-[11px]"></i>
+                            <i className="fas fa-rotate-left text-[11px]" />
                             <span>Reset Filters</span>
-                        </button>
+                        </AppButton>
                     )}
                 </div>
             </div>

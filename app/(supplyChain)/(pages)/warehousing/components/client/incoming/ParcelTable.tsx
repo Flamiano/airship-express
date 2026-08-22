@@ -9,6 +9,7 @@ import { deleteMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/a
 import { receiveMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/parcels";
 import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 interface Parcel {
     id: number;
@@ -415,18 +416,17 @@ export function IncomingTable({
                                             {parcel.destination || '—'}
                                         </td>
                                         <td data-label="Region" className="py-3 px-4">
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                            <StatusBadge tone="neutral" size="xs">
                                                 {parcel.region || '—'}
-                                            </span>
+                                            </StatusBadge>
                                         </td>
                                         <td data-label="Courier" className="py-3 px-4 text-slate-600 dark:text-slate-400">
                                             {parcel.courier || '—'}
                                         </td>
                                         <td data-label="Status" className="py-3 px-4">
-                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                            <StatusBadge tone="amber" dot size="xs">
                                                 Pending
-                                            </span>
+                                            </StatusBadge>
                                         </td>
                                         <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[80px] min-w-[80px]">
                                             <div className="flex items-center justify-end">

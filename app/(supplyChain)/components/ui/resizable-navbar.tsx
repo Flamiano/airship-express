@@ -89,14 +89,14 @@ export const NavBody = ({ children, className, visible }: NavBodyProps) => {
   return (
     <motion.div
       animate={{
-        backdropFilter: visible ? "blur(16px)" : "blur(0px)",
+        backdropFilter: visible ? "blur(16px)" : "blur(8px)",
         boxShadow: visible
-          ? "0 10px 30px -10px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.4)"
-          : "0 0 0 1px rgba(0, 0, 0, 0.02)",
+          ? "0 12px 36px -8px rgba(0, 0, 0, 0.1), inset 0 1px 0 #ffffff"
+          : "0 4px 20px -4px rgba(0, 0, 0, 0.06), inset 0 1px 0 #ffffff",
         width: visible ? "96%" : "100%",
         maxWidth: "1440px",
         y: visible ? 6 : 0,
-        borderRadius: visible ? "1.25rem" : "0.875rem",
+        borderRadius: "1.25rem",
       }}
       transition={{
         type: "spring",
@@ -104,8 +104,8 @@ export const NavBody = ({ children, className, visible }: NavBodyProps) => {
         damping: 32,
       }}
       className={cn(
-        "relative z-[60] mx-auto hidden w-full flex-row items-center justify-between self-start px-4 xl:px-6 py-2.5 xl:py-3 lg:flex transition-colors duration-200 gap-3 xl:gap-6",
-        "bg-white/90 border border-slate-200/80 dark:bg-neutral-900/90 dark:border-white/[0.08]",
+        "relative z-[60] mx-auto hidden w-full flex-row items-center justify-between self-start px-4 xl:px-6 py-2 xl:py-2.5 lg:flex transition-all duration-200 gap-3 xl:gap-6",
+        "bg-white/95 border border-slate-200/90 dark:bg-[#181920]/95 dark:border-[#353746] dark:shadow-[0_12px_36px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]",
         className,
       )}
     >
@@ -153,12 +153,12 @@ export const MobileNav = ({ children, className, visible }: MobileNavProps) => {
       animate={{
         backdropFilter: visible ? "blur(16px)" : "blur(12px)",
         boxShadow: visible
-          ? "0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04)"
-          : "0 4px 12px rgba(0,0,0,0.03)",
+          ? "0 10px 25px -5px rgba(0, 0, 0, 0.08), inset 0 1px 0 #ffffff"
+          : "0 4px 12px rgba(0,0,0,0.04), inset 0 1px 0 #ffffff",
         width: visible ? "96%" : "100%",
         paddingRight: visible ? "14px" : "12px",
         paddingLeft: visible ? "14px" : "12px",
-        borderRadius: visible ? "1rem" : "1.25rem",
+        borderRadius: "1.25rem",
         y: visible ? 4 : 0,
       }}
       transition={{
@@ -167,7 +167,7 @@ export const MobileNav = ({ children, className, visible }: MobileNavProps) => {
         damping: 32,
       }}
       className={cn(
-        "relative z-50 mx-auto flex w-full flex-col items-center justify-between bg-white border border-slate-200/80 px-4 py-2.5 lg:hidden dark:bg-neutral-900 dark:border-white/[0.08]",
+        "relative z-50 mx-auto flex w-full flex-col items-center justify-between bg-white/95 border border-slate-200/90 px-4 py-2.5 lg:hidden dark:bg-[#181920]/95 dark:border-[#353746] dark:shadow-[0_10px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]",
         className,
       )}
     >

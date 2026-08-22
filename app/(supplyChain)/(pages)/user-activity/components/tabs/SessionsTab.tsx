@@ -4,6 +4,8 @@ import React from 'react';
 import { Search, Ban, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { Session } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -65,20 +67,24 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                         {selectedSessions.size} session(s) selected
                     </span>
                     <div className="flex items-center gap-2 flex-wrap">
-                        <button
+                        <AppButton
+                            type="button"
+                            variant="danger"
+                            size="xs"
                             onClick={onBulkBlock}
-                            className="px-3 py-1.5 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200/80 dark:border-red-900/40 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
                         >
                             <Ban className="w-3 h-3" />
-                            Block Selected
-                        </button>
-                        <button
+                            <span>Block Selected</span>
+                        </AppButton>
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="xs"
                             onClick={onBulkDelete}
-                            className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
                         >
                             <Trash2 className="w-3 h-3" />
-                            Delete Selected
-                        </button>
+                            <span>Delete Selected</span>
+                        </AppButton>
                     </div>
                 </div>
             )}
@@ -158,7 +164,7 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
 
                                         <td className="py-3 px-4">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-6 h-6 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
+                                                <div className="w-7 h-7 rounded-full bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-800/50 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-xs shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] shrink-0 uppercase">
                                                     {userName.charAt(0)}
                                                 </div>
                                                 <span className="font-semibold text-slate-800 dark:text-slate-200">
@@ -176,9 +182,9 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                         </td>
 
                                         <td className="py-3 px-4">
-                                            <code className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60 text-slate-700 dark:text-slate-300">
-                                                {session.ip_address || 'Unknown'}
-                                            </code>
+                                            <StatusBadge tone="neutral" size="xs">
+                                                <span className="font-mono">{session.ip_address || 'Unknown'}</span>
+                                            </StatusBadge>
                                         </td>
 
                                         <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px] whitespace-nowrap">
@@ -190,26 +196,13 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                         </td>
 
                                         <td className="py-3 px-4">
-                                            <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${session.is_active && !isBlocked
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40'
-                                                    : isBlocked
-                                                        ? 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/40'
-                                                        : 'bg-slate-100 text-slate-600 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700/60'
-                                                    }`}
+                                            <StatusBadge
+                                                tone={isBlocked ? 'rose' : session.is_active ? 'emerald' : 'neutral'}
+                                                dot
+                                                size="xs"
                                             >
-                                                <span
-                                                    className={`w-1.5 h-1.5 rounded-full ${session.is_active && !isBlocked
-                                                        ? 'bg-emerald-500 dark:bg-emerald-400'
-                                                        : isBlocked
-                                                            ? 'bg-rose-500 dark:bg-rose-400'
-                                                            : 'bg-slate-400 dark:bg-slate-500'
-                                                        }`}
-                                                />
-                                                <span>
-                                                    {isBlocked ? 'Blocked' : session.is_active ? 'Active' : 'Inactive'}
-                                                </span>
-                                            </span>
+                                                {isBlocked ? 'Blocked' : session.is_active ? 'Active' : 'Inactive'}
+                                            </StatusBadge>
                                         </td>
 
                                         <td className="py-3 px-4 text-right whitespace-nowrap w-[80px] min-w-[80px]">

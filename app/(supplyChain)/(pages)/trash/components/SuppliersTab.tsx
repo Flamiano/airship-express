@@ -11,6 +11,8 @@ import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface ArchivedSupplier {
     id: number;
@@ -400,17 +402,19 @@ export function SuppliersTab() {
                         </select>
                     </div>
                     {(supplierSearchTerm || supplierCategoryFilter !== 'all' || selectedSupplierIds.size > 0) && (
-                        <button
-                            className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="xs"
                             onClick={() => {
                                 setSupplierSearchTerm('');
                                 setSupplierCategoryFilter('all');
                                 setSelectedSupplierIds(new Set());
                             }}
                         >
-                            <i className="fas fa-rotate-left text-[11px]"></i>
+                            <i className="fas fa-rotate-left text-[11px]" />
                             <span>Reset Filters</span>
-                        </button>
+                        </AppButton>
                     )}
                 </div>
             </div>
@@ -538,9 +542,9 @@ export function SuppliersTab() {
                                                 {supplier.name}
                                             </td>
                                             <td data-label="Category" className="py-3 px-4">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs capitalize">
-                                                    {supplier.category}
-                                                </span>
+                                                <StatusBadge tone="pink" size="xs">
+                                                    <span className="capitalize">{supplier.category}</span>
+                                                </StatusBadge>
                                             </td>
                                             <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
                                                 {supplier.contact_person}

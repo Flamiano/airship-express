@@ -11,6 +11,7 @@ import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { sanitizeNumber, sanitizeText } from "@/app/(supplyChain)/components/global/sanitize";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 let isRegistered = false;
 
@@ -473,33 +474,22 @@ export default function Suppliers() {
     const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A";
 
     const getStatusBadge = (status: string) => {
-        const statusMap: Record<string, { bg: string; dot: string }> = {
-            'Draft': { bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold", dot: "bg-slate-400 dark:bg-slate-500" },
-            'Sent': { bg: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold", dot: "bg-indigo-500 dark:bg-indigo-400" },
-            'Confirmed': { bg: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold", dot: "bg-purple-500 dark:bg-purple-400" },
-            'Delivered': { bg: "bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold", dot: "bg-pink-500 dark:bg-pink-400" },
-            'Cancelled': { bg: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold", dot: "bg-rose-500 dark:bg-rose-400" },
-        };
-        const style = statusMap[status] || statusMap['Draft'];
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs ${style.bg}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+            <StatusBadge tone={getPOStatusTone(status)} dot size="xs">
                 {status}
-            </span>
+            </StatusBadge>
         );
     };
 
     const getPaidBadge = (paid: boolean) => {
         return paid ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400"></span>
-                Paid
-            </span>
+            <StatusBadge tone="purple" icon="fas fa-check-circle" size="xs">
+                Paid ✓
+            </StatusBadge>
         ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500"></span>
+            <StatusBadge tone="neutral" icon="fas fa-lock" size="xs">
                 Unpaid
-            </span>
+            </StatusBadge>
         );
     };
 
@@ -836,10 +826,11 @@ export default function Suppliers() {
                             </p>
 
                             <div className="inline-flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2.5 
-                      px-2.5 py-1.5 sm:py-1 rounded-lg 
-                      bg-slate-100/80 dark:bg-slate-800/50 
-                      border border-slate-200/60 dark:border-ink/20 
-                      text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 max-w-full">
+                      px-3 py-1.5 rounded-full 
+                      bg-slate-50 dark:bg-slate-900 
+                      border border-slate-200/90 dark:border-slate-800 
+                      shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] 
+                      text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 max-w-full transition-all">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
                                 <i className="fas fa-users text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500"></i>
                                 <span>Total Suppliers:</span>
@@ -854,21 +845,25 @@ export default function Suppliers() {
 
                         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0 mt-2 sm:mt-0">
                             {selectedSuppliers.size > 0 && (
-                                <button
+                                <AppButton
                                     type="button"
-                                    className="btn-danger w-full sm:w-auto justify-center"
+                                    variant="danger"
+                                    size="md"
                                     onClick={handleBulkDelete}
                                 >
-                                    Delete Selected ({selectedSuppliers.size})
-                                </button>
+                                    <i className="fas fa-trash-alt text-xs" />
+                                    <span>Delete Selected ({selectedSuppliers.size})</span>
+                                </AppButton>
                             )}
-                            <button
+                            <AppButton
                                 type="button"
-                                className="btn-primary w-full sm:w-auto justify-center"
+                                variant="primary"
+                                size="md"
                                 onClick={() => setShowNewSupplierModal(true)}
                             >
-                                + New Supplier
-                            </button>
+                                <i className="fas fa-plus text-xs" />
+                                <span>New Supplier</span>
+                            </AppButton>
                         </div>
                     </div>
 
@@ -1124,16 +1119,16 @@ export default function Suppliers() {
                                                         {supplier.location}
                                                     </td>
                                                     <td data-label="Status" className="py-3 px-4">
-                                                        <button
+                                                        <StatusBadge
+                                                            tone={supplier.is_active ? 'emerald' : 'neutral'}
+                                                            dot
+                                                            size="xs"
+                                                            interactive
                                                             onClick={() => handleToggleActive(supplier.id, supplier.is_active)}
-                                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-98 ${supplier.is_active
-                                                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
-                                                                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/60 hover:bg-slate-200/80'
-                                                                }`}
+                                                            title={`Click to set ${supplier.name} as ${supplier.is_active ? 'Inactive' : 'Active'}`}
                                                         >
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${supplier.is_active ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-slate-400 dark:bg-slate-500'}`} />
-                                                            <span>{supplier.is_active ? 'Active' : 'Inactive'}</span>
-                                                        </button>
+                                                            {supplier.is_active ? 'Active' : 'Inactive'}
+                                                        </StatusBadge>
                                                     </td>
                                                     <td data-label="Action" className="py-3 px-4 text-right w-[150px] min-w-[150px]">
                                                         <div className="flex items-center justify-end gap-2.5">

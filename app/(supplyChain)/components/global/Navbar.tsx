@@ -30,6 +30,8 @@ import { toast } from "sonner";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { NotificationBell } from "./NotificationBell";
 import ThemeToggle from "@/app/components/ThemeToggle";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -279,18 +281,16 @@ export function AceternityNavbar() {
                             <div key={group.section} className="relative group">
                                 <button
                                     className={cn(
-                                        "flex items-center gap-1.5 px-2.5 xl:px-3.5 py-1.5 xl:py-2 text-xs xl:text-sm font-medium transition-all duration-200 rounded-xl border whitespace-nowrap",
-                                        isDropdownOpen
-                                            ? "text-pink-600 dark:text-pink-400 bg-pink-50/70 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800/60 shadow-sm"
-                                            : isSectionCurrent
-                                                ? accent.active
-                                                : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100/60 dark:hover:bg-slate-800/60 border-transparent"
+                                        "flex items-center gap-1.5 px-3 py-1.5 text-xs xl:text-sm font-semibold transition-all duration-200 rounded-full border whitespace-nowrap cursor-pointer",
+                                        isDropdownOpen || isSectionCurrent
+                                            ? "text-pink-700 dark:text-pink-200 bg-[#ffe6f0] dark:bg-[#341427] border-pink-300 dark:border-[#67224c] shadow-[0_2px_8px_rgba(244,63,94,0.16),inset_0_1px_0_#ffffff] dark:shadow-[0_3px_10px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)]"
+                                            : "text-slate-700 dark:text-slate-200 bg-white/80 dark:bg-[#1c1d25]/80 border-slate-200/80 dark:border-[#353746] hover:bg-slate-50 dark:hover:bg-[#252630] shadow-[0_2px_6px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] active:scale-96"
                                     )}
                                     onClick={() =>
                                         setOpenDropdown(isDropdownOpen ? null : group.section)
                                     }
                                 >
-                                    <i className={cn(getSectionIcon(group.section), "text-xs", isSectionCurrent ? accent.iconColor : "text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors")} />
+                                    <i className={cn(getSectionIcon(group.section), "text-xs", (isDropdownOpen || isSectionCurrent) ? "text-pink-600 dark:text-pink-400" : "text-slate-400 dark:text-slate-400")} />
                                     <span>{group.section}</span>
                                     <IconChevronDown className={cn(
                                         "h-3.5 w-3.5 opacity-70 transition-transform duration-200 ml-0.5",
@@ -299,19 +299,19 @@ export function AceternityNavbar() {
                                 </button>
 
                                 {isDropdownOpen && (
-                                    <div className="absolute left-0 top-full mt-1.5 w-64 rounded-xl 
-                                                bg-white dark:bg-[#2a2a2e] 
-                                                p-2 shadow-xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] 
-                                                border border-slate-200/80 dark:border-slate-700/80 
+                                    <div className="absolute left-0 top-full mt-2 w-64 rounded-2xl 
+                                                bg-white dark:bg-[#1c1d25] 
+                                                p-2 shadow-[0_16px_45px_rgba(0,0,0,0.14),inset_0_1px_0_#ffffff] dark:shadow-[0_20px_50px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.08)] 
+                                                border border-slate-200/90 dark:border-[#353746] 
                                                 z-50 animate-in fade-in-0 zoom-in-95 duration-200">
-                                        <div className="px-3 py-1.5 mb-1 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50">
-                                            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-400 flex items-center gap-1.5">
-                                                <i className={cn(getSectionIcon(group.section), "text-xs", accent.iconColor)} />
+                                        <div className="px-3 py-1.5 mb-1 flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
+                                            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-400 flex items-center gap-1.5">
+                                                <i className={cn(getSectionIcon(group.section), "text-xs text-pink-500 dark:text-pink-400")} />
                                                 {group.section}
                                             </span>
-                                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-md font-medium border", accent.badge)}>
+                                            <StatusBadge tone="pink" size="xs">
                                                 {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
-                                            </span>
+                                            </StatusBadge>
                                         </div>
                                         {group.items.map((item: any) => {
                                             const active = isActive(item.href);
@@ -330,22 +330,18 @@ export function AceternityNavbar() {
                                                         setOpenDropdown(null);
                                                     }}
                                                     className={cn(
-                                                        "flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm transition-all duration-200 relative",
+                                                        "flex items-center gap-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition-all duration-200 relative",
                                                         active && isAuthorized
-                                                            ? "text-pink-600 bg-pink-50 dark:bg-pink-950/20 dark:text-pink-400 font-medium"
+                                                            ? "text-pink-700 bg-[#ffe6f0] border border-pink-300 dark:bg-[#341427] dark:text-pink-200 dark:border-[#67224c] shadow-[0_2px_6px_rgba(244,63,94,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_8px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]"
                                                             : !isAuthorized
                                                                 ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
-                                                                : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
+                                                                : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60"
                                                     )}
                                                 >
-                                                    {active && isAuthorized && (
-                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-full bg-pink-500 dark:bg-pink-400" />
-                                                    )}
-
                                                     <i className={cn(
                                                         item.icon,
                                                         !isAuthorized && "opacity-50",
-                                                        active && isAuthorized ? "text-pink-500 dark:text-pink-400" : "text-slate-500 dark:text-slate-400"
+                                                        active && isAuthorized ? "text-pink-600 dark:text-pink-400" : "text-slate-500 dark:text-slate-400"
                                                     )}></i>
                                                     <span className={!isAuthorized ? "line-through" : ""}>
                                                         {isAuthorized ? item.label : "Unauthorized"}
@@ -363,17 +359,18 @@ export function AceternityNavbar() {
                     })}
                 </div>
 
-                <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
+                <div className="hidden lg:flex items-center gap-2 xl:gap-2.5 shrink-0">
                     <div 
                         title={`${userName} (${userRole})`}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-full 
-                            bg-slate-50/80 dark:bg-slate-800/60 
-                            border border-slate-200/60 dark:border-slate-700/60 shadow-xs cursor-default"
+                        className="flex items-center gap-2 px-2.5 py-1 rounded-full 
+                            bg-white dark:bg-[#1c1d25] 
+                            border border-slate-200/90 dark:border-[#353746] 
+                            shadow-[0_2px_6px_rgba(0,0,0,0.05),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] cursor-default select-none"
                     >
-                        <div className="flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-xs font-bold shadow-xs select-none">
+                        <div className="flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-[11px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]">
                             {getInitials(userName)}
                         </div>
-                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 max-w-[80px] truncate">
+                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 max-w-[80px] truncate">
                             {userRole}
                         </span>
                     </div>
@@ -382,28 +379,27 @@ export function AceternityNavbar() {
 
                     <ThemeToggle />
 
-                    <button
+                    <AppButton
+                        type="button"
+                        variant="danger"
+                        size="xs"
+                        pill
                         onClick={handleLogout}
                         disabled={isLoggingOut}
                         title="Logout"
-                        className="flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 text-xs xl:text-sm font-medium
-                               text-red-600 dark:text-red-400 
-                               hover:bg-red-50 dark:hover:bg-red-950/20 
-                               rounded-lg transition-all duration-200 
-                               disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isLoggingOut ? (
                             <>
-                                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-600 dark:border-red-400 border-t-transparent"></span>
+                                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-600 dark:border-rose-400 border-t-transparent"></span>
                                 <span className="hidden xl:inline">Logging out...</span>
                             </>
                         ) : (
                             <>
-                                <IconLogout className="h-4 w-4" />
+                                <IconLogout className="h-3.5 w-3.5 shrink-0" />
                                 <span className="hidden xl:inline">Logout</span>
                             </>
                         )}
-                    </button>
+                    </AppButton>
                 </div>
             </NavBody>
 
@@ -434,49 +430,48 @@ export function AceternityNavbar() {
                 </MobileNavHeader>
 
                 <MobileNavMenu isOpen={isOpen} onClose={() => setIsOpen(false)}>
-                    <div className="flex flex-col h-full bg-white dark:bg-[#1c1b1f]">
-                        <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60">
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center justify-center h-9 w-9 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-sm font-bold shadow-xs select-none">
+                    <div className="flex flex-col h-full bg-white dark:bg-[#181920]">
+                        <div className="flex-shrink-0 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-[#353746] shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                                <div className="flex items-center justify-center h-10 w-10 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-sm font-bold shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] select-none shrink-0">
                                     {getInitials(userName)}
                                 </div>
                                 <div className="flex flex-col min-w-0">
-                                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                                         {userName}
                                     </span>
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                                         {userRole}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto px-2 py-2">
+                        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
                             {filteredNav.map((group: any) => {
                                 const isSectionCurrent = isSectionActive(group);
                                 const accent = getSectionAccent(group.section);
 
                                 return (
-                                    <div key={group.section} className="w-full mb-3 last:mb-0">
-                                        <div className="px-3 py-2 flex items-center justify-between">
+                                    <div key={group.section} className="w-full">
+                                        <div className="px-2 py-1.5 flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <i className={cn(getSectionIcon(group.section), "text-xs", accent.iconColor)} />
-                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                                                <i className={cn(getSectionIcon(group.section), "text-xs text-pink-500 dark:text-pink-400")} />
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                                                     {group.section}
                                                 </span>
                                             </div>
                                             {isSectionCurrent ? (
-                                                <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-semibold border flex items-center gap-1.5", accent.badge)}>
-                                                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full", accent.indicator)}></span>
-                                                    Active Section
-                                                </span>
+                                                <StatusBadge tone="pink" dot size="xs">
+                                                    Active
+                                                </StatusBadge>
                                             ) : (
-                                                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-md font-medium border", accent.badge)}>
+                                                <StatusBadge tone="neutral" size="xs">
                                                     {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
-                                                </span>
+                                                </StatusBadge>
                                             )}
                                         </div>
-                                        <div className="space-y-0.5">
+                                        <div className="space-y-1 mt-1">
                                             {group.items.map((item: any) => {
                                         const active = isActive(item.href);
                                         const isAuthorized = item.isAuthorized !== false;
@@ -494,26 +489,18 @@ export function AceternityNavbar() {
                                                     setIsOpen(false);
                                                 }}
                                                 className={cn(
-                                                    "flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-all duration-200 relative",
+                                                    "flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 relative",
                                                     active && isAuthorized
-                                                        ? "text-pink-600 bg-pink-50 dark:bg-pink-950/20 dark:text-pink-400 font-medium"
+                                                        ? "text-pink-700 bg-[#ffe6f0] border border-pink-300 dark:bg-[#341427] dark:text-pink-200 dark:border-[#67224c] shadow-[0_2px_6px_rgba(244,63,94,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_8px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]"
                                                         : !isAuthorized
                                                             ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
                                                             : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
                                                 )}
                                             >
-                                                {active && isAuthorized && (
-                                                    <motion.div
-                                                        layoutId="mobile-active-bar"
-                                                        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-full bg-pink-500 dark:bg-pink-400"
-                                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                                    />
-                                                )}
-
                                                 <i className={cn(
                                                     item.icon,
                                                     !isAuthorized && "opacity-50",
-                                                    active && isAuthorized && "text-pink-500 dark:text-pink-400"
+                                                    active && isAuthorized ? "text-pink-600 dark:text-pink-400" : "text-slate-500 dark:text-slate-400"
                                                 )}></i>
 
                                                 <span className={cn(
@@ -534,18 +521,19 @@ export function AceternityNavbar() {
                             })}
                         </div>
 
-                        <div className="flex-shrink-0 px-4 py-3 border-t border-slate-200/60 dark:border-slate-700/60 
-                                    bg-white/80 dark:bg-[#1c1b1f]/80 backdrop-blur-sm">
-                            <button
+                        <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-slate-800 bg-white/90 dark:bg-[#181920]/90 backdrop-blur-sm">
+                            <AppButton
+                                type="button"
+                                variant="danger"
+                                size="md"
+                                pill
                                 onClick={handleLogout}
                                 disabled={isLoggingOut}
-                                className="flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-sm 
-                                       text-red-600 dark:text-red-400 
-                                       hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                                className="w-full justify-center"
                             >
-                                <IconLogout className="h-5 w-5" />
+                                <IconLogout className="h-4 w-4 shrink-0" />
                                 <span>{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
-                            </button>
+                            </AppButton>
                         </div>
                     </div>
                 </MobileNavMenu>
@@ -621,23 +609,21 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                         }}
                     >
                         <div className="flex items-center gap-2 rounded-2xl 
-                                border border-pink-200/60 dark:border-pink-800/40 
-                                border-b-4 border-b-pink-300 dark:border-b-pink-700/60 
-                                bg-white/95 dark:bg-[#2a2a2e]/95 
-                                p-2 shadow-xl backdrop-blur-sm 
-                                shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] 
-                                dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+                                border border-pink-200/90 dark:border-[#67224c] 
+                                bg-white dark:bg-[#1c1d25] 
+                                p-2 shadow-[0_16px_45px_rgba(0,0,0,0.14),inset_0_1px_0_#ffffff] dark:shadow-[0_20px_50px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md">
 
                             <Link
                                 href="/warehousing"
                                 className="group relative rounded-xl 
-                                   border border-transparent dark:border-transparent 
-                                   border-b-2 border-b-slate-200 dark:border-b-slate-700 
-                                   bg-slate-50/50 dark:bg-neutral-800/50 
-                                   p-2 transition-all duration-75 
-                                   hover:border-pink-200 dark:hover:border-pink-800/40 
-                                   hover:bg-pink-50 dark:hover:bg-pink-950/20 
-                                   active:translate-y-[1px] active:border-b-0"
+                                   border border-slate-200/80 dark:border-[#353746] 
+                                   bg-slate-50 dark:bg-slate-900/60 
+                                   p-2 transition-all duration-150 
+                                   hover:border-pink-300 dark:hover:border-[#67224c] 
+                                   hover:bg-[#ffe6f0] dark:hover:bg-[#341427] 
+                                   shadow-[0_2px_6px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]
+                                   active:scale-95 cursor-pointer"
+                                title="Warehousing"
                             >
                                 <svg
                                     viewBox="0 0 24 24"
@@ -646,9 +632,9 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                     strokeWidth="2"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    className="h-6 w-6 text-neutral-600 dark:text-neutral-400 
+                                    className="h-5 w-5 text-slate-600 dark:text-slate-300 
                                        transition-colors duration-200 
-                                       group-hover:text-pink-500 dark:group-hover:text-pink-400"
+                                       group-hover:text-pink-600 dark:group-hover:text-pink-300"
                                 >
                                     <rect x="3" y="3" width="7" height="7" rx="1" />
                                     <rect x="14" y="3" width="7" height="7" rx="1" />
@@ -657,7 +643,7 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                 </svg>
                             </Link>
 
-                            <div className="h-8 w-px bg-pink-100 dark:bg-pink-900/30" />
+                            <div className="h-7 w-px bg-pink-200/60 dark:bg-[#67224c]" />
 
                             <div className="relative">
                                 <button
@@ -668,7 +654,7 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                     }}
                                     onMouseEnter={() => setIsHovering(true)}
                                     onMouseLeave={() => setIsHovering(false)}
-                                    className="group relative rounded-xl p-1 transition-all duration-75 active:scale-95 focus-visible:outline-none"
+                                    className="group relative rounded-xl p-1 transition-all duration-75 active:scale-95 focus-visible:outline-none cursor-pointer"
                                 >
                                     <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center">
                                         <motion.div
@@ -753,10 +739,10 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                         >
                                             <motion.div
                                                 key={currentGreeting}
-                                                className="bg-white dark:bg-[#2a2a2e] 
-                                                   rounded-2xl px-4 py-2 shadow-xl 
-                                                   border border-pink-200 dark:border-pink-800/40 
-                                                   text-sm font-medium text-pink-600 dark:text-pink-400"
+                                                className="bg-white dark:bg-[#1c1d25] 
+                                                   rounded-2xl px-4 py-2 shadow-[0_8px_25px_rgba(0,0,0,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_10px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)] 
+                                                   border border-pink-200 dark:border-[#67224c] 
+                                                   text-xs sm:text-sm font-semibold text-pink-600 dark:text-pink-300"
                                                 initial={{ scale: 0.9, opacity: 0 }}
                                                 animate={{ scale: 1, opacity: 1 }}
                                                 exit={{ scale: 0.9, opacity: 0 }}
@@ -766,7 +752,7 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                             </motion.div>
                                             <div className="w-0 h-0 mx-auto 
                                                     border-x-8 border-x-transparent 
-                                                    border-t-8 border-t-white dark:border-t-[#2a2a2e]" />
+                                                    border-t-8 border-t-white dark:border-t-[#1c1d25]" />
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
@@ -779,15 +765,15 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
             <motion.button
                 onClick={() => setIsOpen((prev) => !prev)}
                 whileHover={{ scale: 1.05 }}
-                whileTap={{ y: 3 }}
+                whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 400, damping: 20 }}
                 aria-label={isOpen ? "Hide navigation" : "Show navigation"}
                 aria-expanded={isOpen}
                 className={cn(
-                    "relative flex h-12 w-5 items-center justify-center rounded-full",
-                    "border-b-4 border-pink-700 dark:border-pink-800 bg-pink-500 dark:bg-pink-600 text-white",
-                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] shadow-md hover:bg-pink-400 dark:hover:bg-pink-500",
-                    "transition-colors duration-75",
+                    "relative flex h-11 w-6 items-center justify-center rounded-full",
+                    "border border-pink-400/60 dark:border-[#832b61] bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white",
+                    "shadow-[0_4px_16px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] cursor-pointer",
+                    "transition-all duration-150",
                     "focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 dark:focus:ring-offset-[#1c1b1f]"
                 )}
             >
@@ -808,7 +794,7 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                 strokeWidth="3"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                className="h-6 w-6 text-white drop-shadow-sm"
+                                className="h-5 w-5 text-white drop-shadow-sm"
                             >
                                 <polyline points="9 18 15 12 9 6" />
                             </svg>
@@ -829,7 +815,7 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                 strokeWidth="3"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                className="h-6 w-6 text-white drop-shadow-sm"
+                                className="h-5 w-5 text-white drop-shadow-sm"
                             >
                                 <polyline points="15 18 9 12 15 6" />
                             </svg>

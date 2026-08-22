@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { InventoryItem } from '../../types';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
 // Guard against duplicate registrations during Next.js Hot Reloads
 let isRegistered = false;
@@ -398,69 +399,69 @@ function CategoryTooltipContent({
     const topItems = [...data.items].sort((a, b) => b.current_stock - a.current_stock).slice(0, 5);
 
     return (
-        <div className="bg-white dark:bg-white rounded-2xl border border-slate-200/90 dark:border-slate-200/90 shadow-2xl p-4 space-y-3 max-w-xs text-xs max-h-[360px] overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] p-4 space-y-3 max-w-xs text-xs max-h-[360px] overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-100">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-pink-50 dark:bg-pink-50 border border-pink-100 dark:border-pink-100 flex items-center justify-center text-pink-600 dark:text-pink-600 shrink-0">
+                    <div className="w-7 h-7 rounded-lg bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 flex items-center justify-center text-pink-600 dark:text-pink-400 shrink-0 shadow-2xs">
                         <i className="fas fa-boxes-stacked text-xs" />
                     </div>
-                    <h4 className="font-bold text-slate-900 dark:text-slate-900 text-sm truncate" title={category}>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate" title={category}>
                         {category}
                     </h4>
                 </div>
-                <span className="px-2 py-0.5 rounded-full bg-pink-50 dark:bg-pink-50 text-pink-700 dark:text-pink-700 text-[11px] font-bold border border-pink-100 dark:border-pink-100 shrink-0">
+                <StatusBadge tone="pink" size="xs">
                     {percentage}%
-                </span>
+                </StatusBadge>
             </div>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-2">
-                <div className="bg-slate-50 dark:bg-slate-50 border border-slate-100 dark:border-slate-100 rounded-xl p-2.5">
-                    <div className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Items</div>
-                    <div className="text-sm font-bold text-slate-900 dark:text-slate-900 mt-0.5">{data.count}</div>
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 rounded-xl p-2.5 shadow-[inset_0_1px_0_#ffffff] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Items</div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{data.count}</div>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-50 border border-slate-100 dark:border-slate-100 rounded-xl p-2.5">
-                    <div className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Total Stock</div>
-                    <div className="text-sm font-bold text-slate-900 dark:text-slate-900 mt-0.5">{data.totalStock}</div>
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 rounded-xl p-2.5 shadow-[inset_0_1px_0_#ffffff] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Stock</div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{data.totalStock}</div>
                 </div>
             </div>
 
             {/* Status Badges */}
             <div className="grid grid-cols-3 gap-1.5">
-                <div className="bg-emerald-50/60 dark:bg-emerald-50/60 border border-emerald-100 dark:border-emerald-100 rounded-xl p-2 text-center flex flex-col items-center justify-center">
-                    <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-100 text-emerald-600 dark:text-emerald-600 flex items-center justify-center text-[10px] mb-0.5">
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/50 rounded-xl p-2 text-center flex flex-col items-center justify-center shadow-[inset_0_1px_0_#ffffff]">
+                    <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px] mb-0.5">
                         <i className="fas fa-check" />
                     </div>
-                    <div className="font-bold text-emerald-800 dark:text-emerald-800 text-xs">{data.statusCounts.available}</div>
-                    <div className="text-[9px] font-medium text-emerald-600 dark:text-emerald-600 uppercase tracking-tight">Available</div>
+                    <div className="font-bold text-emerald-800 dark:text-emerald-300 text-xs">{data.statusCounts.available}</div>
+                    <div className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-tight">Available</div>
                 </div>
 
-                <div className="bg-amber-50/60 dark:bg-amber-50/60 border border-amber-100 dark:border-amber-100 rounded-xl p-2 text-center flex flex-col items-center justify-center">
-                    <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-100 text-amber-600 dark:text-amber-600 flex items-center justify-center text-[10px] mb-0.5">
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/50 rounded-xl p-2 text-center flex flex-col items-center justify-center shadow-[inset_0_1px_0_#ffffff]">
+                    <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400 flex items-center justify-center text-[10px] mb-0.5">
                         <i className="fas fa-exclamation" />
                     </div>
-                    <div className="font-bold text-amber-800 dark:text-amber-800 text-xs">{data.statusCounts['low-stock']}</div>
-                    <div className="text-[9px] font-medium text-amber-600 dark:text-amber-600 uppercase tracking-tight">Low Stock</div>
+                    <div className="font-bold text-amber-800 dark:text-amber-300 text-xs">{data.statusCounts['low-stock']}</div>
+                    <div className="text-[9px] font-medium text-amber-600 dark:text-amber-400 uppercase tracking-tight">Low Stock</div>
                 </div>
 
-                <div className="bg-rose-50/60 dark:bg-rose-50/60 border border-rose-100 dark:border-rose-100 rounded-xl p-2 text-center flex flex-col items-center justify-center">
-                    <div className="w-5 h-5 rounded-full bg-rose-100 dark:bg-rose-100 text-rose-600 dark:text-rose-600 flex items-center justify-center text-[10px] mb-0.5">
+                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 rounded-xl p-2 text-center flex flex-col items-center justify-center shadow-[inset_0_1px_0_#ffffff]">
+                    <div className="w-5 h-5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400 flex items-center justify-center text-[10px] mb-0.5">
                         <i className="fas fa-times" />
                     </div>
-                    <div className="font-bold text-rose-800 dark:text-rose-800 text-xs">{data.statusCounts['out-of-stock']}</div>
-                    <div className="text-[9px] font-medium text-rose-600 dark:text-rose-600 uppercase tracking-tight">Out of Stock</div>
+                    <div className="font-bold text-rose-800 dark:text-rose-300 text-xs">{data.statusCounts['out-of-stock']}</div>
+                    <div className="text-[9px] font-medium text-rose-600 dark:text-rose-400 uppercase tracking-tight">Out of Stock</div>
                 </div>
             </div>
 
             {/* Total Value */}
             {data.totalValue > 0 && (
-                <div className="bg-pink-50/40 dark:bg-pink-50/40 border border-pink-100/80 dark:border-pink-100/80 rounded-xl p-2.5 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-pink-600 dark:text-pink-600 text-[11px] font-medium">
+                <div className="bg-pink-50 dark:bg-pink-950/30 border border-pink-200/80 dark:border-pink-900/40 rounded-xl p-2.5 flex items-center justify-between shadow-[inset_0_1px_0_#ffffff]">
+                    <div className="flex items-center gap-1.5 text-pink-600 dark:text-pink-400 text-[11px] font-medium">
                         <i className="fas fa-coins text-xs" />
                         <span>Total Value</span>
                     </div>
-                    <div className="font-bold text-pink-900 dark:text-pink-900 text-xs">
+                    <div className="font-bold text-pink-900 dark:text-pink-300 text-xs">
                         ₱{data.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                 </div>

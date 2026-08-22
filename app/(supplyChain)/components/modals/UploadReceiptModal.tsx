@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import {
     uploadReceiptAndVerifyAction,
     forceInsertVerificationAction,
@@ -398,22 +399,24 @@ export function UploadReceiptModal({
 
                             {/* Submit Button */}
                             <div className="flex items-center justify-end gap-2.5 pt-2">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={onClose}
-                                    className="px-4 py-2 text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-all cursor-pointer"
                                 >
                                     Cancel
-                                </button>
-                                <button
+                                </AppButton>
+                                <AppButton
                                     type="button"
+                                    variant="primary"
+                                    size="sm"
                                     disabled={!file || isUploading}
                                     onClick={handleSubmitUpload}
-                                    className="px-5 py-2 text-xs font-bold bg-pink-600 hover:bg-pink-700 active:scale-95 text-white rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
                                 >
                                     <i className="fas fa-microchip text-xs"></i>
                                     <span>Run AI OCR Verification</span>
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     )}
@@ -432,13 +435,14 @@ export function UploadReceiptModal({
                                     Extracting vendor name, total amounts, and line items to match against PO #{po.po_number}.
                                 </p>
                             </div>
-                            <button
+                            <AppButton
                                 type="button"
+                                variant="neutral"
+                                size="sm"
                                 onClick={onClose}
-                                className="px-4 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
                             >
                                 Minimize & Continue Working
-                            </button>
+                            </AppButton>
                         </div>
                     )}
 
@@ -505,13 +509,13 @@ export function UploadReceiptModal({
                                             </td>
                                             <td className="px-3.5 py-2.5 text-center">
                                                 {comparedFields?.vendor_match?.matched ? (
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                                    <StatusBadge tone="emerald" size="xs">
                                                         Match ✓
-                                                    </span>
+                                                    </StatusBadge>
                                                 ) : (
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                                                    <StatusBadge tone="rose" size="xs">
                                                         Mismatch ✕
-                                                    </span>
+                                                    </StatusBadge>
                                                 )}
                                             </td>
                                         </tr>
@@ -527,13 +531,13 @@ export function UploadReceiptModal({
                                             </td>
                                             <td className="px-3.5 py-2.5 text-center">
                                                 {comparedFields?.amount_match?.matched ? (
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                                    <StatusBadge tone="emerald" size="xs">
                                                         Match ✓
-                                                    </span>
+                                                    </StatusBadge>
                                                 ) : (
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                                                    <StatusBadge tone="rose" size="xs">
                                                         Mismatch ✕
-                                                    </span>
+                                                    </StatusBadge>
                                                 )}
                                             </td>
                                         </tr>
@@ -548,9 +552,9 @@ export function UploadReceiptModal({
                                                 {po.po_number}
                                             </td>
                                             <td className="px-3.5 py-2.5 text-center">
-                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                                <StatusBadge tone="neutral" size="xs">
                                                     Ref
-                                                </span>
+                                                </StatusBadge>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -571,15 +575,17 @@ export function UploadReceiptModal({
                                         onChange={(e) => setForceReason(e.target.value)}
                                         className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-pink-500"
                                     />
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="danger"
+                                        size="md"
                                         disabled={isForcing}
                                         onClick={handleForceInsert}
-                                        className="w-full py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                        className="w-full bg-amber-600 hover:bg-amber-700 text-white"
                                     >
                                         <i className="fas fa-shield-alt"></i>
                                         <span>{isForcing ? 'Authorizing...' : 'Force Insert & Mark Paid'}</span>
-                                    </button>
+                                    </AppButton>
                                 </div>
                             )}
 

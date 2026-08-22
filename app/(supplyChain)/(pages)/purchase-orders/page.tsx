@@ -29,8 +29,10 @@ import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/
 import { UploadReceiptModal, VerificationJob } from "@/app/(supplyChain)/components/modals/UploadReceiptModal";
 import { ReceiptProcessingIndicator } from "@/app/(supplyChain)/components/global/ReceiptProcessingIndicator";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { FileText, MoreHorizontal } from "lucide-react";
 import DocumentViewerModal, { ViewDocumentData } from "@/app/(supplyChain)/components/modals/DocumentViewerModal";
+import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 // ============================================================
 // 2. TYPES & INTERFACES
@@ -87,38 +89,7 @@ interface Supplier {
 // ============================================================
 const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 
-const getPOStatusColor = (status: string) => {
-    switch (status) {
-        case 'Draft': return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
-        case 'Sent': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
-        case 'Confirmed': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
-        case 'Delivered': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
-        case 'Cancelled': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
-        default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
-    }
-};
 
-const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-        case 'Draft': return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
-        case 'Sent': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
-        case 'Confirmed': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
-        case 'Delivered': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
-        case 'Cancelled': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
-        default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
-    }
-};
-
-const getStatusDotColor = (status: string) => {
-    switch (status) {
-        case 'Draft': return 'bg-slate-400 dark:bg-slate-500';
-        case 'Sent': return 'bg-indigo-500 dark:bg-indigo-400';
-        case 'Confirmed': return 'bg-purple-500 dark:bg-purple-400';
-        case 'Delivered': return 'bg-pink-500 dark:bg-pink-400';
-        case 'Cancelled': return 'bg-rose-500 dark:bg-rose-400';
-        default: return 'bg-slate-400 dark:bg-slate-500';
-    }
-};
 
 // ============================================================
 // 4. EMPTY STATE COMPONENT
@@ -1297,7 +1268,7 @@ export default function PurchaseOrders() {
                                 Manage approved purchase orders, supplier orders, and delivery tracking.
                             </p>
 
-                            <div className="inline-flex items-center gap-2 mt-2 px-2.5 py-1 rounded-lg bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400 transition-colors">
+                            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] transition-all">
                                 <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
                                 <i className="fas fa-user-tag text-[11px] text-slate-400 dark:text-slate-500" />
                                 <span>Role:</span>
@@ -1309,22 +1280,24 @@ export default function PurchaseOrders() {
                     </div>
 
                     <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-                        <button
+                        <AppButton
                             type="button"
-                            className="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 shadow-2xs hover:shadow-xs active:scale-[0.98] shrink-0 cursor-pointer"
+                            variant="neutral"
+                            size="md"
                             onClick={() => setIsPurchaseRequestModalOpen(true)}
                         >
                             <i className="fas fa-plus text-pink-500 dark:text-pink-400 text-xs" />
                             <span>Make Purchase Request</span>
-                        </button>
-                        <button
+                        </AppButton>
+                        <AppButton
                             type="button"
-                            className="px-4 py-2.5 bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 shadow-xs hover:shadow-pink-500/25 active:scale-[0.98] shrink-0 cursor-pointer"
+                            variant="primary"
+                            size="md"
                             onClick={handleOpenApprovedRequests}
                         >
                             <i className="fas fa-clipboard-check text-xs" />
                             <span>Create PO from Request</span>
-                        </button>
+                        </AppButton>
                     </div>
                 </div>
 
@@ -1497,9 +1470,13 @@ export default function PurchaseOrders() {
                                                     <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
                                                         {order.po_number}
                                                     </span>
-                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeColor(order.status)}`}>
+                                                    <StatusBadge
+                                                        tone={getPOStatusTone(order.status)}
+                                                        dot
+                                                        size="xs"
+                                                    >
                                                         {order.status}
-                                                    </span>
+                                                    </StatusBadge>
                                                     <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
                                                         {order.delivery_date || 'No date'}
                                                     </span>
@@ -1780,53 +1757,58 @@ export default function PurchaseOrders() {
                                                             {order.delivery_date || 'TBD'}
                                                         </td>
                                                         <td data-label="Status" className="py-3.5 px-4 whitespace-nowrap">
-                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeColor(order.status)}`}>
-                                                                <span className={`w-1.5 h-1.5 rounded-full ${getStatusDotColor(order.status)}`} />
+                                                            <StatusBadge
+                                                                tone={getPOStatusTone(order.status)}
+                                                                dot
+                                                                size="xs"
+                                                            >
                                                                 {order.status}
-                                                            </span>
+                                                            </StatusBadge>
                                                         </td>
                                                         <td data-label="Payment" className="py-3.5 px-4 whitespace-nowrap">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleTogglePaid(order.id, order.paid, order.po_number, order.status)}
-                                                                disabled={rowBusy}
-                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1.5 shadow-2xs ${
-                                                                    order.paid
-                                                                        ? "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 cursor-default"
-                                                                        : order.status === 'Delivered'
-                                                                            ? "bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 cursor-pointer shadow-2xs hover:scale-102 active:scale-98"
-                                                                            : "bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/60 cursor-not-allowed opacity-75"
-                                                                }`}
-                                                                title={
-                                                                    order.paid
-                                                                        ? "Payment verified via receipt"
-                                                                        : order.status === 'Delivered'
-                                                                            ? "PO Delivered: Click to upload receipt & verify payment"
-                                                                            : `Locked: Order must be Delivered before receipt verification (currently ${order.status})`
-                                                                }
-                                                            >
-                                                                {order.paid ? (
-                                                                    <>
-                                                                        <i className="fas fa-check-circle text-purple-600 dark:text-purple-400 text-[10px]" />
-                                                                        <span>Paid ✓</span>
-                                                                    </>
-                                                                ) : order.status === 'Delivered' ? (
-                                                                    <>
-                                                                        <i className="fas fa-receipt text-pink-600 dark:text-pink-400 text-[10px]" />
-                                                                        <span>Upload Receipt</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <i className="fas fa-lock text-slate-400 dark:text-slate-500 text-[10px]" />
-                                                                        <span>Unpaid</span>
-                                                                    </>
-                                                                )}
-                                                            </button>
+                                                            {order.paid ? (
+                                                                <StatusBadge
+                                                                    tone="purple"
+                                                                    icon="fas fa-check-circle"
+                                                                    size="xs"
+                                                                    title="Payment verified via receipt"
+                                                                    onClick={() => handleTogglePaid(order.id, order.paid, order.po_number, order.status)}
+                                                                    disabled={rowBusy}
+                                                                >
+                                                                    Paid ✓
+                                                                </StatusBadge>
+                                                            ) : order.status === 'Delivered' ? (
+                                                                <StatusBadge
+                                                                    tone="pink"
+                                                                    icon="fas fa-receipt"
+                                                                    size="xs"
+                                                                    interactive
+                                                                    title="PO Delivered: Click to upload receipt & verify payment"
+                                                                    onClick={() => handleTogglePaid(order.id, order.paid, order.po_number, order.status)}
+                                                                    disabled={rowBusy}
+                                                                >
+                                                                    Upload Receipt
+                                                                </StatusBadge>
+                                                            ) : (
+                                                                <StatusBadge
+                                                                    tone="neutral"
+                                                                    icon="fas fa-lock"
+                                                                    size="xs"
+                                                                    disabled
+                                                                    title={`Locked: Order must be Delivered before receipt verification (currently ${order.status})`}
+                                                                >
+                                                                    Unpaid
+                                                                </StatusBadge>
+                                                            )}
                                                         </td>
                                                         <td data-label="OCR Result" className="py-3.5 px-4 text-center whitespace-nowrap">
                                                             {order.verification?.match_result === 'matched' ? (
-                                                                <button
-                                                                    type="button"
+                                                                <StatusBadge
+                                                                    tone="pink"
+                                                                    icon="fas fa-check-circle"
+                                                                    size="xs"
+                                                                    interactive
+                                                                    title="Receipt verified. Click to view document."
                                                                     onClick={() => {
                                                                         setViewingDocData({
                                                                             id: order.document?.id || order.verification?.id,
@@ -1844,29 +1826,31 @@ export default function PurchaseOrders() {
                                                                         });
                                                                         setIsDocViewerOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
-                                                                    title="Receipt verified. Click to view document."
                                                                 >
-                                                                    <i className="fas fa-check-circle text-pink-600 dark:text-pink-400 text-[10px]" />
-                                                                    <span>Matched ✓</span>
-                                                                </button>
+                                                                    Matched ✓
+                                                                </StatusBadge>
                                                             ) : order.verification?.match_result === 'mismatched' ? (
-                                                                <button
-                                                                    type="button"
+                                                                <StatusBadge
+                                                                    tone="amber"
+                                                                    icon="fas fa-exclamation-triangle"
+                                                                    size="xs"
+                                                                    interactive
+                                                                    title="Receipt mismatch detected. Click to review differences or force insert."
                                                                     onClick={() => {
                                                                         setReceiptModalPO(order);
                                                                         setReceiptVerificationId(order.verification?.id || null);
                                                                         setIsReceiptModalOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
-                                                                    title="Receipt mismatch detected. Click to review differences or force insert."
                                                                 >
-                                                                    <i className="fas fa-exclamation-triangle text-amber-500 dark:text-amber-400 text-[10px]" />
-                                                                    <span>Mismatch ⚠</span>
-                                                                </button>
+                                                                    Mismatch ⚠
+                                                                </StatusBadge>
                                                             ) : order.verification?.match_result === 'forced' ? (
-                                                                <button
-                                                                    type="button"
+                                                                <StatusBadge
+                                                                    tone="indigo"
+                                                                    icon="fas fa-shield-alt"
+                                                                    size="xs"
+                                                                    interactive
+                                                                    title="Admin forced override. Click to view document."
                                                                     onClick={() => {
                                                                         setViewingDocData({
                                                                             id: order.document?.id || order.verification?.id,
@@ -1884,44 +1868,47 @@ export default function PurchaseOrders() {
                                                                         });
                                                                         setIsDocViewerOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
-                                                                    title="Admin forced override. Click to view document."
                                                                 >
-                                                                    <i className="fas fa-shield-alt text-indigo-600 dark:text-indigo-400 text-[10px]" />
-                                                                    <span>Forced ✓</span>
-                                                                </button>
+                                                                    Forced ✓
+                                                                </StatusBadge>
                                                             ) : order.verification?.match_result === 'pending' ? (
-                                                                <button
-                                                                    type="button"
+                                                                <StatusBadge
+                                                                    tone="indigo"
+                                                                    icon="fas fa-spinner fa-spin"
+                                                                    size="xs"
+                                                                    interactive
+                                                                    title="Receipt verification is processing..."
                                                                     onClick={() => {
                                                                         setReceiptModalPO(order);
                                                                         setReceiptVerificationId(order.verification?.id || null);
                                                                         setIsReceiptModalOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
-                                                                    title="Receipt verification is processing..."
                                                                 >
-                                                                    <i className="fas fa-spinner fa-spin text-indigo-600 dark:text-indigo-400 text-[10px]" />
-                                                                    <span>Processing...</span>
-                                                                </button>
+                                                                    Processing...
+                                                                </StatusBadge>
                                                             ) : order.paid ? (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs">
-                                                                    <i className="fas fa-check text-[10px]" /> Paid
-                                                                </span>
+                                                                <StatusBadge
+                                                                    tone="purple"
+                                                                    icon="fas fa-check"
+                                                                    size="xs"
+                                                                >
+                                                                    Paid
+                                                                </StatusBadge>
                                                             ) : order.status === 'Delivered' ? (
-                                                                <button
-                                                                    type="button"
+                                                                <StatusBadge
+                                                                    tone="pink"
+                                                                    icon="fas fa-arrow-up-from-bracket"
+                                                                    size="xs"
+                                                                    interactive
+                                                                    title="Click to upload receipt for OCR verification"
                                                                     onClick={() => {
                                                                         setReceiptModalPO(order);
                                                                         setReceiptVerificationId(null);
                                                                         setIsReceiptModalOpen(true);
                                                                     }}
-                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-semibold bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
-                                                                    title="Click to upload receipt for OCR verification"
                                                                 >
-                                                                    <i className="fas fa-arrow-up-from-bracket text-pink-600 dark:text-pink-400 text-[10px]" />
-                                                                    <span>Upload</span>
-                                                                </button>
+                                                                    Upload
+                                                                </StatusBadge>
                                                             ) : (
                                                                 <span className="text-slate-400 dark:text-slate-600 text-xs font-medium italic">—</span>
                                                             )}
@@ -2106,16 +2093,15 @@ export default function PurchaseOrders() {
                                         </p>
                                     </div>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setActionModalOrder(null)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
+                                    <i className="fas fa-times text-xs" />
+                                </AppButton>
                             </div>
 
                             {/* Modal Content */}
@@ -2125,43 +2111,44 @@ export default function PurchaseOrders() {
                                     <div>
                                         <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Current Status</span>
                                         <div className="mt-1">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadgeColor(actionModalOrder.status)}`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${getStatusDotColor(actionModalOrder.status)}`} />
+                                            <StatusBadge
+                                                tone={getPOStatusTone(actionModalOrder.status)}
+                                                dot
+                                                size="xs"
+                                            >
                                                 {actionModalOrder.status}
-                                            </span>
+                                            </StatusBadge>
                                         </div>
                                     </div>
                                     <div>
                                         <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Payment Status</span>
                                         <div className="mt-1 flex items-center justify-between">
-                                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${actionModalOrder.paid ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
-                                                {actionModalOrder.paid ? (
-                                                    <>
-                                                        <i className="fas fa-check-circle text-emerald-500" />
-                                                        <span>Paid ✓</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <i className="fas fa-hourglass-half text-amber-500" />
-                                                        <span>Unpaid</span>
-                                                    </>
-                                                )}
-                                            </span>
+                                            {actionModalOrder.paid ? (
+                                                <StatusBadge tone="purple" icon="fas fa-check-circle" size="xs">
+                                                    Paid ✓
+                                                </StatusBadge>
+                                            ) : (
+                                                <StatusBadge tone="amber" icon="fas fa-hourglass-half" size="xs">
+                                                    Unpaid
+                                                </StatusBadge>
+                                            )}
                                         </div>
                                         {!actionModalOrder.paid && actionModalOrder.status === 'Delivered' && (
-                                            <button
+                                            <AppButton
                                                 type="button"
+                                                variant="primary"
+                                                size="sm"
                                                 onClick={() => {
                                                     setReceiptModalPO(actionModalOrder);
                                                     setReceiptVerificationId(null);
                                                     setIsReceiptModalOpen(true);
                                                     setActionModalOrder(null);
                                                 }}
-                                                className="mt-2 w-full px-2.5 py-1.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                                className="mt-2 w-full"
                                             >
-                                                <i className="fas fa-receipt text-[10px]" />
+                                                <i className="fas fa-receipt text-xs" />
                                                 <span>Verify Receipt (OCR)</span>
-                                            </button>
+                                            </AppButton>
                                         )}
                                     </div>
                                 </div>
@@ -2353,7 +2340,16 @@ export default function PurchaseOrders() {
                                                     className={`w-full px-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between border ${getSolidButtonStyles()}`}
                                                 >
                                                     <div className="flex items-center gap-2.5">
-                                                        <span className={`w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-white shadow-xs' : getStatusDotColor(status)}`} />
+                                                        <span className={`w-2.5 h-2.5 rounded-full ${
+                                                            isCurrent 
+                                                                ? 'bg-white shadow-xs' 
+                                                                : status === 'Draft' ? 'bg-slate-400 dark:bg-slate-500'
+                                                                : status === 'Sent' ? 'bg-indigo-500 dark:bg-indigo-400'
+                                                                : status === 'Confirmed' ? 'bg-purple-500 dark:bg-purple-400'
+                                                                : status === 'Delivered' ? 'bg-pink-500 dark:bg-pink-400'
+                                                                : status === 'Cancelled' ? 'bg-rose-500 dark:bg-rose-400'
+                                                                : 'bg-slate-400'
+                                                        }`} />
                                                         <span className="font-bold">{status}</span>
                                                     </div>
                                                     {isCurrent ? (
@@ -2375,15 +2371,17 @@ export default function PurchaseOrders() {
 
                                 {/* Danger Zone: Delete Button */}
                                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="danger"
+                                        size="md"
                                         disabled={pendingRowId === actionModalOrder.id}
                                         onClick={() => handleDeleteOrder(actionModalOrder.id)}
-                                        className="w-full px-4 py-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                        className="w-full"
                                     >
                                         <i className="fas fa-trash-alt" />
                                         <span>Delete Purchase Order</span>
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
                         </div>

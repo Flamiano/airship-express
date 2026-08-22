@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { PurchaseRequest, PurchaseOrder } from "@/app/(supplyChain)/(pages)/procurement/types/index";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 interface ApprovedRequestsModalProps {
     isOpen: boolean;
@@ -156,9 +157,12 @@ export function ApprovedRequestsModal({
                                         <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
                                             {req.request_number}
                                         </span>
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${getPriorityColor(req.priority)}`}>
+                                        <StatusBadge
+                                            tone={req.priority === 'Critical' ? 'rose' : req.priority === 'Urgent' ? 'amber' : 'blue'}
+                                            size="xs"
+                                        >
                                             {req.priority}
-                                        </span>
+                                        </StatusBadge>
                                         <span className="text-[11px] text-slate-400 dark:text-slate-500">
                                             {req.date}
                                         </span>

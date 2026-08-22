@@ -8,6 +8,8 @@ import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import BarcodeScanner from "@/app/(supplyChain)/(pages)/warehousing/components/client/outgoing/BarcodeScanner";
 import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { Send } from "lucide-react";
 
 interface Parcel {
@@ -618,19 +620,28 @@ export default function OutgoingPanel({ isVisible = true }) {
     const allSelected = parcels.length > 0 && selectedIds.size === parcels.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < parcels.length;
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'ready_for_pickup':
-                return 'bg-emerald-50 text-emerald-700 border-emerald-200/60';
-            case 'received':
-                return 'bg-blue-50 text-blue-700 border-blue-200/60';
-            case 'picked_up':
-                return 'bg-purple-50 text-purple-700 border-purple-200/60';
-            case 'delivered':
-                return 'bg-green-50 text-green-700 border-green-200/60';
-            default:
-                return 'bg-slate-50 text-slate-700 border-slate-200/60';
-        }
+    const renderStatusBadge = (status: string) => {
+        const toneMap: Record<string, 'emerald' | 'purple' | 'blue' | 'indigo' | 'neutral'> = {
+            'ready_for_pickup': 'emerald',
+            'picked_up': 'purple',
+            'received': 'blue',
+            'in_transit': 'indigo',
+            'delivered': 'emerald',
+        };
+        const labelMap: Record<string, string> = {
+            'ready_for_pickup': 'Ready for pickup',
+            'picked_up': 'Picked up',
+            'received': 'Received',
+            'in_transit': 'In transit',
+            'delivered': 'Delivered',
+        };
+        const tone = toneMap[status] || 'neutral';
+        const label = labelMap[status] || status.replace(/_/g, ' ');
+        return (
+            <StatusBadge tone={tone} dot size="xs">
+                {label}
+            </StatusBadge>
+        );
     };
 
     const hasActiveFilter = bulkQrCode !== null || selectedDriver !== "";
@@ -710,55 +721,28 @@ export default function OutgoingPanel({ isVisible = true }) {
 
                 <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
                     {selectedIds.size > 0 && (
-                        <button
+                        <AppButton
                             type="button"
+                            variant="warning"
+                            size="md"
                             onClick={handleBatchRemove}
                             disabled={selectedIds.size === 0}
-                            className="relative inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border-b-4 border-amber-600 dark:border-amber-700 bg-amber-400 hover:bg-amber-300 dark:bg-amber-500 dark:hover:bg-amber-400 px-4 text-xs font-bold text-slate-950 dark:text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] transition-all duration-75 active:translate-y-1 active:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 disabled:translate-y-0 disabled:border-b-0 disabled:bg-amber-200 dark:disabled:bg-amber-950/40 disabled:text-slate-400 dark:disabled:text-slate-600 disabled:opacity-50 disabled:shadow-none animate-in fade-in sm:w-auto cursor-pointer"
                         >
-                            <svg
-                                className="h-4 w-4 shrink-0 text-slate-950 drop-shadow-sm"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                aria-hidden="true"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                                />
-                            </svg>
-
-                            <span className="tracking-wide drop-shadow-sm">Remove</span>
-
-                            {/* Selection Counter Badge */}
-                            <span className="inline-flex items-center rounded-md bg-amber-950/10 dark:bg-amber-950/30 px-1.5 py-0.5 font-mono text-[11px] font-extrabold text-slate-950 dark:text-slate-900 shadow-inner">
-                                {selectedIds.size}
-                            </span>
-                        </button>
+                            <i className="fas fa-arrow-rotate-left text-xs" />
+                            <span>Remove ({selectedIds.size})</span>
+                        </AppButton>
                     )}
 
-                    <button
+                    <AppButton
                         type="button"
-                        className="relative inline-flex w-full items-center justify-center gap-2 rounded-xl border-b-4 border-pink-700 dark:border-pink-800 bg-pink-500 hover:bg-pink-400 dark:bg-pink-600 dark:hover:bg-pink-500 px-5 py-2 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] transition-all duration-75 active:translate-y-1 active:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500/30 disabled:translate-y-0 disabled:border-b-0 disabled:bg-pink-300 dark:disabled:bg-pink-950/40 disabled:opacity-50 disabled:shadow-none sm:w-auto cursor-pointer"
+                        variant="primary"
+                        size="md"
                         onClick={handleDispatchAll}
                         disabled={parcels.length === 0}
                     >
-                        <svg
-                            className="h-4 w-4 drop-shadow"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                        >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3 21l18-9L3 3l3 9zm0 0h7" />
-                        </svg>
-                        <span className="tracking-wide drop-shadow-sm">
-                            {selectedIds.size > 0 ? `Dispatch ${selectedIds.size}` : 'Dispatch All'}
-                        </span>
-                    </button>
+                        <i className="fas fa-paper-plane text-xs" />
+                        <span>{selectedIds.size > 0 ? `Dispatch (${selectedIds.size})` : 'Dispatch All'}</span>
+                    </AppButton>
                 </div>
             </div>
 
@@ -858,52 +842,30 @@ export default function OutgoingPanel({ isVisible = true }) {
                                 </span>
                             </div>
 
-                            <div className="flex shrink-0 gap-3">
-                                <button
+                            <div className="flex shrink-0 gap-2.5">
+                                <AppButton
                                     type="button"
+                                    variant={isListening ? "warning" : "success"}
+                                    size="lg"
                                     onClick={isListening ? handleStopListening : handleStartListening}
-                                    className={`group relative inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl px-5 text-xs font-bold text-white transition-all duration-75 active:translate-y-1 active:border-b-0 focus-visible:outline-none focus-visible:ring-2 sm:flex-initial cursor-pointer ${isListening
-                                        ? 'border-b-4 border-amber-700 dark:border-amber-900 bg-amber-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-amber-400 focus-visible:ring-amber-400/30'
-                                        : 'border-b-4 border-emerald-800 dark:border-emerald-950 bg-emerald-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-emerald-500 focus-visible:ring-emerald-500/30'
-                                        }`}
                                 >
                                     {isListening ? (
-                                        <svg className="h-4 w-4 drop-shadow" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                                        </svg>
+                                        <i className="fas fa-pause text-xs" />
                                     ) : (
-                                        <svg className="h-4 w-4 drop-shadow" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M8 5v14l11-7z" />
-                                        </svg>
+                                        <i className="fas fa-play text-xs" />
                                     )}
-                                    <span className="tracking-wide drop-shadow-sm">{isListening ? 'Pause' : 'Start'}</span>
-                                </button>
+                                    <span>{isListening ? 'Pause' : 'Start'}</span>
+                                </AppButton>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="pink"
+                                    size="lg"
                                     onClick={() => setShowScanner(true)}
-                                    className="group relative inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border-b-4 border-pink-800 dark:border-pink-950 bg-pink-600 px-5 text-xs font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] transition-all duration-75 hover:bg-pink-500 active:translate-y-1 active:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500/30 sm:flex-initial cursor-pointer"
                                 >
-                                    <svg
-                                        className="h-4 w-4 text-pink-100 drop-shadow"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        strokeWidth="2.5"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                                        />
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                                        />
-                                    </svg>
-                                    <span className="tracking-wide drop-shadow-sm">Camera</span>
-                                </button>
+                                    <i className="fas fa-camera text-xs" />
+                                    <span>Camera</span>
+                                </AppButton>
                             </div>
                         </div>
                     </div>
@@ -1093,30 +1055,30 @@ export default function OutgoingPanel({ isVisible = true }) {
                                             </td>
                                             <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{parcel.tracking_number}</td>
                                             <td className="p-3.5">
-                                                <span className={`inline-flex items-center gap-1.5 font-semibold ${getCourierColor(parcel.courier)}`}>
-                                                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 17a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4M4 9h11v6H4V9zm11 0h3l3 3v3h-6V9z" />
-                                                    </svg>
+                                                <StatusBadge
+                                                    tone="pink"
+                                                    icon={<i className="fas fa-truck text-[10px]" />}
+                                                    size="xs"
+                                                >
                                                     {getCourierDisplay(parcel.courier, parcel.courier_id)}
-                                                </span>
+                                                </StatusBadge>
                                             </td>
                                             <td className="p-3.5 text-slate-600 dark:text-slate-300">{parcel.destination || 'N/A'}</td>
                                             <td className="p-3.5">
                                                 {parcel.driver_name ? (
-                                                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/50 px-2 py-0.5 rounded-md">
-                                                        <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                        </svg>
+                                                    <StatusBadge
+                                                        tone="emerald"
+                                                        icon={<i className="fas fa-id-badge text-[10px]" />}
+                                                        size="xs"
+                                                    >
                                                         {parcel.driver_name}
-                                                    </span>
+                                                    </StatusBadge>
                                                 ) : (
                                                     <span className="text-xs text-slate-400 dark:text-slate-500 italic">Unassigned</span>
                                                 )}
                                             </td>
                                             <td className="p-3.5">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${getStatusBadge(parcel.status)}`}>
-                                                    {parcel.status === 'ready_for_pickup' ? 'ready' : parcel.status}
-                                                </span>
+                                                {renderStatusBadge(parcel.status)}
                                             </td>
                                             <td className="p-3.5 pr-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
                                                 <div className="flex items-center justify-end gap-2.5">

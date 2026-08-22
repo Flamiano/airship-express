@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
 export interface ViewDocumentData {
     id?: string;
@@ -176,19 +177,19 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
                                     {data.title || `Receipt - PO #${data.poNumber || 'Document'}`}
                                 </h3>
                                 {data.verifiedStatus === 'matched' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/40">
-                                        <i className="fas fa-check-circle text-[9px]" /> Matched ✓
-                                    </span>
+                                    <StatusBadge tone="pink" icon="fas fa-check-circle" size="xs">
+                                        Matched ✓
+                                    </StatusBadge>
                                 )}
                                 {data.verifiedStatus === 'mismatched' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800/40">
-                                        <i className="fas fa-exclamation-triangle text-[9px]" /> Mismatch ⚠
-                                    </span>
+                                    <StatusBadge tone="amber" icon="fas fa-exclamation-triangle" size="xs">
+                                        Mismatch ⚠
+                                    </StatusBadge>
                                 )}
                                 {data.verifiedStatus === 'forced' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800/40">
-                                        <i className="fas fa-shield-check text-[9px]" /> Admin Forced ✓
-                                    </span>
+                                    <StatusBadge tone="indigo" icon="fas fa-shield-alt" size="xs">
+                                        Admin Forced ✓
+                                    </StatusBadge>
                                 )}
                             </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">

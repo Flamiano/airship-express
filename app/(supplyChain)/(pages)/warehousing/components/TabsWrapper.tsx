@@ -108,7 +108,7 @@ export default function TabsWrapper({ children }: TabsWrapperProps) {
         <>
             <div
                 id="tabs"
-                className="sticky top-0 z-20 flex gap-1 px-2 overflow-x-auto no-scrollbar scroll-smooth bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-100 dark:border-white/10 transition-colors"
+                className="sticky top-0 z-20 flex gap-1 p-2 overflow-x-auto no-scrollbar scroll-smooth bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-100 dark:border-white/10 transition-colors"
             >
                 <NavBtn
                     link="dashboard"

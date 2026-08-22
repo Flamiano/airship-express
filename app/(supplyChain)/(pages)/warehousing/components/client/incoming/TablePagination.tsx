@@ -69,11 +69,11 @@ export function TablePagination({
 
     return (
         <div className="pagination-container-class">
-            <span className="text-xs font-medium text-slate-500">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Showing{" "}
-                <span className="font-bold text-slate-900">{startItem}</span> to{" "}
-                <span className="font-bold text-slate-900">{endItem}</span> of{" "}
-                <span className="font-bold text-slate-900">{totalItems}</span> parcels
+                <span className="font-bold text-slate-900 dark:text-slate-100">{startItem}</span> to{" "}
+                <span className="font-bold text-slate-900 dark:text-slate-100">{endItem}</span> of{" "}
+                <span className="font-bold text-slate-900 dark:text-slate-100">{totalItems}</span> parcels
             </span>
 
             <Pagination

@@ -677,18 +677,18 @@ export function NotificationBell() {
                             fetchUnreadCount();
                         }
                     }}
-                    className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700/50 transition-colors"
+                    className="relative flex items-center justify-center w-8 h-8 rounded-full bg-white dark:bg-[#1c1d25] border border-slate-200/90 dark:border-[#353746] shadow-[0_2px_6px_rgba(0,0,0,0.05),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-slate-50 dark:hover:bg-[#252630] active:scale-95 transition-all duration-200 cursor-pointer"
                     aria-label="Notifications"
                 >
                     {totalUnread > 0 ? (
                         <>
-                            <Bell className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                            <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                            <Bell className="h-4 w-4 text-pink-600 dark:text-pink-400" />
+                            <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 bg-gradient-to-tr from-rose-500 to-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-[0_2px_6px_rgba(244,63,94,0.4),inset_0_1px_0_rgba(255,255,255,0.3)]">
                                 {totalUnread > 9 ? '9+' : totalUnread}
                             </span>
                         </>
                     ) : (
-                        <BellOff className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                        <BellOff className="h-4 w-4 text-slate-400 dark:text-slate-500" />
                     )}
                 </button>
 
@@ -703,24 +703,24 @@ export function NotificationBell() {
 
                         {/* Main Popover / Modal Panel */}
                         <div className="fixed sm:absolute inset-x-0 top-0 sm:top-full sm:right-0 sm:left-auto mt-0 sm:mt-2 w-full sm:w-96 h-[100dvh] sm:h-auto sm:max-h-[560px] 
-                        bg-white dark:bg-[#2a2a2e] 
+                        bg-white dark:bg-[#1c1d25] 
                         rounded-none sm:rounded-2xl 
-                        border-0 sm:border border-slate-200/80 dark:border-slate-700/60 
-                        shadow-2xl sm:shadow-xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.6),0_8px_10px_-6px_rgba(0,0,0,0.4)] 
+                        border-0 sm:border border-slate-200/90 dark:border-[#353746] 
+                        shadow-[0_16px_50px_rgba(0,0,0,0.15),inset_0_1px_0_#ffffff] dark:shadow-[0_20px_60px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.08)] 
                         z-50 flex flex-col overflow-hidden animate-in slide-in-from-top-2 duration-200">
 
                             {/* Header */}
                             <div className="flex items-center justify-between px-4 py-3.5 
-                          border-b border-slate-100 dark:border-slate-700/60 
-                          bg-white/80 dark:bg-[#2a2a2e]/80 backdrop-blur-md shrink-0">
+                          border-b border-slate-100 dark:border-slate-800 
+                          bg-white/90 dark:bg-[#1c1d25]/90 backdrop-blur-md shrink-0">
                                 <div className="flex items-center gap-2">
-                                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                                         Notifications
                                     </h3>
                                     {totalCount > 0 && (
-                                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium 
-                                bg-slate-100 dark:bg-slate-700/60 
-                                text-slate-600 dark:text-slate-300 rounded-full">
+                                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold 
+                                bg-slate-100 dark:bg-slate-800 
+                                text-slate-700 dark:text-slate-300 rounded-full border border-slate-200/80 dark:border-slate-700/60">
                                             {totalCount}
                                         </span>
                                     )}

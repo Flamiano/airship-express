@@ -4,6 +4,8 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import Chart from "chart.js/auto";
 import Cards from '@/app/(supplyChain)/components/global/Cards';
 import { LinkBtn } from '@/app/(supplyChain)/components/global/Buttons';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
@@ -729,7 +731,7 @@ export default function DashboardPanel() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 text-[11px] font-semibold border border-slate-200/60 dark:border-slate-700/60">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-[11px] font-semibold border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] transition-all">
                             <i className="fas fa-warehouse text-slate-400 dark:text-slate-400 text-[10px]" />
                             <span>Airship Express</span>
                             <span className="text-slate-300 dark:text-slate-600">•</span>
@@ -758,15 +760,16 @@ export default function DashboardPanel() {
                         </span>
                     </div>
 
-                    <button
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="sm"
                         onClick={fetchDashboardData}
                         title="Refresh dashboard metrics"
-                        className="p-2 sm:px-4 sm:py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white hover:bg-slate-50 dark:bg-slate-800/60 dark:hover:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs hover:border-slate-300 dark:hover:border-slate-600 transition-all flex items-center gap-2 active:scale-95 cursor-pointer group"
                     >
-                        <i className="fas fa-rotate text-xs text-slate-500 dark:text-slate-400 transition-transform group-hover:rotate-180 duration-500" />
+                        <i className="fas fa-rotate text-xs text-slate-500 dark:text-slate-400" />
                         <span className="hidden sm:inline">Refresh</span>
-                    </button>
+                    </AppButton>
                 </div>
             </div>
 
@@ -964,14 +967,16 @@ export default function DashboardPanel() {
                     </div>
 
                     <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                        <button
+                        <AppButton
                             type="button"
-                            className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-pink-600 dark:text-pink-400 bg-pink-50/70 dark:bg-pink-950/30 hover:bg-pink-100/80 dark:hover:bg-pink-900/40 border border-pink-200/60 dark:border-pink-900/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer group"
+                            variant="pink"
+                            size="md"
+                            className="w-full justify-center"
                             onClick={() => openChat()}
                         >
-                            <i className="fas fa-comment-dots text-[11px] group-hover:scale-110 transition-transform" />
+                            <i className="fas fa-comment-dots text-xs mr-1" />
                             <span>Open Interactive AI Chat →</span>
-                        </button>
+                        </AppButton>
                     </div>
                 </div>
 
@@ -991,9 +996,9 @@ export default function DashboardPanel() {
                                     </p>
                                 </div>
                             </div>
-                            <span className="text-[11px] font-semibold px-2.5 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 text-indigo-700 dark:text-indigo-400 rounded-full border border-indigo-200/60 dark:border-indigo-900/40">
-                                {stats.forecastConfidence || 'Model Powered'}
-                            </span>
+                            <StatusBadge tone="indigo" size="xs">
+                                {stats.forecastConfidence || '95% Confidence'}
+                            </StatusBadge>
                         </div>
 
                         <div className="mt-4 space-y-3">
@@ -1032,18 +1037,13 @@ export default function DashboardPanel() {
                                                             parcels
                                                         </span>
                                                     </span>
-                                                    <span
-                                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${isPositive
-                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40"
-                                                            : "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40"
-                                                            }`}
+                                                    <StatusBadge
+                                                        tone={isPositive ? 'emerald' : 'amber'}
+                                                        icon={isPositive ? 'fas fa-arrow-trend-up' : 'fas fa-arrow-trend-down'}
+                                                        size="xs"
                                                     >
-                                                        <i
-                                                            className={`fas text-[10px] ${isPositive ? "fa-arrow-trend-up" : "fa-arrow-trend-down"
-                                                                }`}
-                                                        />
-                                                        <span>{Math.abs(item.change)}%</span>
-                                                    </span>
+                                                        {Math.abs(item.change)}%
+                                                    </StatusBadge>
                                                     <i className="fas fa-chevron-right text-[10px] text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all ml-0.5" />
                                                 </div>
                                             </div>

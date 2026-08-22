@@ -3,6 +3,8 @@
 import React from 'react';
 import { Search, Filter, Trash2, Loader2, Inbox } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { UserActivity } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -82,14 +84,15 @@ export const ActivityLogTab: React.FC<ActivityLogTabProps> = ({
                     <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                         <strong className="text-pink-600 dark:text-pink-400">{selectedActivities.size}</strong> activity(ies) selected
                     </span>
-                    <button
+                    <AppButton
                         type="button"
+                        variant="danger"
+                        size="xs"
                         onClick={onBulkDelete}
-                        className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 active:bg-rose-200 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>Delete Selected</span>
-                    </button>
+                    </AppButton>
                 </div>
             )}
 
@@ -151,11 +154,7 @@ export const ActivityLogTab: React.FC<ActivityLogTabProps> = ({
                                     activity.action?.includes('ERROR') ||
                                     activity.action?.includes('BLOCKED');
 
-                                const actionBadgeStyle = isSuccess
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40'
-                                    : isDanger
-                                        ? 'bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800/40'
-                                        : 'bg-pink-50 text-pink-700 border-pink-200/60 dark:bg-pink-950/40 dark:text-pink-400 dark:border-pink-950/40';
+                                const actionTone = isSuccess ? 'emerald' : isDanger ? 'rose' : 'pink';
 
                                 return (
                                     <tr
@@ -184,11 +183,9 @@ export const ActivityLogTab: React.FC<ActivityLogTabProps> = ({
                                         </td>
 
                                         <td className="py-3 px-4">
-                                            <span
-                                                className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold border ${actionBadgeStyle}`}
-                                            >
+                                            <StatusBadge tone={actionTone} size="xs">
                                                 {activity.action}
-                                            </span>
+                                            </StatusBadge>
                                         </td>
 
                                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-medium">
@@ -202,9 +199,9 @@ export const ActivityLogTab: React.FC<ActivityLogTabProps> = ({
                                         </td>
 
                                         <td className="py-3 px-4">
-                                            <code className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60 text-slate-700 dark:text-slate-300">
-                                                {activity.ip_address || 'Unknown'}
-                                            </code>
+                                            <StatusBadge tone="neutral" size="xs">
+                                                <span className="font-mono">{activity.ip_address || 'Unknown'}</span>
+                                            </StatusBadge>
                                         </td>
 
                                         <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px] whitespace-nowrap">

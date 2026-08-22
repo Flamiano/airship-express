@@ -6,6 +6,7 @@ import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard
 import Cards from "@/app/(supplyChain)/components/global/Cards";
 import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { toast } from "sonner";
 
 interface ForecastData {
@@ -519,39 +520,40 @@ export default function Forecast() {
                     </div>
 
                     <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-                        <button
+                        <AppButton
                             type="button"
-                            className="px-4 py-2 bg-pink-500 hover:bg-pink-600 dark:bg-pink-600 dark:hover:bg-pink-700 
-                                       text-white rounded-xl text-xs sm:text-sm font-semibold 
-                                       transition-all flex items-center gap-2 shadow-2xs hover:shadow-pink-500/20 active:scale-[0.98] cursor-pointer"
+                            variant="primary"
+                            size="md"
                             onClick={generateAiSummary}
                             disabled={loading || summarizing || !forecastData}
                         >
                             <i className={`fas ${summarizing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} text-xs`} />
                             <span>{summarizing ? "Analyzing Models..." : "Summarize with AI"}</span>
-                        </button>
+                        </AppButton>
 
-                        <button
+                        <AppButton
                             type="button"
-                            className="px-3.5 py-2 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+                            variant="neutral"
+                            size="md"
                             onClick={() => fetchForecast(true)}
                             disabled={retraining || loading}
                             title="Recalculate models from Supabase"
                         >
                             <i className={`fas fa-rotate text-xs ${retraining ? "fa-spin text-pink-500" : "text-slate-400"}`} />
                             <span>{retraining ? "Recalculating..." : "Sync DB"}</span>
-                        </button>
+                        </AppButton>
 
-                        <button
+                        <AppButton
                             type="button"
-                            className="px-3.5 py-2 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+                            variant="neutral"
+                            size="md"
                             onClick={handleExport}
                             disabled={loading || !forecastData}
                             title="Export Forecast Report"
                         >
                             <i className="fas fa-download text-xs text-slate-400" />
                             <span>Export</span>
-                        </button>
+                        </AppButton>
                     </div>
                 </div>
 
@@ -685,12 +687,12 @@ export default function Forecast() {
 
                {/* Peak Insights Banner Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
-                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
                             <i className="fas fa-calendar-star"></i>
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
                             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
                                 {loading ? "..." : (peakInsights?.busiestMonth.month || "N/A")}
                             </div>
@@ -700,12 +702,12 @@ export default function Forecast() {
                         </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
-                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
                             <i className="fas fa-calendar-day"></i>
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
                             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
                                 {loading ? "..." : (peakInsights?.busiestDay.day || "N/A")}
                             </div>
@@ -715,12 +717,12 @@ export default function Forecast() {
                         </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-ink/20 flex items-center gap-3.5 shadow-2xs">
-                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
+                        <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
                             <i className="fas fa-clock"></i>
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Time Window</div>
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Time Window</div>
                             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
                                 {loading ? "..." : (peakInsights?.busiestHour.timeRange || "N/A")}
                             </div>
@@ -735,40 +737,44 @@ export default function Forecast() {
                 <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs">
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
                         <div>
-                            <div className="font-bold text-slate-900 dark:text-white text-sm sm:text-base flex items-center gap-2">
+                            <div className="font-bold text-slate-900 dark:text-white text-sm sm:text-base flex items-center gap-2 flex-wrap">
                                 <span>Parcel Volume: Actual Supabase Data → 7-Day Prediction</span>
-                                <span className="text-[11px] font-normal text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 px-2 py-0.5 rounded-md border border-pink-200/50 dark:border-pink-800/40">
-                                    <i className="fas fa-hand-pointer mr-1"></i>Click chart to inspect
-                                </span>
+                                <StatusBadge tone="pink" icon="fas fa-hand-pointer" size="xs">
+                                    Click chart to inspect
+                                </StatusBadge>
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                 {totalDbParcels} actual parcels recorded (Max 6 Months) · {forecastData?.parcel_7_day?.model_used || "Holt-Winters Seasonal"} WASM with {forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                                (forecastData?.parcel_7_day?.confidence && forecastData.parcel_7_day.confidence !== '0%')
-                                    ? 'bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 border-pink-100 dark:border-pink-800/30'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                            }`}>
-                                <i className="fas fa-shield-halved text-[10px] mr-1"></i>
+                            <StatusBadge
+                                tone={
+                                    (forecastData?.parcel_7_day?.confidence && forecastData.parcel_7_day.confidence !== '0%')
+                                        ? 'pink'
+                                        : 'neutral'
+                                }
+                                icon="fas fa-shield-halved"
+                                size="xs"
+                            >
                                 {forecastData?.parcel_7_day?.confidence || "0%"} Confidence
-                            </span>
-                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
+                            </StatusBadge>
+                            <StatusBadge tone="neutral" size="xs">
                                 {aggregationType} Resolution
-                            </span>
-                            <button
+                            </StatusBadge>
+                            <AppButton
                                 type="button"
+                                variant="pink"
+                                size="xs"
                                 onClick={() => setActiveChartModal({
                                     isOpen: true,
                                     type: 'parcels',
                                     title: '7-Day Parcel Volume Forecast Analysis',
                                 })}
-                                className="px-3 py-1 bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 text-pink-600 dark:text-pink-400 border border-pink-200/60 dark:border-pink-800/40 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
                             >
-                                <i className="fas fa-chart-line text-[10px]"></i>
+                                <i className="fas fa-chart-line text-[10px]" />
                                 <span>Inspect Model</span>
-                            </button>
+                            </AppButton>
                         </div>
                     </div>
                     <div className="mt-4 relative h-80 w-full cursor-pointer">
@@ -818,25 +824,29 @@ export default function Forecast() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                                        (forecastData?.expense_next_month?.confidence && forecastData.expense_next_month.confidence !== '0%')
-                                            ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30'
-                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                                    }`}>
+                                    <StatusBadge
+                                        tone={
+                                            (forecastData?.expense_next_month?.confidence && forecastData.expense_next_month.confidence !== '0%')
+                                                ? 'emerald'
+                                                : 'neutral'
+                                        }
+                                        size="xs"
+                                    >
                                         {forecastData?.expense_next_month?.confidence || "0%"} Confidence
-                                    </span>
-                                    <button
+                                    </StatusBadge>
+                                    <AppButton
                                         type="button"
+                                        variant="success"
+                                        size="xs"
                                         onClick={() => setActiveChartModal({
                                             isOpen: true,
                                             type: 'expense',
                                             title: 'Procurement Outlay & Budget Projections',
                                         })}
-                                        className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs"
                                     >
-                                        <i className="fas fa-calculator text-[10px]"></i>
+                                        <i className="fas fa-calculator text-[10px]" />
                                         <span>Inspect</span>
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
                             <div className="mt-4 relative h-70 w-full cursor-pointer">
@@ -879,18 +889,19 @@ export default function Forecast() {
                                         Distribution breakdown across courier partners from {totalDbParcels} actual parcels
                                     </div>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="pink"
+                                    size="xs"
                                     onClick={() => setActiveChartModal({
                                         isOpen: true,
                                         type: 'couriers',
                                         title: 'Courier Partner Volume Breakdown & Dispatch Allocation',
                                     })}
-                                    className="px-2.5 py-1 bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 text-pink-600 dark:text-pink-400 border border-pink-200/60 dark:border-pink-800/40 rounded-xl text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs"
                                 >
-                                    <i className="fas fa-pie-chart text-[10px]"></i>
+                                    <i className="fas fa-pie-chart text-[10px]" />
                                     <span>Details</span>
-                                </button>
+                                </AppButton>
                             </div>
                             <div className="mt-4 relative h-70 w-full cursor-pointer">
                                 {loading && (

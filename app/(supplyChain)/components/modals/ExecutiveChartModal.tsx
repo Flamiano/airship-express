@@ -298,16 +298,16 @@ export default function ExecutiveChartModal({
                                             key={opt.value}
                                             type="button"
                                             onClick={() => setSelectedFilter(opt.value)}
-                                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                                                 isSelected
-                                                    ? "bg-pink-600 text-white shadow-xs"
-                                                    : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
+                                                    ? "bg-pink-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_1px_3px_rgba(236,72,153,0.3)]"
+                                                    : "bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 text-slate-600 dark:text-slate-400 shadow-[inset_0_1px_0_#ffffff,0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_1px_2px_rgba(0,0,0,0.3)] hover:border-pink-300 dark:hover:border-pink-500/40"
                                             }`}
                                         >
                                             <span>{opt.label}</span>
                                             {opt.count !== undefined && (
-                                                <span className={`text-[9px] px-1 py-0.2 rounded-full ${
-                                                    isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${
+                                                    isSelected ? "bg-white/20 text-white" : "bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                                                 }`}>
                                                     {opt.count}
                                                 </span>
@@ -350,7 +350,10 @@ export default function ExecutiveChartModal({
                                         key={idx}
                                         className="flex items-center justify-between p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700 transition-colors"
                                     >
-                                        <div className="flex items-center gap-3 min-w-0">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <span className="text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 w-5 shrink-0">
+                                                #{idx + 1}
+                                            </span>
                                             {item.icon && (
                                                 <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xs shrink-0 shadow-2xs">
                                                     <i className={`fas ${item.icon}`} />
@@ -362,7 +365,7 @@ export default function ExecutiveChartModal({
                                                         {item.title}
                                                     </span>
                                                     {item.badge && (
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${item.badgeColor || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${item.badgeColor || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                                                             {item.badge}
                                                         </span>
                                                     )}

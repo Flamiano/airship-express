@@ -4,6 +4,8 @@ import React from 'react';
 import { CheckCircle, X, Send, Eye, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { Appeal } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -67,30 +69,36 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                         {/* Approve/Reject visible only when all selected items are pending */}
                         {areAllSelectedPending && (
                             <div className="flex items-center gap-2 pr-2.5 border-r border-slate-700/80">
-                                <button
+                                <AppButton
+                                    type="button"
+                                    variant="success"
+                                    size="xs"
                                     onClick={onBulkApprove}
-                                    className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-all duration-150 active:scale-95 flex items-center gap-1.5 shadow-2xs cursor-pointer"
                                 >
                                     <CheckCircle className="w-3.5 h-3.5" />
-                                    Approve Selected
-                                </button>
-                                <button
+                                    <span>Approve Selected</span>
+                                </AppButton>
+                                <AppButton
+                                    type="button"
+                                    variant="warning"
+                                    size="xs"
                                     onClick={onBulkReject}
-                                    className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-semibold transition-all duration-150 active:scale-95 flex items-center gap-1.5 shadow-2xs cursor-pointer"
                                 >
                                     <X className="w-3.5 h-3.5" />
-                                    Reject Selected
-                                </button>
+                                    <span>Reject Selected</span>
+                                </AppButton>
                             </div>
                         )}
 
-                        <button
+                        <AppButton
+                            type="button"
+                            variant="danger"
+                            size="xs"
                             onClick={onBulkDelete}
-                            className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all duration-150 active:scale-95 flex items-center gap-1.5 shadow-2xs cursor-pointer"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
-                            Delete Selected
-                        </button>
+                            <span>Delete Selected</span>
+                        </AppButton>
                     </div>
                 </div>
             )}
@@ -173,7 +181,7 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                         {/* User Name with Initial Avatar Badge */}
                                         <td className="py-3.5 px-4">
                                             <div className="flex items-center gap-2.5">
-                                                <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[10px] flex items-center justify-center shrink-0 uppercase">
+                                                <div className="w-7 h-7 rounded-full bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-800/50 text-pink-600 dark:text-pink-400 font-bold text-xs flex items-center justify-center shrink-0 uppercase shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                                                     {appeal.user_name ? appeal.user_name.charAt(0) : 'U'}
                                                 </div>
                                                 <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
@@ -215,24 +223,13 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
 
                                         {/* Status Badge */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
-                                            <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${isPending
-                                                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50'
-                                                    : appeal.status === 'approved'
-                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50'
-                                                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50'
-                                                    }`}
+                                            <StatusBadge
+                                                tone={isPending ? 'amber' : appeal.status === 'approved' ? 'emerald' : 'rose'}
+                                                dot
+                                                size="xs"
                                             >
-                                                <span
-                                                    className={`w-1.5 h-1.5 rounded-full ${isPending
-                                                        ? 'bg-amber-500 animate-pulse'
-                                                        : appeal.status === 'approved'
-                                                            ? 'bg-emerald-500'
-                                                            : 'bg-rose-500'
-                                                        }`}
-                                                />
                                                 {appeal.status.charAt(0).toUpperCase() + appeal.status.slice(1)}
-                                            </span>
+                                            </StatusBadge>
                                         </td>
 
                                         {/* Created At */}

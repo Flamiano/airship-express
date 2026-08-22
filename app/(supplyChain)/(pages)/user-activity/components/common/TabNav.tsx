@@ -28,16 +28,16 @@ export const TabNav: React.FC<TabNavProps> = ({
     ];
 
     return (
-        <div className="flex items-center gap-1.5 bg-slate-100/90 dark:bg-slate-900/90 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-inner max-w-full overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 p-1.5 rounded-full border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] max-w-full overflow-x-auto no-scrollbar w-fit">
             {tabs.map((tab) => {
                 const isActive = activeTab === tab.id;
                 return (
                     <button
                         key={tab.id}
                         onClick={() => onTabChange(tab.id)}
-                        className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer ${isActive
-                            ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 dark:bg-slate-800 dark:text-white dark:border dark:border-slate-700/80'
-                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/40'
+                        className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer ${isActive
+                            ? 'bg-white dark:bg-slate-800 text-pink-600 dark:text-pink-400 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         <i

@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
 interface MediaItem {
     id: string;
@@ -197,50 +198,63 @@ const GalleryCard = memo(function GalleryCard({
                         <ImageIcon className="w-9 h-9 opacity-50 text-slate-400" />
                         <span className="text-[11px] font-medium text-slate-400">Failed to load</span>
                         {imageCache.canRetry(item.id) && (
-                            <button
+                            <AppButton
                                 type="button"
-                                className="text-xs font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-800/50 px-2.5 py-1 rounded-lg mt-1 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                                variant="pink"
+                                size="xs"
                                 onClick={(e) => onRetry(item.id, item.imageUrl, e)}
                             >
                                 <RefreshCw className="w-3 h-3" />
                                 <span>Retry</span>
-                            </button>
+                            </AppButton>
                         )}
                     </div>
                 )}
 
-                <span className="absolute top-2.5 right-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 text-[10px] font-bold tracking-wide px-2.5 py-0.5 rounded-full shadow-2xs">
-                    {item.category}
-                </span>
+                <div className="absolute top-2.5 right-2.5">
+                    <StatusBadge tone="pink" size="xs">
+                        {item.category}
+                    </StatusBadge>
+                </div>
 
                 {item.supplier && (
-                    <span className="absolute bottom-2.5 left-2.5 bg-slate-900/85 dark:bg-slate-950/90 backdrop-blur-md border border-slate-700/60 dark:border-slate-800 text-white dark:text-slate-200 text-[10px] font-medium px-2.5 py-0.5 rounded-full shadow-2xs flex items-center gap-1.5 max-w-[70%]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0" />
-                        <span className="truncate">{item.supplier}</span>
-                    </span>
+                    <div className="absolute bottom-2.5 left-2.5 max-w-[70%]">
+                        <StatusBadge tone="neutral" dot size="xs">
+                            <span className="truncate">{item.supplier}</span>
+                        </StatusBadge>
+                    </div>
                 )}
 
-                <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2.5">
-                    <button
+                <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
+                    <AppButton
                         type="button"
+                        variant="pink"
+                        size="sm"
+                        className="group/btn overflow-hidden transition-all duration-300"
                         onClick={(e) => {
                             e.stopPropagation();
                             onPreview(item);
                         }}
-                        className="px-3.5 py-1.5 bg-white dark:bg-slate-900 text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
-                        title="Preview Image"
+                        title="Preview"
                     >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Preview</span>
-                    </button>
-                    <button
+                        <Eye className="w-3.5 h-3.5 shrink-0" />
+                        <span className="max-w-0 opacity-0 overflow-hidden group-hover/btn:max-w-[70px] group-hover/btn:opacity-100 transition-all duration-300 ease-out whitespace-nowrap">
+                            Preview
+                        </span>
+                    </AppButton>
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="sm"
+                        className="group/btn overflow-hidden transition-all duration-300"
                         onClick={(e) => onDownload(item, e)}
-                        className="p-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer"
-                        title="Download Asset"
+                        title="Download"
                     >
-                        <Download className="w-3.5 h-3.5" />
-                    </button>
+                        <Download className="w-3.5 h-3.5 shrink-0" />
+                        <span className="max-w-0 opacity-0 overflow-hidden group-hover/btn:max-w-[80px] group-hover/btn:opacity-100 transition-all duration-300 ease-out whitespace-nowrap">
+                            Download
+                        </span>
+                    </AppButton>
                 </div>
             </div>
 
@@ -254,9 +268,9 @@ const GalleryCard = memo(function GalleryCard({
                     </h3>
                     {item.po_number && (
                         <div className="mt-1">
-                            <span className="inline-flex items-center text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 px-1.5 py-0.5 rounded-md">
-                                PO: {item.po_number}
-                            </span>
+                            <StatusBadge tone="pink" size="xs">
+                                <span className="font-mono">PO: {item.po_number}</span>
+                            </StatusBadge>
                         </div>
                     )}
                 </div>
@@ -329,17 +343,16 @@ const GalleryListItem = memo(function GalleryListItem({
                             {item.title}
                         </h3>
                         {item.po_number && (
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[10px] font-semibold border border-slate-200/80 dark:border-slate-700/60 shrink-0">
-                                PO: {item.po_number}
-                            </span>
+                            <StatusBadge tone="pink" size="xs">
+                                <span className="font-mono">PO: {item.po_number}</span>
+                            </StatusBadge>
                         )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-                        <span className="inline-flex items-center gap-1 font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-950/40 px-2 py-0.5 rounded-md border border-pink-200/80 dark:border-pink-800/50">
-                            <Tag className="w-3 h-3 text-pink-500 dark:text-pink-400" />
+                        <StatusBadge tone="pink" icon="fas fa-tag" size="xs">
                             {item.category}
-                        </span>
+                        </StatusBadge>
 
                         {item.supplier && (
                             <span className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300">
@@ -373,27 +386,36 @@ const GalleryListItem = memo(function GalleryListItem({
                     <span>{item.uploadDate}</span>
                 </div>
 
-                <button
+                <AppButton
                     type="button"
+                    variant="pink"
+                    size="xs"
+                    className="group/btn overflow-hidden transition-all duration-300"
                     onClick={(e) => {
                         e.stopPropagation();
                         onPreview(item);
                     }}
                     title="Preview image"
-                    className="px-2.5 py-1.5 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 rounded-xl transition-all border border-pink-200/80 dark:border-pink-800/50 shadow-2xs cursor-pointer flex items-center gap-1.5 font-semibold text-xs active:scale-95"
                 >
-                    <Eye className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                    <span className="hidden sm:inline">Preview</span>
-                </button>
+                    <Eye className="w-3.5 h-3.5 shrink-0" />
+                    <span className="max-w-0 opacity-0 overflow-hidden group-hover/btn:max-w-[70px] group-hover/btn:opacity-100 transition-all duration-300 ease-out whitespace-nowrap">
+                        Preview
+                    </span>
+                </AppButton>
 
-                <button
+                <AppButton
                     type="button"
+                    variant="neutral"
+                    size="xs"
+                    className="group/btn overflow-hidden transition-all duration-300"
                     onClick={(e) => onDownload(item, e)}
                     title="Download file"
-                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-xl transition-all border border-slate-200/80 dark:border-slate-700/70 shadow-2xs cursor-pointer active:scale-95"
                 >
-                    <Download className="w-4 h-4" />
-                </button>
+                    <Download className="w-3.5 h-3.5 shrink-0" />
+                    <span className="max-w-0 opacity-0 overflow-hidden group-hover/btn:max-w-[80px] group-hover/btn:opacity-100 transition-all duration-300 ease-out whitespace-nowrap">
+                        Download
+                    </span>
+                </AppButton>
             </div>
         </div>
     );
@@ -921,47 +943,43 @@ export default function MediaGallery() {
                                         Media Gallery
                                     </h1>
                                     <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-slate-500 dark:text-slate-400">
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/60 font-semibold text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
-                                            <span className="font-bold text-pink-600 dark:text-pink-400">{totalCount}</span> images
-                                        </span>
+                                        <StatusBadge tone="pink" size="xs">
+                                            <span className="font-bold">{totalCount}</span> images
+                                        </StatusBadge>
                                         <span className="text-slate-300 dark:text-slate-600">•</span>
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/60 font-semibold text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
+                                        <StatusBadge tone="neutral" size="xs">
                                             <span>{formatFileSize(totalSize)}</span>
-                                        </span>
+                                        </StatusBadge>
                                         <span className="text-slate-300 dark:text-slate-600">•</span>
-                                        <span>
-                                            <strong className="text-slate-700 dark:text-slate-300">
-                                                {Math.max(0, categories.length - 1)}
-                                            </strong> categories
-                                        </span>
+                                        <StatusBadge tone="neutral" size="xs">
+                                            <span>{Math.max(0, categories.length - 1)} categories</span>
+                                        </StatusBadge>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="flex items-center gap-2.5 self-end sm:self-auto">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant={showFilters ? "pink" : "neutral"}
+                                    size="sm"
                                     onClick={() => setShowFilters(!showFilters)}
-                                    className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-2 shadow-2xs cursor-pointer active:scale-98 ${showFilters
-                                        ? 'bg-pink-50 dark:bg-pink-950/40 border-pink-200/80 dark:border-pink-800/50 text-pink-700 dark:text-pink-300'
-                                        : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                                        }`}
                                 >
                                     <Filter className="w-4 h-4 text-pink-500" />
                                     <span>Filters</span>
                                     {showFilters && (
-                                        <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse"></span>
+                                        <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
                                     )}
-                                </button>
+                                </AppButton>
 
-                                <div className="bg-slate-100/80 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-0.5 shadow-2xs">
+                                <div className="bg-slate-100 dark:bg-slate-900 p-1 rounded-full border border-slate-200/90 dark:border-slate-800 flex items-center gap-1 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                                     <button
                                         type="button"
                                         onClick={() => setViewMode('grid')}
                                         title="Grid View"
-                                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'grid'
-                                            ? 'bg-white dark:bg-slate-900 text-pink-600 dark:text-pink-400 shadow-2xs font-semibold border border-slate-200/60 dark:border-slate-700/60'
-                                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700/30'
+                                        className={`p-1.5 rounded-full transition-all cursor-pointer ${viewMode === 'grid'
+                                            ? 'bg-white dark:bg-slate-800 text-pink-600 dark:text-pink-400 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] font-semibold'
+                                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                                             }`}
                                     >
                                         <Grid className="w-4 h-4" />
@@ -970,9 +988,9 @@ export default function MediaGallery() {
                                         type="button"
                                         onClick={() => setViewMode('list')}
                                         title="List View"
-                                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'list'
-                                            ? 'bg-white dark:bg-slate-900 text-pink-600 dark:text-pink-400 shadow-2xs font-semibold border border-slate-200/60 dark:border-slate-700/60'
-                                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700/30'
+                                        className={`p-1.5 rounded-full transition-all cursor-pointer ${viewMode === 'list'
+                                            ? 'bg-white dark:bg-slate-800 text-pink-600 dark:text-pink-400 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] font-semibold'
+                                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                                             }`}
                                     >
                                         <List className="w-4 h-4" />
@@ -1045,13 +1063,15 @@ export default function MediaGallery() {
                                     </h3>
                                 </div>
 
-                                <button
+                                <AppButton
+                                    type="button"
+                                    variant="neutral"
+                                    size="xs"
                                     onClick={clearFilters}
-                                    className="px-2.5 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
                                 >
                                     <RefreshCw className="w-3 h-3" />
                                     <span>Reset All</span>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1118,7 +1138,7 @@ export default function MediaGallery() {
                                     </label>
                                     <div className="min-h-9.5 p-1 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-wrap items-center gap-1.5">
                                         {filterState.selectedCategory !== 'All' && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                                                 <span>{filterState.selectedCategory}</span>
                                                 <button
                                                     onClick={() => handleFilterChange('selectedCategory', 'All')}
@@ -1131,7 +1151,7 @@ export default function MediaGallery() {
                                         )}
 
                                         {filterState.selectedSupplier !== 'All' && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                                                 <span>{filterState.selectedSupplier}</span>
                                                 <button
                                                     onClick={() => handleFilterChange('selectedSupplier', 'All')}
@@ -1144,7 +1164,7 @@ export default function MediaGallery() {
                                         )}
 
                                         {filterState.dateRange !== 'all' && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 shadow-2xs">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                                                 <span className="capitalize">{filterState.dateRange}</span>
                                                 <button
                                                     onClick={() => handleFilterChange('dateRange', 'all')}
@@ -1203,10 +1223,12 @@ export default function MediaGallery() {
                 {!loading && mediaItems.length > 0 && (
                     <div className="flex flex-col items-center justify-center py-10 gap-3">
                         {hasMore ? (
-                            <button
+                            <AppButton
+                                type="button"
+                                variant="pink"
+                                size="lg"
                                 onClick={handleLoadMore}
                                 disabled={loadingMore || fetching}
-                                className="px-8 py-3 bg-white dark:bg-slate-900 border-2 border-pink-200/90 dark:border-pink-500/40 hover:border-pink-400 dark:hover:border-pink-500 text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 font-semibold text-sm rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2.5 cursor-pointer"
                             >
                                 {loadingMore ? (
                                     <>
@@ -1221,12 +1243,12 @@ export default function MediaGallery() {
                                         </span>
                                     </>
                                 )}
-                            </button>
+                            </AppButton>
                         ) : (
-                            <div className="text-xs sm:text-sm font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 px-5 py-2.5 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/50 shadow-2xs">
-                                <Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                            <StatusBadge tone="emerald" size="md">
+                                <Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400 mr-1" />
                                 <span>All {totalCount} items loaded</span>
-                            </div>
+                            </StatusBadge>
                         )}
 
                         <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">

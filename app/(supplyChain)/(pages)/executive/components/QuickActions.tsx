@@ -1,6 +1,7 @@
 "use client";
 
-import { LinkBtn } from "@/app/(supplyChain)/components/global/Buttons";
+import Link from "next/link";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface Activity {
     id: number;
@@ -56,7 +57,7 @@ export default function QuickActions() {
                         border border-slate-200/80 dark:border-slate-800 
                         rounded-2xl shadow-sm">
             <div className="font-semibold text-sm text-slate-900 dark:text-white mb-3.5 flex items-center">
-                <div className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/40 text-pink-500 dark:text-pink-400 flex items-center justify-center mr-2 border border-pink-100 dark:border-pink-900/30">
+                <div className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/40 text-pink-500 dark:text-pink-400 flex items-center justify-center mr-2 border border-pink-100 dark:border-pink-900/30 shadow-2xs">
                     <i className="fas fa-bolt text-xs"></i>
                 </div>
                 <span>Quick actions</span>
@@ -65,53 +66,58 @@ export default function QuickActions() {
             <div className="p-4 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl 
                             border border-slate-200/80 dark:border-slate-800">
                 <div className="grid grid-cols-2 gap-2">
-                    <LinkBtn
-                        link='/warehousing'
-                        icon='fas fa-scan mr-1.5 text-xs'
-                        label='Scan Parcel'
-                        className="flex items-center justify-center px-3 py-2.5 rounded-xl 
-                                   border border-slate-200/80 dark:border-slate-700/70 
-                                   bg-white dark:bg-slate-800 
-                                   hover:bg-slate-900 dark:hover:bg-pink-500 
-                                   hover:text-white dark:hover:text-white 
-                                   text-slate-800 dark:text-slate-200 
-                                   text-xs font-semibold transition-all duration-200 cursor-pointer shadow-2xs"
-                    />
-                    <LinkBtn
-                        link='/purchase-orders'
-                        icon='fas fa-file-invoice mr-1.5 text-xs'
-                        label='Create PO'
-                        className="flex items-center justify-center px-3 py-2.5 rounded-xl 
-                                   border border-slate-200/80 dark:border-slate-700/70 
-                                   bg-white dark:bg-slate-800 
-                                   hover:bg-slate-900 dark:hover:bg-pink-500 
-                                   hover:text-white dark:hover:text-white 
-                                   text-slate-800 dark:text-slate-200 
-                                   text-xs font-semibold transition-all duration-200 cursor-pointer shadow-2xs"
-                    />
-                    <LinkBtn
-                        link='/documents?modal=upload'
-                        icon='fas fa-upload mr-1.5 text-xs'
-                        label='Upload document'
-                        className="flex items-center justify-center px-3 py-2.5 rounded-xl 
-                                   border border-slate-200/80 dark:border-slate-700/70 
-                                   bg-white dark:bg-slate-800 
-                                   hover:bg-slate-900 dark:hover:bg-pink-500 
-                                   hover:text-white dark:hover:text-white 
-                                   text-slate-800 dark:text-slate-200 
-                                   text-xs font-semibold transition-all duration-200 cursor-pointer shadow-2xs"
-                    />
-                    <button
-                        onClick={() => handleAction('view-forecast')}
-                        className="flex items-center justify-center px-3 py-2.5 rounded-xl 
-                                   border border-slate-200/80 dark:border-slate-700/70 
-                                   bg-white dark:bg-slate-800 
-                                   hover:bg-slate-900 dark:hover:bg-pink-500 
-                                   hover:text-white dark:hover:text-white 
-                                   text-slate-800 dark:text-slate-200 
-                                   text-xs font-semibold transition-all duration-200 cursor-pointer shadow-2xs"
+                    <Link
+                        href="/warehousing"
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold
+                        bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200
+                        border border-slate-200/90 dark:border-slate-800
+                        shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] 
+                        dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]
+                        hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700
+                        hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer"
                     >
-                        <i className="fas fa-chart-line mr-1.5 text-xs"></i> View forecast
+                        <i className="fas fa-scan text-pink-500 dark:text-pink-400 text-xs"></i>
+                        <span>Scan Parcel</span>
+                    </Link>
+                    <Link
+                        href="/purchase-orders"
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold
+                        bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200
+                        border border-slate-200/90 dark:border-slate-800
+                        shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] 
+                        dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]
+                        hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700
+                        hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer"
+                    >
+                        <i className="fas fa-file-invoice text-pink-500 dark:text-pink-400 text-xs"></i>
+                        <span>Create PO</span>
+                    </Link>
+                    <Link
+                        href="/documents?modal=upload"
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold
+                        bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200
+                        border border-slate-200/90 dark:border-slate-800
+                        shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] 
+                        dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]
+                        hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700
+                        hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer"
+                    >
+                        <i className="fas fa-upload text-pink-500 dark:text-pink-400 text-xs"></i>
+                        <span>Upload document</span>
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={() => handleAction('view-forecast')}
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold
+                        bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200
+                        border border-slate-200/90 dark:border-slate-800
+                        shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] 
+                        dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]
+                        hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700
+                        hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer"
+                    >
+                        <i className="fas fa-chart-line text-pink-500 dark:text-pink-400 text-xs"></i>
+                        <span>View forecast</span>
                     </button>
                 </div>
 
@@ -119,26 +125,17 @@ export default function QuickActions() {
                     <div className="font-semibold text-slate-900 dark:text-slate-200 text-xs uppercase tracking-wider flex items-center mb-4">
                         <i className="fas fa-history mr-2 text-xs text-pink-500 dark:text-pink-400"></i> Recent activity
                     </div>
-
-                    <ul className="space-y-4 text-xs relative 
-                                   before:absolute before:left-[3.5px] 
-                                   before:top-2 before:bottom-2 before:w-px 
-                                   before:bg-slate-200 dark:before:bg-slate-800">
-                        {activities.map((activity) => (
-                            <li key={activity.id} className="flex gap-3 relative items-start">
-                                <div className={`w-2 h-2 mt-1 rounded-full ${activity.dotColor} 
-                                                ring-4 ring-slate-50 dark:ring-slate-900 shrink-0`}></div>
-                                <div>
-                                    <div className="text-slate-800 dark:text-slate-200 font-medium leading-relaxed">
-                                        {activity.title}
-                                    </div>
-                                    <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                        {activity.time} · <span className="text-slate-500 dark:text-slate-400 font-medium">{activity.user}</span>
-                                    </div>
+                    <div className="space-y-3.5">
+                        {activities.map((act) => (
+                            <div key={act.id} className="flex items-start gap-3 text-xs">
+                                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${act.dotColor}`}></div>
+                                <div className="flex-1">
+                                    <div className="text-slate-700 dark:text-slate-300">{act.title}</div>
+                                    <div className="text-slate-400 text-[10px] mt-0.5">{act.time} • by {act.user}</div>
                                 </div>
-                            </li>
+                            </div>
                         ))}
-                    </ul>
+                    </div>
                 </div>
             </div>
         </div>

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { InventoryItem } from '../../types';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface LowStockAlertProps {
     items: InventoryItem[];
@@ -43,9 +45,9 @@ export function LowStockAlert({ items, onStockIn }: LowStockAlertProps) {
                                 <h3 className="font-semibold text-slate-900 dark:text-white text-sm sm:text-base leading-tight">
                                     All Stock Levels Healthy
                                 </h3>
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold border border-emerald-200/60 dark:border-emerald-800/30">
+                                <StatusBadge tone="emerald" size="xs">
                                     Optimal
-                                </span>
+                                </StatusBadge>
                             </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                 No items are currently below their minimum required threshold.
@@ -70,13 +72,13 @@ export function LowStockAlert({ items, onStockIn }: LowStockAlertProps) {
                             <h3 className="font-semibold text-slate-900 dark:text-white text-sm sm:text-base leading-tight">
                                 Low Stock Alert
                             </h3>
-                            <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-[11px] font-bold border border-amber-200/60 dark:border-amber-800/40">
+                            <StatusBadge tone="amber" size="xs">
                                 {items.length} {items.length === 1 ? 'item' : 'items'}
-                            </span>
+                            </StatusBadge>
                             {outOfStockCount > 0 && (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 text-[11px] font-bold border border-rose-200/60 dark:border-rose-900/40">
+                                <StatusBadge tone="rose" dot size="xs">
                                     {outOfStockCount} critical
-                                </span>
+                                </StatusBadge>
                             )}
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -128,20 +130,13 @@ export function LowStockAlert({ items, onStockIn }: LowStockAlertProps) {
                                         >
                                             {item.item_name}
                                         </h4>
-                                        <span
-                                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 border transition-all duration-300 ${isOutOfStock
-                                                ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900/50'
-                                                : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-900/40'
-                                                }`}
+                                        <StatusBadge
+                                            tone={isOutOfStock ? 'rose' : 'amber'}
+                                            dot
+                                            size="xs"
                                         >
-                                            <span
-                                                className={`w-1.5 h-1.5 rounded-full ${isOutOfStock
-                                                    ? 'bg-rose-500 animate-pulse'
-                                                    : 'bg-amber-500'
-                                                    }`}
-                                            />
                                             {isOutOfStock ? 'Out of Stock' : 'Low Stock'}
-                                        </span>
+                                        </StatusBadge>
                                     </div>
 
                                     {/* Stock Metrics */}
@@ -184,10 +179,10 @@ export function LowStockAlert({ items, onStockIn }: LowStockAlertProps) {
                                         <i className="fas fa-clock text-[9px] mr-1"></i>
                                         Quick Action
                                     </span>
-                                    <button
+                                    <AppButton
                                         type="button"
-                                        aria-label={`Add stock to ${item.item_name}`}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 font-semibold text-[11px] transition-all duration-300 border border-emerald-200/80 dark:border-emerald-800/50 hover:shadow-xs cursor-pointer"
+                                        variant="success"
+                                        size="xs"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onStockIn(item.item_name);
@@ -195,7 +190,7 @@ export function LowStockAlert({ items, onStockIn }: LowStockAlertProps) {
                                     >
                                         <i className="fas fa-plus text-[9px]" />
                                         Add Stock
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
                         );
@@ -205,23 +200,17 @@ export function LowStockAlert({ items, onStockIn }: LowStockAlertProps) {
                 {/* Show More / Show Less Toggle */}
                 {sortedItems.length > 6 && (
                     <div className="flex justify-center pt-2">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="sm"
                             onClick={() => setIsExpanded(!isExpanded)}
-                            aria-expanded={isExpanded}
-                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl 
-                        bg-slate-100 dark:bg-slate-800 
-                        hover:bg-slate-200/80 dark:hover:bg-slate-700/70 
-                        text-slate-700 dark:text-slate-200 text-xs font-semibold 
-                        transition-all duration-300 cursor-pointer
-                        hover:shadow-sm dark:hover:shadow-black/30
-                        active:scale-95"
                         >
                             <span>
                                 {isExpanded ? 'Show Less' : `Show All Low Stock (${sortedItems.length})`}
                             </span>
-                            <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} text-[10px] transition-transform duration-300`} />
-                        </button>
+                            <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} text-[10px]`} />
+                        </AppButton>
                     </div>
                 )}
             </div>

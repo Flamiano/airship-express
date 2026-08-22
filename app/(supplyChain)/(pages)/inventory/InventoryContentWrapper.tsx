@@ -22,6 +22,8 @@ import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
 import { sanitizeText } from "@/app/(supplyChain)/components/global/sanitize";
 import { fetchInventoryPageData, type Parcel } from '@/app/(supplyChain)/(pages)/inventory/server/query';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
 const tabVariants: Variants = {
     enter: (direction: number) => ({
@@ -523,30 +525,31 @@ export default function InventoryClient() {
 
                     <div className="flex items-center gap-2.5 flex-wrap">
                         {selectedIds.size > 0 && (
-                            <button
-                                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 shadow-2xs active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed animate-in fade-in duration-200"
+                            <AppButton
+                                type="button"
+                                variant="danger"
+                                size="md"
                                 onClick={handleDeleteMultiple}
                                 disabled={deleting}
                             >
-                                <i className="fas fa-trash-can text-xs text-rose-600"></i>
-                                <span>Delete</span>
-                                <span className="px-1.5 py-0.5 rounded-full bg-rose-200/80 text-rose-800 text-[10px] font-bold">
-                                    {selectedIds.size}
-                                </span>
-                            </button>
+                                <i className="fas fa-trash-can text-xs" />
+                                <span>Delete ({selectedIds.size})</span>
+                            </AppButton>
                         )}
 
-                        <button
-                            className="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 shadow-2xs hover:shadow-pink-500/20 active:scale-[0.98]"
+                        <AppButton
+                            type="button"
+                            variant="primary"
+                            size="md"
                             onClick={() => setShowAddModal(true)}
                         >
-                            <i className="fas fa-plus text-xs"></i>
+                            <i className="fas fa-plus text-xs" />
                             <span>Add Item</span>
-                        </button>
+                        </AppButton>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-900/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-800 shadow-2xs max-w-fit">
+                <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900 p-1 rounded-full border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] max-w-fit">
                     {[
                         { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
                         { id: 'inventory', label: 'Inventory', icon: 'fa-boxes-stacked' },
@@ -554,31 +557,19 @@ export default function InventoryClient() {
                     ].map((tab) => {
                         const isActive = activeTab === tab.id;
                         return (
-                            <motion.button
+                            <button
                                 key={tab.id}
                                 onClick={() => handleTabChange(tab.id)}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 relative cursor-pointer ${isActive
-                                    ? 'text-slate-900 dark:text-white'
-                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                                className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 relative cursor-pointer active:scale-95 ${isActive
+                                    ? 'bg-pink-500 text-white shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                                     }`}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
                             >
-                                {isActive && (
-                                    <motion.div
-                                        layoutId="activeTab"
-                                        className="absolute inset-0 bg-white dark:bg-slate-800 rounded-lg shadow-xs dark:border dark:border-slate-700/60"
-                                        transition={{ type: "spring", duration: 0.4 }}
-                                    />
-                                )}
                                 <i
-                                    className={`fas ${tab.icon} text-xs relative z-10 transition-colors ${isActive
-                                        ? 'text-pink-500 dark:text-pink-400'
-                                        : 'text-slate-400 dark:text-slate-500'
-                                        }`}
+                                    className={`fas ${tab.icon} text-xs transition-colors ${isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`}
                                 />
-                                <span className="relative z-10">{tab.label}</span>
-                            </motion.button>
+                                <span>{tab.label}</span>
+                            </button>
                         );
                     })}
                 </div>

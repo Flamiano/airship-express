@@ -7,6 +7,8 @@ import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
 
 interface InventoryTabProps {
@@ -112,13 +114,16 @@ export function InventoryTab({
                     <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none"></i>
                 </div>
 
-                <button
-                    className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-500/10 active:scale-95 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                <AppButton
+                    type="button"
+                    variant="neutral"
+                    size="sm"
+                    className="ml-auto"
                     onClick={onClearFilters}
                 >
-                    <i className="fas fa-rotate-left text-[10px]"></i>
+                    <i className="fas fa-rotate-left text-xs" />
                     <span>Reset</span>
-                </button>
+                </AppButton>
             </div>
 
             {/* Scrollable Table Container */}
@@ -233,9 +238,9 @@ export function InventoryTab({
 
                                         {/* Category */}
                                         <td className="px-3.5 py-3 whitespace-nowrap">
-                                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium border border-slate-200/60 dark:border-slate-700/50">
+                                            <StatusBadge tone="neutral" size="xs">
                                                 {item.category}
-                                            </span>
+                                            </StatusBadge>
                                         </td>
 
                                         {/* Stock Level */}
@@ -252,7 +257,7 @@ export function InventoryTab({
                                                         {item.current_stock}
                                                     </span>
                                                     <span className="text-[10px] text-slate-400 font-medium">
-                                                        {item.unit}
+                                                         {item.unit}
                                                     </span>
                                                 </div>
                                                 <span className="block text-[10px] text-slate-400 font-mono">
@@ -263,58 +268,43 @@ export function InventoryTab({
 
                                         {/* Status Badge */}
                                         <td className="px-3.5 py-3 whitespace-nowrap">
-                                            <span
-                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs ${
+                                            <StatusBadge
+                                                tone={
                                                     item.status === 'available'
-                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50'
+                                                        ? 'emerald'
                                                         : item.status === 'low-stock'
-                                                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50'
-                                                            : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50'
-                                                }`}
+                                                            ? 'amber'
+                                                            : 'rose'
+                                                }
+                                                dot
+                                                size="xs"
                                             >
-                                                <span className={`w-1.5 h-1.5 rounded-full ${
-                                                    item.status === 'available'
-                                                        ? 'bg-emerald-500 dark:bg-emerald-400'
-                                                        : item.status === 'low-stock'
-                                                            ? 'bg-amber-500 dark:bg-amber-400'
-                                                            : 'bg-rose-500 dark:bg-rose-400'
-                                                }`}></span>
                                                 {item.status === 'available'
                                                     ? 'Available'
                                                     : item.status === 'low-stock'
                                                         ? 'Low Stock'
                                                         : 'Out of Stock'}
-                                            </span>
+                                            </StatusBadge>
                                         </td>
 
                                         {/* Latest PO / Request */}
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             {po ? (
                                                 po.is_request ? (
-                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50 shadow-2xs">
-                                                        <i className="fas fa-clock text-[10px] text-amber-600 dark:text-amber-400"></i>
+                                                    <StatusBadge tone="amber" icon="fas fa-clock" size="xs">
                                                         <span className="font-mono">{po.request_number}</span>
-                                                        <span className="text-[10px] opacity-85">({po.status})</span>
-                                                    </div>
+                                                        <span className="opacity-85">({po.status})</span>
+                                                    </StatusBadge>
                                                 ) : (
                                                     <div className="flex flex-col space-y-1">
-                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold shadow-2xs ${
-                                                            isDelivered
-                                                                ? 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50'
-                                                                : po.status === 'Confirmed'
-                                                                    ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50'
-                                                                    : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50'
-                                                        }`}>
-                                                            <i className={`fas ${isDelivered ? 'fa-truck-ramp-box' : 'fa-file-invoice'} text-[9px] ${
-                                                                isDelivered
-                                                                    ? 'text-pink-600 dark:text-pink-400'
-                                                                    : po.status === 'Confirmed'
-                                                                        ? 'text-purple-600 dark:text-purple-400'
-                                                                        : 'text-indigo-600 dark:text-indigo-400'
-                                                            }`}></i>
+                                                        <StatusBadge
+                                                            tone={isDelivered ? 'pink' : po.status === 'Confirmed' ? 'purple' : 'indigo'}
+                                                            icon={`fas ${isDelivered ? 'fa-truck-ramp-box' : 'fa-file-invoice'}`}
+                                                            size="xs"
+                                                        >
                                                             <span className="font-mono">{po.po_number}</span>
                                                             <span>• {po.status}</span>
-                                                        </div>
+                                                        </StatusBadge>
                                                         {po.quantity_ordered && po.quantity_ordered > 0 && (
                                                             <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                                                                 <span className="font-bold text-slate-700 dark:text-slate-300">

@@ -24,6 +24,8 @@ import {
     ChartDetailModalProps
 } from "./types/index";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { FileText, Check, X } from "lucide-react";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import {
@@ -865,7 +867,7 @@ export default function Procurement() {
                                 Manage fleet maintenance, spare parts, fuel, and operational supplies.
                             </p>
 
-                            <div className="inline-flex items-center gap-2 mt-2 px-2.5 py-1 rounded-lg bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400 transition-colors">
+                            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] transition-all">
                                 <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
                                 <i className="fas fa-user-tag text-[11px] text-slate-400 dark:text-slate-500" />
                                 <span>Role:</span>
@@ -876,8 +878,10 @@ export default function Procurement() {
                         </div>
                     </div>
 
-                    <button
-                        className="px-4 py-2.5 bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 dark:from-pink-600 dark:to-pink-500 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 shadow-xs hover:shadow-pink-500/25 dark:shadow-pink-500/20 active:scale-[0.98] shrink-0 cursor-pointer"
+                    <AppButton
+                        type="button"
+                        variant="primary"
+                        size="md"
                         onClick={() => {
                             setIsEditMode(false);
                             setEditData(null);
@@ -888,7 +892,7 @@ export default function Procurement() {
                     >
                         <i className="fas fa-plus text-xs" />
                         <span>New Purchase Request</span>
-                    </button>
+                    </AppButton>
                 </div>
 
                 {/* AI Suggested Questions */}
@@ -1229,24 +1233,34 @@ export default function Procurement() {
                                                             ₱{req.amount.toLocaleString()}
                                                         </td>
                                                         <td data-label="Priority" className="py-3.5 px-4 whitespace-nowrap">
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold ${getPriorityColor(req.priority)}`}>
+                                                            <StatusBadge
+                                                                tone={req.priority === 'Critical' ? 'rose' : req.priority === 'Urgent' ? 'amber' : 'indigo'}
+                                                                size="xs"
+                                                            >
                                                                 {req.priority}
-                                                            </span>
+                                                            </StatusBadge>
                                                         </td>
                                                         <td data-label="Date" className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">
                                                             {req.date}
                                                         </td>
                                                         <td data-label="Status" className="py-3.5 px-4 whitespace-nowrap">
-                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border border-transparent ${getStatusColor(req.status)}`}>
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                                            <StatusBadge
+                                                                tone={req.status === 'Pending' ? 'amber' : req.status === 'Approved' ? 'purple' : req.status === 'Rejected' ? 'rose' : req.status === 'Completed' ? 'pink' : 'neutral'}
+                                                                dot
+                                                                size="xs"
+                                                            >
                                                                 {req.status}
-                                                            </span>
+                                                            </StatusBadge>
                                                         </td>
                                                         <td data-label="PO Status" className="py-3.5 px-4 whitespace-nowrap">
                                                             {hasPO && poStatus ? (
-                                                                <span className={`text-[10px] px-2.5 py-1 rounded-full font-medium border ${getPOStatusColor(poStatus)}`} title={`PO Status: ${poStatus} ${poNumber ? `(#${poNumber})` : ''}`}>
+                                                                <StatusBadge
+                                                                    tone={getPOStatusTone(poStatus)}
+                                                                    size="xs"
+                                                                    title={`PO Status: ${poStatus} ${poNumber ? `(#${poNumber})` : ''}`}
+                                                                >
                                                                     {poStatus} {poNumber && `#${poNumber}`}
-                                                                </span>
+                                                                </StatusBadge>
                                                             ) : (
                                                                 <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">No PO</span>
                                                             )}
@@ -1310,12 +1324,9 @@ export default function Procurement() {
                                                                 )}
 
                                                                 {req.status === "Approved" && hasPO && (
-                                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 select-none" title="Purchase order already generated">
-                                                                        <svg className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                                        </svg>
-                                                                        <span>PO Created</span>
-                                                                    </span>
+                                                                    <StatusBadge tone="emerald" icon="fas fa-check" size="xs" title="Purchase order already generated">
+                                                                        PO Created
+                                                                    </StatusBadge>
                                                                 )}
 
                                                                 {req.status === "Rejected" && (

@@ -11,6 +11,7 @@ import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
 interface Parcel {
     id: number;
@@ -236,7 +237,7 @@ export default function SortingPanel() {
                     </p>
                     <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 space-y-0.5">
                         <li>Items: <span className="font-semibold text-slate-900 dark:text-white">{parcels.length} parcel{parcels.length > 1 ? 's' : ''}</span></li>
-                        <li>Action: Assign shared Global, City, and Courier QR codes</li>
+                        <li>Action: Assign shared Global, City, and Courier QR codes & Move to Ready for Pickup</li>
                     </ul>
                 </div>
 
@@ -331,7 +332,7 @@ export default function SortingPanel() {
             if (globalIds.length > 0) {
                 const { error: globalError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_code: globalQrCode })
+                    .update({ bulk_qr_code: globalQrCode, status: 'ready_for_pickup' })
                     .in('id', globalIds);
 
                 if (globalError) throw globalError;
@@ -341,7 +342,7 @@ export default function SortingPanel() {
             for (const [qrCode, ids] of Object.entries(cityGroups)) {
                 const { error: cityError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_city: qrCode })
+                    .update({ bulk_qr_city: qrCode, status: 'ready_for_pickup' })
                     .in('id', ids);
 
                 if (cityError) throw cityError;
@@ -351,13 +352,24 @@ export default function SortingPanel() {
             for (const [qrCode, ids] of Object.entries(courierGroups)) {
                 const { error: courierError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_courier: qrCode })
+                    .update({ bulk_qr_courier: qrCode, status: 'ready_for_pickup' })
                     .in('id', ids);
 
                 if (courierError) throw courierError;
             }
 
-            toast.success(`All bulk QR codes generated for ${parcels.length} parcels!`, {
+            // Update all processed parcels in the current batch to ready_for_pickup
+            const allParcelIds = parcels.map(p => p.id);
+            if (allParcelIds.length > 0) {
+                const { error: statusError } = await supabase
+                    .from('parcels')
+                    .update({ status: 'ready_for_pickup' })
+                    .in('id', allParcelIds);
+
+                if (statusError) throw statusError;
+            }
+
+            toast.success(`All bulk QR codes generated & moved to Ready for pickup for ${parcels.length} parcels!`, {
                 id: toastId,
                 duration: 4000,
                 action: {
@@ -1344,42 +1356,46 @@ export default function SortingPanel() {
                         </div>
                     </div>
 
-                    <button
+                    <AppButton
+                        type="button"
+                        variant="success"
+                        size="md"
                         onClick={handleGenerateAllBulkQr}
                         disabled={generatingAllBulk || parcels.length === 0 || allHaveAllQr()}
-                        className="h-10 inline-flex items-center gap-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-xs transition-all shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                         {generatingAllBulk ? (
                             <>
-                                <i className="fas fa-spinner fa-spin"></i>
+                                <i className="fas fa-spinner fa-spin" />
                                 <span>Generating...</span>
                             </>
                         ) : allHaveAllQr() ? (
                             <>
-                                <i className="fas fa-check-circle"></i>
+                                <i className="fas fa-check-circle" />
                                 <span>All QR Ready</span>
                             </>
                         ) : (
                             <>
-                                <i className="fas fa-qrcode"></i>
+                                <i className="fas fa-qrcode" />
                                 <span>Generate All QR (Global, City, Courier)</span>
                             </>
                         )}
-                    </button>
+                    </AppButton>
 
                     {selectedParcelIds.size > 0 && (
-                        <button
+                        <AppButton
+                            type="button"
+                            variant="danger"
+                            size="md"
                             onClick={handleBulkDelete}
                             disabled={deleting}
-                            className="h-10 inline-flex items-center gap-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-semibold text-xs transition-all shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                             {deleting ? (
-                                <i className="fas fa-spinner fa-spin"></i>
+                                <i className="fas fa-spinner fa-spin" />
                             ) : (
-                                <i className="fas fa-trash"></i>
+                                <i className="fas fa-trash" />
                             )}
-                            Delete {selectedParcelIds.size}
-                        </button>
+                            <span>Delete {selectedParcelIds.size}</span>
+                        </AppButton>
                     )}
                 </div>
 
@@ -1394,22 +1410,22 @@ export default function SortingPanel() {
                                 {viewMode === "city" ? "City Distribution" : "Destination Distribution"}
                             </h2>
                             {viewMode === "region" && regionGroups.length > 0 && (
-                                <div className="inline-flex items-center gap-0.5 rounded-lg bg-slate-100/80 dark:bg-slate-800/80 p-0.5 border border-slate-200/60 dark:border-slate-700/60">
+                                <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 dark:bg-slate-900 p-1 border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                                     <button
                                         type="button"
                                         onClick={expandAllRegions}
-                                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-pink-600 dark:text-pink-400 transition-all hover:bg-white dark:hover:bg-slate-700 hover:text-pink-700 dark:hover:text-pink-300 hover:shadow-xs cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-pink-600 dark:text-pink-400 transition-all hover:bg-white dark:hover:bg-slate-800 hover:text-pink-700 dark:hover:text-pink-300 hover:shadow-xs cursor-pointer active:scale-95"
                                     >
                                         <i className="fas fa-angles-down text-[9px]"></i>
                                         <span>Expand All</span>
                                     </button>
 
-                                    <span className="h-3.5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+                                    <span className="h-3 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
 
                                     <button
                                         type="button"
                                         onClick={collapseAllRegions}
-                                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 transition-all hover:bg-white dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 hover:shadow-xs cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400 transition-all hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 hover:shadow-xs cursor-pointer active:scale-95"
                                     >
                                         <i className="fas fa-angles-up text-[9px]"></i>
                                         <span>Collapse All</span>
@@ -1450,9 +1466,9 @@ export default function SortingPanel() {
                                                         {city.city}
                                                     </span>
                                                 </div>
-                                                <span className="inline-flex items-center rounded-full bg-pink-500 px-2.5 py-0.5 text-[11px] font-bold text-white shadow-2xs shrink-0">
+                                                <StatusBadge tone="pink" size="xs">
                                                     {city.total} total
-                                                </span>
+                                                </StatusBadge>
                                             </div>
 
                                             <div className="space-y-2.5 my-2">
@@ -1517,13 +1533,16 @@ export default function SortingPanel() {
                                                     type="button"
                                                     onClick={() => handleGenerateCityBulkQr(city.city, city.parcels)}
                                                     disabled={generatingBulk || city.parcels.length === 0 || city.hasBulkQr}
-                                                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-all cursor-pointer ${city.hasBulkQr
-                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 cursor-default'
-                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed'
-                                                        }`}
+                                                    className="cursor-pointer disabled:cursor-not-allowed"
                                                 >
-                                                    <i className={`fas ${city.hasBulkQr ? 'fa-check-circle text-emerald-600 dark:text-emerald-400' : 'fa-qrcode'} text-[10px]`}></i>
-                                                    <span>{city.hasBulkQr ? 'City QR Ready' : 'City Bulk QR'}</span>
+                                                    <StatusBadge
+                                                        tone={city.hasBulkQr ? 'emerald' : 'neutral'}
+                                                        icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
+                                                        size="xs"
+                                                        interactive={!city.hasBulkQr}
+                                                    >
+                                                        {city.hasBulkQr ? 'City QR Ready' : 'City Bulk QR'}
+                                                    </StatusBadge>
                                                 </button>
                                             </div>
                                         </div>
@@ -1560,9 +1579,9 @@ export default function SortingPanel() {
                                                 <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                                                     {region.cities.length} {region.cities.length === 1 ? 'city' : 'cities'}
                                                 </span>
-                                                <span className="inline-flex items-center rounded-full bg-pink-500 px-2.5 py-0.5 text-[11px] font-bold text-white shadow-2xs">
+                                                <StatusBadge tone="pink" size="xs">
                                                     {region.total}
-                                                </span>
+                                                </StatusBadge>
                                             </div>
                                         </div>
 
@@ -1578,9 +1597,9 @@ export default function SortingPanel() {
                                                                 <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate">
                                                                     {city.city}
                                                                 </span>
-                                                                <span className="inline-flex items-center rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 shrink-0">
+                                                                <StatusBadge tone="neutral" size="xs">
                                                                     {city.total}
-                                                                </span>
+                                                                </StatusBadge>
                                                             </div>
 
                                                             <div className="flex items-center gap-1 shrink-0">
@@ -1595,13 +1614,16 @@ export default function SortingPanel() {
                                                                     type="button"
                                                                     onClick={() => handleGenerateCityBulkQr(city.city, city.parcels)}
                                                                     disabled={generatingBulk || city.parcels.length === 0 || city.hasBulkQr}
-                                                                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer ${city.hasBulkQr
-                                                                        ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 cursor-default'
-                                                                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-300'
-                                                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                                    className="cursor-pointer disabled:cursor-not-allowed"
                                                                 >
-                                                                    <i className={`fas ${city.hasBulkQr ? 'fa-check-circle' : 'fa-qrcode'}`}></i>
-                                                                    <span>{city.hasBulkQr ? 'QR' : 'City QR'}</span>
+                                                                    <StatusBadge
+                                                                        tone={city.hasBulkQr ? 'emerald' : 'neutral'}
+                                                                        icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
+                                                                        size="xs"
+                                                                        interactive={!city.hasBulkQr}
+                                                                    >
+                                                                        {city.hasBulkQr ? 'QR' : 'City QR'}
+                                                                    </StatusBadge>
                                                                 </button>
                                                                 {city.bulkQrCity && (
                                                                     <button
