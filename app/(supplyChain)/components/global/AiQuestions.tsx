@@ -50,12 +50,12 @@ const AiQuestions = ({
         <button
             type="button"
             className="group flex items-center gap-2.5 px-3.5 py-3 rounded-2xl 
-            bg-slate-50/90 hover:bg-pink-50/60 dark:bg-slate-900/80 dark:hover:bg-pink-950/30
-            border border-slate-200/80 dark:border-slate-800 
-            hover:border-pink-300 dark:hover:border-pink-500/40 
+            bg-slate-50/90 hover:bg-[#ffe6f0] dark:bg-slate-900/70 dark:hover:bg-[#341427]
+            border border-slate-200/90 dark:border-[#353746] 
+            hover:border-pink-300 dark:hover:border-[#67224c] 
             shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.04)] 
             dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_1px_3px_rgba(0,0,0,0.3)]
-            hover:shadow-xs active:scale-[0.98] 
+            active:scale-[0.98] 
             transition-all duration-200 text-left w-full cursor-pointer"
             onClick={() => {
                 if (onQuestionClick) {
@@ -65,7 +65,7 @@ const AiQuestions = ({
             }}
         >
             <span className={`w-2 h-2 rounded-full ${color} shrink-0 shadow-xs group-hover:scale-110 transition-transform`}></span>
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-200 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors line-clamp-2">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors line-clamp-2">
                 {question}
             </span>
         </button>
@@ -73,18 +73,18 @@ const AiQuestions = ({
 
     return (
         <div className={`p-4 sm:p-5 
-                bg-white dark:bg-slate-900/90 
-                border border-slate-200/80 dark:border-slate-800 
-                rounded-3xl shadow-xs 
+                bg-white dark:bg-[#181920] 
+                border border-slate-200/90 dark:border-[#353746] 
+                rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05),inset_0_1px_0_#ffffff] dark:shadow-[0_4px_20px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] 
                 ${className}`}>
             <div className="flex items-center justify-between mb-3.5">
                 <span className="font-bold text-slate-900 dark:text-white text-sm flex items-center">
-                    <span className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 flex items-center justify-center mr-2 border border-pink-100 dark:border-pink-900/40 shadow-2xs">
+                    <span className="w-6 h-6 rounded-lg bg-[#ffe6f0] dark:bg-[#341427] text-pink-600 dark:text-pink-400 flex items-center justify-center mr-2 border border-pink-200 dark:border-[#67224c] shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
                         <i className="fas fa-robot text-xs"></i>
                     </span>
                     {title}
                 </span>
-                <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 font-medium">
                     <i className="fas fa-mouse-pointer text-[10px]"></i> {subtitle}
                 </span>
             </div>

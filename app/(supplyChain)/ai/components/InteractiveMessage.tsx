@@ -48,11 +48,11 @@ export function InteractiveMessage({
     const getColors = () => {
         switch (type) {
             case 'thinking':
-                return 'bg-amber-50 border-amber-200 text-amber-800';
+                return 'bg-[#fffbeb] dark:bg-[#2d2212] border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-200 shadow-[0_4px_16px_rgba(0,0,0,0.08),inset_0_1px_0_#ffffff] dark:shadow-[0_4px_16px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]';
             case 'response':
-                return 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                return 'bg-[#ecfdf5] dark:bg-[#062c1f] border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-200 shadow-[0_4px_16px_rgba(0,0,0,0.08),inset_0_1px_0_#ffffff] dark:shadow-[0_4px_16px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]';
             default:
-                return 'bg-pink-50 border-pink-200 text-pink-800';
+                return 'bg-[#ffe6f0] dark:bg-[#341427] border-pink-200 dark:border-[#67224c] text-pink-800 dark:text-pink-200 shadow-[0_4px_16px_rgba(0,0,0,0.08),inset_0_1px_0_#ffffff] dark:shadow-[0_4px_16px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]';
         }
     };
 
