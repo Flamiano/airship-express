@@ -36,54 +36,71 @@ body {
 }
 
 
-*::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
-  display: none !important;
+/* Custom Thin Scrollbar (No arrows / buttons, Ink colored) */
+::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
 }
 
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+  border-radius: 9999px !important;
+  transition: background-color 0.2s ease !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 23, 42, 0.7) !important;
+}
+
+/* Remove scrollbar arrow buttons (up / down / left / right) */
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* Dark mode ink scrollbar */
+.dark ::-webkit-scrollbar-thumb,
+.dark::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover,
+.dark::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(244, 63, 94, 0.5) !important;
+}
+
+/* Standard Firefox Thin Scrollbar */
 * {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(15, 23, 42, 0.4) transparent !important;
 }
 
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-main::-webkit-scrollbar,
-div::-webkit-scrollbar {
+.dark,
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent !important;
+}
+
+/* Explicit hide utility when specifically needed */
+.scrollbar-hide,
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
   width: 0 !important;
   height: 0 !important;
-  background: transparent !important;
-  display: none !important;
-}
-
-html,
-body,
-main,
-div {
-  -ms-overflow-style: none !important;
-  scrollbar-width: none !important;
-}
-
-.scrollable,
-.scroll-area,
-.overflow-y-auto,
-.overflow-x-auto,
-.overflow-auto {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-.scrollable::-webkit-scrollbar,
-.scroll-area::-webkit-scrollbar,
-.overflow-y-auto::-webkit-scrollbar,
-.overflow-x-auto::-webkit-scrollbar,
-.overflow-auto::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
-  display: none !important;
 }
 
 

@@ -518,7 +518,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                     title: 'Receipt OCR Mismatch',
                     message: `PO #${po.po_number} receipt details do not match order. Review required.`,
                     type: 'ocr_mismatch',
-                    link: `/purchase-orders?verification=${dvId}`,
+                    link: `/purchase-orders?verification=${dvId}&po_id=${po.id}`,
                     role: 'Admin',
                     reference_type: 'document_verification',
                     reference_id: dvId,

@@ -233,25 +233,68 @@ export default function PurchaseOrders() {
         }
     }, []);
 
+    const handledDeepLinkRef = useRef<string | null>(null);
+
     // Deep link detection for ?po_id= and ?verification=
     useEffect(() => {
         const poParam = searchParams.get('po_id');
         const verificationParam = searchParams.get('verification');
-        if (poParam && purchaseOrders.length > 0) {
-            const target = purchaseOrders.find(p => p.id === poParam);
+        if (!poParam && !verificationParam) return;
+
+        const deepLinkKey = `${poParam || ''}_${verificationParam || ''}`;
+        if (handledDeepLinkRef.current === deepLinkKey) return;
+
+        const combinedList = [...purchaseOrders, ...allOrders];
+        if (combinedList.length === 0) return;
+
+        handledDeepLinkRef.current = deepLinkKey;
+
+        if (poParam) {
+            const target = combinedList.find(p => p.id === poParam);
             if (target) {
-                setReceiptModalPO(target);
-                setReceiptVerificationId(verificationParam || null);
-                setIsReceiptModalOpen(true);
+                // If PO is already verified/matched, forced, paid, or has an approved document:
+                if (
+                    target.verification?.match_result === 'matched' ||
+                    target.verification?.match_result === 'forced' ||
+                    target.paid ||
+                    target.document
+                ) {
+                    setViewingDocData({
+                        id: target.document?.id || target.verification?.id,
+                        title: target.document?.title || `Receipt - PO #${target.po_number}`,
+                        fileName: target.document?.file_name || `receipt_${target.po_number}.png`,
+                        fileUrl: target.verification?.uploaded_file_url,
+                        storagePath: target.document?.storage_path,
+                        fileType: target.document?.file_type,
+                        poNumber: target.po_number,
+                        supplierName: target.supplier_name,
+                        verifiedStatus: target.verification?.match_result || (target.paid ? 'matched' : null),
+                        totalAmount: target.total_amount,
+                        notes: target.document?.notes || (target.verification?.match_result === 'matched' ? 'OCR Verified Matched' : undefined),
+                        uploadedBy: target.document?.uploaded_by,
+                    });
+                    setIsDocViewerOpen(true);
+                } else if (target.verification?.match_result === 'mismatched' || verificationParam) {
+                    // Open OCR mismatch review modal
+                    setReceiptModalPO(target);
+                    setReceiptVerificationId(target.verification?.id || verificationParam || null);
+                    setIsReceiptModalOpen(true);
+                } else {
+                    // Fresh upload required
+                    setReceiptModalPO(target);
+                    setReceiptVerificationId(null);
+                    setIsReceiptModalOpen(true);
+                }
             }
         } else if (verificationParam) {
             setReceiptVerificationId(verificationParam);
-            if (purchaseOrders.length > 0) {
-                setReceiptModalPO(purchaseOrders[0]);
+            const target = combinedList.find(p => p.verification?.id === verificationParam) || combinedList[0];
+            if (target) {
+                setReceiptModalPO(target);
             }
             setIsReceiptModalOpen(true);
         }
-    }, [searchParams, purchaseOrders]);
+    }, [searchParams, purchaseOrders, allOrders]);
 
     // Fetch supplier info & reset communication states when actionModalOrder changes
     useEffect(() => {
@@ -442,14 +485,90 @@ export default function PurchaseOrders() {
                 setTotalItems(totalCount || 0);
             }
 
-            // Also fetch all purchase orders for stats & chart distribution
+            // Also fetch all purchase orders for stats, chart distribution & recent activity
             const { data: allOrdersData, error: allOrdersError } = await supabase
                 .from('purchase_orders')
                 .select('*')
                 .order('created_at', { ascending: false });
 
             if (!allOrdersError && allOrdersData) {
-                setAllOrders(allOrdersData);
+                let enrichedAll = allOrdersData;
+                if (enrichedAll.length > 0) {
+                    try {
+                        const allIds = enrichedAll.map(o => o.id);
+                        const { data: allVerifs } = await supabase
+                            .from('document_verifications')
+                            .select('id, purchase_order_id, match_result, uploaded_file_url, compared_fields, extracted_json, created_at')
+                            .in('purchase_order_id', allIds)
+                            .order('created_at', { ascending: false });
+
+                        const allVerifMap: Record<string, any> = {};
+                        (allVerifs || []).forEach((v: any) => {
+                            if (!allVerifMap[v.purchase_order_id]) {
+                                allVerifMap[v.purchase_order_id] = v;
+                            }
+                        });
+
+                        const { data: allDocs } = await supabase
+                            .from('documents')
+                            .select('id, title, file_name, storage_path, file_type, notes, uploaded_by, purchase_id')
+                            .in('purchase_id', allIds)
+                            .order('created_at', { ascending: false });
+
+                        const allDocMap: Record<string, any> = {};
+                        (allDocs || []).forEach((d: any) => {
+                            if (d.purchase_id && !allDocMap[d.purchase_id]) {
+                                allDocMap[d.purchase_id] = d;
+                            }
+                        });
+
+                        enrichedAll = enrichedAll.map(o => ({
+                            ...o,
+                            verification: allVerifMap[o.id] || null,
+                            document: allDocMap[o.id] || null,
+                        }));
+                    } catch (e) {
+                        console.warn('Could not enrich allOrders with verification/document data:', e);
+                    }
+                }
+                setAllOrders(enrichedAll);
+
+                // Auto-sync persistent activeVerificationJob if it was stuck in 'processing'
+                try {
+                    const saved = localStorage.getItem(ACTIVE_OCR_STORAGE_KEY);
+                    if (saved) {
+                        const parsed: VerificationJob = JSON.parse(saved);
+                        if (parsed && parsed.status === 'processing') {
+                            const matchedPO = enrichedAll.find(o => o.id === parsed.poId);
+                            if (matchedPO) {
+                                if (matchedPO.verification?.match_result === 'matched' || matchedPO.paid) {
+                                    updateActiveVerificationJob({
+                                        ...parsed,
+                                        status: 'matched',
+                                        verificationId: matchedPO.verification?.id || parsed.verificationId,
+                                    });
+                                } else if (matchedPO.verification?.match_result === 'mismatched') {
+                                    updateActiveVerificationJob({
+                                        ...parsed,
+                                        status: 'mismatched',
+                                        verificationId: matchedPO.verification?.id || parsed.verificationId,
+                                    });
+                                } else if (matchedPO.verification?.match_result === 'forced') {
+                                    updateActiveVerificationJob({
+                                        ...parsed,
+                                        status: 'forced',
+                                        verificationId: matchedPO.verification?.id || parsed.verificationId,
+                                    });
+                                } else if (parsed.timestamp && Date.now() - parsed.timestamp > 3 * 60 * 1000) {
+                                    // Job expired after 3 minutes
+                                    updateActiveVerificationJob(null);
+                                }
+                            }
+                        }
+                    }
+                } catch (syncErr) {
+                    console.error('Error syncing active verification job:', syncErr);
+                }
             }
 
             // Fetch suppliers
@@ -1456,7 +1575,7 @@ export default function PurchaseOrders() {
 
                         <div className="space-y-2.5">
                             {[0, 1, 2].map((index) => {
-                                const order = purchaseOrders[index];
+                                const order = allOrders[index];
                                 const slotNumber = index + 1;
 
                                 if (order) {
@@ -1545,11 +1664,11 @@ export default function PurchaseOrders() {
                             <div className="flex gap-1 bg-slate-200/60 dark:bg-slate-800/70 p-1 rounded-xl border border-transparent dark:border-white/5">
                                 {[
                                     { key: "all", label: "All", count: totalOrders },
-                                    { key: "Draft", label: "Draft", count: purchaseOrders.filter(o => o.status === 'Draft').length },
-                                    { key: "Sent", label: "Sent", count: purchaseOrders.filter(o => o.status === 'Sent').length },
-                                    { key: "Confirmed", label: "Confirmed", count: purchaseOrders.filter(o => o.status === 'Confirmed').length },
-                                    { key: "Delivered", label: "Delivered", count: purchaseOrders.filter(o => o.status === 'Delivered').length },
-                                    { key: "Cancelled", label: "Cancelled", count: purchaseOrders.filter(o => o.status === 'Cancelled').length },
+                                    { key: "Draft", label: "Draft", count: allOrders.filter(o => o.status === 'Draft').length },
+                                    { key: "Sent", label: "Sent", count: allOrders.filter(o => o.status === 'Sent').length },
+                                    { key: "Confirmed", label: "Confirmed", count: allOrders.filter(o => o.status === 'Confirmed').length },
+                                    { key: "Delivered", label: "Delivered", count: allOrders.filter(o => o.status === 'Delivered').length },
+                                    { key: "Cancelled", label: "Cancelled", count: allOrders.filter(o => o.status === 'Cancelled').length },
                                 ].map((tab) => {
                                     const isActive = activeStatusFilter === tab.key;
                                     return (
@@ -2071,7 +2190,7 @@ export default function PurchaseOrders() {
                 {/* Manage Purchase Order Modal */}
                 {actionModalOrder && (
                     <div
-                        className="fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
+                        className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
                         onClick={() => setActionModalOrder(null)}
                     >
                         <div

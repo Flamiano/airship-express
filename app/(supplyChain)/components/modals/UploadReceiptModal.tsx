@@ -35,9 +35,12 @@ interface UploadReceiptModalProps {
         total_amount: number;
         status?: string;
         items?: any[];
+        paid?: boolean;
+        verification?: any;
+        document?: any;
     } | null;
     initialVerificationId?: string | null;
-    onMinimize?: (job: VerificationJob) => void;
+    onMinimize?: (job: VerificationJob | null) => void;
     onSuccess?: () => void;
 }
 
@@ -59,15 +62,20 @@ export function UploadReceiptModal({
 
     const [isForcing, setIsForcing] = useState<boolean>(false);
     const [forceReason, setForceReason] = useState<string>('');
+    const [sameNameWarning, setSameNameWarning] = useState<boolean>(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const currentUserRole = user.getRole();
     const isAdminOrManager = currentUserRole === 'Admin' || currentUserRole === 'Manager';
 
+    const existingDbFileName = po?.document?.file_name || null;
+
     useEffect(() => {
         if (isOpen) {
             if (initialVerificationId) {
                 loadVerificationDetails(initialVerificationId);
+            } else if (po?.verification?.id) {
+                loadVerificationDetails(po.verification.id);
             } else {
                 setFile(null);
                 setPreviewUrl(null);
@@ -77,6 +85,7 @@ export function UploadReceiptModal({
                 setExtractedData(null);
                 setVerificationId(null);
                 setForceReason('');
+                setSameNameWarning(false);
             }
         }
     }, [isOpen, initialVerificationId, po]);
@@ -119,6 +128,12 @@ export function UploadReceiptModal({
         if (!selected.type.startsWith('image/') && selected.type !== 'application/pdf') {
             toast.warning('Please upload an image (PNG, JPG, WebP) or PDF receipt.');
             return;
+        }
+
+        const isSameName = !!existingDbFileName && selected.name.toLowerCase() === existingDbFileName.toLowerCase();
+        setSameNameWarning(isSameName);
+        if (isSameName) {
+            toast.warning(`Note: Selected file '${selected.name}' has the same name as the existing document in DB.`);
         }
 
         setFile(selected);
@@ -187,6 +202,15 @@ export function UploadReceiptModal({
 
                     if (res.matchResult === 'matched') {
                         toast.success(`Receipt document inserted into Documents & PO #${po.po_number} marked as Paid!`);
+                        onMinimize?.({
+                            verificationId: res.verificationId!,
+                            poId: po.id,
+                            poNumber: po.po_number,
+                            status: 'matched',
+                            comparedFields: res.comparedFields,
+                            extractedJson: res.extractedJson,
+                            timestamp: Date.now(),
+                        });
                         onSuccess?.();
                         setTimeout(() => {
                             onClose();
@@ -198,7 +222,7 @@ export function UploadReceiptModal({
                             verificationId: res.verificationId!,
                             poId: po.id,
                             poNumber: po.po_number,
-                            status: res.matchResult as any,
+                            status: 'mismatched',
                             comparedFields: res.comparedFields,
                             extractedJson: res.extractedJson,
                             timestamp: Date.now(),
@@ -207,11 +231,13 @@ export function UploadReceiptModal({
                 } else {
                     toast.error(res.error || 'Verification process failed');
                     setVerificationState('upload');
+                    onMinimize?.(null);
                 }
             } catch (err: any) {
                 console.error('Error during OCR verification:', err);
                 toast.error(err?.message || 'Verification failed');
                 setVerificationState('upload');
+                onMinimize?.(null);
             } finally {
                 setIsUploading(false);
             }
@@ -246,6 +272,13 @@ export function UploadReceiptModal({
             if (res.success) {
                 toast.success(`Receipt recorded in Documents & PO #${po.po_number} marked as Paid!`, { id: toastId });
                 setVerificationState('forced');
+                onMinimize?.({
+                    verificationId: verificationId,
+                    poId: po.id,
+                    poNumber: po.po_number,
+                    status: 'forced',
+                    timestamp: Date.now(),
+                });
                 onSuccess?.();
                 setTimeout(() => {
                     onClose();
@@ -263,7 +296,7 @@ export function UploadReceiptModal({
 
     return (
         <div
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
             onClick={onClose}
         >
             <div
@@ -397,6 +430,16 @@ export function UploadReceiptModal({
                                 )}
                             </div>
 
+                            {/* Same filename warning alert if re-uploading same file */}
+                            {sameNameWarning && (
+                                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                                    <i className="fas fa-exclamation-triangle mt-0.5 shrink-0" />
+                                    <span>
+                                        This file has the same filename as the existing record in the database. Please ensure you are uploading the updated/corrected document.
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Submit Button */}
                             <div className="flex items-center justify-end gap-2.5 pt-2">
                                 <AppButton
@@ -415,7 +458,7 @@ export function UploadReceiptModal({
                                     onClick={handleSubmitUpload}
                                 >
                                     <i className="fas fa-microchip text-xs"></i>
-                                    <span>Run AI OCR Verification</span>
+                                    <span>{initialVerificationId || po.verification ? 'Retry Run AI OCR' : 'Run AI OCR Verification'}</span>
                                 </AppButton>
                             </div>
                         </div>
