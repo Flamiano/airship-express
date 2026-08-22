@@ -173,7 +173,7 @@ export default function ExecutiveChartModal({
 
     return (
         <div
-            className="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-200"
             onClick={onClose}
             data-lenis-prevent
         >

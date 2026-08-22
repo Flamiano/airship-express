@@ -1529,21 +1529,16 @@ export default function SortingPanel() {
                                             </button>
 
                                             <div className="flex items-center gap-1.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleGenerateCityBulkQr(city.city, city.parcels)}
+                                                <StatusBadge
+                                                    tone={city.hasBulkQr ? 'emerald' : 'neutral'}
+                                                    icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
+                                                    size="xs"
+                                                    interactive={!city.hasBulkQr}
                                                     disabled={generatingBulk || city.parcels.length === 0 || city.hasBulkQr}
-                                                    className="cursor-pointer disabled:cursor-not-allowed"
+                                                    onClick={() => handleGenerateCityBulkQr(city.city, city.parcels)}
                                                 >
-                                                    <StatusBadge
-                                                        tone={city.hasBulkQr ? 'emerald' : 'neutral'}
-                                                        icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
-                                                        size="xs"
-                                                        interactive={!city.hasBulkQr}
-                                                    >
-                                                        {city.hasBulkQr ? 'City QR Ready' : 'City Bulk QR'}
-                                                    </StatusBadge>
-                                                </button>
+                                                    {city.hasBulkQr ? 'City QR Ready' : 'City Bulk QR'}
+                                                </StatusBadge>
                                             </div>
                                         </div>
                                     </div>
@@ -1610,21 +1605,16 @@ export default function SortingPanel() {
                                                                 >
                                                                     View
                                                                 </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleGenerateCityBulkQr(city.city, city.parcels)}
+                                                                <StatusBadge
+                                                                    tone={city.hasBulkQr ? 'emerald' : 'neutral'}
+                                                                    icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
+                                                                    size="xs"
+                                                                    interactive={!city.hasBulkQr}
                                                                     disabled={generatingBulk || city.parcels.length === 0 || city.hasBulkQr}
-                                                                    className="cursor-pointer disabled:cursor-not-allowed"
+                                                                    onClick={() => handleGenerateCityBulkQr(city.city, city.parcels)}
                                                                 >
-                                                                    <StatusBadge
-                                                                        tone={city.hasBulkQr ? 'emerald' : 'neutral'}
-                                                                        icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
-                                                                        size="xs"
-                                                                        interactive={!city.hasBulkQr}
-                                                                    >
-                                                                        {city.hasBulkQr ? 'QR' : 'City QR'}
-                                                                    </StatusBadge>
-                                                                </button>
+                                                                    {city.hasBulkQr ? 'QR' : 'City QR'}
+                                                                </StatusBadge>
                                                                 {city.bulkQrCity && (
                                                                     <button
                                                                         type="button"
@@ -2025,7 +2015,7 @@ export default function SortingPanel() {
             {/* City Parcels Modal */}
             <Portal>
                 {showModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
                         <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white dark:bg-slate-900 shadow-2xl dark:shadow-black/70 border border-slate-200/80 dark:border-slate-800 animate-in zoom-in-95 slide-in-from-bottom-4 duration-200">
 
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 p-4 sm:px-6">
@@ -2172,7 +2162,7 @@ export default function SortingPanel() {
             {/* Courier Parcels Modal */}
             <Portal>
                 {showCourierModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 dark:bg-slate-950/70 p-4 backdrop-blur-md animate-in fade-in duration-200">
                         <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200/80 dark:border-slate-800 animate-in slide-in-from-bottom-4 duration-300 overflow-hidden">
 
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
@@ -2322,7 +2312,7 @@ export default function SortingPanel() {
             {/* View Parcel Modal */}
             <Portal>
                 {showViewModal && viewParcel && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
                         <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white dark:bg-slate-900 shadow-2xl dark:shadow-black/70 border border-slate-200/80 dark:border-slate-800 animate-in zoom-in-95 slide-in-from-bottom-4 duration-200">
 
                             {/* Header */}

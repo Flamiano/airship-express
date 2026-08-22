@@ -13,7 +13,8 @@ import {
     splitRouteByProgress,
     GeoCoordinate,
 } from '../../utils/geo-locations';
-import { getStatusBadge, getStatusLabel } from '../../utils/helpers';
+import { getStatusBadge, getStatusLabel, getStatusTone } from '../../utils/helpers';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
 // Dynamically import ParcelTrackingMap with SSR disabled to prevent browser API window/Leaflet errors
 const DynamicParcelTrackingMap = dynamic(
@@ -133,16 +134,19 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
 
                 <div className="flex items-center gap-2">
                     {/* Courier Badge */}
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                         <i className="fas fa-truck text-[11px] text-pink-500"></i>
                         <span>{courierName}</span>
                     </span>
 
                     {/* Status Badge */}
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${getStatusBadge(parcel.status)}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${isDelivered ? 'bg-emerald-500' : 'bg-pink-500 animate-pulse'}`}></span>
+                    <StatusBadge
+                        tone={getStatusTone(parcel.status)}
+                        size="xs"
+                        dot
+                    >
                         {getStatusLabel(parcel.status)}
-                    </span>
+                    </StatusBadge>
                 </div>
             </div>
 

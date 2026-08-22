@@ -334,7 +334,7 @@ function ManualEntryModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 transition-all animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl dark:shadow-black/70 border border-slate-100 dark:border-slate-800 transform transition-all max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
                     <div>

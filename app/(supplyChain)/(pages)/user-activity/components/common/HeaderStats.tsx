@@ -22,8 +22,8 @@ export const HeaderStats: React.FC<HeaderStatsProps> = ({
         <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-5">
             <div className="flex items-start gap-4 min-w-0">
                 {/* Main Icon Box */}
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg sm:text-xl shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] shrink-0 mt-0.5">
-                    <i className="fas fa-shield-halved" />
+                <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
+                    <i className="fa-solid fa-laptop-code" />
                 </div>
 
                 {/* Text Content & Stat Badges */}

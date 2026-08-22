@@ -510,14 +510,14 @@ export default function InventoryClient() {
             <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-2xl bg-pink-50 border border-pink-100 flex items-center justify-center text-pink-600 text-xl shadow-2xs shrink-0">
-                            <i className="fas fa-warehouse"></i>
+                        <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0">
+                            <i className="fa-solid fa-warehouse"></i>
                         </div>
                         <div>
-                            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                                 Warehouse Inventory
                             </h1>
-                            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                                 Manage warehouse supplies, equipment, parcels, and assets
                             </p>
                         </div>

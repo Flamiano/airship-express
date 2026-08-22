@@ -89,7 +89,7 @@ export default function ManualEntryModal() {
         <div
             id="manualEntryModal"
             ref={modalRef}
-            className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200 hidden"
+            className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200 hidden"
         >
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/60 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
 

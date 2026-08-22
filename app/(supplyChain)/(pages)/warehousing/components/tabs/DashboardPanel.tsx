@@ -729,23 +729,28 @@ export default function DashboardPanel() {
         <div data-panel="dashboard" className="p-4 sm:p-8 space-y-6 sm:space-y-8 mx-auto ">
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-[11px] font-semibold border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] transition-all">
-                            <i className="fas fa-warehouse text-slate-400 dark:text-slate-400 text-[10px]" />
-                            <span>Airship Express</span>
-                            <span className="text-slate-300 dark:text-slate-600">•</span>
-                            <span className="text-slate-500 dark:text-slate-400">Warehouse</span>
-                        </div>
+                <div className="flex items-start gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
+                        <i className="fa-solid fa-warehouse" />
                     </div>
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-[11px] font-semibold border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] transition-all">
+                                <i className="fas fa-warehouse text-slate-400 dark:text-slate-400 text-[10px]" />
+                                <span>Airship Express</span>
+                                <span className="text-slate-300 dark:text-slate-600">•</span>
+                                <span className="text-slate-500 dark:text-slate-400">Warehouse</span>
+                            </div>
+                        </div>
 
-                    <div>
-                        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                            Dashboard
-                        </h1>
-                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                            Real-time warehouse operations overview and metrics
-                        </p>
+                        <div>
+                            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                                Warehouse Operations
+                            </h1>
+                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                                Real-time warehouse operations overview and metrics
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -1083,7 +1088,7 @@ export default function DashboardPanel() {
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
                         {/* Backdrop */}
                         <div
-                            className="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+                            className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
                             onClick={() => setSelectedForecast(null)}
                         />
 

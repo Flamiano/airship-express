@@ -1131,11 +1131,7 @@ export default function Documents() {
             <div className="p-6 space-y-6 bgCard dark:bg-ink/90">
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-ink/20 pb-5">
                     <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl 
-                                    bg-pink-50 dark:bg-pink-950/30 
-                                    border border-pink-100 dark:border-pink-800/30 
-                                    flex items-center justify-center text-pink-600 dark:text-pink-400 
-                                    text-lg sm:text-xl shadow-2xs shrink-0 mt-0.5">
+                        <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
                             <i className="fa-solid fa-folder-tree"></i>
                         </div>
 
@@ -1952,7 +1948,7 @@ export default function Documents() {
                 </div>
 
                 {isEditModalOpen && editingDoc && (
-                    <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/60 w-full max-w-3xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
 
                             {/* Modal Header */}
@@ -2195,7 +2191,7 @@ export default function Documents() {
                 )}
 
                 {isPreviewModalOpen && selectedDoc && (
-                    <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/60 w-full max-w-6xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
 
                             {/* Modal Header */}
@@ -2389,7 +2385,7 @@ export default function Documents() {
                 )}
 
                 {isUploadModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
 
                             {/* Modal Header */}

@@ -2159,7 +2159,7 @@ export default function ExecutiveCharts() {
                         {/* AI Summary Modal */}
                         {selectedInsight && (
                             <div
-                                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm"
+                                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md"
                                 onClick={() => setSelectedInsight(null)}
                             >
                                 <div

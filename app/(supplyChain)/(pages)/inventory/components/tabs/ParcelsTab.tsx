@@ -4,12 +4,13 @@
 
 import { useState } from 'react';
 import { Parcel, GroupedParcels } from '../../types';
-import { getStatusBadge, getStatusLabel } from '../../utils/helpers';
+import { getStatusBadge, getStatusLabel, getStatusTone } from '../../utils/helpers';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
 import { ParcelTrackingCard } from '../tracking/ParcelTrackingCard';
 
@@ -337,9 +338,9 @@ export function ParcelsTab({
                                                         {parcel.courier || 'N/A'}
                                                     </td>
                                                     <td data-label="Status" className="whitespace-nowrap">
-                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusBadge(parcel.status)}`}>
+                                                        <StatusBadge tone={getStatusTone(parcel.status)} size="xs" dot>
                                                             {getStatusLabel(parcel.status)}
-                                                        </span>
+                                                        </StatusBadge>
                                                     </td>
                                                     <td data-label="Time" className="text-slate-400 dark:text-slate-500 text-[11px] font-mono whitespace-nowrap">
                                                         {new Date(parcel.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -446,14 +447,12 @@ export function ParcelsTab({
                                             <span className={`inline-block w-1.5 h-1.5 rounded-full ${isDelivered ? 'bg-emerald-500 animate-pulse' : 'bg-pink-500 animate-pulse'}`} />
                                             {isDelivered ? 'Delivery Complete' : 'Overall Delivery Progress'}
                                         </span>
-                                        <span
-                                            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] tracking-tight border transition-colors ${isDelivered
-                                                ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200/80 dark:border-emerald-800/60'
-                                                : 'text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 border-pink-200/70 dark:border-pink-900/40'
-                                                }`}
+                                        <StatusBadge
+                                            tone={isDelivered ? "emerald" : "pink"}
+                                            size="xs"
                                         >
                                             {isDelivered ? '100%' : `${Math.round(progressPercent)}%`}
-                                        </span>
+                                        </StatusBadge>
                                     </div>
 
                                     {/* Clean Progress Bar with Pulse Glow */}
@@ -469,7 +468,7 @@ export function ParcelsTab({
 
                                     {/* Delivery Complete Banner */}
                                     {isDelivered && (
-                                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+                                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-300/80 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-xs font-semibold shadow-[0_1px_3px_rgba(16,185,129,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_6px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.1)]">
                                             <i className="fas fa-check-circle text-sm text-emerald-600 dark:text-emerald-400"></i>
                                             <span>Parcel successfully delivered</span>
                                         </div>
@@ -495,9 +494,13 @@ export function ParcelsTab({
                                         <div className="p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/60 space-y-1">
                                             <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">Status</p>
                                             <div>
-                                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${getStatusBadge(selectedParcel.status)}`}>
+                                                <StatusBadge
+                                                    tone={getStatusTone(selectedParcel.status)}
+                                                    size="xs"
+                                                    dot
+                                                >
                                                     {getStatusLabel(selectedParcel.status)}
-                                                </span>
+                                                </StatusBadge>
                                             </div>
                                         </div>
                                     </div>
@@ -533,8 +536,8 @@ export function ParcelsTab({
                                                     <div className="relative z-10 flex-shrink-0">
                                                         <div className={`
                                         w-10 h-10 rounded-full flex items-center justify-center text-sm transition-all duration-300
-                                        ${isCompleted || isLastDelivered ? `bg-emerald-500 dark:bg-emerald-600 text-white ring-4 ring-white dark:ring-slate-900` : ''}
-                                        ${isCurrent ? `bg-pink-500 dark:bg-pink-600 text-white ring-4 ring-pink-50 dark:ring-pink-950/50` : ''}
+                                        ${isCompleted || isLastDelivered ? `bg-emerald-500 dark:bg-emerald-600 text-white ring-4 ring-white dark:ring-slate-900 shadow-[0_2px_8px_rgba(16,185,129,0.35),inset_0_1px_0_rgba(255,255,255,0.4)]` : ''}
+                                        ${isCurrent ? `bg-gradient-to-tr from-pink-600 to-rose-500 text-white ring-4 ring-pink-50 dark:ring-pink-950/50 shadow-[0_2px_8px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)]` : ''}
                                         ${isPending ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700/80 ring-4 ring-white dark:ring-slate-900' : ''}
                                     `}>
                                                             <i className={`fas ${item.icon}`}></i>
@@ -571,24 +574,21 @@ export function ParcelsTab({
                                                                 )}
 
                                                                 {isCurrent && (
-                                                                    <span className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-                                                                        <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></span>
-                                                                        <span>Current</span>
-                                                                    </span>
+                                                                    <StatusBadge tone="pink" size="xs" dot>
+                                                                        Current
+                                                                    </StatusBadge>
                                                                 )}
 
                                                                 {isLastDelivered && (
-                                                                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-                                                                        <i className="fas fa-check-circle text-[10px]"></i>
-                                                                        <span>Delivered</span>
-                                                                    </span>
+                                                                    <StatusBadge tone="emerald" size="xs" icon="fas fa-check-circle">
+                                                                        Delivered
+                                                                    </StatusBadge>
                                                                 )}
 
                                                                 {isPending && (
-                                                                    <span className="text-[11px] text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/30 px-2.5 py-0.5 rounded-full border border-slate-200/50 dark:border-slate-800/80 flex items-center gap-1">
-                                                                        <i className="far fa-clock text-[10px]"></i>
-                                                                        <span>Pending</span>
-                                                                    </span>
+                                                                    <StatusBadge tone="neutral" size="xs" icon="far fa-clock">
+                                                                        Pending
+                                                                    </StatusBadge>
                                                                 )}
                                                             </div>
                                                         </div>

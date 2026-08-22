@@ -493,12 +493,8 @@ export default function Forecast() {
                 {/* Standard Page Header */}
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-ink/20 pb-5">
                     <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl 
-                                    bg-pink-50 dark:bg-pink-950/30 
-                                    border border-pink-100 dark:border-pink-800/30 
-                                    flex items-center justify-center text-pink-600 dark:text-pink-400 
-                                    text-lg sm:text-xl shadow-2xs shrink-0 mt-0.5">
-                            <i className="fas fa-chart-line" />
+                        <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
+                            <i className="fa-solid fa-wand-magic-sparkles" />
                         </div>
 
                         <div className="w-full min-w-0">
@@ -939,7 +935,7 @@ export default function Forecast() {
                 {/* Chart Deep Dive Inspection Modal */}
                 {activeChartModal.isOpen && forecastData && (
                     <div 
-                        className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+                        className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
                         onClick={(e) => {
                             if (e.target === e.currentTarget) setActiveChartModal(prev => ({ ...prev, isOpen: false }));
                         }}
@@ -1245,7 +1241,7 @@ export default function Forecast() {
                 {/* AI Interpretation Modal */}
                 {isAiModalOpen && (
                     <div 
-                        className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+                        className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
                         onClick={(e) => {
                             if (e.target === e.currentTarget) setIsAiModalOpen(false);
                         }}

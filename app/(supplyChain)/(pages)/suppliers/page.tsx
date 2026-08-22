@@ -809,12 +809,8 @@ export default function Suppliers() {
                 <div className="p-6 space-y-6 fade-in">
                     {/* header */}
                     <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl 
-                    bg-pink-50 dark:bg-pink-950/30 
-                    border border-pink-100 dark:border-pink-800/30 
-                    flex items-center justify-center text-pink-600 dark:text-pink-400 
-                    text-lg sm:text-xl shadow-2xs shrink-0 mt-0.5">
-                            <i className="fas fa-handshake"></i>
+                        <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
+                            <i className="fa-solid fa-truck-ramp-box"></i>
                         </div>
 
                         <div className="w-full min-w-0">
@@ -1389,7 +1385,7 @@ export default function Suppliers() {
 
                 {/* view supplier modal */}
                 {showModal && selectedSupplier && (
-                    <div className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/70 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                             <div className="px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80 flex items-start justify-between bg-slate-50/50 dark:bg-slate-900/50">
                                 <div>
@@ -1589,7 +1585,7 @@ export default function Suppliers() {
 
                 {/* add supplier modal */}
                 {showNewSupplierModal && (
-                    <div className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/60 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                             <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80">
                                 <div className="flex items-center gap-3">
@@ -1797,7 +1793,7 @@ export default function Suppliers() {
 
                 {/* edit supplier modal */}
                 {showEditSupplierModal && editingSupplier && (
-                    <div className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/60 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                             <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80">
                                 <div className="flex items-center gap-3">
@@ -2023,7 +2019,7 @@ export default function Suppliers() {
 
                 {/* activity chart detail modal */}
                 {showActivityDetailModal && selectedChartData.supplierName && (
-                    <div className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/70 w-full max-w-md max-h-[80vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                             <div className="px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
                                 <div>
@@ -2112,7 +2108,7 @@ export default function Suppliers() {
 
                 {/* category detail modal */}
                 {showCategoryDetailModal && selectedChartData.category && (
-                    <div className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/70 w-full max-w-lg max-h-[80vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                             <div className="px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
                                 <div>
@@ -2219,7 +2215,7 @@ export default function Suppliers() {
 
                 {/* New Purchase Order Detail Modal */}
                 {showPurchaseOrderModal && selectedPurchaseOrder && (
-                    <div className="fixed inset-0 z-[90] bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/70 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                             <div className="px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80 flex items-start justify-between bg-slate-50/50 dark:bg-slate-900/50">
                                 <div>

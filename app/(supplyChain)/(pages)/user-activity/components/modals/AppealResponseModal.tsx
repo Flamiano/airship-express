@@ -27,7 +27,7 @@ export const AppealResponseModal: React.FC<AppealResponseModalProps> = ({
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-sm overflow-hidden">
+            <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md overflow-hidden">
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
