@@ -9,9 +9,11 @@ import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
-import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
 import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
 import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface Document {
     id: string;
@@ -1538,7 +1540,7 @@ export default function Documents() {
                                         <th className="py-3 px-4">Size</th>
                                         <th className="py-3 px-4">Supplier</th>
                                         <th className="py-3 px-4">Date Uploaded</th>
-                                        <th className="text-right! py-3 px-4">Actions</th>
+                                        <th className="text-right! py-3 px-4 w-[170px] min-w-[170px]">Actions</th>
                                     </tr>
                                 </thead>
 
@@ -1624,39 +1626,32 @@ export default function Documents() {
                                                     <td data-label="Date Uploaded" className="py-3 px-4 text-muted whitespace-nowrap">
                                                         {new Date(doc.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                                     </td>
-                                                    <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap">
-                                                        <div className="inline-flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
-                                                            <button
-                                                                onClick={() => handleViewDocument(doc)}
-                                                                className="px-2 py-1 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 dark:hover:border-pink-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
+                                                    <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[170px] min-w-[170px]">
+                                                        <div className="flex items-center justify-end gap-2.5">
+                                                            <CrudActionButton
+                                                                action="view"
+                                                                ariaLabel={`View ${doc.title}`}
                                                                 title="View File"
-                                                            >
-                                                                <i className="fas fa-eye text-[11px]"></i>
-                                                                <span className="hidden sm:inline">View</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleEditDocument(doc)}
-                                                                className="px-2 py-1 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 dark:hover:border-purple-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
+                                                                onClick={() => handleViewDocument(doc)}
+                                                            />
+                                                            <CrudActionButton
+                                                                action="edit"
+                                                                ariaLabel={`Edit metadata for ${doc.title}`}
                                                                 title="Edit Metadata"
-                                                            >
-                                                                <i className="fas fa-pen-to-square text-[11px]"></i>
-                                                                <span className="hidden sm:inline">Edit</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={() => downloadFile(doc)}
-                                                                className="px-2 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
+                                                                onClick={() => handleEditDocument(doc)}
+                                                            />
+                                                            <CrudActionButton
+                                                                action="download"
+                                                                ariaLabel={`Download ${doc.title}`}
                                                                 title="Download File"
-                                                            >
-                                                                <i className="fas fa-download text-[11px]"></i>
-                                                                <span className="hidden sm:inline">Download</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDelete(doc)}
-                                                                className="px-2 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 dark:hover:border-rose-700 rounded-lg shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer flex items-center gap-1"
+                                                                onClick={() => downloadFile(doc)}
+                                                            />
+                                                            <CrudActionButton
+                                                                action="delete"
+                                                                ariaLabel={`Delete ${doc.title}`}
                                                                 title="Delete File"
-                                                            >
-                                                                <i className="fas fa-trash text-[11px]"></i>
-                                                            </button>
+                                                                onClick={() => handleDelete(doc)}
+                                                            />
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1964,15 +1959,15 @@ export default function Documents() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => { setIsEditModalOpen(false); setEditingDoc(null); setEditPreviewUrl(null); }}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                    aria-label="Close modal"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             {/* Modal Body / Form */}
@@ -2022,13 +2017,15 @@ export default function Documents() {
                                                 <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate">{editingDoc.file_name}</div>
                                                 <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{formatFileSize(editingDoc.file_size)}</div>
                                             </div>
-                                            <button
+                                            <AppButton
                                                 type="button"
+                                                variant="pink"
+                                                size="xs"
                                                 onClick={() => downloadFile(editingDoc)}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
                                             >
-                                                <i className="fas fa-download text-[10px]"></i> Download
-                                            </button>
+                                                <i className="fas fa-download text-[10px]"></i>
+                                                <span>Download</span>
+                                            </AppButton>
                                         </div>
                                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center">
                                             <i className="fas fa-info-circle mr-1.5 text-slate-400"></i>
@@ -2162,20 +2159,22 @@ export default function Documents() {
 
                                 {/* Modal Actions */}
                                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="md"
                                         onClick={() => { setIsEditModalOpen(false); setEditingDoc(null); setEditPreviewUrl(null); }}
-                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                     >
                                         Cancel
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="submit"
-                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-all shadow-xs shadow-pink-500/20 cursor-pointer"
+                                        variant="primary"
+                                        size="md"
                                     >
                                         <i className="fas fa-save text-xs"></i>
                                         <span>Update Document</span>
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </form>
 
@@ -2197,14 +2196,15 @@ export default function Documents() {
                                         <span className="font-mono">{selectedDoc.id}</span> · {selectedDoc.document_type}
                                     </p>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => { setIsPreviewModalOpen(false); setSelectedDoc(null); setPreviewUrl(null); }}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <i className="fas fa-times text-base"></i>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             {/* Modal Body */}
@@ -2231,32 +2231,34 @@ export default function Documents() {
                                                         selectedDoc.file_type.toLowerCase().includes('jpeg') ||
                                                         selectedDoc.file_type.toLowerCase().includes('png') ||
                                                         selectedDoc.file_type.toLowerCase().includes('heic') ? (
-                                                        <img
-                                                            src={previewUrl}
-                                                            alt={selectedDoc.title}
-                                                            className="max-w-full max-h-[500px] object-contain rounded-xl shadow-xs"
-                                                        />
-                                                    ) : (
-                                                        <div className="text-center py-12">
-                                                            <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3">
-                                                                <i className={`fas ${getFileIcon(selectedDoc.file_type)} text-3xl`}></i>
+                                                            <img
+                                                                src={previewUrl}
+                                                                alt={selectedDoc.title}
+                                                                className="max-w-full max-h-[500px] object-contain rounded-xl shadow-xs"
+                                                            />
+                                                        ) : (
+                                                            <div className="text-center py-12">
+                                                                <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3">
+                                                                    <i className={`fas ${getFileIcon(selectedDoc.file_type)} text-3xl`}></i>
+                                                                </div>
+                                                                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-xs truncate mx-auto">
+                                                                    {selectedDoc.file_name}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                                                    {formatFileSize(selectedDoc.file_size)}
+                                                                </p>
+                                                                <AppButton
+                                                                    type="button"
+                                                                    variant="primary"
+                                                                    size="sm"
+                                                                    onClick={() => downloadFile(selectedDoc)}
+                                                                    className="mt-4"
+                                                                >
+                                                                    <i className="fas fa-download text-xs"></i>
+                                                                    <span>Download File</span>
+                                                                </AppButton>
                                                             </div>
-                                                            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-xs truncate mx-auto">
-                                                                {selectedDoc.file_name}
-                                                            </p>
-                                                            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                                                {formatFileSize(selectedDoc.file_size)}
-                                                            </p>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => downloadFile(selectedDoc)}
-                                                                className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
-                                                            >
-                                                                <i className="fas fa-download"></i>
-                                                                <span>Download File</span>
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                        )}
                                                 </div>
                                             ) : (
                                                 <div className="text-center py-12 text-slate-400 dark:text-slate-500">
@@ -2344,22 +2346,26 @@ export default function Documents() {
 
                                         {/* Action Buttons Footer */}
                                         <div className="flex gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800">
-                                            <button
+                                            <AppButton
                                                 type="button"
-                                                className="flex-1 py-2 px-3 text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 rounded-xl transition-all shadow-xs shadow-pink-500/20 cursor-pointer inline-flex items-center justify-center gap-1.5"
+                                                variant="primary"
+                                                size="md"
+                                                className="flex-1"
                                                 onClick={() => downloadFile(selectedDoc)}
                                             >
-                                                <i className="fas fa-download"></i>
+                                                <i className="fas fa-download text-xs"></i>
                                                 <span>Download</span>
-                                            </button>
-                                            <button
+                                            </AppButton>
+                                            <AppButton
                                                 type="button"
-                                                className="flex-1 py-2 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/70 dark:border-slate-700/60 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+                                                variant="neutral"
+                                                size="md"
+                                                className="flex-1"
                                                 onClick={() => window.print()}
                                             >
-                                                <i className="fas fa-print"></i>
+                                                <i className="fas fa-print text-xs"></i>
                                                 <span>Print</span>
-                                            </button>
+                                            </AppButton>
                                         </div>
                                     </div>
 
@@ -2389,17 +2395,19 @@ export default function Documents() {
                                         </p>
                                     </div>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => {
                                         setIsUploadModalOpen(false);
                                         setSelectedFiles([]);
                                         setUploadProgress(0);
                                     }}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                    aria-label="Close modal"
                                 >
-                                    <i className="fas fa-times text-sm"></i>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             {/* Form Body */}
@@ -2451,13 +2459,15 @@ export default function Documents() {
                                                             <span className="truncate max-w-[220px] text-slate-700 dark:text-slate-200 font-medium">{file.name}</span>
                                                             <span className="text-[10px] text-slate-400">({formatFileSize(file.size)})</span>
                                                         </span>
-                                                        <button
+                                                        <AppButton
                                                             type="button"
-                                                            onClick={(e) => { e.stopPropagation(); removeFile(index); }}
-                                                            className="text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 p-1 transition-colors cursor-pointer"
+                                                            variant="neutral"
+                                                            size="icon-xs"
+                                                            onClick={(e) => { e?.stopPropagation(); removeFile(index); }}
+                                                            aria-label="Remove file"
                                                         >
-                                                            <i className="fas fa-times"></i>
-                                                        </button>
+                                                            <i className="fas fa-times text-[10px]"></i>
+                                                        </AppButton>
                                                     </div>
                                                 ))}
                                             </div>
@@ -2538,34 +2548,28 @@ export default function Documents() {
 
                                 {/* Modal Actions */}
                                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80 mt-2">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="md"
                                         onClick={() => {
                                             setIsUploadModalOpen(false);
                                             setSelectedFiles([]);
                                             setUploadProgress(0);
                                         }}
-                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                     >
                                         Cancel
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="submit"
+                                        variant="primary"
+                                        size="md"
                                         disabled={isUploading || selectedFiles.length === 0}
-                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-all shadow-xs shadow-pink-500/20 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                                        loading={isUploading}
                                     >
-                                        {isUploading ? (
-                                            <>
-                                                <i className="fas fa-spinner fa-spin text-xs"></i>
-                                                <span>Uploading...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="fas fa-upload text-xs"></i>
-                                                <span>Upload {selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}</span>
-                                            </>
-                                        )}
-                                    </button>
+                                        <i className="fas fa-upload text-xs"></i>
+                                        <span>Upload {selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}</span>
+                                    </AppButton>
                                 </div>
                             </form>
                         </div>

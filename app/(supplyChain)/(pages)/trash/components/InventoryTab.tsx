@@ -9,6 +9,7 @@ import { sanitizeSearch, sanitizeText } from '@/app/(supplyChain)/components/glo
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 
 interface ArchivedItem {
     id: string;
@@ -448,7 +449,7 @@ export function InventoryTab() {
                                 <th>Archived By</th>
                                 <th>Archived At</th>
                                 <th>Reason</th>
-                                <th className="text-right">Actions</th>
+                                <th className="text-right! w-[130px] min-w-[130px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -457,7 +458,7 @@ export function InventoryTab() {
                                     <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-1">
-                                                <i className="fas fa-boxes-stacked text-xl"></i>
+                                                <i className="fas fa-trash-can text-xl"></i>
                                             </div>
                                             <p className="font-semibold text-slate-700 dark:text-slate-300">No archived items found</p>
                                             <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your filters or search terms</p>
@@ -512,26 +513,22 @@ export function InventoryTab() {
                                             <td className="py-3 px-4 text-slate-600 dark:text-slate-300 max-w-[150px] truncate" title={item.archived_reason || ''}>
                                                 {item.archived_reason || '—'}
                                             </td>
-                                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all duration-200 font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer hover:scale-105"
-                                                        onClick={() => handleRestoreItem(item.id, item.item_name)}
-                                                        disabled={itemsLoading}
+                                            <td className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                <div className="flex items-center justify-end gap-2.5">
+                                                    <CrudActionButton
+                                                        action="restore"
+                                                        ariaLabel={`Restore item ${item.item_name}`}
                                                         title="Restore Item"
-                                                    >
-                                                        <i className="fas fa-undo text-[10px]"></i>
-                                                        <span>Restore</span>
-                                                    </button>
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all duration-200 font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer hover:scale-105"
-                                                        onClick={() => handleDeleteItemPermanently(item.id, item.item_name)}
                                                         disabled={itemsLoading}
+                                                        onClick={() => handleRestoreItem(item.id, item.item_name)}
+                                                    />
+                                                    <CrudActionButton
+                                                        action="delete"
+                                                        ariaLabel={`Delete item ${item.item_name} permanently`}
                                                         title="Delete Permanently"
-                                                    >
-                                                        <i className="fas fa-trash-can text-[10px]"></i>
-                                                        <span>Delete</span>
-                                                    </button>
+                                                        disabled={itemsLoading}
+                                                        onClick={() => handleDeleteItemPermanently(item.id, item.item_name)}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>

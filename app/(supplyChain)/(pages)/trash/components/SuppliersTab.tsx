@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText } from '@/app/(supplyChain)/components/glo
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 
 interface ArchivedSupplier {
     id: number;
@@ -495,7 +496,7 @@ export function SuppliersTab() {
                                 <th>Location</th>
                                 <th>Deleted By</th>
                                 <th>Deleted At</th>
-                                <th className="text-right">Actions</th>
+                                <th className="text-right! w-[130px] min-w-[130px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -504,7 +505,7 @@ export function SuppliersTab() {
                                     <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-1">
-                                                <i className="fas fa-handshake text-xl"></i>
+                                                <i className="fas fa-trash-can text-xl"></i>
                                             </div>
                                             <p className="font-semibold text-slate-700 dark:text-slate-300">No archived suppliers found</p>
                                             <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your filters or search terms</p>
@@ -559,26 +560,22 @@ export function SuppliersTab() {
                                             <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">
                                                 {formatDate(supplier.deleted_at)}
                                             </td>
-                                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
-                                                        onClick={() => handleRestoreSupplier(supplier)}
-                                                        disabled={supplierLoading}
+                                            <td className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                <div className="flex items-center justify-end gap-2.5">
+                                                    <CrudActionButton
+                                                        action="restore"
+                                                        ariaLabel={`Restore supplier ${supplier.name}`}
                                                         title="Restore Supplier"
-                                                    >
-                                                        <i className="fas fa-undo text-[10px]"></i>
-                                                        <span>Restore</span>
-                                                    </button>
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
-                                                        onClick={() => handleDeleteSupplierPermanently(supplier)}
                                                         disabled={supplierLoading}
+                                                        onClick={() => handleRestoreSupplier(supplier)}
+                                                    />
+                                                    <CrudActionButton
+                                                        action="delete"
+                                                        ariaLabel={`Delete supplier ${supplier.name} permanently`}
                                                         title="Delete Permanently"
-                                                    >
-                                                        <i className="fas fa-trash-can text-[10px]"></i>
-                                                        <span>Delete</span>
-                                                    </button>
+                                                        disabled={supplierLoading}
+                                                        onClick={() => handleDeleteSupplierPermanently(supplier)}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>

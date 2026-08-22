@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { InventoryItem } from '../../types';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface StockOutModalProps {
     isOpen: boolean;
@@ -74,13 +75,16 @@ export function StockOutModal({
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Reduce stock level for this item</p>
                         </div>
                     </div>
-                    <button
+                    <AppButton
+                        type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-all flex items-center justify-center"
                         disabled={loading}
+                        aria-label="Close modal"
                     >
-                        <i className="fas fa-times text-sm"></i>
-                    </button>
+                        <i className="fas fa-times text-xs"></i>
+                    </AppButton>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -182,26 +186,26 @@ export function StockOutModal({
                         />
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-ink/20">
-                        <button
+                    <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-ink/20">
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="md"
                             onClick={onClose}
-                            className="px-4 py-2 text-xs font-semibold bg-white dark:bg-ink border border-slate-200 dark:border-ink/30 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:border-slate-300 dark:hover:border-ink/40 transition-all active:scale-[0.98]"
                             disabled={loading}
                         >
                             Cancel
-                        </button>
-                        <button
+                        </AppButton>
+                        <AppButton
                             type="submit"
+                            variant="danger"
+                            size="md"
                             disabled={loading}
-                            className="px-4 py-2 text-xs font-semibold bg-orange-600 dark:bg-orange-600 hover:bg-orange-500 dark:hover:bg-orange-500 text-white rounded-xl transition-all shadow-md shadow-orange-500/20 active:scale-[0.98] flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                            loading={loading}
                         >
-                            {loading ? (
-                                <><i className="fas fa-spinner fa-spin w-3.5 h-3.5"></i> Removing...</>
-                            ) : (
-                                <><i className="fas fa-check w-3.5 h-3.5"></i> Remove Stock</>
-                            )}
-                        </button>
+                            {!loading && <i className="fas fa-check text-xs"></i>}
+                            <span>Remove Stock</span>
+                        </AppButton>
                     </div>
                 </form>
             </div>

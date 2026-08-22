@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface ConfirmOptions {
     title?: string;
@@ -110,27 +111,22 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                         </div>
 
                         <div className="flex gap-3">
-                            <button
+                            <AppButton
+                                variant="neutral"
+                                size="md"
+                                className="flex-1"
                                 onClick={handleCancel}
-                                className="flex-1 px-4 py-2.5 rounded-xl 
-                                border border-slate-200 dark:border-ink/30 
-                                text-slate-700 dark:text-slate-300 
-                                font-semibold text-sm 
-                                hover:bg-slate-100 dark:hover:bg-slate-800/50 
-                                hover:border-slate-300 dark:hover:border-slate-700/50 
-                                transition-all active:scale-[0.98]"
                             >
                                 {cancelText}
-                            </button>
-                            <button
+                            </AppButton>
+                            <AppButton
+                                variant={options.confirmVariant === 'danger' ? 'danger' : options.confirmVariant === 'success' ? 'success' : 'primary'}
+                                size="md"
+                                className="flex-1"
                                 onClick={handleConfirm}
-                                className={`flex-1 px-4 py-2.5 rounded-xl 
-                                text-white font-semibold text-sm 
-                                transition-all shadow-sm active:scale-[0.98] 
-                                ${colors.button}`}
                             >
                                 {confirmText}
-                            </button>
+                            </AppButton>
                         </div>
                     </div>
                 </div>

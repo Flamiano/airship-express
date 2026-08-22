@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { PurchaseRequest, PurchaseOrder } from "@/app/(supplyChain)/(pages)/procurement/types/index";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface ApprovedRequestsModalProps {
     isOpen: boolean;
@@ -100,13 +101,15 @@ export function ApprovedRequestsModal({
                             </p>
                         </div>
                     </div>
-                    <button
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center cursor-pointer"
+                        aria-label="Close modal"
                     >
                         <i className="fas fa-times text-xs" />
-                    </button>
+                    </AppButton>
                 </div>
 
                 {/* Search */}
@@ -174,17 +177,18 @@ export function ApprovedRequestsModal({
                                 </div>
 
                                 <div className="shrink-0 flex items-center justify-end">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="success"
+                                        size="sm"
                                         onClick={() => {
                                             onSelectRequest(req);
                                             onClose();
                                         }}
-                                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-xs shadow-emerald-600/30 active:scale-[0.98] cursor-pointer"
                                     >
                                         <i className="fas fa-file-invoice text-xs" />
                                         <span>Create PO</span>
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
                         ))
@@ -194,13 +198,14 @@ export function ApprovedRequestsModal({
                 {/* Footer */}
                 <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50 text-xs text-slate-500">
                     <span>{filtered.length} request{filtered.length !== 1 ? 's' : ''} available</span>
-                    <button
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="xs"
                         onClick={onClose}
-                        className="px-4 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                         Close
-                    </button>
+                    </AppButton>
                 </div>
             </div>
         </div>

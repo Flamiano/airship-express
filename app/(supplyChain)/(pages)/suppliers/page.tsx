@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { sanitizeNumber, sanitizeText } from "@/app/(supplyChain)/components/global/sanitize";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 let isRegistered = false;
 
@@ -1086,7 +1088,7 @@ export default function Suppliers() {
                                                 <th className="py-3.5 px-4">Contact</th>
                                                 <th className="py-3.5 px-4">Location</th>
                                                 <th className="py-3.5 px-4">Status</th>
-                                                <th className="py-3.5 px-4 text-right!">Actions</th>
+                                                <th className="py-3.5 px-4 text-right! w-[150px] min-w-[150px]">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -1133,32 +1135,29 @@ export default function Suppliers() {
                                                             <span>{supplier.is_active ? 'Active' : 'Inactive'}</span>
                                                         </button>
                                                     </td>
-                                                    <td data-label="Action" className="py-3 px-4 text-right">
-                                                        <div className="flex items-center justify-end gap-1.5">
-                                                            <button
-                                                                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
+                                                    <td data-label="Action" className="py-3 px-4 text-right w-[150px] min-w-[150px]">
+                                                        <div className="flex items-center justify-end gap-2.5">
+                                                            <CrudActionButton
+                                                                action="view"
+                                                                ariaLabel={`View ${supplier.name}`}
                                                                 onClick={() => {
                                                                     setSelectedSupplier(supplier);
                                                                     setShowModal(true);
                                                                 }}
-                                                            >
-                                                                View
-                                                            </button>
-                                                            <button
-                                                                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
+                                                            />
+                                                            <CrudActionButton
+                                                                action="edit"
+                                                                ariaLabel={`Edit ${supplier.name}`}
                                                                 onClick={() => {
                                                                     setEditingSupplier({ ...supplier });
                                                                     setShowEditSupplierModal(true);
                                                                 }}
-                                                            >
-                                                                Edit
-                                                            </button>
-                                                            <button
-                                                                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
+                                                            />
+                                                            <CrudActionButton
+                                                                action="delete"
+                                                                ariaLabel={`Delete ${supplier.name}`}
                                                                 onClick={() => handleDeleteSupplier(supplier.id, supplier.name)}
-                                                            >
-                                                                Delete
-                                                            </button>
+                                                            />
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1272,7 +1271,7 @@ export default function Suppliers() {
                                             <th className="py-3.5 px-4">Date</th>
                                             <th className="py-3.5 px-4">Status</th>
                                             <th className="py-3.5 px-4">Payment</th>
-                                            <th className="py-3.5 px-4 text-right!">Actions</th>
+                                            <th className="py-3.5 px-4 text-right! w-[125px] min-w-[125px]">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -1328,22 +1327,18 @@ export default function Suppliers() {
                                                         <td data-label="Payment" className="py-3.5 px-4">
                                                             {getPaidBadge(order.paid || false)}
                                                         </td>
-                                                        <td data-label="Actions" className="py-3.5 px-4 text-right">
-                                                            <div className="flex items-center justify-end gap-1.5">
-                                                                <button
+                                                        <td data-label="Actions" className="py-3.5 px-4 text-right w-[125px] min-w-[125px]">
+                                                            <div className="flex items-center justify-end gap-2.5">
+                                                                <CrudActionButton
+                                                                    action="view"
+                                                                    ariaLabel={`View purchase order ${order.po_number}`}
                                                                     onClick={() => handleViewPurchaseOrder(order)}
-                                                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
-                                                                >
-                                                                    <i className="fas fa-eye mr-1.5 text-[11px]" />
-                                                                    View
-                                                                </button>
-                                                                <button
+                                                                />
+                                                                <CrudActionButton
+                                                                    action="delete"
+                                                                    ariaLabel={`Delete purchase order ${order.po_number}`}
                                                                     onClick={() => handleDeletePurchaseOrder(order.id, order.po_number)}
-                                                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer"
-                                                                >
-                                                                    <i className="fas fa-trash-alt mr-1.5 text-[11px]" />
-                                                                    Delete
-                                                                </button>
+                                                                />
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -1419,16 +1414,17 @@ export default function Suppliers() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setShowModal(false)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <div className="p-6 overflow-y-auto space-y-5">
@@ -1560,33 +1556,36 @@ export default function Suppliers() {
                             </div>
 
                             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="danger"
+                                    size="sm"
                                     onClick={() => handleDeleteSupplier(selectedSupplier.id, selectedSupplier.name)}
-                                    className="px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
                                 >
                                     Delete Supplier
-                                </button>
+                                </AppButton>
 
                                 <div className="flex items-center gap-2">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={() => setShowModal(false)}
-                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                     >
                                         Close
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="button"
+                                        variant="primary"
+                                        size="sm"
                                         onClick={() => {
                                             setEditingSupplier({ ...selectedSupplier });
                                             setShowEditSupplierModal(true);
                                             setShowModal(false);
                                         }}
-                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 shadow-xs shadow-pink-500/20 transition-all cursor-pointer"
                                     >
                                         Edit Supplier
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
                         </div>
@@ -1614,16 +1613,17 @@ export default function Suppliers() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setShowNewSupplierModal(false)}
                                     aria-label="Close modal"
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <form onSubmit={handleAddSupplier} className="flex-1 overflow-y-auto p-6 space-y-4.5">
@@ -1777,26 +1777,23 @@ export default function Suppliers() {
                                 </div>
 
                                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={() => setShowNewSupplierModal(false)}
-                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                     >
                                         Cancel
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="submit"
+                                        variant="primary"
+                                        size="sm"
                                         disabled={isSubmitting}
-                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-all shadow-xs shadow-pink-500/20 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                                        loading={isSubmitting}
                                     >
-                                        {isSubmitting && (
-                                            <svg className="w-3.5 h-3.5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                            </svg>
-                                        )}
-                                        <span>{isSubmitting ? "Adding..." : "Add Supplier"}</span>
-                                    </button>
+                                        <span>Add Supplier</span>
+                                    </AppButton>
                                 </div>
                             </form>
                         </div>
@@ -1824,19 +1821,20 @@ export default function Suppliers() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => {
                                         setShowEditSupplierModal(false);
                                         setEditingSupplier(null);
                                     }}
                                     aria-label="Close modal"
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <form onSubmit={handleUpdateSupplier} className="flex-1 overflow-y-auto p-6 space-y-4.5">
@@ -2002,29 +2000,26 @@ export default function Suppliers() {
                                 </div>
 
                                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={() => {
                                             setShowEditSupplierModal(false);
                                             setEditingSupplier(null);
                                         }}
-                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                     >
                                         Cancel
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="submit"
+                                        variant="primary"
+                                        size="sm"
                                         disabled={isSubmitting}
-                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-all shadow-xs shadow-pink-500/20 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                                        loading={isSubmitting}
                                     >
-                                        {isSubmitting && (
-                                            <svg className="w-3.5 h-3.5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                            </svg>
-                                        )}
-                                        <span>{isSubmitting ? "Saving..." : "Save Changes"}</span>
-                                    </button>
+                                        <span>Save Changes</span>
+                                    </AppButton>
                                 </div>
                             </form>
                         </div>
@@ -2044,16 +2039,17 @@ export default function Suppliers() {
                                         {selectedChartData.supplierName}
                                     </p>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setShowActivityDetailModal(false)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <div className="p-6 space-y-4 overflow-y-auto">
@@ -2085,15 +2081,15 @@ export default function Suppliers() {
                                             .filter(po => po.supplier_name === selectedChartData.supplierName)
                                             .slice(0, 5)
                                             .map((po) => (
-                                                <div key={po.id} className="flex items-center justify-between text-xs">
+                                                 <div key={po.id} className="flex items-center justify-between text-xs">
                                                     <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
                                                         {po.po_number}
                                                     </span>
                                                     <span className="font-semibold text-slate-900 dark:text-slate-100">
                                                         {po.total_amount?.toLocaleString() || '0'}
                                                     </span>
-                                                    <span>{getStatusBadge(po.status)}</span>
-                                                    <span>{getPaidBadge(po.paid || false)}</span>
+                                                    <div>{getStatusBadge(po.status)}</div>
+                                                    <div>{getPaidBadge(po.paid || false)}</div>
                                                 </div>
                                             ))}
                                         {purchaseOrders.filter(po => po.supplier_name === selectedChartData.supplierName).length === 0 && (
@@ -2106,13 +2102,14 @@ export default function Suppliers() {
                             </div>
 
                             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={() => setShowActivityDetailModal(false)}
-                                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                 >
                                     Close
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </div>
@@ -2131,16 +2128,17 @@ export default function Suppliers() {
                                         {selectedChartData.category} • {selectedChartData.suppliers?.length || 0} suppliers
                                     </p>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setShowCategoryDetailModal(false)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <div className="p-6 overflow-y-auto">
@@ -2211,13 +2209,14 @@ export default function Suppliers() {
                             </div>
 
                             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={() => setShowCategoryDetailModal(false)}
-                                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                 >
                                     Close
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </div>
@@ -2245,16 +2244,17 @@ export default function Suppliers() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setShowPurchaseOrderModal(false)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
-                                </button>
+                                </AppButton>
                             </div>
 
                             <div className="p-6 overflow-y-auto space-y-5">
@@ -2410,24 +2410,25 @@ export default function Suppliers() {
                             </div>
 
                             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-end gap-2">
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={() => setShowPurchaseOrderModal(false)}
-                                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
                                 >
                                     Close
-                                </button>
-                                <button
+                                </AppButton>
+                                <AppButton
                                     type="button"
+                                    variant="primary"
+                                    size="sm"
                                     onClick={() => {
                                         setShowPurchaseOrderModal(false);
-                                        // Navigate to edit PO if needed - you can add a link here
                                         toast.info('Edit functionality coming soon');
                                     }}
-                                    className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 shadow-xs shadow-pink-500/20 transition-all cursor-pointer"
                                 >
                                     Edit Order
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </div>

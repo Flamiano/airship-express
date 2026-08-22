@@ -28,6 +28,8 @@ import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
 import { UploadReceiptModal, VerificationJob } from "@/app/(supplyChain)/components/modals/UploadReceiptModal";
 import { ReceiptProcessingIndicator } from "@/app/(supplyChain)/components/global/ReceiptProcessingIndicator";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { FileText, MoreHorizontal } from "lucide-react";
 import DocumentViewerModal, { ViewDocumentData } from "@/app/(supplyChain)/components/modals/DocumentViewerModal";
 
 // ============================================================
@@ -1718,7 +1720,7 @@ export default function PurchaseOrders() {
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Status</th>
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Payment</th>
                                             <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-center">OCR Result</th>
-                                            <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">Actions</th>
+                                            <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right! w-[130px] min-w-[130px]">Actions</th>
                                         </tr>
                                     </thead>
 
@@ -1924,19 +1926,24 @@ export default function PurchaseOrders() {
                                                                 <span className="text-slate-400 dark:text-slate-600 text-xs font-medium italic">—</span>
                                                             )}
                                                         </td>
-                                                        <td data-label="Actions" className="py-3.5 px-4 text-right whitespace-nowrap">
-                                                            <div className="flex items-center justify-end gap-1.5">
+                                                        <td data-label="Actions" className="py-3.5 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                            <div className="flex items-center justify-end gap-2.5">
                                                                 {rowBusy && (
-                                                                    <svg className="w-4 h-4 animate-spin text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24">
+                                                                    <svg className="w-4 h-4 animate-spin text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24">
                                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                                     </svg>
                                                                 )}
 
-                                                                {/* View Document Button (Lazy loaded: Image only renders on click) */}
+                                                                {/* View Document Button */}
                                                                 {(order.verification?.uploaded_file_url || order.document?.storage_path) && (
-                                                                    <button
-                                                                        type="button"
+                                                                    <CrudActionButton
+                                                                        action="custom"
+                                                                        label="Doc"
+                                                                        icon={FileText}
+                                                                        disabled={rowBusy}
+                                                                        ariaLabel="View Receipt Document"
+                                                                        title="View Receipt Document"
                                                                         onClick={() => {
                                                                             setViewingDocData({
                                                                                 id: order.document?.id || order.verification?.id,
@@ -1954,26 +1961,19 @@ export default function PurchaseOrders() {
                                                                             });
                                                                             setIsDocViewerOpen(true);
                                                                         }}
-                                                                        disabled={rowBusy}
-                                                                        className="px-2.5 py-1 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 rounded-lg border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 group"
-                                                                        title="View Receipt Document"
-                                                                    >
-                                                                        <i className="fas fa-file-invoice text-[11px] group-hover:scale-110 transition-transform" />
-                                                                        <span className="hidden sm:inline">View Doc</span>
-                                                                    </button>
+                                                                    />
                                                                 )}
 
                                                                 {/* Manage Order Modal Trigger Button */}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setActionModalOrder(order)}
+                                                                <CrudActionButton
+                                                                    action="custom"
+                                                                    label="Manage"
+                                                                    icon={MoreHorizontal}
                                                                     disabled={rowBusy}
-                                                                    className="px-2.5 py-1 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 rounded-lg border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 shadow-2xs hover:shadow-xs active:scale-98 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                                                                    ariaLabel="Manage Purchase Order"
                                                                     title="Manage Purchase Order"
-                                                                >
-                                                                    <i className="fas fa-ellipsis-h text-[11px]" />
-                                                                    <span className="hidden sm:inline">Manage</span>
-                                                                </button>
+                                                                    onClick={() => setActionModalOrder(order)}
+                                                                />
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -2171,9 +2171,6 @@ export default function PurchaseOrders() {
                                     <div className="bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900 border border-indigo-100 dark:border-indigo-800/30 rounded-xl p-4 shadow-xs space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-300">
-                                                <span className="p-1.5 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg flex items-center justify-center shadow-xs">
-                                                    <i className="fas fa-paper-plane text-xs" />
-                                                </span>
                                                 <div>
                                                     <h3 className="text-xs font-bold leading-none">
                                                         Send PO to Supplier

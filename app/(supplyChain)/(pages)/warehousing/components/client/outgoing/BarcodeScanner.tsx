@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { toast } from "sonner";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface BarcodeScannerProps {
     onScan: (barcode: string) => void;
@@ -166,12 +167,15 @@ export default function BarcodeScanner({
                                 {scannedCount} scanned
                             </span>
                         </div>
-                        <button
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="icon-sm"
                             onClick={handleClose}
-                            className="text-slate-400 hover:text-slate-600 transition-colors"
+                            aria-label="Close modal"
                         >
-                            <i className="fas fa-times text-xl"></i>
-                        </button>
+                            <i className="fas fa-times text-xs"></i>
+                        </AppButton>
                     </div>
 
                     <div className="relative bg-black rounded-xl overflow-hidden aspect-video">
@@ -179,12 +183,15 @@ export default function BarcodeScanner({
                             <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4">
                                 <i className="fas fa-exclamation-circle text-4xl text-red-400 mb-3"></i>
                                 <p className="text-center text-sm">{error}</p>
-                                <button
+                                <AppButton
+                                    type="button"
+                                    variant="primary"
+                                    size="sm"
                                     onClick={handleClose}
-                                    className="mt-4 px-4 py-2 bg-pink-500 hover:bg-pink-600 rounded-lg text-white text-sm font-semibold transition-colors"
+                                    className="mt-4"
                                 >
                                     Close
-                                </button>
+                                </AppButton>
                             </div>
                         ) : (
                             <>
@@ -224,13 +231,16 @@ export default function BarcodeScanner({
                     </div>
 
                     <div className="mt-4 flex gap-2">
-                        <button
+                        <AppButton
+                            type="button"
+                            variant="primary"
+                            size="md"
                             onClick={handleClose}
-                            className="flex-1 px-4 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-semibold text-sm transition-colors"
+                            className="flex-1"
                         >
-                            <i className="fas fa-check mr-2"></i>
-                            Done Scanning
-                        </button>
+                            <i className="fas fa-check text-xs"></i>
+                            <span>Done Scanning</span>
+                        </AppButton>
                     </div>
                 </div>
             </div>

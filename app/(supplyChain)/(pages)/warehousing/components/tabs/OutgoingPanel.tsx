@@ -7,6 +7,8 @@ import { sanitizeBarcode } from "@/app/(supplyChain)/components/global/sanitize"
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import BarcodeScanner from "@/app/(supplyChain)/(pages)/warehousing/components/client/outgoing/BarcodeScanner";
 import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { Send } from "lucide-react";
 
 interface Parcel {
     id: number;
@@ -998,7 +1000,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                                 <th className="p-3.5">Destination</th>
                                 <th className="p-3.5">Driver</th>
                                 <th className="p-3.5">Status</th>
-                                <th className="p-3.5 pr-4 text-right">Action</th>
+                                <th className="p-3.5 pr-4 text-right! w-[130px] min-w-[130px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-medium text-slate-700 dark:text-slate-300">
@@ -1116,30 +1118,23 @@ export default function OutgoingPanel({ isVisible = true }) {
                                                     {parcel.status === 'ready_for_pickup' ? 'ready' : parcel.status}
                                                 </span>
                                             </td>
-                                            <td className="p-3.5 pr-4 text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    <button
-                                                        type="button"
-                                                        className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:bg-pink-100/60 dark:hover:bg-pink-950/50 active:scale-95 transition-all cursor-pointer"
-                                                        onClick={() => handleSingleDispatch(parcel.id, parcel.barcode)}
-                                                        aria-label="Dispatch parcel"
+                                            <td className="p-3.5 pr-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                <div className="flex items-center justify-end gap-2.5">
+                                                    <CrudActionButton
+                                                        action="custom"
+                                                        icon={Send}
+                                                        label="Dispatch"
                                                         title="Dispatch (Picked Up)"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 active:scale-95 transition-all cursor-pointer"
-                                                        onClick={() => handleRemoveFromReady(parcel.id, parcel.barcode)}
-                                                        aria-label="Remove from ready"
+                                                        ariaLabel={`Dispatch parcel ${parcel.barcode}`}
+                                                        onClick={() => handleSingleDispatch(parcel.id, parcel.barcode)}
+                                                    />
+                                                    <CrudActionButton
+                                                        action="restore"
+                                                        label="Revert"
                                                         title="Move back to received"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                                                        </svg>
-                                                    </button>
+                                                        ariaLabel={`Move parcel ${parcel.barcode} back to received`}
+                                                        onClick={() => handleRemoveFromReady(parcel.id, parcel.barcode)}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>

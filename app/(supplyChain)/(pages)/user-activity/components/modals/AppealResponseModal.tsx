@@ -4,6 +4,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X } from 'lucide-react';
 import { Appeal } from '../../types';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface AppealResponseModalProps {
     isOpen: boolean;
@@ -50,14 +51,15 @@ export const AppealResponseModal: React.FC<AppealResponseModalProps> = ({
                             </div>
                         </div>
 
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="icon-sm"
                             onClick={onClose}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-xl transition-colors cursor-pointer"
                             aria-label="Close modal"
                         >
-                            <X className="w-5 h-5" />
-                        </button>
+                            <X className="w-4 h-4" />
+                        </AppButton>
                     </div>
 
                     {/* Scrollable Content Area */}
@@ -101,24 +103,26 @@ export const AppealResponseModal: React.FC<AppealResponseModalProps> = ({
 
                     {/* Fixed Footer Actions */}
                     <div className="shrink-0 border-t border-slate-200/80 dark:border-slate-800 p-4 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-end gap-3">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="md"
                             onClick={onClose}
-                            className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                         >
                             Close
-                        </button>
+                        </AppButton>
 
                         {!appeal.response_message && (
-                            <button
+                            <AppButton
                                 type="button"
+                                variant="primary"
+                                size="md"
                                 onClick={onSendResponse}
                                 disabled={!responseMessage.trim()}
-                                className="px-5 py-2 bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-xs cursor-pointer"
                             >
                                 <Send className="w-4 h-4" />
                                 <span>Send Response</span>
-                            </button>
+                            </AppButton>
                         )}
                     </div>
                 </motion.div>

@@ -8,6 +8,8 @@ import { getStatusBadge, getStatusLabel } from '../../utils/helpers';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 import { ParcelTrackingCard } from '../tracking/ParcelTrackingCard';
 
@@ -302,7 +304,7 @@ export function ParcelsTab({
                                                 <th>Courier</th>
                                                 <th>Status</th>
                                                 <th>Time</th>
-                                                <th className="text-right">Action</th>
+                                                <th className="text-right! w-[80px] min-w-[80px]">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -342,14 +344,15 @@ export function ParcelsTab({
                                                     <td data-label="Time" className="text-slate-400 dark:text-slate-500 text-[11px] font-mono whitespace-nowrap">
                                                         {new Date(parcel.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </td>
-                                                    <td data-label="Action" className="text-right whitespace-nowrap">
-                                                        <button
-                                                            onClick={() => handleViewParcel(parcel)}
-                                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 bg-pink-50/50 dark:bg-pink-500/10 hover:bg-pink-100/70 dark:hover:bg-pink-500/20 active:scale-95 rounded-lg transition-all border border-pink-100 dark:border-pink-500/20 ml-auto shadow-2xs"
-                                                        >
-                                                            <i className="fas fa-eye text-[10px]"></i>
-                                                            <span>View</span>
-                                                        </button>
+                                                    <td data-label="Action" className="text-right whitespace-nowrap w-[80px] min-w-[80px]">
+                                                        <div className="flex items-center justify-end">
+                                                            <CrudActionButton
+                                                                action="view"
+                                                                ariaLabel={`View parcel ${parcel.barcode}`}
+                                                                title="View Parcel"
+                                                                onClick={() => handleViewParcel(parcel)}
+                                                            />
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -418,13 +421,15 @@ export function ParcelsTab({
                                         <span>Barcode: <code className="font-mono font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/50">{selectedParcel.barcode}</code></span>
                                     </p>
                                 </div>
-                                <button
+                                <AppButton
+                                    type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setShowModal(false)}
-                                    className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-all flex items-center justify-center cursor-pointer"
                                     aria-label="Close modal"
                                 >
                                     <i className="fas fa-times text-xs"></i>
-                                </button>
+                                </AppButton>
                             </div>
 
                             {/* Modal Scrollable Body */}
@@ -621,13 +626,15 @@ export function ParcelsTab({
 
                             {/* Modal Footer */}
                             <div className="flex justify-end gap-2 p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
-                                <button
+                                <AppButton
+                                    type="button"
+                                    variant="primary"
+                                    size="sm"
                                     onClick={() => setShowModal(false)}
-                                    className="px-4 py-2 rounded-xl bg-pink-500 dark:bg-pink-600 hover:bg-pink-600 dark:hover:bg-pink-500 active:scale-95 text-white font-semibold text-xs transition-all flex items-center gap-2 cursor-pointer"
                                 >
                                     <i className="fas fa-check text-[11px]"></i>
                                     <span>Done</span>
-                                </button>
+                                </AppButton>
                             </div>
 
                         </div>

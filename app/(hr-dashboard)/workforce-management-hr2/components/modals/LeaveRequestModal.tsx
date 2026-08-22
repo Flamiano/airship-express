@@ -120,7 +120,7 @@ export function LeaveRequestModal({ open, onClose, onSubmit }: LeaveRequestModal
  Cancel
  </Button>
  <Button type="submit" variant="primary" disabled={loading}>
- {loading ? 'Submitting...' : 'Submit Request'}
+ {loading ? 'Submitting...' : 'Submit'}
  </Button>
  </div>
  </form>

@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 
 interface ArchivedDocument {
     id: string;
@@ -574,7 +575,7 @@ export function DocumentsTab() {
                                 <th className="py-3 px-4">Role</th>
                                 <th className="py-3 px-4">Deleted By</th>
                                 <th className="py-3 px-4">Deleted At</th>
-                                <th className="text-right py-3 px-4">Actions</th>
+                                <th className="text-right! py-3 px-4 w-[130px] min-w-[130px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -583,7 +584,7 @@ export function DocumentsTab() {
                                     <td colSpan={10} className="py-16 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-1 border border-slate-200/60 dark:border-slate-700/60 shadow-xs">
-                                                <i className="fas fa-file-excel text-xl text-pink-500 dark:text-pink-400"></i>
+                                                <i className="fas fa-trash-can text-xl text-pink-500 dark:text-pink-400"></i>
                                             </div>
                                             <p className="font-semibold text-slate-700 dark:text-slate-300">No archived documents found</p>
                                             <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your filters or search terms</p>
@@ -618,9 +619,8 @@ export function DocumentsTab() {
                                                 <div className="font-semibold text-slate-800 dark:text-slate-200 leading-snug">{doc.title}</div>
                                                 <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">{doc.file_name}</div>
                                                 {doc.notes && (
-                                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5 italic truncate max-w-[220px]" title={doc.notes}>
-                                                        <i className="fas fa-sticky-note text-amber-500 dark:text-amber-400 text-[10px]"></i>
-                                                        <span>{doc.notes}</span>
+                                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mt-0.5 max-w-[200px] truncate" title={doc.notes}>
+                                                        "{doc.notes}"
                                                     </div>
                                                 )}
                                             </td>
@@ -658,26 +658,22 @@ export function DocumentsTab() {
                                             <td data-label="Deleted At" className="py-3 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px] whitespace-nowrap">
                                                 {formatDate(doc.deleted_at)}
                                             </td>
-                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
-                                                        onClick={() => handleRestoreDocument(doc)}
-                                                        disabled={docsLoading}
+                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                <div className="flex items-center justify-end gap-2.5">
+                                                    <CrudActionButton
+                                                        action="restore"
+                                                        ariaLabel={`Restore document ${doc.title}`}
                                                         title="Restore Document"
-                                                    >
-                                                        <i className="fas fa-undo text-[10px]"></i>
-                                                        <span>Restore</span>
-                                                    </button>
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
-                                                        onClick={() => handleDeleteDocumentPermanently(doc)}
                                                         disabled={docsLoading}
+                                                        onClick={() => handleRestoreDocument(doc)}
+                                                    />
+                                                    <CrudActionButton
+                                                        action="delete"
+                                                        ariaLabel={`Delete document ${doc.title} permanently`}
                                                         title="Delete Permanently"
-                                                    >
-                                                        <i className="fas fa-trash-can text-[10px]"></i>
-                                                        <span>Delete</span>
-                                                    </button>
+                                                        disabled={docsLoading}
+                                                        onClick={() => handleDeleteDocumentPermanently(doc)}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>

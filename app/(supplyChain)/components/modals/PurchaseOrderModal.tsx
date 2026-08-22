@@ -10,6 +10,7 @@ import {
     PurchaseRequestItem,
     PurchaseOrderModalProps,
 } from "@/app/(supplyChain)/(pages)/procurement/types/index";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 export function PurchaseOrderModal({
     isOpen,
@@ -449,13 +450,15 @@ export function PurchaseOrderModal({
                             </span>
                         </p>
                     </div>
-                    <button
+                    <AppButton
+                        type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center cursor-pointer"
                         aria-label="Close modal"
                     >
-                        <i className="fas fa-times text-sm" />
-                    </button>
+                        <i className="fas fa-times text-xs" />
+                    </AppButton>
                 </div>
 
                 {step === 1 && (
@@ -614,21 +617,23 @@ export function PurchaseOrderModal({
                         </div>
 
                         <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200/60 dark:border-white/10">
-                            <button
+                            <AppButton
                                 type="button"
+                                variant="neutral"
+                                size="md"
                                 onClick={onClose}
-                                className="px-5 py-2.5 text-sm font-medium border border-slate-200 dark:border-white/10 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all active:scale-[0.98] cursor-pointer"
                             >
                                 Cancel
-                            </button>
-                            <button
+                            </AppButton>
+                            <AppButton
                                 type="button"
+                                variant="success"
+                                size="md"
                                 onClick={handleNext}
-                                className="px-6 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all shadow-sm shadow-emerald-600/30 active:scale-[0.98] inline-flex items-center gap-2 cursor-pointer"
                             >
                                 <span>Next</span>
                                 <i className="fas fa-arrow-right text-xs" />
-                            </button>
+                            </AppButton>
                         </div>
                     </div>
                 )}
@@ -651,11 +656,12 @@ export function PurchaseOrderModal({
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="xs"
                                         onClick={generateAIMessage}
                                         disabled={isGeneratingAI || isSending}
-                                        className="px-2.5 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-100/70 dark:bg-indigo-900/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                     >
                                         {isGeneratingAI ? (
                                             <i className="fas fa-spinner fa-spin text-[11px]" />
@@ -663,17 +669,18 @@ export function PurchaseOrderModal({
                                             <i className="fas fa-wand-magic-sparkles text-[11px]" />
                                         )}
                                         <span>{isGeneratingAI ? 'Generating...' : 'Generate with AI'}</span>
-                                    </button>
+                                    </AppButton>
                                     {aiMessage && (
-                                        <button
+                                        <AppButton
                                             type="button"
+                                            variant="neutral"
+                                            size="xs"
                                             onClick={handleCopyOnly}
                                             disabled={isSending}
-                                            className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                         >
                                             <i className="fas fa-copy text-[11px]" />
                                             <span>Copy</span>
-                                        </button>
+                                        </AppButton>
                                     )}
                                 </div>
                             </div>
@@ -719,48 +726,53 @@ export function PurchaseOrderModal({
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200/60 dark:border-white/10">
-                            <button
+                            <AppButton
                                 type="button"
+                                variant="neutral"
+                                size="md"
                                 onClick={handleBack}
                                 disabled={submitting || isSending}
-                                className="w-full sm:w-auto px-4 py-2 text-sm font-medium border border-slate-200 dark:border-white/10 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                                className="w-full sm:w-auto"
                             >
                                 <i className="fas fa-arrow-left text-xs" />
                                 <span>Back</span>
-                            </button>
+                            </AppButton>
 
                             <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
-                                <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/60 dark:border-white/10">
-                                    <button
+                                <div className="flex items-center gap-1.5">
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={handlePrint}
                                         title="Print PO"
                                         disabled={!aiMessage || isSending}
-                                        className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                     >
                                         <i className="fas fa-print text-slate-500 dark:text-slate-400" />
                                         <span className="hidden sm:inline">Print</span>
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={handleEmail}
                                         title="Send Email (Gmail)"
                                         disabled={!aiMessage || isSending}
-                                        className="px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                     >
                                         {isSending ? (
-                                            <i className="fas fa-spinner fa-spin text-blue-500" />
+                                            <i className="fas fa-spinner fa-spin text-pink-500" />
                                         ) : (
                                             <i className="fas fa-envelope text-blue-500 dark:text-blue-400" />
                                         )}
                                         <span className="hidden sm:inline">{isSending ? 'Sending...' : 'Gmail'}</span>
-                                    </button>
-                                    <button
+                                    </AppButton>
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={handleMessenger}
                                         title="Send via Messenger"
                                         disabled={!aiMessage || isSending}
-                                        className="px-3 py-1.5 text-xs font-medium text-sky-700 dark:text-sky-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                     >
                                         {isSending ? (
                                             <i className="fas fa-spinner fa-spin text-sky-500" />
@@ -768,22 +780,23 @@ export function PurchaseOrderModal({
                                             <i className="fab fa-facebook-messenger text-sky-500 dark:text-sky-400" />
                                         )}
                                         <span className="hidden sm:inline">{isSending ? 'Sending...' : 'Messenger'}</span>
-                                    </button>
+                                    </AppButton>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="success"
+                                    size="md"
                                     onClick={handleCreatePOOnly}
                                     disabled={submitting || isSending}
-                                    className="px-6 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all shadow-sm shadow-emerald-600/30 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ml-auto sm:ml-0 cursor-pointer"
+                                    loading={submitting || isSending}
+                                    className="ml-auto sm:ml-0"
                                 >
-                                    {submitting || isSending ? (
-                                        <i className="fas fa-spinner fa-spin text-xs" />
-                                    ) : (
+                                    {!submitting && !isSending && (
                                         <i className="fas fa-check text-xs" />
                                     )}
                                     <span>Create PO</span>
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </>

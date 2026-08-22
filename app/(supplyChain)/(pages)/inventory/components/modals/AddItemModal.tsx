@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { sanitizeText } from '@/app/(supplyChain)/components/global/sanitize';
 import { AddItemFormData, Supplier } from '../../types';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface AddItemModalProps {
     isOpen: boolean;
@@ -80,13 +81,16 @@ export function AddItemModal({
                             </p>
                         </div>
                     </div>
-                    <button
+                    <AppButton
+                        type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200/80 dark:hover:bg-slate-700/50 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex items-center justify-center shrink-0"
                         disabled={loading}
+                        aria-label="Close modal"
                     >
-                        <i className="fas fa-xmark text-sm"></i>
-                    </button>
+                        <i className="fas fa-times text-xs"></i>
+                    </AppButton>
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-y-auto scrollbar-hide">
@@ -290,33 +294,28 @@ export function AddItemModal({
                     </div>
 
                     <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-ink/20">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="md"
                             onClick={onClose}
-                            className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 rounded-xl transition-all border border-transparent disabled:opacity-50"
                             disabled={loading}
                         >
                             Cancel
-                        </button>
-                        <button
+                        </AppButton>
+                        <AppButton
                             type="submit"
+                            variant="primary"
+                            size="md"
                             disabled={loading}
-                            className="px-5 py-2 bg-pink-500 dark:bg-pink-600 hover:bg-pink-600 dark:hover:bg-pink-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-2xs hover:shadow-pink-500/20 active:scale-[0.98] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            loading={loading}
                         >
-                            {loading ? (
-                                <>
-                                    <i className="fas fa-spinner fa-spin text-xs"></i>
-                                    <span>Saving...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <i className="fas fa-check text-xs"></i>
-                                    <span>Save Item</span>
-                                </>
-                            )}
-                        </button>
+                            {!loading && <i className="fas fa-check text-xs"></i>}
+                            <span>Save Item</span>
+                        </AppButton>
                     </div>
                 </form>
             </div>
-        </div>);
+        </div>
+    );
 }

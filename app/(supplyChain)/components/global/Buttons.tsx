@@ -76,3 +76,6 @@ export function NavBtn({ link, color, icon, label, onClick, 'data-tab': dataTab 
         </button>
     );
 }
+
+export { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+export type { CrudActionButtonProps, CrudActionType, CrudActionVariant } from "@/app/(supplyChain)/components/ui/CrudActionButton";

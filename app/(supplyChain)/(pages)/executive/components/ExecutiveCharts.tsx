@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from 'next/dynamic';
 import ExecutiveChartModal, { ExecutiveChartModalProps } from "@/app/(supplyChain)/components/modals/ExecutiveChartModal";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import {
     Chart, LineController, BarController, DoughnutController,
     CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement,
@@ -2180,13 +2181,15 @@ export default function ExecutiveCharts() {
                                                 {selectedInsight.title}
                                             </h3>
                                         </div>
-                                        <button
+                                        <AppButton
+                                            type="button"
+                                            variant="neutral"
+                                            size="icon-sm"
                                             onClick={() => setSelectedInsight(null)}
-                                            className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 flex items-center justify-center transition-colors cursor-pointer"
                                             aria-label="Close modal"
                                         >
-                                            <i className="fas fa-xmark text-xs" />
-                                        </button>
+                                            <i className="fas fa-times text-xs" />
+                                        </AppButton>
                                     </div>
 
                                     <div className="p-6 space-y-4">
@@ -2213,12 +2216,15 @@ export default function ExecutiveCharts() {
 
                                         {selectedInsight.actionable && (
                                             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                                                <Link
-                                                    href={selectedInsight.actionLink || '#'}
-                                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-pink-600 hover:bg-pink-700 dark:bg-pink-500 dark:hover:bg-pink-600 text-white rounded-xl transition-all text-xs font-semibold shadow-xs"
-                                                >
-                                                    <span>{selectedInsight.actionText || 'Take Action'}</span>
-                                                    <i className="fas fa-arrow-right text-[10px]" />
+                                                <Link href={selectedInsight.actionLink || '#'}>
+                                                    <AppButton
+                                                        type="button"
+                                                        variant="primary"
+                                                        size="sm"
+                                                    >
+                                                        <span>{selectedInsight.actionText || 'Take Action'}</span>
+                                                        <i className="fas fa-arrow-right text-[10px]" />
+                                                    </AppButton>
                                                 </Link>
                                             </div>
                                         )}

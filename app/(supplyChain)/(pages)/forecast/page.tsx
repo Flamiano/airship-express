@@ -5,6 +5,7 @@ import Chart from "chart.js/auto";
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
 import Cards from "@/app/(supplyChain)/components/global/Cards";
 import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { toast } from "sonner";
 
 interface ForecastData {
@@ -952,12 +953,15 @@ export default function Forecast() {
                                         <p className="text-xs text-slate-500 dark:text-slate-400">Statistical breakdown, algorithmic explanation, and underlying database metrics</p>
                                     </div>
                                 </div>
-                                <button
-                                    className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-ink/60 hover:bg-slate-200 dark:hover:bg-ink text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition cursor-pointer"
+                                <AppButton
+                                    type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))}
+                                    aria-label="Close modal"
                                 >
-                                    <i className="fas fa-times text-sm"></i>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             {/* Modal Body */}
@@ -1214,12 +1218,14 @@ export default function Forecast() {
                                     <i className="fas fa-microchip text-pink-500 mr-1"></i>
                                     Powered by @sipemu/anofox-forecast (Rust/WASM)
                                 </div>
-                                <button
-                                    className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
+                                <AppButton
+                                    type="button"
+                                    variant="primary"
+                                    size="sm"
                                     onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))}
                                 >
                                     Close Inspection
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </div>
@@ -1248,12 +1254,15 @@ export default function Forecast() {
                                         <p className="text-xs text-slate-500 dark:text-slate-400">Deep analysis of parcel volume trajectories, confidence envelopes, and expense projections</p>
                                     </div>
                                 </div>
-                                <button
-                                    className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-ink/60 hover:bg-slate-200 dark:hover:bg-ink text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition cursor-pointer"
+                                <AppButton
+                                    type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => setIsAiModalOpen(false)}
+                                    aria-label="Close modal"
                                 >
-                                    <i className="fas fa-times text-sm"></i>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             {/* Modal Body */}
@@ -1310,20 +1319,24 @@ export default function Forecast() {
                                     Grounded strictly in active Supabase records
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <button
-                                        className="px-4 py-2 bg-white dark:bg-ink/60 border border-slate-200 dark:border-ink/20 hover:bg-slate-100 dark:hover:bg-ink text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                                    <AppButton
+                                        type="button"
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={generateAiSummary}
                                         disabled={summarizing}
                                     >
-                                        <i className="fas fa-rotate mr-1.5 text-xs"></i>
-                                        Regenerate
-                                    </button>
-                                    <button
-                                        className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
+                                        <i className={`fas fa-rotate text-xs ${summarizing ? 'fa-spin' : ''}`}></i>
+                                        <span>Regenerate</span>
+                                    </AppButton>
+                                    <AppButton
+                                        type="button"
+                                        variant="primary"
+                                        size="sm"
                                         onClick={() => setIsAiModalOpen(false)}
                                     >
                                         Done
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
                         </div>

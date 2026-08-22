@@ -3,6 +3,7 @@
 import React from 'react';
 import { Search, Ban, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { Session } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -107,7 +108,7 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                             <th className="py-3 px-4">Created At</th>
                             <th className="py-3 px-4">Expires At</th>
                             <th className="py-3 px-4">Status</th>
-                            <th className="py-3 px-4 text-right">Actions</th>
+                            <th className="py-3 px-4 text-right w-[80px] min-w-[80px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -150,23 +151,20 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                                 checked={isSelected}
                                                 disabled={isDisabled}
                                                 onChange={() => onToggleSelectSession(session.id, isDisabled)}
-                                                className={`w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 accent-pink-500 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                                                className={`w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 accent-pink-500 bg-transparent ${isDisabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
                                                     }`}
                                             />
                                         </td>
 
                                         <td className="py-3 px-4">
-                                            <span className="font-semibold text-slate-800 dark:text-slate-200">{userName}</span>
-                                            {isAdmin && (
-                                                <span className="ml-2 text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200/60 dark:border-purple-900/40 px-2 py-0.5 rounded-full shadow-2xs">
-                                                    Admin
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
+                                                    {userName.charAt(0)}
+                                                </div>
+                                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                                    {userName}
                                                 </span>
-                                            )}
-                                            {isBlocked && (
-                                                <span className="ml-2 text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/40 px-2 py-0.5 rounded-full shadow-2xs">
-                                                    Blocked
-                                                </span>
-                                            )}
+                                            </div>
                                         </td>
 
                                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
@@ -174,7 +172,7 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                         </td>
 
                                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={session.user_agent}>
-                                            {session.user_agent || 'Unknown'}
+                                            {session.user_agent}
                                         </td>
 
                                         <td className="py-3 px-4">
@@ -214,14 +212,19 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                             </span>
                                         </td>
 
-                                        <td className="py-3 px-4 text-right">
-                                            <div className="flex items-center justify-end gap-1.5">
+                                        <td className="py-3 px-4 text-right whitespace-nowrap w-[80px] min-w-[80px]">
+                                            <div className="flex items-center justify-end gap-2.5">
                                                 {isBlocked ? (
-                                                    <span className="text-xs text-slate-400 dark:text-slate-500 italic" title={`Blocked for ${session.email || session.users?.email}`}>
+                                                    <span className="text-xs text-slate-400 dark:text-slate-500 italic px-2" title={`Blocked for ${session.email || session.users?.email}`}>
                                                         Blocked
                                                     </span>
                                                 ) : (
-                                                    <button
+                                                    <CrudActionButton
+                                                        action="delete"
+                                                        variant="pink"
+                                                        label="Block"
+                                                        title={isAdmin ? 'Cannot block admin users' : 'Block this device'}
+                                                        disabled={isAdmin}
                                                         onClick={() =>
                                                             onBlockDevice(
                                                                 session.id,
@@ -231,14 +234,7 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                                                 session.email
                                                             )
                                                         }
-                                                        disabled={isAdmin}
-                                                        className={`px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs hover:shadow-xs active:scale-98 ${isAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                                                            }`}
-                                                        title={isAdmin ? 'Cannot block admin users' : 'Block this device'}
-                                                    >
-                                                        <Ban className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                                                        <span>Block</span>
-                                                    </button>
+                                                    />
                                                 )}
                                             </div>
                                         </td>

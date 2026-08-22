@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 export interface ViewDocumentData {
     id?: string;
@@ -246,35 +247,46 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
                                     href={resolvedUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs"
-                                    title="Open in new tab"
                                 >
-                                    <i className="fas fa-external-link-alt text-xs" />
+                                    <AppButton
+                                        type="button"
+                                        variant="neutral"
+                                        size="icon-sm"
+                                        title="Open in new tab"
+                                        aria-label="Open in new tab"
+                                    >
+                                        <i className="fas fa-external-link-alt text-xs" />
+                                    </AppButton>
                                 </a>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={handleDownload}
                                     disabled={isDownloading}
-                                    className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
                                     title="Download Document directly to device"
+                                    aria-label="Download Document"
                                 >
                                     {isDownloading ? (
                                         <i className="fas fa-spinner fa-spin text-xs text-pink-500" />
                                     ) : (
                                         <i className="fas fa-download text-xs" />
                                     )}
-                                </button>
+                                </AppButton>
                             </>
                         )}
 
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="icon-sm"
                             onClick={onClose}
-                            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700/60 transition-all cursor-pointer ml-1"
                             title="Close preview"
+                            aria-label="Close preview"
+                            className="ml-1 hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-800 dark:hover:text-rose-400"
                         >
-                            <i className="fas fa-times text-sm" />
-                        </button>
+                            <i className="fas fa-times text-xs" />
+                        </AppButton>
                     </div>
                 </div>
 
@@ -360,13 +372,14 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
                         )}
                     </div>
 
-                    <button
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="sm"
                         onClick={onClose}
-                        className="px-4 py-1.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-xl font-semibold transition-all cursor-pointer text-xs"
                     >
                         Close
-                    </button>
+                    </AppButton>
                 </div>
             </div>
         </div>

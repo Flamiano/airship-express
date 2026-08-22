@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 export interface MetricItem {
     label: string;
@@ -199,16 +200,17 @@ export default function ExecutiveChartModal({
                         </div>
                     </div>
 
-                    <button
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0 ml-2"
                         aria-label="Close modal"
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                    </button>
+                    </AppButton>
                 </div>
 
                 {/* Modal Scrollable Body */}
@@ -406,33 +408,38 @@ export default function ExecutiveChartModal({
                 {/* Modal Footer with Actions */}
                 <div className="px-5 sm:px-6 py-3.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap items-center justify-between gap-3 shrink-0">
                     <div className="flex items-center gap-2">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="sm"
                             onClick={onClose}
-                            className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                         >
                             Close
-                        </button>
+                        </AppButton>
 
                         {onDownload && (
-                            <button
+                            <AppButton
                                 type="button"
+                                variant="neutral"
+                                size="sm"
                                 onClick={onDownload}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 transition-colors cursor-pointer"
                             >
                                 <i className="fas fa-file-csv text-[12px] text-pink-500" />
                                 <span>{downloadLabel}</span>
-                            </button>
+                            </AppButton>
                         )}
                     </div>
 
                     {viewAllLink && (
-                        <Link
-                            href={viewAllLink}
-                            className="inline-flex items-center gap-2 px-4.5 py-2 bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow-pink-500/25 transition-all active:scale-[0.98] cursor-pointer ml-auto"
-                        >
-                            <span>{viewAllLabel}</span>
-                            <i className="fas fa-arrow-right text-[10px]" />
+                        <Link href={viewAllLink}>
+                            <AppButton
+                                type="button"
+                                variant="primary"
+                                size="sm"
+                            >
+                                <span>{viewAllLabel}</span>
+                                <i className="fas fa-arrow-right text-[10px]" />
+                            </AppButton>
                         </Link>
                     )}
                 </div>

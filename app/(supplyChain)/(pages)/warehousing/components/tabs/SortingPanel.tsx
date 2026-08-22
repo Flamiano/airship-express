@@ -9,6 +9,8 @@ import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
 import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface Parcel {
     id: number;
@@ -1736,7 +1738,7 @@ export default function SortingPanel() {
                                                 <th className="text-center">Global QR</th>
                                                 <th className="text-center">City QR</th>
                                                 <th className="text-center">Courier QR</th>
-                                                <th className="text-right">Actions</th>
+                                                <th className="text-right! w-[120px] min-w-[120px]">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -1845,22 +1847,20 @@ export default function SortingPanel() {
                                                             )}
                                                         </td>
 
-                                                        <td data-label="Actions" className="text-right whitespace-nowrap">
-                                                            <div className="flex items-center justify-end gap-1">
-                                                                <button
-                                                                    onClick={() => handleViewParcel(parcel)}
-                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-blue-50/50 dark:bg-blue-500/10 hover:bg-blue-100/70 dark:hover:bg-blue-500/20 active:scale-95 rounded-lg transition-all border border-blue-100 dark:border-blue-500/20 shadow-2xs cursor-pointer"
+                                                        <td data-label="Actions" className="text-right whitespace-nowrap w-[120px] min-w-[120px]">
+                                                            <div className="flex items-center justify-end gap-2.5">
+                                                                <CrudActionButton
+                                                                    action="view"
+                                                                    ariaLabel={`View parcel ${parcel.barcode}`}
                                                                     title="View Parcel"
-                                                                >
-                                                                    <i className="fas fa-eye text-[10px]"></i>
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleDeleteParcel(parcel.id, parcel.barcode)}
-                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 bg-rose-50/50 dark:bg-rose-500/10 hover:bg-rose-100/70 dark:hover:bg-rose-500/20 active:scale-95 rounded-lg transition-all border border-rose-100 dark:border-rose-500/20 shadow-2xs cursor-pointer"
+                                                                    onClick={() => handleViewParcel(parcel)}
+                                                                />
+                                                                <CrudActionButton
+                                                                    action="delete"
+                                                                    ariaLabel={`Delete parcel ${parcel.barcode}`}
                                                                     title="Delete Parcel"
-                                                                >
-                                                                    <i className="fas fa-trash text-[10px]"></i>
-                                                                </button>
+                                                                    onClick={() => handleDeleteParcel(parcel.id, parcel.barcode)}
+                                                                />
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -2022,36 +2022,30 @@ export default function SortingPanel() {
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="success"
+                                        size="sm"
                                         onClick={handleGenerateBulkQr}
                                         disabled={generatingBulk || selectedParcels.length === 0 || selectedParcels.every((p) => p.bulk_qr_code)}
-                                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
+                                        loading={generatingBulk}
                                     >
-                                        {generatingBulk ? (
-                                            <>
-                                                <i className="fas fa-spinner fa-spin text-xs"></i>
-                                                <span>Generating...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="fas fa-qrcode text-xs"></i>
-                                                <span>Generate Bulk QR</span>
-                                            </>
-                                        )}
-                                    </button>
+                                        {!generatingBulk && <i className="fas fa-qrcode text-xs"></i>}
+                                        <span>{generatingBulk ? 'Generating...' : 'Generate Bulk QR'}</span>
+                                    </AppButton>
 
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="icon-sm"
                                         onClick={() => {
                                             setShowModal(false);
                                             setSelectedParcels([]);
                                         }}
-                                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 dark:text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30 cursor-pointer"
                                         aria-label="Close modal"
                                     >
-                                        <i className="fas fa-times text-sm"></i>
-                                    </button>
+                                        <i className="fas fa-times text-xs"></i>
+                                    </AppButton>
                                 </div>
                             </div>
 
@@ -2135,16 +2129,17 @@ export default function SortingPanel() {
                                         {selectedParcels.filter((p) => p.bulk_qr_city).length} with city QR
                                     </span>
                                 </div>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={() => {
                                         setShowModal(false);
                                         setSelectedParcels([]);
                                     }}
-                                    className="rounded-xl px-5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-xs cursor-pointer"
                                 >
                                     Close
-                                </button>
+                                </AppButton>
                             </div>
 
                         </div>
@@ -2173,18 +2168,19 @@ export default function SortingPanel() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => {
                                         setShowCourierModal(false);
                                         setCourierParcels([]);
                                         setSelectedCourier(null);
                                     }}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 dark:text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <i className="fas fa-xmark text-sm"></i>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -2282,17 +2278,18 @@ export default function SortingPanel() {
                                     </span>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="primary"
+                                    size="sm"
                                     onClick={() => {
                                         setShowCourierModal(false);
                                         setCourierParcels([]);
                                         setSelectedCourier(null);
                                     }}
-                                    className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer"
                                 >
                                     Done
-                                </button>
+                                </AppButton>
                             </div>
 
                         </div>
@@ -2322,17 +2319,18 @@ export default function SortingPanel() {
                                     </div>
                                 </div>
 
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
                                     onClick={() => {
                                         setShowViewModal(false);
                                         setViewParcel(null);
                                     }}
-                                    className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 dark:text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
                                     aria-label="Close modal"
                                 >
-                                    <i className="fas fa-times text-sm"></i>
-                                </button>
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
                             </div>
 
                             {/* Content */}
@@ -2462,15 +2460,16 @@ export default function SortingPanel() {
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <button
+                                    <AppButton
+                                        variant="neutral"
+                                        size="sm"
                                         onClick={() => {
                                             setShowViewModal(false);
                                             setViewParcel(null);
                                         }}
-                                        className="rounded-xl px-5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-xs cursor-pointer"
                                     >
                                         Close
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </div>
 

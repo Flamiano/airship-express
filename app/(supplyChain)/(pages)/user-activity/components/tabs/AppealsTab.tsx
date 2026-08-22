@@ -3,6 +3,7 @@
 import React from 'react';
 import { CheckCircle, X, Send, Eye, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { Appeal } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -118,7 +119,7 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                             <th className="py-4 px-4">Response</th>
                             <th className="py-4 px-4">Status</th>
                             <th className="py-4 px-4">Submitted</th>
-                            <th className="py-4 px-4 text-right">Actions</th>
+                            <th className="py-4 px-4 text-right! w-[150px] min-w-[150px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -240,57 +241,42 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                                         </td>
 
                                         {/* Row Actions */}
-                                        <td className="py-3.5 px-4 text-right">
-                                            <div className="flex items-center justify-end gap-1.5">
+                                        <td className="py-3.5 px-4 text-right whitespace-nowrap w-[150px] min-w-[150px]">
+                                            <div className="flex items-center justify-end gap-2.5">
                                                 {isPending && (
                                                     <>
-                                                        <button
-                                                            onClick={() => onApproveAppeal(appeal.id)}
+                                                        <CrudActionButton
+                                                            action="approve"
                                                             title="Approve Appeal"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
-                                                        >
-                                                            <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                                            Approve
-                                                        </button>
-                                                        <button
-                                                            onClick={() => onRejectAppeal(appeal.id)}
+                                                            onClick={() => onApproveAppeal(appeal.id)}
+                                                        />
+                                                        <CrudActionButton
+                                                            action="reject"
                                                             title="Reject Appeal"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
-                                                        >
-                                                            <X className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                                                            Reject
-                                                        </button>
-                                                        <button
-                                                            onClick={() => onOpenResponseModal(appeal)}
+                                                            onClick={() => onRejectAppeal(appeal.id)}
+                                                        />
+                                                        <CrudActionButton
+                                                            action="respond"
                                                             title="Send Custom Response"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 hover:border-indigo-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
-                                                        >
-                                                            <Send className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                                                            Respond
-                                                        </button>
+                                                            onClick={() => onOpenResponseModal(appeal)}
+                                                        />
                                                     </>
                                                 )}
 
                                                 {isResolved && (
                                                     <>
                                                         {appeal.response_message && (
-                                                            <button
-                                                                onClick={() => onOpenResponseModal(appeal)}
+                                                            <CrudActionButton
+                                                                action="view"
                                                                 title="View Response Details"
-                                                                className="px-2.5 py-1 text-xs font-semibold bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
-                                                            >
-                                                                <Eye className="w-3 h-3 text-pink-600 dark:text-pink-400" />
-                                                                View
-                                                            </button>
+                                                                onClick={() => onOpenResponseModal(appeal)}
+                                                            />
                                                         )}
-                                                        <button
-                                                            onClick={() => onDeleteAppeal(appeal.id)}
+                                                        <CrudActionButton
+                                                            action="delete"
                                                             title="Delete Record"
-                                                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-lg transition-all duration-150 active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer"
-                                                        >
-                                                            <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                                                            Delete
-                                                        </button>
+                                                            onClick={() => onDeleteAppeal(appeal.id)}
+                                                        />
                                                     </>
                                                 )}
                                             </div>

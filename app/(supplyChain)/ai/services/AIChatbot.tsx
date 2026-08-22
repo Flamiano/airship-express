@@ -729,7 +729,6 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                 onClick={() => handleBatchCreatePOs(msg.id, true)}
                                 className="flex-1 py-2 px-3 text-xs font-semibold rounded-xl bg-gradient-to-r from-pink-600 to-rose-500 text-white hover:from-pink-500 hover:to-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                                <i className="fas fa-paper-plane text-[11px]" />
                                 <span>Create & Send via Gmail</span>
                             </button>
                         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 export default function ManualEntryModal() {
     const modalRef = useRef<HTMLDivElement>(null);
@@ -107,16 +108,17 @@ export default function ManualEntryModal() {
                             </p>
                         </div>
                     </div>
-                    <button
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={() => {
                             if (window.closeManualEntryModal) window.closeManualEntryModal();
                         }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                         aria-label="Close modal"
                     >
-                        <i className="fas fa-times text-base"></i>
-                    </button>
+                        <i className="fas fa-times text-xs"></i>
+                    </AppButton>
                 </div>
 
                 {/* Form Body */}
@@ -240,21 +242,25 @@ export default function ManualEntryModal() {
                     </div>
 
                     <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                        <button
+                        <AppButton
                             type="button"
-                            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800/70 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 transition-all cursor-pointer"
+                            variant="neutral"
+                            size="sm"
                             onClick={() => {
                                 if (window.closeManualEntryModal) window.closeManualEntryModal();
                             }}
                         >
-                            <i className="fas fa-times mr-1.5"></i> Cancel
-                        </button>
-                        <button
+                            <i className="fas fa-times text-xs"></i>
+                            <span>Cancel</span>
+                        </AppButton>
+                        <AppButton
                             type="submit"
-                            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-all shadow-xs shadow-pink-500/20 cursor-pointer"
+                            variant="primary"
+                            size="sm"
                         >
-                            <i className="fas fa-save mr-1"></i> Save Parcel
-                        </button>
+                            <i className="fas fa-save text-xs"></i>
+                            <span>Save Parcel</span>
+                        </AppButton>
                     </div>
                 </form>
             </div>

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { sanitizeText } from '@/app/(supplyChain)/components/global/sanitize';
 import { EditItemFormData, InventoryItem, Supplier } from '../../types';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface EditItemModalProps {
     isOpen: boolean;
@@ -96,14 +97,16 @@ export function EditItemModal({
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-100/80 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-700/60 transition-all flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
-                        disabled={loading}
+                    <AppButton
                         type="button"
+                        variant="neutral"
+                        size="icon-sm"
+                        onClick={onClose}
+                        disabled={loading}
+                        aria-label="Close modal"
                     >
-                        <i className="fas fa-xmark text-sm"></i>
-                    </button>
+                        <i className="fas fa-times text-xs"></i>
+                    </AppButton>
                 </div>
 
                 {/* Form Body */}
@@ -321,31 +324,25 @@ export function EditItemModal({
 
                     {/* Footer */}
                     <div className="px-6 py-4 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3 shrink-0">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="md"
                             onClick={onClose}
-                            className="px-4 py-2.5 text-xs sm:text-sm font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:border-slate-300 dark:hover:border-slate-600 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                             disabled={loading}
                         >
                             Cancel
-                        </button>
-                        <button
+                        </AppButton>
+                        <AppButton
                             type="submit"
+                            variant="primary"
+                            size="md"
                             disabled={loading}
-                            className="px-5 py-2.5 text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm active:scale-[0.98] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            loading={loading}
                         >
-                            {loading ? (
-                                <>
-                                    <i className="fas fa-spinner fa-spin text-xs"></i>
-                                    <span>Updating...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <i className="fas fa-check text-xs"></i>
-                                    <span>Save Changes</span>
-                                </>
-                            )}
-                        </button>
+                            {!loading && <i className="fas fa-check text-xs"></i>}
+                            <span>Save Changes</span>
+                        </AppButton>
                     </div>
                 </form>
             </div>

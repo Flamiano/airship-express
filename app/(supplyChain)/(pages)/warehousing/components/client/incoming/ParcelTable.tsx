@@ -8,6 +8,7 @@ import { TablePagination } from "./TablePagination";
 import { deleteMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/delete";
 import { receiveMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/parcels";
 import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 
 interface Parcel {
     id: number;
@@ -359,7 +360,7 @@ export function IncomingTable({
                             <th className="py-3 px-4">Region</th>
                             <th className="py-3 px-4">Courier</th>
                             <th className="py-3 px-4">Status</th>
-                            <th className="text-right py-3 px-4">Actions</th>
+                            <th className="text-right! py-3 px-4 w-[80px] min-w-[80px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs text-slate-700 dark:text-slate-300">
@@ -427,15 +428,14 @@ export function IncomingTable({
                                                 Pending
                                             </span>
                                         </td>
-                                        <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap">
-                                            <div className="inline-flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => handleDeleteParcel(parcel.id)}
-                                                    className="p-1.5 text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
+                                        <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[80px] min-w-[80px]">
+                                            <div className="flex items-center justify-end">
+                                                <CrudActionButton
+                                                    action="delete"
+                                                    ariaLabel="Delete parcel"
                                                     title="Delete"
-                                                >
-                                                    <i className="fas fa-trash text-xs"></i>
-                                                </button>
+                                                    onClick={() => handleDeleteParcel(parcel.id)}
+                                                />
                                             </div>
                                         </td>
                                     </tr>

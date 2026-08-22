@@ -42,17 +42,17 @@ export function BulkActionsToolbar({
     const getVariantStyles = (variant: BulkAction['variant']) => {
         switch (variant) {
             case 'primary':
-                return 'border border-white/20 bg-white/10 hover:bg-white/20 text-white';
+                return 'bg-white hover:bg-pink-50 text-pink-700 border border-pink-200 shadow-[0_2px_6px_rgba(0,0,0,0.12),inset_0_1px_0_#ffffff]';
             case 'danger':
-                return 'border border-rose-300/30 bg-rose-950/40 hover:bg-rose-950/60 text-white';
+                return 'bg-[#ffe8ec] hover:bg-[#ffdbdf] text-rose-700 border border-rose-300 shadow-[0_2px_6px_rgba(225,29,72,0.18),inset_0_1px_0_#ffffff]';
             case 'success':
-                return 'border border-emerald-300/30 bg-emerald-500/20 hover:bg-emerald-500/30 text-white';
+                return 'bg-[#e6f8ef] hover:bg-[#d5f3e4] text-emerald-800 border border-emerald-300 shadow-[0_2px_6px_rgba(16,185,129,0.18),inset_0_1px_0_#ffffff]';
             case 'warning':
-                return 'border border-amber-300/30 bg-amber-500/20 hover:bg-amber-500/30 text-white';
+                return 'bg-[#fef3c7] hover:bg-[#fde68a] text-amber-900 border border-amber-300 shadow-[0_2px_6px_rgba(0,0,0,0.08),inset_0_1px_0_#ffffff]';
             case 'info':
-                return 'border border-blue-300/30 bg-blue-500/20 hover:bg-blue-500/30 text-white';
+                return 'bg-[#e0f2fe] hover:bg-[#bae6fd] text-sky-900 border border-sky-300 shadow-[0_2px_6px_rgba(0,0,0,0.08),inset_0_1px_0_#ffffff]';
             default:
-                return 'border border-white/20 bg-white/10 hover:bg-white/20 text-white';
+                return 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-[0_2px_6px_rgba(0,0,0,0.08),inset_0_1px_0_#ffffff]';
         }
     };
 
@@ -82,9 +82,9 @@ export function BulkActionsToolbar({
                 <button
                     type="button"
                     onClick={onClear}
-                    className="rounded-lg px-2 py-1 text-xs font-medium 
-                               text-white/80 hover:bg-white/10 hover:text-white 
-                               transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
+                    className="rounded-full px-2.5 py-1 text-xs font-medium 
+                               bg-white/20 hover:bg-white/30 text-white 
+                               transition-all duration-200 active:scale-96 focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer"
                 >
                     Clear
                 </button>
@@ -104,12 +104,11 @@ export function BulkActionsToolbar({
                             aria-label={action.label}
                             className={`
                                 inline-flex items-center gap-1.5
-                                rounded-lg px-3 py-1.5
+                                rounded-full px-3 py-1.5
                                 text-xs font-semibold
-                                backdrop-blur-xs
-                                transition-all
+                                transition-all duration-200 ease-in-out active:scale-96
                                 focus:outline-none focus:ring-2 focus:ring-white/40
-                                disabled:cursor-not-allowed disabled:opacity-50
+                                disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer
                                 ${getVariantStyles(action.variant)}
                                 ${action.className || ''}
                             `}

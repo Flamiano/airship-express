@@ -3,6 +3,7 @@
 import React from 'react';
 import { Undo, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { BlockedDevice } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -90,7 +91,7 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                             <th className="py-3 px-4">Blocked At</th>
                             <th className="py-3 px-4">Reason</th>
                             <th className="py-3 px-4">Status</th>
-                            <th className="py-3 px-4 text-right">Actions</th>
+                            <th className="py-3 px-4 text-right! w-[130px] min-w-[130px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -155,24 +156,21 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                                                 <span>{device.status === 'blocked' ? 'Blocked' : 'Unblocked'}</span>
                                             </span>
                                         </td>
-                                        <td className="py-3 px-4 text-right">
-                                            <div className="flex items-center justify-end gap-1.5">
+                                        <td className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                            <div className="flex items-center justify-end gap-2.5">
                                                 {device.status === 'blocked' && (
-                                                    <button
+                                                    <CrudActionButton
+                                                        action="restore"
+                                                        label="Unblock"
+                                                        title="Unblock Device"
                                                         onClick={() => onUnblockDevice(device.id, device.email)}
-                                                        className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all flex items-center gap-1.5 cursor-pointer"
-                                                    >
-                                                        <Undo className="w-3 h-3" />
-                                                        <span>Unblock</span>
-                                                    </button>
+                                                    />
                                                 )}
-                                                <button
+                                                <CrudActionButton
+                                                    action="delete"
+                                                    title="Delete Record"
                                                     onClick={() => onDeleteDevice(device.id)}
-                                                    className="px-2.5 py-1 text-xs font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all flex items-center gap-1.5 cursor-pointer"
-                                                >
-                                                    <Trash2 className="w-3 h-3" />
-                                                    <span>Delete</span>
-                                                </button>
+                                                />
                                             </div>
                                         </td>
                                     </tr>

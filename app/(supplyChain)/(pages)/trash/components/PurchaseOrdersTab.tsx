@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 
 interface ArchivedPurchaseOrder {
     id: string;
@@ -32,6 +33,7 @@ interface ArchivedPurchaseOrder {
 }
 
 const ITEMS_PER_PAGE = 10;
+const formatCurrency = (amount: number) => `₱${(amount || 0).toLocaleString()}`;
 
 export function PurchaseOrdersTab() {
     const { confirm } = useConfirm();
@@ -515,7 +517,7 @@ export function PurchaseOrdersTab() {
                                 <th>Status</th>
                                 <th>Deleted By</th>
                                 <th>Deleted At</th>
-                                <th className="text-right">Actions</th>
+                                <th className="text-right! w-[130px] min-w-[130px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -524,7 +526,7 @@ export function PurchaseOrdersTab() {
                                     <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-1">
-                                                <i className="fas fa-file-invoice text-xl"></i>
+                                                <i className="fas fa-trash-can text-xl"></i>
                                             </div>
                                             <p className="font-semibold text-slate-700 dark:text-slate-300">No archived purchase orders found</p>
                                             <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your filters or search terms</p>
@@ -553,14 +555,14 @@ export function PurchaseOrdersTab() {
                                                     className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"
                                                 />
                                             </td>
-                                            <td className="py-3 px-4 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                            <td className="py-3 px-4 font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs">
                                                 {po.po_number}
                                             </td>
-                                            <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
+                                            <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
                                                 {po.supplier_name}
                                             </td>
-                                            <td className="py-3 px-4 font-bold text-slate-900 dark:text-white font-mono">
-                                                ₱{po.total_amount.toLocaleString()}
+                                            <td className="py-3 px-4 font-mono font-semibold text-slate-800 dark:text-slate-200">
+                                                {formatCurrency(po.total_amount)}
                                             </td>
                                             <td className="py-3 px-4">
                                                 {getStatusBadge(po.status)}
@@ -571,26 +573,22 @@ export function PurchaseOrdersTab() {
                                             <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">
                                                 {formatDate(po.deleted_at)}
                                             </td>
-                                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
-                                                        onClick={() => handleRestorePurchaseOrder(po)}
-                                                        disabled={poLoading}
+                                            <td className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                <div className="flex items-center justify-end gap-2.5">
+                                                    <CrudActionButton
+                                                        action="restore"
+                                                        ariaLabel={`Restore purchase order ${po.po_number}`}
                                                         title="Restore Purchase Order"
-                                                    >
-                                                        <i className="fas fa-undo text-[10px]"></i>
-                                                        <span>Restore</span>
-                                                    </button>
-                                                    <button
-                                                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-2xs hover:shadow-xs active:scale-98"
-                                                        onClick={() => handleDeletePurchaseOrderPermanently(po)}
                                                         disabled={poLoading}
+                                                        onClick={() => handleRestorePurchaseOrder(po)}
+                                                    />
+                                                    <CrudActionButton
+                                                        action="delete"
+                                                        ariaLabel={`Delete purchase order ${po.po_number} permanently`}
                                                         title="Delete Permanently"
-                                                    >
-                                                        <i className="fas fa-trash-can text-[10px]"></i>
-                                                        <span>Delete</span>
-                                                    </button>
+                                                        disabled={poLoading}
+                                                        onClick={() => handleDeletePurchaseOrderPermanently(po)}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>

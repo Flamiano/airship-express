@@ -6,6 +6,8 @@ import { InventoryItem } from '../../types';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
 
 interface InventoryTabProps {
     items: InventoryItem[];
@@ -146,7 +148,7 @@ export function InventoryTab({
                             <th className="px-3.5 py-3 min-w-[110px]">Status</th>
                             <th className="px-4 py-3 min-w-[180px]">Latest PO / Request</th>
                             <th className="px-4 py-3 min-w-[200px]">Audit / Overrides</th>
-                            <th className="px-4 py-3 text-right min-w-[170px]">Actions</th>
+                            <th className="px-4 py-3 text-right! min-w-[210px] w-[210px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -358,59 +360,53 @@ export function InventoryTab({
                                         </td>
 
                                         {/* Actions */}
-                                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                {/* Add / Request PO Button (2.1) */}
-                                                <button
-                                                    onClick={() => onOrderPO?.(item)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-pink-700 dark:text-pink-300 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 active:scale-95 rounded-xl transition-all border border-pink-200/80 dark:border-pink-800/50 hover:border-pink-300 shadow-2xs hover:shadow-xs cursor-pointer"
+                                        <td className="px-4 py-3 text-right whitespace-nowrap min-w-[210px] w-[210px]">
+                                            <div className="flex items-center justify-end gap-2.5">
+                                                {/* Add / Request PO Button */}
+                                                <CrudActionButton
+                                                    action="custom"
+                                                    label="Order"
+                                                    icon={ShoppingCart}
+                                                    ariaLabel="Order / Purchase Request"
                                                     title="Order / Purchase Request"
-                                                >
-                                                    <i className="fas fa-cart-plus text-[10px]"></i>
-                                                    <span>Order</span>
-                                                </button>
+                                                    onClick={() => onOrderPO?.(item)}
+                                                />
 
-                                                {/* Stock In Button (2.3) */}
-                                                <button
-                                                    onClick={() => onStockIn(item.item_name, item)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 active:scale-95 rounded-xl transition-all border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-300 shadow-2xs hover:shadow-xs cursor-pointer"
+                                                {/* Stock In Button */}
+                                                <CrudActionButton
+                                                    action="custom"
+                                                    label="In"
+                                                    icon={ArrowDown}
+                                                    ariaLabel={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
                                                     title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                >
-                                                    {hasReceivableStock ? (
-                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                    ) : (
-                                                        <i className="fas fa-arrow-down text-[10px]"></i>
-                                                    )}
-                                                    <span>In</span>
-                                                </button>
+                                                    onClick={() => onStockIn(item.item_name, item)}
+                                                />
 
                                                 {/* Stock Out Button */}
-                                                <button
-                                                    onClick={() => onStockOut(item.item_name)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 active:scale-95 rounded-xl transition-all border border-amber-200/80 dark:border-amber-800/50 hover:border-amber-300 shadow-2xs hover:shadow-xs cursor-pointer"
+                                                <CrudActionButton
+                                                    action="custom"
+                                                    label="Out"
+                                                    icon={ArrowUp}
+                                                    ariaLabel="Stock Out"
                                                     title="Stock Out"
-                                                >
-                                                    <i className="fas fa-arrow-up text-[10px]"></i>
-                                                    <span>Out</span>
-                                                </button>
+                                                    onClick={() => onStockOut(item.item_name)}
+                                                />
 
                                                 {/* Edit Button */}
-                                                <button
-                                                    onClick={() => onEdit(item)}
-                                                    className="w-8 h-8 rounded-xl text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200/80 dark:border-purple-800/50 hover:border-purple-300 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-2xs hover:shadow-xs"
+                                                <CrudActionButton
+                                                    action="edit"
+                                                    ariaLabel="Edit Item"
                                                     title="Edit Item"
-                                                >
-                                                    <i className="fas fa-pen-to-square text-xs"></i>
-                                                </button>
+                                                    onClick={() => onEdit(item)}
+                                                />
 
                                                 {/* Delete Button */}
-                                                <button
-                                                    onClick={() => onDelete(item.id, item.item_name)}
-                                                    className="w-8 h-8 rounded-xl text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/50 hover:border-rose-300 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-2xs hover:shadow-xs"
+                                                <CrudActionButton
+                                                    action="delete"
+                                                    ariaLabel="Delete Item"
                                                     title="Delete Item"
-                                                >
-                                                    <i className="fas fa-trash-can text-xs"></i>
-                                                </button>
+                                                    onClick={() => onDelete(item.id, item.item_name)}
+                                                />
                                             </div>
                                         </td>
                                     </tr>

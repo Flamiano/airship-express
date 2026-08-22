@@ -12,6 +12,7 @@ import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { toast } from 'sonner';
 import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
+import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 
 interface MediaItem {
     id: string;
@@ -1288,14 +1289,15 @@ export default function MediaGallery() {
                                             {selectedItemIndex + 1} / {mediaItems.length}
                                         </span>
                                     )}
-                                    <button
+                                    <AppButton
                                         type="button"
+                                        variant="neutral"
+                                        size="icon-sm"
                                         onClick={closePreview}
-                                        className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer"
                                         aria-label="Close preview"
                                     >
-                                        <X className="w-5 h-5" />
-                                    </button>
+                                        <X className="w-4 h-4" />
+                                    </AppButton>
                                 </div>
                             </div>
 
@@ -1460,14 +1462,15 @@ export default function MediaGallery() {
                                             )}
                                         </div>
 
-                                        <button
+                                        <AppButton
                                             type="button"
+                                            variant="primary"
+                                            size="sm"
                                             onClick={() => downloadImage(selectedItem)}
-                                            className="flex items-center gap-2 px-5 py-2.5 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/40 dark:hover:bg-pink-900/50 text-pink-700 dark:text-pink-300 text-xs sm:text-sm font-semibold rounded-xl border border-pink-200/80 dark:border-pink-800/50 active:scale-95 transition-all shadow-2xs cursor-pointer"
                                         >
-                                            <Download className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                                            <Download className="w-4 h-4" />
                                             <span>Download Asset</span>
-                                        </button>
+                                        </AppButton>
                                     </div>
 
                                     {(selectedItem.parcel_batch || selectedItem.notes) && (

@@ -7,6 +7,7 @@ import { getActiveCouriers, Courier } from "@/app/(supplyChain)/(pages)/warehous
 import { sanitizeBarcode, sanitizeSearch } from "@/app/(supplyChain)/components/global/sanitize";
 import { philippineLocations } from "@/app/(supplyChain)/lib/regionDataSet";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface AddManualButtonProps {
     onAdd?: () => void;
@@ -49,27 +50,16 @@ export default function AddManualButton({ onAdd }: AddManualButtonProps) {
 
             const result = await addManualParcel(payload);
 
-            if (!result.success) {
-                toast.error(result.error || 'Failed to add parcel', {
-                    id: toastId,
-                    duration: 5000,
-                });
-                return;
+            if (result.success) {
+                toast.success('Parcel added successfully', { id: toastId });
+                setShowModal(false);
+                if (onAdd) onAdd();
+            } else {
+                toast.error(result.error || 'Failed to add parcel', { id: toastId });
             }
-
-            toast.success(`Parcel added! Tracking: ${result.data?.trackingNumber}`, {
-                id: toastId,
-                duration: 3000,
-            });
-
-            setShowModal(false);
-            onAdd?.();
-        } catch (error) {
-            toast.error('Failed to add parcel', {
-                id: toastId,
-                description: error instanceof Error ? error.message : 'Please try again',
-                duration: 5000,
-            });
+        } catch (error: any) {
+            console.error('Error adding parcel manually:', error);
+            toast.error(error.message || 'An unexpected error occurred', { id: toastId });
         } finally {
             setIsAdding(false);
         }
@@ -77,14 +67,15 @@ export default function AddManualButton({ onAdd }: AddManualButtonProps) {
 
     return (
         <>
-            <button
+            <AppButton
                 type="button"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-semibold text-xs transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                variant="primary"
+                size="sm"
                 onClick={() => setShowModal(true)}
             >
                 <i className="fas fa-plus text-xs" aria-hidden="true" />
                 <span>Add Manual</span>
-            </button>
+            </AppButton>
 
             {showModal && (
                 <Portal>
@@ -350,14 +341,16 @@ function ManualEntryModal({
                         <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Add Manual Entry</h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Enter details to add a new parcel manually</p>
                     </div>
-                    <button
+                    <AppButton
+                        type="button"
+                        variant="neutral"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center transition-all cursor-pointer"
                         disabled={isLoading}
                         aria-label="Close"
                     >
-                        <i className="fas fa-times text-sm"></i>
-                    </button>
+                        <i className="fas fa-times text-xs"></i>
+                    </AppButton>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
@@ -605,28 +598,26 @@ function ManualEntryModal({
                     </div>
 
                     <div className="flex items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="neutral"
+                            size="md"
                             onClick={onClose}
-                            className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 active:scale-[0.98] cursor-pointer"
                             disabled={isLoading}
+                            className="flex-1"
                         >
                             Cancel
-                        </button>
-                        <button
+                        </AppButton>
+                        <AppButton
                             type="submit"
-                            className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-pink-500 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            variant="primary"
+                            size="md"
                             disabled={isLoading}
+                            loading={isLoading}
+                            className="flex-1"
                         >
-                            {isLoading ? (
-                                <>
-                                    <i className="fas fa-spinner fa-spin"></i>
-                                    <span>Adding...</span>
-                                </>
-                            ) : (
-                                <span>Add Parcel</span>
-                            )}
-                        </button>
+                            <span>Add Parcel</span>
+                        </AppButton>
                     </div>
                 </form>
             </div>

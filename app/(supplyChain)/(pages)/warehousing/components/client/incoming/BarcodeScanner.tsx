@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { toast } from "sonner";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 
 interface BarcodeScannerProps {
     onScan: (barcode: string) => void;
@@ -243,14 +244,15 @@ export default function BarcodeScanner({
                                 <i className="fas fa-circle-check text-[10px]"></i>
                                 {scannedCount} scanned
                             </span>
-                            <button
+                            <AppButton
                                 type="button"
+                                variant="neutral"
+                                size="icon-sm"
                                 onClick={handleClose}
                                 aria-label="Close modal"
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500/20 cursor-pointer"
                             >
-                                <i className="fas fa-xmark text-lg"></i>
-                            </button>
+                                <i className="fas fa-times text-xs"></i>
+                            </AppButton>
                         </div>
                     </div>
 
@@ -263,13 +265,15 @@ export default function BarcodeScanner({
                                 <p className="text-center text-xs font-medium text-slate-300 max-w-xs">
                                     {error || "Unable to access camera device."}
                                 </p>
-                                <button
+                                <AppButton
                                     type="button"
+                                    variant="neutral"
+                                    size="sm"
                                     onClick={handleClose}
-                                    className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-lg text-white text-xs font-semibold transition-colors border border-slate-700 cursor-pointer"
+                                    className="mt-4"
                                 >
                                     Close Window
-                                </button>
+                                </AppButton>
                             </div>
                         ) : (
                             <>
@@ -359,14 +363,16 @@ export default function BarcodeScanner({
                     </div>
 
                     <div className="mt-4 pt-1">
-                        <button
+                        <AppButton
                             type="button"
+                            variant="primary"
+                            size="md"
                             onClick={handleClose}
-                            className="w-full px-4 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 active:bg-pink-700 text-white font-semibold text-xs transition-all shadow-sm shadow-pink-600/20 active:scale-[0.99] flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-pink-500/30 cursor-pointer"
+                            className="w-full"
                         >
                             <i className="fas fa-check text-xs"></i>
                             <span>Done Scanning</span>
-                        </button>
+                        </AppButton>
                     </div>
                 </div>
             </div>
