@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Plus, RefreshCw, Trash2, Pencil, Check, X } from "lucide-react";
-import { createDeliveryPolicy } from "../services/delivery-policy";
-import { DeliveryPolicy } from "../types/delivery-policy";
+import { createDeliveryPolicy } from "../../services/delivery-policy";
+import { DeliveryPolicy } from "../../types/delivery-policy";
+import { toast } from "sonner";
 
 function formatDelivery(minDays: number, maxDays: number) {
   return minDays === maxDays ? `${minDays} days` : `${minDays}–${maxDays} days`;
@@ -42,8 +43,9 @@ export default function DeliveryPolicyClient({ Policies }: { Policies: DeliveryP
       const updated = await res.json();
       setPolicies((prev) => prev.map((p) => p.id === id ? updated : p));
       setEditingId(null);
+      toast.success("Delivery policy updated successfully.");
     } catch {
-      setError("Failed to update policy.");
+      toast.error("Failed to update policy.");
     } finally {
       setIsSaving(false);
     }
@@ -55,7 +57,9 @@ export default function DeliveryPolicyClient({ Policies }: { Policies: DeliveryP
       const res = await fetch("/api/deliverypolicy");
       const data = await res.json();
       setPolicies(data);
+      toast.success("Policies refreshed.");
     } catch {
+      toast.error("Failed to refresh policies.");
     } finally {
       setIsLoading(false);
     }
@@ -72,8 +76,9 @@ export default function DeliveryPolicyClient({ Policies }: { Policies: DeliveryP
       if (!res.ok) throw new Error();
       setPolicies((prev) => prev.filter((p) => p.id !== id));
       setConfirmDeleteId(null);
+      toast.success("Delivery policy deleted successfully.");
     } catch {
-      setError("Failed to delete policy.");
+      toast.error("Failed to delete policy.");
     } finally {
       setDeletingId(null);
     }
@@ -95,8 +100,12 @@ export default function DeliveryPolicyClient({ Policies }: { Policies: DeliveryP
       setMinDays("");
       setMaxDays("");
       setPolicies((prev) => [...prev, newPolicy]);
+      toast.success("Delivery policy created successfully.");
+
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+         toast.error(
+      err instanceof Error ? err.message : "Failed to create delivery policy."
+    );
     } finally {
       setIsSubmitting(false);
     }

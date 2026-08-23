@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Search, Eye, Download, Printer } from "lucide-react";
-import { formatDate } from "../library/utils/formattedate";
-import type { Document, PODStatus } from "../types/document";
-import type { Customers } from "../types/customer";
-import IconBtn from "./IconBtn";
+import { formatDate } from "../../library/utils/formattedate";
+import type { Document, PODStatus } from "../../types/document";
+import type { Customers } from "../../types/customer";
+import IconBtn from "../ui/IconBtn";
 
 const podStatusStyle: Record<PODStatus, string> = {
   Generated: "bg-zinc-100 text-foreground",

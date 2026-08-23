@@ -16,8 +16,8 @@ export async function protectRoute(
     if (!user) {
         redirect(
             requiredRole === "staff"
-                ? "/crbc/login"
-                : "/customer/login"
+                ? "/crbcAuth/login"
+                : "/customerportalAuth/login"
         );
     }
 
@@ -29,7 +29,7 @@ export async function protectRoute(
 
     if (error || !profile) {
         if (requiredRole === "staff") {
-            redirect("/customer/dashboard");
+            redirect("/crbcAuth/login");
         }
 
         redirect("/crbc");
@@ -47,8 +47,8 @@ export async function protectRoute(
 
         redirect(
             requiredRole === "staff"
-                ? "/crbc/login"
-                : "/customer/login"
+                ? "/crbcAuth/login"
+                : "/customerportalAuth/login"
         );
     }
 

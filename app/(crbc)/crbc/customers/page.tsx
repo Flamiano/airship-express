@@ -1,5 +1,5 @@
 import { getAllCustomers } from "../../services/crm.service";
-import CustomerManagement from "../../components/CustomerManagement";
+import CustomerManagement from "../../components/customers/CustomerManagement";
 
 export default async function CustomersPage() {
   const customers = await getAllCustomers();

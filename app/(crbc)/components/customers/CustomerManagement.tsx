@@ -7,58 +7,16 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  Filter,
   X,
 } from "lucide-react";
 import Link from "next/link";
 
-import type { Customers } from "../types/customer";
-import { formatPhoneNumber } from "../library/utils/formatPhoneNumber";
-import IconBtn from "./IconBtn";
-import AddCustomerModal from "./AddCustomerModal";
+import type { Customers } from "../../types/customer";
+import { formatPhoneNumber } from "../../library/utils/formatPhoneNumber";
+import IconBtn from "../ui/IconBtn";
+import NewBookingRequestWizard from "./NewBookingRequestWizard";
 
 const PAGE_SIZE = 10;
-
-function FilterGroup({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: string[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs font-medium text-muted">
-        {label}
-      </span>
-
-      {options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          onClick={() => onChange(option)}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-            value === option
-              ? "bg-accent border-accent text-white"
-              : "bg-paper border-line text-muted hover:border-muted/50 hover:text-foreground"
-          }`}
-        >
-          {option}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const SOURCE_LABELS: Record<string, string> = {
-  online: "Online",
-  walk_in: "Walk-in",
-  call: "Phone Call",
-};
 
 export default function CustomerManagement({
   initialCustomers,
@@ -69,9 +27,8 @@ export default function CustomerManagement({
 
   const [query, setQuery] = useState("");
   const [searchBy, setSearchBy] = useState<"all" | "customer_id" | "phone" | "name">("all");
-  const [sourceFilter, setSourceFilter] = useState("All");
   const [page, setPage] = useState(1);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,12 +56,9 @@ export default function CustomerManagement({
         }
       }
 
-      const matchesSource =
-        sourceFilter === "All" || customer.source === sourceFilter;
-
-      return matchesQuery && matchesSource;
+      return matchesQuery;
     });
-  }, [customers, query, searchBy, sourceFilter]);
+  }, [customers, query, searchBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -127,18 +81,13 @@ export default function CustomerManagement({
     setPage(1);
   }, []);
 
-  const handleSourceFilter = useCallback((value: string) => {
-    setSourceFilter(value);
-    setPage(1);
-  }, []);
-
   const handleClearSearch = useCallback(() => {
     setQuery("");
     setSearchBy("all");
     setPage(1);
   }, []);
 
-  const hasActiveFilters = query || sourceFilter !== "All";
+  const hasActiveFilters = !!query;
 
   return (
     <div className="space-y-4">
@@ -157,7 +106,7 @@ export default function CustomerManagement({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setModalOpen(true)}
+            onClick={() => setWizardOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/80 hover:bg-accent-dark/80 text-white text-sm transition-colors cursor-pointer"
           >
             <Plus size={15} />
@@ -166,7 +115,10 @@ export default function CustomerManagement({
         </div>
       </div>
 
-      <AddCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <NewBookingRequestWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+      />
 
       {/* Search & Filter Bar */}
       <div className="bg-paper border border-line rounded-xl p-4 space-y-3">
@@ -214,7 +166,6 @@ export default function CustomerManagement({
         {/* Active Filters Display */}
         {hasActiveFilters && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Filter size={12} className="text-muted" />
             {query && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">
                 {searchBy === "customer_id" ? "ID: " : searchBy === "name" ? "Name: " : searchBy === "phone" ? "Phone: " : ""}
@@ -228,41 +179,19 @@ export default function CustomerManagement({
                 </button>
               </span>
             )}
-            {sourceFilter !== "All" && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">
-                Source: {SOURCE_LABELS[sourceFilter] ?? sourceFilter}
-                <button
-                  type="button"
-                  onClick={() => handleSourceFilter("All")}
-                  className="ml-1 hover:text-accent/70"
-                >
-                  <X size={10} />
-                </button>
-              </span>
-            )}
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  setSourceFilter("All");
-                  setSearchBy("all");
-                  setPage(1);
-                }}
-                className="text-xs text-muted hover:text-foreground underline"
-              >
-                Clear all
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setSearchBy("all");
+                setPage(1);
+              }}
+              className="text-xs text-muted hover:text-foreground underline"
+            >
+              Clear all
+            </button>
           </div>
         )}
-
-        <FilterGroup
-          label="Source"
-          options={["All", "online", "walk_in", "call"]}
-          value={sourceFilter}
-          onChange={handleSourceFilter}
-        />
       </div>
 
       {/* Customer Table */}
@@ -275,7 +204,6 @@ export default function CustomerManagement({
                 "Full Name",
                 "Email",
                 "Phone",
-                "Type",
                 "Role",
                 "Actions",
               ].map((heading) => (
@@ -293,7 +221,7 @@ export default function CustomerManagement({
             {pageRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={6}
                   className="px-4 py-10 text-center text-muted text-sm"
                 >
                   No customers match your filters.
@@ -319,11 +247,7 @@ export default function CustomerManagement({
                 </td>
 
                 <td className="px-4 py-3 text-foreground">
-                  {formatPhoneNumber(customer.phone || null) ?? "-"}
-                </td>
-
-                <td className="px-4 py-3 text-foreground">
-                  {SOURCE_LABELS[customer.source ?? ""] ?? customer.source ?? "-"}
+                  {formatPhoneNumber(customer.phone || '-')}
                 </td>
 
                 <td className="px-4 py-3 capitalize text-foreground">

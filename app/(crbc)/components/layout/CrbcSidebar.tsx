@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
 import { useState } from "react"
-import { customerServiceLogout } from "../actions/auth"
+import { customerServiceLogout } from "../../actions/auth"
 import {
     Users, FileText, FolderOpen, BarChart2, LogOut,
     ChevronDown, Menu, Settings,
@@ -70,7 +70,7 @@ export default function CrbcSidebar({ collapsed, setCollapsed }: { collapsed: bo
                 {/* Logo */}
                 <div className="h-14 flex items-center gap-2.5 px-4 border-b border-line shrink-0">
                     {!collapsed && (
-                        <Image src="/images/logo.jpg" alt="Logo" width={20} height={20} className="shrink-0" />
+                        <Image src="/images/airship.png" alt="Logo" width={30} height={30} className="shrink-0" />
                     )}
                     {!collapsed && (
                         <div>

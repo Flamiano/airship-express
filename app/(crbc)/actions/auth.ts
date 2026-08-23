@@ -112,7 +112,7 @@ export const logout = async () => {
         const supabase = await createClient();
         await supabase.auth.signOut();
         revalidatePath("/", "layout");
-        redirect("/login")
+        redirect("/customerportalAuth/login")
 }
 
 export const customerServiceLogout = async () => {
