@@ -10,12 +10,12 @@ const response = await fetch("/api/deliverypolicy", {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  const policy = await response.json();
 
   if (!response.ok) {
-    throw new Error("Failed to create delivery policy");
+    throw new Error(policy.error);
   }
 
-  const policy = await response.json();
   return policy;
 }
 

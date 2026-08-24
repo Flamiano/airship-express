@@ -1,7 +1,4 @@
-// app/data/documents.ts
-
-import { Document } from "@/app/types/document";
-
+import { Document } from "../types/document";
 export const documents: Document[] = [
   {
     id: "1",

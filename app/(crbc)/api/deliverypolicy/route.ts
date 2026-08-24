@@ -1,8 +1,8 @@
-import { createClient } from "@/app/lib/supabase/server";
-import { adminCreateClient } from "@/app/lib/supabase/admin";
-import { mapDeliveryPolicyRow } from "@/app/types/delivery-policy";
+import { createClient } from "../../library/supabase/server";
+import { adminCreateClient } from "../../library/supabase/admin";
+import { mapDeliveryPolicyRow } from "../../types/delivery-policy";
 import { NextRequest, NextResponse } from "next/server";
-import { validatePolicyInput, validateId, getAuthenticatedClient } from "@/app/lib/validation/delivery.policy.validate";
+import { validatePolicyInput, validateId, getAuthenticatedClient } from "../../library/validation/delivery.policy.validate";
 
 export async function GET() {
   const supabase = adminCreateClient();

@@ -11,6 +11,11 @@ import {
     getInventoryItems,
     getReceivingQueue,
     getReceivingQueueSummary,
+    getSuppliers,
+    getSuppliersSummary,
+    getPurchaseOrders,
+    getPurchaseOrdersSummary,
+    getPendingPurchaseRequests,
 } from '../actions';
 
 // Registry to store all actions
@@ -88,6 +93,31 @@ export function registerAllActions(): void {
             fn: getReceivingQueueSummary,
             description: 'Get receiving queue summary',
             keywords: ['receiving', 'queue', 'summary']
+        },
+        'get_suppliers': {
+            fn: getSuppliers,
+            description: 'Get suppliers list and details',
+            keywords: ['supplier', 'suppliers', 'vendor', 'vendors', 'contractor', 'partner']
+        },
+        'get_suppliers_summary': {
+            fn: getSuppliersSummary,
+            description: 'Get supplier counts and category breakdown',
+            keywords: ['supplier summary', 'supplier count', 'how many suppliers', 'active suppliers']
+        },
+        'get_purchase_orders': {
+            fn: getPurchaseOrders,
+            description: 'Get purchase orders and details',
+            keywords: ['purchase order', 'purchase orders', 'po', 'pos', 'orders', 'spent', 'expense']
+        },
+        'get_purchase_orders_summary': {
+            fn: getPurchaseOrdersSummary,
+            description: 'Get purchase orders aggregate metrics, totals, spend, and status breakdown',
+            keywords: ['po summary', 'purchase order summary', 'total spend', 'po metrics', 'procurement spend']
+        },
+        'get_pending_purchase_requests': {
+            fn: getPendingPurchaseRequests,
+            description: 'Get purchase requests that do not have a purchase order yet',
+            keywords: ['create purchase order', 'create po', 'generate po', 'pending request', 'purchase request without po', 'unfulfilled request', 'convert request']
         },
     };
 
@@ -187,6 +217,21 @@ export function detectActions(query: string): string[] {
     if (lowerQuery.includes('supplier') ||
         lowerQuery.includes('vendors')) {
         detected.push('get_suppliers');
+    }
+
+    if (lowerQuery.includes('create purchase order') ||
+        lowerQuery.includes('create po') ||
+        lowerQuery.includes('generate po') ||
+        lowerQuery.includes('request without po') ||
+        lowerQuery.includes('pending request') ||
+        lowerQuery.includes('no purchase order')) {
+        detected.push('get_pending_purchase_requests');
+    } else if (lowerQuery.includes('purchase order') ||
+        lowerQuery.includes('purchase orders') ||
+        lowerQuery.includes('po ') ||
+        lowerQuery.includes('spend') ||
+        lowerQuery.includes('procurement spend')) {
+        detected.push('get_purchase_orders_summary');
     }
 
     return [...new Set(detected)];

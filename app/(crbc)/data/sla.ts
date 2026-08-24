@@ -1,4 +1,4 @@
-import { SLAPolicy } from "@/app/types/sla"
+import { SLAPolicy } from "../types/sla"
 
 export const slaPolicies: SLAPolicy[] = [
   { region: "Metro Manila", maxDays: 1 },

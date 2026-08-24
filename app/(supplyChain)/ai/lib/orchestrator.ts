@@ -16,8 +16,8 @@ import {
 } from './action-registry';
 import { GoogleGenAI } from '@google/genai';
 
-const apiKey = process.env.GEMINI_API_KEY;
-const MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || 'gemini-3.5-flash-lite';
 
 registerAllActions();
 
@@ -78,7 +78,7 @@ function analyzeQuery(query: string): QueryAnalysis {
 }
 
 /**
- * Build a flexible prompt based on query analysis
+ * Build a flexible prompt based on query analysis and user role access
  */
 function buildFlexiblePrompt(
     query: string,
@@ -86,9 +86,30 @@ function buildFlexiblePrompt(
     knowledgeContext: string,
     actionResults: any,
     historyContext: string,
-    resourcesUsed: any[]
+    resourcesUsed: any[],
+    userRole: string = "User"
 ): string {
-    let systemPrompt = `You are a warehouse management assistant with deep expertise in logistics and supply chain operations.
+    let systemPrompt = `You are an AI assistant for the Airship Express Supply Chain Management system.
+
+**Role-Based Access Control Rules:**
+You are communicating with a user whose authorized system access level is "${userRole}".
+Each functional module and page has strict access permissions:
+- Executive Overview (KPIs, executive intelligence, overall macro metrics, executive financial summaries): Accessible ONLY to Executive or Admin.
+- User Activities, System Sessions, Device Audits, Security Controls: Accessible ONLY to Executive or Admin.
+- Procurement & Purchase Orders (Supplier contracts, PO costs, approvals): Accessible to Executive, Admin, Manager, and authorized Employee.
+- Warehousing (Receiving, Sorting, Outgoing, Dispatch, Inventory): Accessible to Executive, Admin, Manager, Operator, Employee.
+
+**CRITICAL INSTRUCTIONS FOR ACCESS CONTROL:**
+1. If the user asks about a page, dataset, metrics, or information that is outside their authorized access level (for example, if a non-Executive/non-Admin asks about the Executive Overview or financial KPIs, or an unauthorized role asks about protected areas):
+   - You MUST deny access dynamically and naturally.
+   - Example responses:
+     - "You are not authorized to view or access this information."
+     - "You do not have permission to view this page or its records."
+     - "I cannot find this information or you may not have access to view it."
+     - "This section is not accessible from your current account."
+   - NEVER mention role names (e.g. do NOT say "You need to be an Executive" or "Your role is Operator").
+   - NEVER explain which roles have access to what. Simply state that the page/data is not accessible or not permitted.
+2. If the user is authorized for the requested data/page, provide a clear, helpful, and accurate response based on the Knowledge Base and Live Data.
 
 **User Query Analysis:**
 - Type: ${analysis.type}
@@ -108,6 +129,10 @@ ${knowledgeContext}
     if (actionResults && Object.keys(actionResults).length > 0) {
         systemPrompt += `**Live Data from Database:**
 ${JSON.stringify(actionResults, null, 2)}
+
+**Interactive Actions Guidance:**
+- When 'get_pending_purchase_requests' is returned, provide an organized overview of the purchase requests awaiting purchase order creation (mentioning request numbers, supplier name, and items). The system UI will automatically render interactive selectable cards for Manager, Admin, and Executive users so they can select requests, create draft purchase orders, review them, and choose to send via Gmail.
+- Remind users that once generated, the orders are saved as Drafts in the Purchase Orders page for review and can be dispatched to supplier emails with confirmation links.
 
 `;
     }
@@ -375,7 +400,7 @@ ${knowledgeSummaries || 'No knowledge files loaded'}
 /**
  * Build the system prompt (EXPORTED for streaming)
  */
-export async function buildSystemPrompt(query: string, history: any[] = []) {
+export async function buildSystemPrompt(query: string, history: any[] = [], userRole: string = "User") {
     const systemResponse = handleSystemQuestion(query);
     if (systemResponse) {
         return {
@@ -414,6 +439,19 @@ export async function buildSystemPrompt(query: string, history: any[] = []) {
 
     const actionResults = await executeMatchingActions(query);
 
+    // Also execute any specific tools directly identified by classification
+    const toolResources = classification.resources?.filter(r => r.type === 'tool') || [];
+    for (const tool of toolResources) {
+        if (!actionResults[tool.name]) {
+            try {
+                const res = await executeAction(tool.name, query);
+                actionResults[tool.name] = res;
+            } catch (e: any) {
+                console.error(`Error executing tool ${tool.name}:`, e);
+            }
+        }
+    }
+
     let knowledgeResults: any[] = [];
     const knowledgeResources = classification.resources?.filter(r => r.type === 'knowledge') || [];
 
@@ -447,7 +485,8 @@ export async function buildSystemPrompt(query: string, history: any[] = []) {
         knowledgeContext,
         actionResults,
         historyContext,
-        classification.resources || []
+        classification.resources || [],
+        userRole
     );
 
     return {
@@ -465,7 +504,7 @@ export async function buildSystemPrompt(query: string, history: any[] = []) {
 /**
  * Main orchestrator
  */
-export async function orchestrator(query: string, history: any[] = []): Promise<OrchestratorResult> {
+export async function orchestrator(query: string, history: any[] = [], userRole: string = "User"): Promise<OrchestratorResult> {
 
     try {
         const lowerQuery = query.toLowerCase().trim();
@@ -482,7 +521,8 @@ export async function orchestrator(query: string, history: any[] = []): Promise<
                 .map((msg: any) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
                 .join('\n');
             const genAI = new GoogleGenAI({ apiKey });
-            const contextualPrompt = `You are a warehouse management assistant. Continue the conversation naturally.
+            const contextualPrompt = `You are a warehouse management assistant for Airship Express. Continue the conversation naturally.
+The user has system access level "${userRole}". If they follow up asking about unauthorized or restricted areas, dynamically state that the page/data is not accessible without mentioning role names.
 
 Previous conversation:
 ${context}
@@ -495,6 +535,7 @@ Instructions:
 3. If they said "tell me more", elaborate on the previous topic
 4. Keep the response natural and conversational
 5. Do NOT list out-of-scope topics
+6. Do NOT mention roles or permission level names in the answer
 
 Response:`;
 
@@ -518,7 +559,7 @@ Response:`;
         }
 
 
-        const result = await buildSystemPrompt(query, history);
+        const result = await buildSystemPrompt(query, history, userRole);
 
         if (!result.isRelated) {
             return {

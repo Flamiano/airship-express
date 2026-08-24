@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "../../library/supabase/server";
+import { createClient } from "../library/supabase/server";
 
 
 export const customerLogin = async (formData: FormData) => {
@@ -112,12 +112,12 @@ export const logout = async () => {
         const supabase = await createClient();
         await supabase.auth.signOut();
         revalidatePath("/", "layout");
-        redirect("/login")
+        redirect("/customerportalAuth/login")
 }
 
 export const customerServiceLogout = async () => {
         const supabase = await createClient();
         await supabase.auth.signOut();
         revalidatePath("/", "layout");
-        redirect("/crmservice/login")
+        redirect("/crbcAuth/login")
 }

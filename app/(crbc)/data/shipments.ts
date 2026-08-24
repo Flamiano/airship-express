@@ -1,4 +1,4 @@
-import { Shipment } from "@/app/types/shipment"
+import { Shipment } from "../types/shipment"
 
 export const shipments: Shipment[] = [
   { shipmentId: "SHP-10981", customerId: "CUS-4421", origin: "Manila", destination: "Quezon City", status: "In Transit", bookingDate: "2026-07-20", actualDelivery: null, region: "Metro Manila" },

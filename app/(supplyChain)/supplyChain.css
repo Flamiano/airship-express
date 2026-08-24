@@ -6,20 +6,17 @@
 
 .dark,
 .dark * {
-  --background: #1c1b1f !important;
-  --foreground: #f4f3f6 !important;
   --color-ink: #2a2a2e !important;
-  --color-muted: #8a8a8e !important;
-  --color-accent: #ec4899 !important;
-  --color-accent-dark: #be185d !important;
-  --color-paper: #1c1b1f !important;
   --color-line: rgba(255, 255, 255, 0.08) !important;
+  --slate-900: #1a1a1e;
+  --slate-900-rgb: 26, 26, 30;
+  --slate-900-hover: #2a2a2e;
 }
 
 .dark body,
 .dark .min-h-screen,
 .dark main {
-  background-color: #1c1b1f !important;
+  background-color: #131217 !important;
 }
 
 html,
@@ -31,48 +28,81 @@ body {
   overscroll-behavior: auto !important;
 }
 
-*::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
-  display: none !important;
+@media (hover: hover) and (pointer: fine) {
+  .supplychain-container,
+  .supplychain-container * {
+    cursor: none !important;
+  }
 }
 
+
+/* Custom Thin Scrollbar (No arrows / buttons, Ink colored) */
+::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+  border-radius: 9999px !important;
+  transition: background-color 0.2s ease !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 23, 42, 0.7) !important;
+}
+
+/* Remove scrollbar arrow buttons (up / down / left / right) */
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* Dark mode ink scrollbar */
+.dark ::-webkit-scrollbar-thumb,
+.dark::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover,
+.dark::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(244, 63, 94, 0.5) !important;
+}
+
+/* Standard Firefox Thin Scrollbar */
 * {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(15, 23, 42, 0.4) transparent !important;
 }
 
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-main::-webkit-scrollbar,
-div::-webkit-scrollbar {
+.dark,
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent !important;
+}
+
+/* Explicit hide utility when specifically needed */
+.scrollbar-hide,
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
   width: 0 !important;
   height: 0 !important;
-  background: transparent !important;
-  display: none !important;
 }
 
-html,
-body,
-main,
-div {
-  -ms-overflow-style: none !important;
-  scrollbar-width: none !important;
-}
-
-.scrollable {
-  overflow: auto;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-.scrollable::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
-  display: none !important;
-}
 
 :root {
   --pink-primary: #ec4899;
@@ -100,6 +130,71 @@ div {
 .dark .ring-accent-pink {
   --tw-ring-color: var(--color-accent, #ec4899) !important;
 }
+
+
+/* Background */
+.bg-slate-900 {
+  background-color: var(--slate-900) !important;
+}
+
+.dark .bg-slate-900 {
+  background-color: var(--slate-900) !important;
+}
+
+/* Text */
+.text-slate-900 {
+  color: var(--slate-900) !important;
+}
+
+.dark .text-slate-900 {
+  color: var(--slate-900) !important;
+}
+
+/* Border */
+.border-slate-900 {
+  border-color: var(--slate-900) !important;
+}
+
+.dark .border-slate-900 {
+  border-color: var(--slate-900) !important;
+}
+
+/* Ring */
+.ring-slate-900 {
+  --tw-ring-color: var(--slate-900) !important;
+}
+
+.dark .ring-slate-900 {
+  --tw-ring-color: var(--slate-900) !important;
+}
+
+/* Divide */
+.divide-slate-900 > * + * {
+  border-color: var(--slate-900) !important;
+}
+
+.dark .divide-slate-900 > * + * {
+  border-color: var(--slate-900) !important;
+}
+
+/* Outline */
+.outline-slate-900 {
+  outline-color: var(--slate-900) !important;
+}
+
+.dark .outline-slate-900 {
+  outline-color: var(--slate-900) !important;
+}
+
+/* Shadow */
+.shadow-slate-900 {
+  --tw-shadow-color: var(--slate-900) !important;
+}
+
+.dark .shadow-slate-900 {
+  --tw-shadow-color: var(--slate-900) !important;
+}
+
 
 @layer utilities {
   .perspective {
@@ -132,36 +227,89 @@ div {
     @apply p-3.5 border-t border-slate-100 flex items-center justify-between bg-slate-50/40 text-xs max-sm:flex-col max-sm:gap-2;
   }
 
+
+
+  /* Universal Supply Chain Table styling */
+  table {
+    @apply w-full text-left border-collapse;
+  }
+
+  /* Light mode table headers */
+  thead th {
+    @apply text-slate-700 bg-slate-100/90 dark:text-slate-300 dark:bg-slate-800/80 font-bold uppercase tracking-wider text-[11px] py-3.5 px-4 border-b border-slate-300/80 dark:border-slate-700/80 select-none;
+  }
+
+  /* Light mode table cells & rows */
+  tbody td {
+    @apply text-slate-800 dark:text-slate-200 border-b border-slate-200/90 dark:border-slate-800/80 py-3.5 px-4 text-xs align-middle transition-colors;
+  }
+
+  tbody tr {
+    @apply bg-white dark:bg-[#1a1a1e] transition-colors duration-150;
+  }
+
+  /* Clear alternating zebra striping in light mode */
+  tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+  }
+
+  .dark tbody tr:nth-child(even) {
+    background-color: #202025 !important;
+  }
+
+  /* Distinct hover state for table rows */
+  tbody tr:hover {
+    background-color: #f1f5f9 !important;
+  }
+
+  .dark tbody tr:hover {
+    background-color: #27272d !important;
+  }
+
+  /* Selected row styling */
+  tbody tr.bg-pink-50\/40,
+  tbody tr.bg-pink-50\/50,
+  tbody tr.bg-pink-50\/30,
+  tbody tr[data-selected="true"] {
+    background-color: #fdf2f8 !important;
+    border-left: 3px solid #ec4899;
+  }
+
+  .dark tbody tr.bg-pink-50\/40,
+  .dark tbody tr.bg-pink-50\/50,
+  .dark tbody tr.bg-pink-50\/30,
+  .dark tbody tr[data-selected="true"] {
+    background-color: rgba(236, 72, 153, 0.15) !important;
+    border-left: 3px solid #ec4899;
+  }
+
   .table-pro {
     @apply w-full border-separate border-spacing-0 text-xs;
   }
 
   .table-pro thead th {
-    @apply text-left py-3.5 px-4;
+    @apply text-left py-3.5 px-4 font-bold uppercase tracking-wider text-[11px] text-slate-700 dark:text-slate-300 bg-slate-100/90 dark:bg-slate-800/80 border-b border-slate-300/80 dark:border-slate-700/80 select-none;
   }
 
   .table-pro thead tr {
-    @apply border-b border-slate-200/60 bg-slate-50/70 text-[10px] font-bold tracking-wider text-slate-400 uppercase select-none;
-  }
-
-  .table-pro tbody {
-    padding: 10px;
+    @apply border-b border-slate-300/80 dark:border-slate-700/80;
   }
 
   .table-pro tbody td {
-    @apply py-2 px-3 border-b border-slate-100 text-xs align-middle;
+    @apply py-3 px-4 border-b border-slate-200/90 dark:border-slate-800/80 text-xs align-middle text-slate-800 dark:text-slate-200;
   }
 
   .table-pro tbody tr {
-    @apply transition-all duration-200;
+    @apply bg-white dark:bg-[#1a1a1e] transition-colors duration-150;
+  }
+
+  .table-pro tbody tr:nth-child(even) {
+    background-color: #f8fafc !important;
   }
 
   /* Light mode hover */
   .table-pro tbody tr:hover {
-    background: #f8fafc !important;
-    border-color: #cbd5e1 !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04) !important;
-    transform: translateY(-1px);
+    background: #f1f5f9 !important;
   }
 
   .table-pro tbody tr:last-child td {
@@ -170,30 +318,20 @@ div {
 
   /* Dark mode table row styles */
   .dark .table-pro tbody tr {
-    background: #2d2d32 !important;
-    border-color: rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.2) !important;
-    transition: all 0.2s ease !important;
+    background: var(--slate-900) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .dark .table-pro tbody tr:nth-child(even) {
+    background: #202025 !important;
   }
 
   /* Dark mode hover */
   .dark .table-pro tbody tr:hover {
-    background: #3a3a40 !important;
-    border-color: rgba(236, 72, 153, 0.2) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-    transform: translateY(-1px);
+    background: var(--slate-900-hover) !important;
   }
 
-  /* Dark mode selected/highlighted row */
-  .dark .table-pro tbody tr.bg-pink-50\/30 {
-    background: rgba(236, 72, 153, 0.15) !important;
-    border-color: rgba(236, 72, 153, 0.3) !important;
-  }
 
-  .dark .table-pro tbody tr.bg-pink-50\/30:hover {
-    background: rgba(236, 72, 153, 0.22) !important;
-    border-color: rgba(236, 72, 153, 0.4) !important;
-  }
 
   @media (max-width: 768px) {
     .table-pro,
@@ -237,21 +375,21 @@ div {
 
     /* Dark mode mobile card styles */
     .dark .table-pro tbody tr {
-      background: #2d2d32 !important;
+      background: var(--slate-900) !important;
       border-color: rgba(255, 255, 255, 0.12) !important;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.2) !important;
     }
 
     /* Dark mode mobile hover */
     .dark .table-pro tbody tr:hover {
-      background: #3a3a40 !important;
+      background: var(--slate-900-hover) !important;
       border-color: rgba(236, 72, 153, 0.2) !important;
       transform: translateY(-2px) !important;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
     }
 
     .dark .table-pro tbody tr:active {
-      background: #3a3a40 !important;
+      background: var(--slate-900-hover) !important;
     }
 
     .table-pro tbody tr.bg-pink-50\/30 {
@@ -421,6 +559,8 @@ div {
     }
   }
 
+
+
   .btn-primary {
     @apply bg-pink-500 text-white py-2 px-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2 transition-all duration-150;
   }
@@ -561,6 +701,7 @@ div {
   }
 }
 
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -644,6 +785,7 @@ div {
   border: 1px solid #D1D5DB;
 }
 
+
 [data-panel] {
   display: none;
 }
@@ -677,6 +819,7 @@ div {
   width: 60%;
 }
 
+
 .card {
   background: #fff;
   border: 1px solid #E5E7EB;
@@ -687,6 +830,7 @@ div {
 .brand-gradient {
   background: linear-gradient(135deg, var(--color-accent, #EC4899) 0%, #F472B6 100%);
 }
+
 
 @keyframes fadeIn {
   from {
@@ -748,9 +892,6 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
-/* ============================================
-   DARK MODE OVERRIDES
-   ============================================ */
 
 .dark .bgCard {
   background: var(--color-ink, #2a2a2e) !important;
@@ -1139,7 +1280,7 @@ details > summary::-webkit-details-marker {
 }
 
 .dark [class*="bg-slate-900"] {
-  background: #1a1a1e !important;
+  background: var(--slate-900) !important;
 }
 
 .dark .badge-pulse {
@@ -1198,12 +1339,12 @@ details > summary::-webkit-details-marker {
 
 @media (max-width: 768px) {
   .dark .table-pro tbody tr {
-    background: #2d2d32 !important;
+    background: var(--slate-900) !important;
     border-color: rgba(255, 255, 255, 0.12) !important;
   }
 
   .dark .table-pro tbody tr:hover {
-    background: #3a3a40 !important;
+    background: var(--slate-900-hover) !important;
     border-color: rgba(236, 72, 153, 0.2) !important;
   }
 

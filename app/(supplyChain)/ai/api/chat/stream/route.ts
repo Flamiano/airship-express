@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { buildSystemPrompt } from "../../../lib/orchestrator";
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = process.env.GEMINI_API_KEY;
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-3.5-flash-lite";
 
 const STREAM_CONFIG = {
     MIN_CHUNK_DELAY: 20,
@@ -15,7 +15,7 @@ const STREAM_CONFIG = {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { question, history } = body;
+        const { question, history, role } = body;
 
         if (!question || typeof question !== 'string') {
             return new Response(
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const result = await buildSystemPrompt(question, history);
+        const result = await buildSystemPrompt(question, history, role);
 
         if (!result.isRelated || (result.response && !result.prompt)) {
             const text = result.response || 'Out of scope';

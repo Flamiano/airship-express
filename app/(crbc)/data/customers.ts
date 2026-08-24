@@ -1,4 +1,4 @@
-import { Customer } from "@/app/types/customer"
+import { Customer } from "../types/customer"
 
 export const customers: Customer[] = [
   { customerId: "CUS-4421", fullName: "Juan Miguel Santos Reyes", company: "Santos Reyes Trading", email: "jm.santos@santosreyes.ph", phone: "+63 2 8888 1234", address: "Manila, Philippines", status: "Active", registeredDate: "2024-01-15", lastActivityDate: "2026-07-22" },

@@ -4,8 +4,8 @@ let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter() {
     if (!transporter) {
-        const user = process.env.EMAIL_USER;
-        const pass = process.env.EMAIL_PASS;
+        const user = process.env.EMAIL_SUPPLYCHAIN_USER;
+        const pass = process.env.EMAIL_SUPPLYCHAIN_PASS;
 
         if (!user || !pass) {
             throw new Error('Email service is not configured');
@@ -18,37 +18,43 @@ function getTransporter() {
                 pass: pass,
             },
             connectionTimeout: 10000,
-            greetingTimeout: 10000,
+            greetingTimeout: 5000,
             socketTimeout: 10000,
         });
     }
     return transporter;
 }
-interface SendOTPEmailParams {
+
+export interface SendOTPEmailOptions {
     to: string;
     otp: string;
     userName?: string;
     expiresIn?: number;
 }
 
-export async function sendOTPEmail({ to, otp, userName = '', expiresIn = 5 }: SendOTPEmailParams) {
+export async function sendOTPEmail(
+    optionsOrTo: SendOTPEmailOptions | string,
+    legacyOtp?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
+        const { to, otp, userName, expiresIn = 5 } =
+            typeof optionsOrTo === 'string'
+                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: 5 }
+                : optionsOrTo;
 
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(to)) {
+        if (!to || !to.includes('@')) {
             throw new Error('Invalid email address format');
         }
 
         const transporter = getTransporter();
 
-        // Verify connection first
+        // verify transporter connection
         await transporter.verify();
 
         const mailOptions = {
-            from: `"Supply Chain Management" <${process.env.EMAIL_USER}>`,
+            from: `"Supply Chain Management" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
             to: to,
-            subject: '🔐 Your Supply Chain OTP Code',
+            subject: 'Your Supply Chain OTP Code',
             html: `
                 <!DOCTYPE html>
                 <html>

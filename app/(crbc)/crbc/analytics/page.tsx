@@ -7,12 +7,12 @@ function BarChart({ data, valueKey, labelKey }: { data: Record<string, unknown>[
     <div className="flex items-end gap-2 h-28 pt-2">
       {data.map((d, i) => (
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
-          <span className="text-zinc-400 text-xs">{d[valueKey] as number}</span>
+          <span className="text-foreground text-xs">{d[valueKey] as number}</span>
           <div
             className="w-full bg-indigo-100 rounded-t-sm"
             style={{ height: `${((d[valueKey] as number) / max) * 80}px` }}
           />
-          <span className="text-zinc-400 text-xs">{d[labelKey] as string}</span>
+          <span className="text-foreground text-xs">{d[labelKey] as string}</span>
         </div>
       ))}
     </div>
@@ -25,11 +25,11 @@ function PillRow({ items }: { items: { label: string; value: number; color: stri
     <div className="space-y-2 mt-2">
       {items.map((item) => (
         <div key={item.label} className="flex items-center gap-3">
-          <span className="text-zinc-500 text-xs w-28 shrink-0">{item.label}</span>
+          <span className="text-foreground text-xs w-28 shrink-0">{item.label}</span>
           <div className="flex-1 bg-zinc-100 rounded-full h-2">
             <div className={`h-2 rounded-full ${item.color}`} style={{ width: `${total > 0 ? (item.value / total) * 100 : 0}%` }} />
           </div>
-          <span className="text-zinc-400 text-xs w-6 text-right">{item.value}</span>
+          <span className="text-foreground text-xs w-6 text-right">{item.value}</span>
         </div>
       ))}
     </div>
@@ -56,7 +56,7 @@ export default async function AnalyticsPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {kpis.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-background border border-zinc-100 rounded-xl p-4">
+          <div key={label} className="bg-background border border-line rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-foreground text-xs font-bold">{label}</span>
               <Icon size={14} className={color} />
@@ -68,27 +68,27 @@ export default async function AnalyticsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Customer Growth */}
-        <div className="bg-backrgound border border-zinc-100 rounded-xl p-5">
+        <div className="bg-backrgound border border-line rounded-xl p-5">
           <h2 className="text-foreground text-sm font-medium mb-1">Customer Growth</h2>
-          <p className="text-zinc-400 text-xs mb-3">Monthly customer count</p>
+          <p className="text-foreground text-xs mb-3">Monthly customer count</p>
           <BarChart data={data.customerGrowth} valueKey="customers" labelKey="month" />
         </div>
 
         {/* Monthly Shipments */}
-        <div className="bg-backrgound border border-zinc-100 rounded-xl p-5">
+        <div className="bg-backrgound border border-line rounded-xl p-5">
           <h2 className="text-foreground text-sm font-medium mb-1">Monthly Shipments</h2>
-          <p className="text-zinc-400 text-xs mb-3">Shipments booked per month</p>
+          <p className="text-foreground text-xs mb-3">Shipments booked per month</p>
           <BarChart data={data.monthlyShipments} valueKey="count" labelKey="month" />
         </div>
 
         {/* Shipments by Destination */}
-        <div className="bg-backrgound border border-zinc-100 rounded-xl p-5">
+        <div className="bg-backrgound border border-line rounded-xl p-5">
           <h2 className="text-foreground text-sm font-medium mb-1">Shipments by Destination</h2>
           <PillRow items={data.shipmentsByDestination.map((d) => ({ label: d.destination, value: d.count, color: "bg-indigo-400" }))} />
         </div>
 
         {/* Shipments by Status */}
-        <div className="bg-backrgound border border-zinc-100 rounded-xl p-5">
+        <div className="bg-backrgound border border-line rounded-xl p-5">
           <h2 className="text-foreground text-sm font-medium mb-1">Shipments by Status</h2>
           <PillRow items={data.shipmentsByStatus.map((d) => ({
             label: d.status,
@@ -98,7 +98,7 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Customer Breakdown */}
-        <div className="bg-backrgound border border-zinc-100 rounded-xl p-5">
+        <div className="bg-backrgound border border-line rounded-xl p-5">
           <h2 className="text-foreground text-sm font-medium mb-1">Active vs Inactive Customers</h2>
           <PillRow items={[
             { label: "Active", value: data.activeCustomers, color: "bg-emerald-400" },
@@ -107,7 +107,7 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* SLA Performance */}
-        <div className="bg-backrgound border border-zinc-100 rounded-xl p-5">
+        <div className="bg-backrgound border border-line rounded-xl p-5">
           <h2 className="text-foreground text-sm font-medium mb-1">SLA Performance</h2>
           <div className="mt-4 flex items-center justify-center">
             <div className="relative w-28 h-28">

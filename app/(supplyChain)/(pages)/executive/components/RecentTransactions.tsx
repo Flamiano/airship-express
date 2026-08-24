@@ -1,0 +1,131 @@
+import ViewLink from "@/app/(supplyChain)/components/global/Links";
+import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+
+interface Transaction {
+    id: string;
+    consignee: string;
+    courier: string;
+    area: string;
+    status: string;
+    received: string;
+}
+
+const transactions: Transaction[] = [
+    {
+        id: "AX-1023",
+        consignee: "Maria Santos",
+        courier: "Shopee Express",
+        area: "Area A",
+        status: "Received",
+        received: "2026-07-17 08:23"
+    },
+    {
+        id: "AX-1027",
+        consignee: "John Reyes",
+        courier: "J&T Express",
+        area: "Area B",
+        status: "Waiting",
+        received: "2026-07-17 09:45"
+    },
+    {
+        id: "AX-1018",
+        consignee: "Ana Cruz",
+        courier: "Lazada Express",
+        area: "Area C",
+        status: "Dispatched",
+        received: "2026-07-17 10:15"
+    },
+    {
+        id: "AX-1032",
+        consignee: "Mike Tan",
+        courier: "Flash Express",
+        area: "Area A",
+        status: "Received",
+        received: "2026-07-17 11:30"
+    },
+    {
+        id: "AX-1020",
+        consignee: "Lisa Gomez",
+        courier: "Shopee Express",
+        area: "Area D",
+        status: "Dispatched",
+        received: "2026-07-17 12:00"
+    },
+    {
+        id: "AX-1034",
+        consignee: "Carlos Mendoza",
+        courier: "J&T Express",
+        area: "Area B",
+        status: "Ready for Dispatch",
+        received: "2026-07-17 13:20"
+    }
+];
+
+const getTxTone = (status: string): "pink" | "amber" | "emerald" | "purple" | "neutral" => {
+    switch (status) {
+        case "Received":
+            return "pink";
+        case "Waiting":
+            return "amber";
+        case "Dispatched":
+            return "emerald";
+        case "Ready for Dispatch":
+            return "purple";
+        default:
+            return "neutral";
+    }
+};
+
+export default function RecentTransactions() {
+    return (
+        <div className="card xl:col-span-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs dark:shadow-xl overflow-hidden">
+            {/* Card Header */}
+            <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80">
+                <div className="flex items-center gap-2.5 font-semibold text-slate-900 dark:text-white text-sm">
+                    <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-500 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30 shadow-2xs">
+                        <i className="fas fa-list text-xs"></i>
+                    </div>
+                    <span>Recent transactions</span>
+                </div>
+                <ViewLink link="/inventory" name="Open inventory" />
+            </div>
+
+            {/* Table Container */}
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-slate-50/70 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold border-b border-slate-200/80 dark:border-slate-800">
+                        <tr>
+                            <th className="px-6 py-3.5">Reference</th>
+                            <th className="px-6 py-3.5">Consignee</th>
+                            <th className="px-6 py-3.5">Courier</th>
+                            <th className="px-6 py-3.5">Area</th>
+                            <th className="px-6 py-3.5">Status</th>
+                            <th className="px-6 py-3.5">Received</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                        {transactions.map((tx, index) => (
+                            <tr
+                                key={tx.id}
+                                className={`${index % 2 === 1 ? 'bg-slate-50/30 dark:bg-slate-800/20' : 'bg-white dark:bg-slate-900'} 
+                                           hover:bg-slate-50 dark:hover:bg-slate-800/50 
+                                           transition-colors duration-150`}
+                            >
+                                <td className="px-6 py-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200">{tx.id}</td>
+                                <td className="px-6 py-3.5 text-slate-900 dark:text-white">{tx.consignee}</td>
+                                <td className="px-6 py-3.5 text-slate-600 dark:text-slate-300">{tx.courier}</td>
+                                <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{tx.area}</td>
+                                <td className="px-6 py-3.5">
+                                    <StatusBadge tone={getTxTone(tx.status)} dot size="xs">
+                                        {tx.status}
+                                    </StatusBadge>
+                                </td>
+                                <td className="px-6 py-3.5 text-slate-400 dark:text-slate-500 font-mono text-[11px]">{tx.received}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}

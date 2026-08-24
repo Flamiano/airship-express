@@ -1,8 +1,12 @@
 import { customers } from "../data/customers"
 import { shipments } from "../data/shipments"
 import { Customer, Customers } from "../types/customer"
+import type {
+  BookingRequest,
+  CustomerInteraction,
+} from "../types/booking-request"
 import { Shipment } from "../types/shipment"
-import { createClient } from "../../library/supabase/server";
+import { createClient } from "../library/supabase/server";
 
 export async function getAllCustomers(): Promise<Customers[]> {
  const supabase = await createClient();
@@ -17,7 +21,6 @@ export async function getAllCustomers(): Promise<Customers[]> {
           email,
           phone,
           address,
-          source,
           role,
           created_at
           `
@@ -31,10 +34,104 @@ export async function getAllCustomers(): Promise<Customers[]> {
 
 }
 
+async function resolveCustomerUuid(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  customerIdCode: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("customer_id", customerIdCode)
+    .maybeSingle();
 
-export async function getCustomerById( id: string ): Promise<Customers | null> { 
-  const customers = await getAllCustomers(); 
-  return ( customers.find( (customer) => customer.customer_id === id ) ?? null );
+  if (error) {
+    throw new Error("Failed to resolve customer");
+  }
+
+  return data?.id ?? null;
+}
+
+// Channel is transactional history
+export async function getInteractionsByCustomerId(
+  customerId: string
+): Promise<CustomerInteraction[]> {
+  const supabase = await createClient();
+
+  const uuid = await resolveCustomerUuid(supabase, customerId);
+  if (!uuid) return [];
+
+  const { data, error } = await supabase
+    .from("customer_interactions")
+    .select(
+      `
+      id,
+      customer_id,
+      interaction_type,
+      notes,
+      interaction_date,
+      created_at
+      `
+    )
+    .eq("customer_id", uuid)
+    .order("interaction_date", { ascending: false });
+
+  if (error) {
+    console.error("Fetch customer interactions error:", error);
+    throw new Error("Failed to fetch customer interactions");
+  }
+
+  return data;
+}
+
+
+export async function getBookingRequestsByCustomerId(
+  customerId: string
+): Promise<BookingRequest[]> {
+  const supabase = await createClient();
+
+  const uuid = await resolveCustomerUuid(supabase, customerId);
+  if (!uuid) return [];
+
+  const { data, error } = await supabase
+    .from("booking_requests")
+    .select("*")
+    .eq("customer_id", uuid)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Fetch booking requests error:", error);
+    throw new Error("Failed to fetch booking requests");
+  }
+
+  return data;
+}
+
+
+export async function getCustomerById( id: string ): Promise<Customers | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("customers")
+    .select(
+      `
+      id,
+      customer_id,
+      full_name,
+      email,
+      phone,
+      address,
+      role,
+      created_at
+      `
+    )
+    .eq("customer_id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Failed to fetch customer");
+  }
+
+  return data ?? null;
  }
 
 

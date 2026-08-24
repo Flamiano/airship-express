@@ -3,8 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 import { getRegisteredActions, getActionDescriptions } from './action-registry';
 import { getAllKnowledge, getKnowledgeSummaries } from './knowledge-registry';
 
-const apiKey = process.env.GEMINI_API_KEY;
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
+const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-3.5-flash-lite";
 
 export interface Resource {
     type: 'tool' | 'knowledge';
@@ -76,6 +76,25 @@ export async function classifyIntent(query: string): Promise<ClassificationResul
             resources: [],
             confidence: 0.99,
             reason: 'Question is clearly not related to warehouse management'
+        };
+    }
+
+    // Direct match for creating purchase order requests to guarantee tool execution
+    if (lowerQuery.includes('create purchase order') || 
+        lowerQuery.includes('create po') || 
+        lowerQuery.includes('generate po') || 
+        lowerQuery.includes('purchase request without po') || 
+        lowerQuery.includes('pending purchase request') ||
+        lowerQuery.includes('request without po') ||
+        lowerQuery.includes('no purchase order')) {
+        return {
+            is_related: true,
+            resources: [
+                { type: 'tool', name: 'get_pending_purchase_requests' },
+                { type: 'knowledge', name: 'procurement.md' }
+            ],
+            confidence: 1.0,
+            reason: 'Direct match for purchase order creation workflow'
         };
     }
 
@@ -270,6 +289,11 @@ function classifyWithKeywords(query: string): ClassificationResult {
                 }
                 if (lower.includes('supplier')) {
                     resources.push({ type: 'tool', name: 'get_suppliers' });
+                }
+                if (lower.includes('create purchase order') || lower.includes('create po') || lower.includes('generate po') || lower.includes('request without po') || lower.includes('no purchase order')) {
+                    resources.push({ type: 'tool', name: 'get_pending_purchase_requests' });
+                } else if (lower.includes('purchase order') || lower.includes(' po') || lower.includes('spend') || lower.includes('expense') || lower.includes('orders')) {
+                    resources.push({ type: 'tool', name: 'get_purchase_orders_summary' });
                 }
             }
         } else {

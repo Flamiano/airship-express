@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, XCircle } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getComplianceById } from "@/app/(crbc)/services/compliance.service";
 import { getAllCustomers } from "@/app/(crbc)/services/crm.service";
-import { formatDate } from "@/app/library/utils/formattedate";
+import { formatDate } from "@/app/(crbc)/library/utils/formattedate";
 
 const statusStyle = {
   Compliant: "bg-emerald-50 text-emerald-600",

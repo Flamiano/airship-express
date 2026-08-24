@@ -1,6 +1,6 @@
 import { getDocuments } from "../../services/document.service";
 import { getAllCustomers } from "../../services/crm.service";
-import EDocumentationManagement from "../../components/EDocumentationManagement";
+import EDocumentationManagement from "../../components/documents/EDocumentationManagement";
 
 export default async function EDocumentationPage() {
   const [documents, customers] = await Promise.all([

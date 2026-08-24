@@ -1,6 +1,6 @@
-import { createClient } from "../../../library/supabase/server";
+import { createClient } from "../../library/supabase/server";
 import { mapDeliveryPolicyRow } from "../../types/delivery-policy";
-import DeliveryPolicyClient from "../../components/DeliveryPolicyClient";
+import DeliveryPolicyClient from "../../components/delivery-policies/DeliveryPolicyClient";
 
 export default async function DeliveryPoliciesPage() {
   const supabase = await createClient();
