@@ -3,9 +3,8 @@
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import { ParcelRow } from "../../server/incoming/ParcelRow";
 import { TablePagination } from "./TablePagination";
-import { deleteMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/delete";
+import { deleteMultipleParcels, deleteParcel } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/delete";
 import { receiveMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/parcels";
 import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
@@ -54,6 +53,7 @@ export function IncomingTable({
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isDeletingBatch, setIsDeletingBatch] = useState(false);
     const [isReceivingBatch, setIsReceivingBatch] = useState(false);
+    const [deletingId, setDeletingId] = useState<number | null>(null);
     const { confirm } = useConfirm();
 
     const duplicateBarcodes = useMemo(() => {
@@ -230,8 +230,55 @@ export function IncomingTable({
         }
     };
 
-    const handleDeleteParcel = (id: number) => {
-        onDelete?.(id);
+    const handleDeleteParcel = async (id: number) => {
+        if (deletingId || isDeletingBatch) return;
+
+        const confirmed = await confirm({
+            title: "Delete Parcel",
+            message: "Are you sure you want to delete this parcel? This action cannot be undone.",
+            confirmText: "Delete",
+            cancelText: "Cancel",
+            confirmVariant: "danger",
+        });
+
+        if (!confirmed) return;
+
+        setDeletingId(id);
+        const toastId = toast.loading('Removing parcel...');
+
+        try {
+            const result = await deleteParcel(id);
+
+            if (!result.success) {
+                toast.error(result.error || 'Failed to remove parcel', {
+                    id: toastId,
+                    duration: 5000,
+                });
+                return;
+            }
+
+            toast.success('Parcel removed successfully', {
+                id: toastId,
+                duration: 3000,
+            });
+
+            onDelete?.(id);
+            if (selectedIds.has(id)) {
+                const nextSelected = new Set(selectedIds);
+                nextSelected.delete(id);
+                setSelectedIds(nextSelected);
+            }
+            onRefresh?.();
+        } catch (error) {
+            console.error('Error removing parcel:', error);
+            toast.error('Failed to remove parcel', {
+                id: toastId,
+                description: error instanceof Error ? error.message : 'Please try again',
+                duration: 5000,
+            });
+        } finally {
+            setDeletingId(null);
+        }
     };
 
     const allSelected = initialParcels.length > 0 && selectedIds.size === initialParcels.length;
@@ -383,6 +430,7 @@ export function IncomingTable({
                                 return (
                                     <tr
                                         key={parcel.id}
+                                        id={`row-${parcel.id}`}
                                         className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group ${isSelected ? 'bg-pink-50/40 dark:bg-pink-950/20' : ''
                                             }`}
                                     >
@@ -434,6 +482,7 @@ export function IncomingTable({
                                                     action="delete"
                                                     ariaLabel="Delete parcel"
                                                     title="Delete"
+                                                    disabled={deletingId === parcel.id || isDeletingBatch}
                                                     onClick={() => handleDeleteParcel(parcel.id)}
                                                 />
                                             </div>
