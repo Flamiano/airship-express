@@ -1,82 +1,45 @@
+"use client";
+
+import { useState } from "react";
 import ViewLink from "@/app/(supplyChain)/components/global/Links";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { ExecutiveTransaction } from "../hooks/useExecutiveData";
+import ItemDetailModal, { ItemDetailRecord } from "./modals/ItemDetailModal";
 
-interface Transaction {
-    id: string;
-    consignee: string;
-    courier: string;
-    area: string;
-    status: string;
-    received: string;
+interface RecentTransactionsProps {
+    transactions?: ExecutiveTransaction[];
 }
 
-const transactions: Transaction[] = [
-    {
-        id: "AX-1023",
-        consignee: "Maria Santos",
-        courier: "Shopee Express",
-        area: "Area A",
-        status: "Received",
-        received: "2026-07-17 08:23"
-    },
-    {
-        id: "AX-1027",
-        consignee: "John Reyes",
-        courier: "J&T Express",
-        area: "Area B",
-        status: "Waiting",
-        received: "2026-07-17 09:45"
-    },
-    {
-        id: "AX-1018",
-        consignee: "Ana Cruz",
-        courier: "Lazada Express",
-        area: "Area C",
-        status: "Dispatched",
-        received: "2026-07-17 10:15"
-    },
-    {
-        id: "AX-1032",
-        consignee: "Mike Tan",
-        courier: "Flash Express",
-        area: "Area A",
-        status: "Received",
-        received: "2026-07-17 11:30"
-    },
-    {
-        id: "AX-1020",
-        consignee: "Lisa Gomez",
-        courier: "Shopee Express",
-        area: "Area D",
-        status: "Dispatched",
-        received: "2026-07-17 12:00"
-    },
-    {
-        id: "AX-1034",
-        consignee: "Carlos Mendoza",
-        courier: "J&T Express",
-        area: "Area B",
-        status: "Ready for Dispatch",
-        received: "2026-07-17 13:20"
-    }
-];
-
 const getTxTone = (status: string): "pink" | "amber" | "emerald" | "purple" | "neutral" => {
-    switch (status) {
-        case "Received":
-            return "pink";
-        case "Waiting":
-            return "amber";
-        case "Dispatched":
-            return "emerald";
-        case "Ready for Dispatch":
-            return "purple";
-        default:
-            return "neutral";
-    }
+    const s = status.toLowerCase();
+    if (s.includes("received")) return "pink";
+    if (s.includes("wait") || s.includes("sort")) return "amber";
+    if (s.includes("deliver") || s.includes("dispatched")) return "emerald";
+    if (s.includes("ready") || s.includes("picked")) return "purple";
+    return "neutral";
 };
 
-export default function RecentTransactions() {
+export default function RecentTransactions({ transactions }: RecentTransactionsProps) {
+    const [selectedItem, setSelectedItem] = useState<ItemDetailRecord | null>(null);
+
+    const list = transactions || [];
+
+    const handleViewItem = (tx: ExecutiveTransaction) => {
+        setSelectedItem({
+            title: `Parcel Tracking #${tx.id}`,
+            referenceId: tx.id,
+            barcode: tx.id,
+            status: tx.status,
+            courierOrSupplier: tx.courier,
+            locationOrArea: tx.area,
+            consignee: tx.consignee,
+            timestamp: tx.received,
+            description: `Destination consignee: ${tx.consignee}. Assigned to courier partner ${tx.courier} at ${tx.area}. Verified in incoming queue.`,
+            isParcel: true,
+        });
+    };
+
     return (
         <div className="card xl:col-span-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs dark:shadow-xl overflow-hidden">
             {/* Card Header */}
@@ -87,7 +50,7 @@ export default function RecentTransactions() {
                     </div>
                     <span>Recent transactions</span>
                 </div>
-                <ViewLink link="/inventory" name="Open inventory" />
+                <ViewLink link="/warehousing" name="Open warehousing" />
             </div>
 
             {/* Table Container */}
@@ -98,34 +61,81 @@ export default function RecentTransactions() {
                             <th className="px-6 py-3.5">Reference</th>
                             <th className="px-6 py-3.5">Consignee</th>
                             <th className="px-6 py-3.5">Courier</th>
-                            <th className="px-6 py-3.5">Area</th>
+                            <th className="px-6 py-3.5">Area / Location</th>
                             <th className="px-6 py-3.5">Status</th>
                             <th className="px-6 py-3.5">Received</th>
+                            <th className="px-6 py-3.5 text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
-                        {transactions.map((tx, index) => (
-                            <tr
-                                key={tx.id}
-                                className={`${index % 2 === 1 ? 'bg-slate-50/30 dark:bg-slate-800/20' : 'bg-white dark:bg-slate-900'} 
-                                           hover:bg-slate-50 dark:hover:bg-slate-800/50 
-                                           transition-colors duration-150`}
-                            >
-                                <td className="px-6 py-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200">{tx.id}</td>
-                                <td className="px-6 py-3.5 text-slate-900 dark:text-white">{tx.consignee}</td>
-                                <td className="px-6 py-3.5 text-slate-600 dark:text-slate-300">{tx.courier}</td>
-                                <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{tx.area}</td>
-                                <td className="px-6 py-3.5">
-                                    <StatusBadge tone={getTxTone(tx.status)} dot size="xs">
-                                        {tx.status}
-                                    </StatusBadge>
+                        {list.length === 0 ? (
+                            <tr>
+                                <td colSpan={7} className="px-6 py-8 text-center text-slate-400 font-medium text-xs">
+                                    No transaction records found in database.
                                 </td>
-                                <td className="px-6 py-3.5 text-slate-400 dark:text-slate-500 font-mono text-[11px]">{tx.received}</td>
                             </tr>
-                        ))}
+                        ) : (
+                            list.slice(0, 8).map((tx, index) => (
+                                <tr
+                                    key={tx.id || index}
+                                    className={`${index % 2 === 1 ? 'bg-slate-50/30 dark:bg-slate-800/20' : 'bg-white dark:bg-slate-900'} 
+                                               hover:bg-pink-50/40 dark:hover:bg-slate-800/60 
+                                               transition-all duration-150 group`}
+                                >
+                                    <td className="px-6 py-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <span>{tx.id}</span>
+                                            {/* Hover detail effect (! icon with popover tooltip) */}
+                                            <div className="relative group/tooltip inline-block">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleViewItem(tx)}
+                                                    className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 text-[10px] font-bold flex items-center justify-center hover:scale-110 transition-transform cursor-pointer"
+                                                    title="Hover/Click for info (!)"
+                                                >
+                                                    !
+                                                </button>
+                                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover/tooltip:block w-48 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none fade-in border border-slate-700">
+                                                    <p className="font-bold text-pink-400">{tx.id}</p>
+                                                    <p className="text-slate-300 mt-0.5">{tx.consignee}</p>
+                                                    <p className="text-[10px] text-slate-400 mt-1">Courier: {tx.courier}</p>
+                                                    <p className="text-[10px] text-slate-400">Area: {tx.area}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-3.5 text-slate-900 dark:text-white">{tx.consignee}</td>
+                                    <td className="px-6 py-3.5 text-slate-600 dark:text-slate-300">{tx.courier}</td>
+                                    <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{tx.area}</td>
+                                    <td className="px-6 py-3.5">
+                                        <StatusBadge tone={getTxTone(tx.status)} dot size="xs">
+                                            {tx.status}
+                                        </StatusBadge>
+                                    </td>
+                                    <td className="px-6 py-3.5 text-slate-400 dark:text-slate-500 font-mono text-[11px]">{tx.received}</td>
+                                    <td className="px-6 py-3.5 text-right">
+                                        <div className="flex items-center justify-end">
+                                            <CrudActionButton
+                                                action="view"
+                                                ariaLabel="View parcel details"
+                                                onClick={() => handleViewItem(tx)}
+                                            />
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
                     </tbody>
                 </table>
             </div>
+
+            {/* Modal details on demand */}
+            {selectedItem && (
+                <ItemDetailModal
+                    item={selectedItem}
+                    onClose={() => setSelectedItem(null)}
+                />
+            )}
         </div>
     );
 }

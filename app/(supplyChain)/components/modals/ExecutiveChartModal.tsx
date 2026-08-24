@@ -4,6 +4,8 @@
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import ItemDetailModal, { ItemDetailRecord } from "@/app/(supplyChain)/(pages)/executive/components/modals/ItemDetailModal";
 
 export interface MetricItem {
     label: string;
@@ -83,6 +85,7 @@ export default function ExecutiveChartModal({
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [selectedFilter, setSelectedFilter] = useState("all");
     const [showAllItems, setShowAllItems] = useState(false);
+    const [selectedItemDetail, setSelectedItemDetail] = useState<ItemDetailRecord | null>(null);
 
     // debounce search query
     useEffect(() => {
@@ -161,13 +164,24 @@ export default function ExecutiveChartModal({
         });
     }, [items, debouncedSearch, selectedFilter]);
 
-    // limit displayed items
+    // limit displayed items (Render strictly what is in view)
     const displayedItems = useMemo(() => {
         if (showAllItems || filteredItems.length <= maxDisplayCount) {
             return filteredItems;
         }
         return filteredItems.slice(0, maxDisplayCount);
     }, [filteredItems, showAllItems, maxDisplayCount]);
+
+    const handleInspectItem = (item: ListItem) => {
+        setSelectedItemDetail({
+            title: item.title,
+            referenceId: item.badge ? `${item.badge.toUpperCase()}-REF` : "MODAL-ITEM-ID",
+            status: item.badge || "Recorded",
+            amount: item.value,
+            description: item.subtitle || `Detailed record from ${title}`,
+            isParcel: item.title.toLowerCase().includes("parcel") || item.title.toLowerCase().includes("tracking") || title.toLowerCase().includes("parcel"),
+        });
+    };
 
     if (!isOpen) return null;
 
@@ -348,12 +362,25 @@ export default function ExecutiveChartModal({
                                 {displayedItems.map((item, idx) => (
                                     <div
                                         key={idx}
-                                        className="flex items-center justify-between p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700 transition-colors"
+                                        className="flex items-center justify-between p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700 transition-colors group"
                                     >
                                         <div className="flex items-center gap-2.5 min-w-0">
-                                            <span className="text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 w-5 shrink-0">
-                                                #{idx + 1}
-                                            </span>
+                                            {/* Hover detail effect (! badge with popover tooltip) */}
+                                            <div className="relative group/tooltip inline-block">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleInspectItem(item)}
+                                                    className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 text-[10px] font-bold flex items-center justify-center hover:scale-110 transition-transform cursor-pointer"
+                                                    title="Hover/Click for info (!)"
+                                                >
+                                                    !
+                                                </button>
+                                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-48 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-lg z-30 pointer-events-none border border-slate-700">
+                                                    <p className="font-bold text-pink-400">{item.title}</p>
+                                                    <p className="text-slate-300 mt-0.5">{item.subtitle || 'No extra notes'}</p>
+                                                </div>
+                                            </div>
+
                                             {item.icon && (
                                                 <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xs shrink-0 shadow-2xs">
                                                     <i className={`fas ${item.icon}`} />
@@ -378,11 +405,18 @@ export default function ExecutiveChartModal({
                                             </div>
                                         </div>
 
-                                        {item.value !== undefined && (
-                                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 ml-3 shrink-0">
-                                                {item.value}
-                                            </span>
-                                        )}
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {item.value !== undefined && (
+                                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 ml-3">
+                                                    {item.value}
+                                                </span>
+                                            )}
+                                            <CrudActionButton
+                                                action="view"
+                                                ariaLabel={`View details for ${item.title}`}
+                                                onClick={() => handleInspectItem(item)}
+                                            />
+                                        </div>
                                     </div>
                                 ))}
 
@@ -447,6 +481,14 @@ export default function ExecutiveChartModal({
                     )}
                 </div>
             </div>
+
+            {/* Modal Detail on demand */}
+            {selectedItemDetail && (
+                <ItemDetailModal
+                    item={selectedItemDetail}
+                    onClose={() => setSelectedItemDetail(null)}
+                />
+            )}
         </div>
     );
 }
