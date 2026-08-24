@@ -104,14 +104,14 @@ export default function OperationsSummary({ data }: OperationsSummaryProps) {
                                 <button
                                     type="button"
                                     onClick={() => setSelectedItem(row.modalDetail)}
-                                    className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 text-[10px] font-bold flex items-center justify-center hover:scale-110 transition-transform cursor-pointer"
+                                    className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 text-[10px] font-bold flex items-center justify-center hover:scale-110 transition-transform cursor-pointer shadow-2xs"
                                     title="Hover/Click for info (!)"
                                 >
                                     !
                                 </button>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-48 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-lg z-20 pointer-events-none border border-slate-700">
-                                    <p className="font-semibold text-pink-400">{row.label}</p>
-                                    <p className="text-slate-300 mt-0.5">{row.infoText}</p>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-56 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700 leading-snug">
+                                    <p className="font-bold text-pink-400">{row.label}</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">{row.infoText}</p>
                                 </div>
                             </div>
 

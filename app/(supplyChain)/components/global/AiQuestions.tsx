@@ -73,9 +73,9 @@ const AiQuestions = ({
 
     return (
         <div className={`p-4 sm:p-5 
-                bg-white dark:bg-[#181920] 
-                border border-slate-200/90 dark:border-[#353746] 
-                rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05),inset_0_1px_0_#ffffff] dark:shadow-[0_4px_20px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] 
+                bg-white dark:bg-[#2a2a2e] 
+                border border-slate-200/90 dark:border-slate-800 
+                rounded-3xl shadow-xs dark:shadow-xl 
                 ${className}`}>
             <div className="flex items-center justify-between mb-3.5">
                 <span className="font-bold text-slate-900 dark:text-white text-sm flex items-center">

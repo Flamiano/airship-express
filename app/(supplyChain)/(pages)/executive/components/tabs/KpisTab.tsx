@@ -48,12 +48,16 @@ export default function KpisTab({ data, onOpenModal }: KpisTabProps) {
                                 </span>
                                 {/* Hover info badge ! with details about this KPI */}
                                 <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                    <span className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                    <button
+                                        type="button"
+                                        className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 hover:bg-pink-200 dark:hover:bg-pink-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                        aria-label="KPI information"
+                                    >
                                         !
-                                    </span>
-                                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-52 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-lg z-20 pointer-events-none border border-slate-700">
+                                    </button>
+                                    <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-56 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                         <p className="font-bold text-pink-400">{kpi.label} Metric</p>
-                                        <p className="text-slate-300 mt-0.5">{kpi.description}</p>
+                                        <p className="text-slate-200 dark:text-slate-300 mt-1">{kpi.description}</p>
                                     </div>
                                 </div>
                             </div>

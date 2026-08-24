@@ -177,12 +177,16 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                             <span>Parcel Volume Trend</span>
                             {/* Hover info badge ! with details about chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 hover:bg-pink-200 dark:hover:bg-pink-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-pink-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Tracks daily parcel intake vs delivered volumes for the past 7 days. Sourced from parcels table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Tracks daily parcel intake vs delivered volumes for the past 7 days. Sourced from parcels table.</p>
                                 </div>
                             </div>
                         </div>
@@ -210,12 +214,16 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                             <span>Inventory SKU Breakdown</span>
                             {/* Hover info badge ! with details about chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-emerald-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Distribution of unique catalogued inventory SKUs by category. Sourced from inventory_items table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Distribution of unique catalogued inventory SKUs by category. Sourced from inventory_items table.</p>
                                 </div>
                             </div>
                         </div>
@@ -243,12 +251,16 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                             <span>Procurement Requests</span>
                             {/* Hover info badge ! with details about chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-indigo-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Status pipeline of purchase requisitions (Pending, Approved, Rejected, Completed). Sourced from purchase_requests table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Status pipeline of purchase requisitions (Pending, Approved, Rejected, Completed). Sourced from purchase_requests table.</p>
                                 </div>
                             </div>
                         </div>

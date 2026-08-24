@@ -184,12 +184,16 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                             <span>Courier Parcel Volume Breakdown</span>
                             {/* Hover info badge ! with popover details about the chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-indigo-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Measures parcel volume distributed across active courier linehaul partners. Sourced from parcels table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Measures parcel volume distributed across active courier linehaul partners. Sourced from parcels table.</p>
                                 </div>
                             </div>
                         </div>
@@ -217,12 +221,16 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                             <span>Parcel Fulfillment Status</span>
                             {/* Hover info badge ! with popover details about the chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-emerald-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Shows status distribution (received, sorting, ready, delivered). Sourced directly from parcels table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Shows status distribution (received, sorting, ready, delivered). Sourced directly from parcels table.</p>
                                 </div>
                             </div>
                         </div>
@@ -250,12 +258,16 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                             <span>Document Category Distribution</span>
                             {/* Hover info badge ! with popover details about the chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-200 dark:hover:bg-cyan-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-cyan-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Categorizes archived compliance documents and invoices from the documents table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Categorizes archived compliance documents and invoices from the documents table.</p>
                                 </div>
                             </div>
                         </div>
@@ -283,12 +295,16 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                             <span>Supplier Classification</span>
                             {/* Hover info badge ! with popover details about the chart */}
                             <div className="relative group/tooltip inline-block" onClick={(e) => e.stopPropagation()}>
-                                <span className="w-4 h-4 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 text-[10px] font-bold flex items-center justify-center cursor-pointer">
+                                <button
+                                    type="button"
+                                    className="w-4 h-4 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900 text-[10px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
+                                    aria-label="Chart information"
+                                >
                                     !
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl z-30 pointer-events-none border border-slate-700">
+                                </button>
+                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-64 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700/90 dark:border-slate-700 leading-snug">
                                     <p className="font-bold text-purple-400">Chart Details</p>
-                                    <p className="text-slate-300 mt-0.5">Displays vendor categories and active supplier partners from the suppliers table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Displays vendor categories and active supplier partners from the suppliers table.</p>
                                 </div>
                             </div>
                         </div>
