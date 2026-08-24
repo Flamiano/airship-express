@@ -23,7 +23,7 @@ const MODULES = [
         icon: Wallet,
         label: 'Payroll',
         full: 'Payroll Management',
-        href: '/payroll-benefits-dashboard/payroll-management'
+        href: '/payroll-benefits-dashboard/payroll'
     },
     {
         icon: TrendingUp,
