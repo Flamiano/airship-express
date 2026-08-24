@@ -1,5 +1,4 @@
 export type CustomerStatus = "Active" | "Inactive";
-type Source = "walk_in" | "call";
 
 // Database customer type (from Supabase customers table and profiles table)
 export type Customers = {
@@ -9,7 +8,6 @@ export type Customers = {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
-  source?: Source
   role: string;
   created_at: string;
 };
