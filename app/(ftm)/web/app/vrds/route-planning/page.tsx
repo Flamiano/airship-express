@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import { createRouteBooking, useParcelStore, refreshStoreFromBackend } from "../../lib/parcelStore";
-import { createBulkBooking, createRoutePlan, fetchJson, getParcels } from "../../lib/api";
+import { createBulkBooking, createRoutePlan, fetchJson } from "../../lib/api";
 import { getCityCoordinate } from "../../lib/serviceAreas";
 import { getCourierWarehouse, resolveKnownCity } from "../../lib/courierWarehouses";
 
@@ -206,17 +206,10 @@ export default function VrdsRoutePlanningPage() {
   const [resolvedPositions, setResolvedPositions] = useState<Map<string, LatLng>>(new Map());
   const [selectedRouteParcelIds, setSelectedRouteParcelIds] = useState<Set<string>>(new Set());
 
-  const [cargoWeight, setCargoWeight] = useState(350);
-  const [priority, setPriority] = useState<"standard" | "high" | "critical">("high");
-  const [avoidTolls, setAvoidTolls] = useState(true);
-  const [prioritizeFuel, setPrioritizeFuel] = useState(true);
-  const [permitHazmat, setPermitHazmat] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [courierRoutes, setCourierRoutes] = useState<Map<string, OptimizeResponse>>(new Map());
   const [courierStopsMap, setCourierStopsMap] = useState<Map<string, string[]>>(new Map());
   const [selectedCourier, setSelectedCourier] = useState<string | null>(null);
-  const [selectedCourierForOptimization, setSelectedCourierForOptimization] = useState<string | null>(null);
 
   const [creatingBookings, setCreatingBookings] = useState(false);
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
@@ -232,7 +225,7 @@ export default function VrdsRoutePlanningPage() {
     (async () => {
       setIsRefreshing(true);
       try {
-        await getParcels();
+        await refreshStoreFromBackend();
       } catch (error) {
         console.warn("Failed to refresh parcels:", error);
       } finally {
@@ -244,7 +237,7 @@ export default function VrdsRoutePlanningPage() {
   async function handleManualRefresh() {
     setIsRefreshing(true);
     try {
-      await getParcels();
+      await refreshStoreFromBackend();
     } catch (error) {
       console.error("Failed to refresh parcels:", error);
     } finally {
@@ -576,11 +569,6 @@ export default function VrdsRoutePlanningPage() {
         origin,
         destination,
         stops: courierStops,
-        cargoWeightKg: cargoWeight,
-        priority,
-        avoidTolls,
-        prioritizeFuelEfficiency: prioritizeFuel,
-        permitHazmat,
         vehicleCount: Math.max(1, availableVehicleOptions.length),
         availableVehicles: availableVehicleOptions,
         initialDistanceMi: initialMetrics?.distanceMi ?? undefined,
@@ -635,14 +623,18 @@ export default function VrdsRoutePlanningPage() {
   }
 
   async function handleOptimizeAllCouriers() {
-    setSelectedCourier(null);
-    await optimizeCouriers(availableCouriers);
-  }
+    if (planningParcels.length === 0) {
+      setBookingMessage("Select at least one parcel before generating a route plan.");
+      return;
+    }
+    if (activeStops.length === 0) {
+      setBookingMessage("Route plan unavailable: the selected parcels need a valid destination or map coordinates.");
+      return;
+    }
 
-  async function handleRecalculate() {
-    if (!selectedCourierForOptimization) return;
-    const results = await optimizeCouriers([selectedCourierForOptimization]);
-    if (results.length > 0) setSelectedCourier(selectedCourierForOptimization);
+    setSelectedCourier(null);
+    setBookingMessage(null);
+    await optimizeCouriers(availableCouriers);
   }
 
   // Auto-optimize every courier once parcels/stops are available.
@@ -685,7 +677,12 @@ export default function VrdsRoutePlanningPage() {
       return grouped;
     }
 
-    if (!currentResult) return grouped;
+    if (!currentResult) {
+      availableCouriers.forEach((courier) => {
+        grouped.set(courier, activeStops.filter((stop) => stop.courier === courier));
+      });
+      return grouped;
+    }
     const orderedIds = currentResult.routes?.length
       ? currentResult.routes.flatMap((r) => r.orderedStopIds)
       : currentResult.orderedStopIds;
@@ -1007,82 +1004,15 @@ export default function VrdsRoutePlanningPage() {
                 </span>
               </div>
             )}
-            <button
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Refresh booked parcels from Parcels page"
-            >
-              <span className={`material-symbols-outlined text-base ${isRefreshing ? "animate-spin" : ""}`}>refresh</span>
-              <span className="hidden sm:inline">{isRefreshing ? "Refreshing..." : "Refresh"}</span>
-            </button>
+           
           </div>
-        </div>
-
-        <ol className="mb-6 grid gap-3 sm:grid-cols-3" aria-label="Route planning workflow">
-          {[
-            ["1", "Select booked parcels", `${planningParcels.length} selected`],
-            ["2", "Optimize route", currentResult ? "Route ready" : "Awaiting optimization"],
-            ["3", "Confirm to Bookings", "Assign vehicle and driver next"],
-          ].map(([step, title, detail], index) => (
-            <li
-              key={step}
-              className={`flex items-center gap-3 rounded-xl border p-3 ${
-                index === 0 || (index === 1 && currentResult) ? "border-[#b80049]/25 bg-pink-50/50" : "border-slate-200 bg-white"
-              }`}
-            >
-              <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                  index === 0 || (index === 1 && currentResult) ? "bg-[#b80049] text-white" : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {step}
-              </span>
-              <span>
-                <span className="block text-xs font-bold text-slate-800">{title}</span>
-                <span className="block text-[11px] text-slate-500">{detail}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p>
-              <strong>{bookedUnassignedParcels.length}</strong> booked parcel{bookedUnassignedParcels.length === 1 ? "" : "s"} available;{" "}
-              <strong>{planningParcels.length}</strong> included in this route plan.
-            </p>
-            {bookedAssignedParcels.length > 0 && (
-              <p className="text-slate-700">
-                {bookedAssignedParcels.length} booked parcel{bookedAssignedParcels.length === 1 ? "" : "s"} already have a route booking.
-                <button
-                  type="button"
-                  onClick={() => router.push("/vrds/bookings")}
-                  className="ml-2 text-xs font-semibold text-[#b80049] underline"
-                >
-                  Open Bookings
-                </button>
-              </p>
-            )}
-            {unmappedBookedParcels.length > 0 && (
-              <p className="text-amber-700">
-                {unmappedBookedParcels.length} booked parcel{unmappedBookedParcels.length === 1 ? "" : "s"} have no delivery coordinates and are not mapped here.
-              </p>
-            )}
-          </div>
-          {geocoding && <p className="text-xs text-slate-500 mt-1">{geocodeMessage || "Looking up addresses..."}</p>}
-          {!geocoding && unmappedBookedParcels.length > 0 && (
-            <p className="text-xs text-slate-500 mt-1">
-              These parcels will still be included in booking creation, but their route coordinates are missing.
-            </p>
-          )}
         </div>
 
         {/* 2-Column Workspace */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT: Map & KPIs */}
-          <div className="lg:col-span-7 flex flex-col gap-5 sticky top-28">
-            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs flex flex-col gap-3">
+          <div className="lg:col-span-7 flex flex-col gap-5">
+            <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2 px-2 pt-1 text-xs font-medium text-slate-600">
                 <div className="flex items-center gap-2 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/60">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#b80049] shrink-0" />
@@ -1099,7 +1029,7 @@ export default function VrdsRoutePlanningPage() {
                 </div>
               </div>
 
-              <div className="h-[460px] w-full rounded-xl overflow-hidden relative border border-slate-100">
+              <div className="h-[460px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm relative">
                 <LeafletMap
                   center={
                     markers.length > 0
@@ -1182,16 +1112,8 @@ export default function VrdsRoutePlanningPage() {
           </div>
 
           {/* RIGHT: Parameters & Route Control */}
-          <div className="lg:col-span-5 flex flex-col gap-5">
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs flex flex-col gap-5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-slate-500 text-lg">tune</span>
-                  Optimization Parameters
-                </h2>
-                <span className="text-xs text-slate-400 font-medium">Step 1 of 2</span>
-              </div>
-
+          <div className="contents">
+            <div className="lg:col-span-5 flex flex-col gap-5">
               {/* Planning Queue */}
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -1220,7 +1142,7 @@ export default function VrdsRoutePlanningPage() {
                         </button>
                       </div>
                     )}
-                    <div className="grid gap-3 max-h-[420px] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[520px] overflow-y-auto pr-1">
                       {bookedUnassignedParcels.map((parcel) => {
                         const address = getParcelDisplayAddress(parcel);
                         const { displayedPos, source } = resolveParcelDisplayPosition(parcel);
@@ -1229,7 +1151,7 @@ export default function VrdsRoutePlanningPage() {
                         return (
                           <label
                             key={parcel.id}
-                            className={`block cursor-pointer rounded-2xl border p-4 shadow-sm transition ${
+                            className={`flex h-full cursor-pointer flex-col rounded-lg border p-3 transition-colors ${
                               isSelected ? "border-[#b80049]/40 bg-pink-50/60 ring-1 ring-[#b80049]/15" : "border-slate-200 bg-slate-50 hover:border-slate-300"
                             }`}
                           >
@@ -1253,15 +1175,12 @@ export default function VrdsRoutePlanningPage() {
                                   <p className="text-xs text-slate-500 mt-1">{address}</p>
                                 </div>
                               </div>
-                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.18em] text-slate-700">
-                                {parcel.status?.toLowerCase().replace(/_/g, " ")}
-                              </span>
                             </div>
                             <div className="mt-2 text-[11px] font-semibold text-slate-700">
                               {isSelected ? "Included in this route plan." : "Not included in this route plan."}
                             </div>
-                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
-                              <div className="rounded-xl bg-white border border-slate-200 p-2">
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                              <div className="rounded-md bg-white border border-slate-200 p-2">
                                 <p className="font-semibold text-slate-800">Coords</p>
                                 <p className="mt-1">
                                   {displayedPos
@@ -1269,7 +1188,7 @@ export default function VrdsRoutePlanningPage() {
                                     : "Missing coordinates"}
                                 </p>
                               </div>
-                              <div className="rounded-xl bg-white border border-slate-200 p-2">
+                              <div className="rounded-md bg-white border border-slate-200 p-2">
                                 <p className="font-semibold text-slate-800">Courier</p>
                                 <p className="mt-1 text-slate-600">{parcel.courier || "Unknown"}</p>
                               </div>
@@ -1282,87 +1201,25 @@ export default function VrdsRoutePlanningPage() {
                 )}
               </div>
 
-              {/* Cargo Weight & Priority */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cargo-weight" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Parcel Weight (kg)
-                  </label>
-                  <input
-                    id="cargo-weight"
-                    type="number"
-                    value={cargoWeight}
-                    onChange={(e) => setCargoWeight(Number(e.target.value))}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-800 focus:bg-white focus:border-[#b80049] focus:outline-none focus:ring-2 focus:ring-[#b80049]/20 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="delivery-priority" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Delivery Priority
-                  </label>
-                  <select
-                    id="delivery-priority"
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value as typeof priority)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-800 focus:bg-white focus:border-[#b80049] focus:outline-none focus:ring-2 focus:ring-[#b80049]/20 transition-all"
-                  >
-                    <option value="standard">Standard Dispatch</option>
-                    <option value="high">High (Expedited)</option>
-                    <option value="critical">Critical (SLA Emergency)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Toggles */}
-              <div className="pt-2 border-t border-slate-100 flex flex-col gap-3">
-                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Routing Constraints</span>
-                <ToggleRow label="Avoid Toll Expressways" checked={avoidTolls} onChange={setAvoidTolls} />
-                <ToggleRow label="Prioritize Fuel Efficiency Mode" checked={prioritizeFuel} onChange={setPrioritizeFuel} />
-                <ToggleRow label="Permit Hazardous Materials Route" checked={permitHazmat} onChange={setPermitHazmat} />
-              </div>
-
-              {/* Courier selector (before first optimization) */}
-              {availableCouriers.length > 0 && courierRoutes.size === 0 && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold tracking-wider text-slate-700 uppercase mb-1">Select Courier to Optimize</label>
-                  <select
-                    value={selectedCourierForOptimization || ""}
-                    onChange={(e) => setSelectedCourierForOptimization(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:bg-white focus:border-[#b80049] focus:outline-none focus:ring-2 focus:ring-[#b80049]/20 transition-all"
-                  >
-                    <option value="">-- Choose a courier --</option>
-                    {availableCouriers.map((courier) => {
-                      const stopCount = activeStops.filter((s) => s.courier === courier).length;
-                      return (
-                        <option key={courier} value={courier}>
-                          {courier} ({stopCount} stops)
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              )}
-
               {/* Actions */}
               <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
                 <button
-                  onClick={handleRecalculate}
-                  disabled={loading || planningParcels.length === 0 || !selectedCourierForOptimization}
+                  onClick={handleOptimizeAllCouriers}
+                  disabled={loading || planningParcels.length === 0}
                   className="w-full rounded-xl bg-[#b80049] hover:bg-[#a0003f] active:bg-[#880035] text-white py-3 px-4 font-semibold text-sm transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Solving Route Matrices...</span>
+                      <span>Generating Route Plan...</span>
                     </>
                   ) : (
                     <>
-                      <span className="material-symbols-outlined text-lg">alt_route</span>
+                      <span className="material-symbols-outlined text-lg">auto_awesome</span>
                       <span>
                         {planningParcels.length === 0
                           ? "Select parcels to plan"
-                          : `Optimize ${planningParcels.length} selected parcel${planningParcels.length === 1 ? "" : "s"}`}
+                          : `Generate Route Plan AI · ${planningParcels.length} parcel${planningParcels.length === 1 ? "" : "s"}`}
                       </span>
                     </>
                   )}
@@ -1410,18 +1267,12 @@ export default function VrdsRoutePlanningPage() {
                   </p>
                 )}
 
-                <button
-                  type="button"
-                  className="w-full rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 py-2.5 px-4 font-medium text-xs transition-colors"
-                >
-                  Save Configuration as Draft
-                </button>
               </div>
             </div>
 
-            {/* Waypoint Timeline */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs flex flex-col gap-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            {/* Optimized route cards */}
+            <div className="lg:col-span-12 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <span className="material-symbols-outlined text-slate-500 text-lg">format_list_bulleted</span>
                   Optimized Waypoint Sequence
@@ -1429,78 +1280,56 @@ export default function VrdsRoutePlanningPage() {
                 <span className="text-xs text-slate-400">{orderedStops.length + 2} total stops</span>
               </div>
 
-              {selectedCourier === null && courierRoutes.size > 0 ? (
-                <div className="space-y-6">
+              {courierWaypoints.size > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {Array.from(courierWaypoints.entries()).map(([courier, courierStops]) => {
-                    if (courierStops.length === 0) return null;
-                    const color = courierColors.get(courier) || "#3b82f6";
                     return (
-                      <div key={courier} className="border-l-4 pl-4 pb-4" style={{ borderColor: color }}>
-                        <h4
-                          className="text-xs font-bold text-slate-700 mb-3 px-2 py-1 rounded"
-                          style={{ backgroundColor: color + "15", color }}
-                        >
-                          {courier} Route ({courierStops.length} stops)
-                        </h4>
-                        <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-                          {courierStops.map((stop, idx) => (
-                            <div key={stop.id} className="relative flex items-center justify-between text-xs">
-                              <div
-                                className="absolute -left-6 w-5 h-5 rounded-full text-white flex items-center justify-center font-bold text-[10px] ring-4 ring-white"
-                                style={{ backgroundColor: color }}
-                              >
-                                {idx + 1}
+                      <div
+                        key={courier}
+                        className="overflow-hidden rounded-lg border border-slate-200 bg-white transition-colors hover:border-slate-300"
+                      >
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-slate-900">{courier} Route</p>
+                            <p className="mt-0.5 text-[11px] font-medium text-slate-400">Optimized delivery sequence</p>
+                          </div>
+                          <span
+                            className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600"
+                          >
+                            {courierStops.length} stop{courierStops.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        {courierStops.length > 0 ? (
+                          <div className="space-y-2 p-2.5">
+                            {courierStops.map((stop, idx) => (
+                              <div key={stop.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2.5 py-2 text-xs">
+                                <div
+                                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-[10px] font-bold text-slate-600"
+                                >
+                                  {idx + 1}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate font-semibold text-slate-800">{stop.label}</span>
+                                  <p className="mt-0.5 truncate text-[10px] text-slate-400">{stop.lat}, {stop.lng}</p>
+                                </div>
+                                <span className="hidden shrink-0 rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-slate-500 sm:inline">
+                                  {courierRoutes.size > 0 ? `Waypoint #${idx + 1}` : "Pending order"}
+                                </span>
                               </div>
-                              <div>
-                                <span className="font-semibold text-slate-800">{stop.label}</span>
-                                <p className="text-[11px] text-slate-400">Lat: {stop.lat}, Lng: {stop.lng}</p>
-                              </div>
-                              <span className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: color + "20", color }}>
-                                Waypoint #{idx + 1}
-                              </span>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="m-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
+                            No mapped stops for this courier yet.
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-3 py-2.5 text-xs">
+                          <span className="font-semibold text-slate-600">{courierRoutes.size > 0 ? "AI order ready" : "Awaiting AI route generation"}</span>
+                          <span className="max-w-[48%] truncate rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">{destination.label}</span>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-              ) : (
-                <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-                  <div className="relative flex items-center justify-between text-xs">
-                    <div className="absolute -left-6 w-5 h-5 rounded-full bg-[#b80049] text-white flex items-center justify-center font-bold text-[10px] ring-4 ring-white">
-                      O
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-900">{origin.label}</span>
-                      <p className="text-[11px] text-slate-400">Depot Hub Departure</p>
-                    </div>
-                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">Start</span>
-                  </div>
-
-                  {orderedStops.map((stop, idx) => (
-                    <div key={stop.id} className="relative flex items-center justify-between text-xs">
-                      <div className="absolute -left-6 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[10px] ring-4 ring-white">
-                        {idx + 1}
-                      </div>
-                      <div>
-                        <span className="font-semibold text-slate-800">{stop.label}</span>
-                        <p className="text-[11px] text-slate-400">Lat: {stop.lat}, Lng: {stop.lng}</p>
-                      </div>
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">Waypoint #{idx + 1}</span>
-                    </div>
-                  ))}
-
-                  <div className="relative flex items-center justify-between text-xs">
-                    <div className="absolute -left-6 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px] ring-4 ring-white">
-                      D
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-900">{destination.label}</span>
-                      <p className="text-[11px] text-slate-400">Final Drop-off Target</p>
-                    </div>
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[10px] font-medium">End</span>
-                  </div>
                 </div>
               )}
             </div>
@@ -1531,27 +1360,14 @@ function KpiCard({
   caption: string;
 }) {
   return (
-    <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-xs">
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">{label}</span>
         <span className={`material-symbols-outlined text-lg ${iconColor}`}>{icon}</span>
       </div>
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
+      <div className="text-xl font-bold text-slate-900">{value}</div>
       <span className="text-[10px] text-slate-400">{caption}</span>
     </div>
   );
 }
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center justify-between cursor-pointer group">
-      <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900">{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded text-[#b80049] focus:ring-[#b80049] border-slate-300"
-      />
-    </label>
-  );
-}

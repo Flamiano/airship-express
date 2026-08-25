@@ -1,12 +1,11 @@
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
-import ControlsRow from "./src/components/ControlsRow";
-import { PrimaryKpiRow, SecondaryKpiRow } from "./src/components/KpiRow";
+import { KpiGrid } from "./src/components/KpiRow";
 import AnalyticsRow from "./src/components/AnalyticsRow";
 import DataTableRow from "./src/components/DataTableRow";
 import { getCostEntries } from "../lib/api";
 import { MaskProvider } from "./src/lib/MaskContext";
-import type { Kpi } from "./src/lib/data";
+import type { Kpi, Trend } from "./src/lib/data";
 
 type CostEntry = {
   id: string;
@@ -58,6 +57,8 @@ const CATEGORY_STYLES: Record<string, { color: string; dot: string }> = {
   Insurance: { color: "#a855f7", dot: "bg-purple-500" },
   Other: { color: "#94a3b8", dot: "bg-slate-400" },
   Driver: { color: "#f472b6", dot: "bg-pink-400" },
+  "Driver Allowance": { color: "#8b5cf6", dot: "bg-violet-500" },
+  "Mobile Data & Internet": { color: "#0ea5e9", dot: "bg-sky-500" },
   Parking: { color: "#fbbf24", dot: "bg-amber-400" },
   Revenue: { color: "#10b981", dot: "bg-emerald-500" },
 };
@@ -182,6 +183,14 @@ function buildKpis(
   const maintenanceCost = entries
     .filter((entry) => entry.category === "Maintenance")
     .reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const categoryCost = (source: CostEntry[], pattern: RegExp) =>
+    source
+      .filter((entry) => pattern.test(String(entry.category)))
+      .reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const driverAllowancePattern = /driver\s*allowance|allowance/i;
+  const mobileDataPattern = /mobile\s*data|data\s*(?:&|and)?\s*internet|internet/i;
+  const driverAllowanceCost = categoryCost(entries, driverAllowancePattern);
+  const mobileDataCost = categoryCost(entries, mobileDataPattern);
   const uniqueVehicles = new Set(
     entries.map((entry) => entry.vehicleId).filter(Boolean)
   ).size;
@@ -197,6 +206,41 @@ function buildKpis(
   const maintenanceShare = totalCost
     ? (maintenanceCost / totalCost) * 100
     : 0;
+  const getMonthEntries = (monthOffset: number) => {
+    const target = new Date();
+    target.setMonth(target.getMonth() + monthOffset, 1);
+    return entries.filter((entry) => {
+      const date = normalizeDate(entry.entryDate || null);
+      return date && getMonthKey(date) === getMonthKey(target);
+    });
+  };
+  const currentMonthEntries = getMonthEntries(0);
+  const previousMonthEntries = getMonthEntries(-1);
+  const getPercentChange = (current: number, previous: number) =>
+    previous === 0 ? (current === 0 ? 0 : 100) : ((current - previous) / previous) * 100;
+  const getTrend = (changeValue: number): Trend =>
+    changeValue > 0 ? "up" : changeValue < 0 ? "down" : "flat";
+  const currentMonthTotal = currentMonthEntries.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const previousMonthTotal = previousMonthEntries.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const currentFuelCost = currentMonthEntries.filter((entry) => entry.category === "Fuel").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const previousFuelCost = previousMonthEntries.filter((entry) => entry.category === "Fuel").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const currentMaintenanceCost = currentMonthEntries.filter((entry) => entry.category === "Maintenance").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const previousMaintenanceCost = previousMonthEntries.filter((entry) => entry.category === "Maintenance").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const currentDriverAllowanceCost = categoryCost(currentMonthEntries, driverAllowancePattern);
+  const previousDriverAllowanceCost = categoryCost(previousMonthEntries, driverAllowancePattern);
+  const currentMobileDataCost = categoryCost(currentMonthEntries, mobileDataPattern);
+  const previousMobileDataCost = categoryCost(previousMonthEntries, mobileDataPattern);
+  const currentFuelShare = currentMonthTotal ? (currentFuelCost / currentMonthTotal) * 100 : 0;
+  const previousFuelShare = previousMonthTotal ? (previousFuelCost / previousMonthTotal) * 100 : 0;
+  const currentMaintenanceShare = currentMonthTotal ? (currentMaintenanceCost / currentMonthTotal) * 100 : 0;
+  const previousMaintenanceShare = previousMonthTotal ? (previousMaintenanceCost / previousMonthTotal) * 100 : 0;
+  const currentAverageEntry = currentMonthEntries.length ? currentMonthTotal / currentMonthEntries.length : 0;
+  const previousAverageEntry = previousMonthEntries.length ? previousMonthTotal / previousMonthEntries.length : 0;
+  const currentUniqueVehicles = new Set(currentMonthEntries.map((entry) => entry.vehicleId).filter(Boolean)).size;
+  const previousUniqueVehicles = new Set(previousMonthEntries.map((entry) => entry.vehicleId).filter(Boolean)).size;
+  const currentUniqueTrips = new Set(currentMonthEntries.map((entry) => entry.tripId).filter(Boolean)).size;
+  const previousUniqueTrips = new Set(previousMonthEntries.map((entry) => entry.tripId).filter(Boolean)).size;
+  const monthlyChangeTrend: Trend = change > 0 ? "up" : change < 0 ? "down" : "flat";
 
   const sortedByCategory = Array.from(
     entries.reduce((map, entry) => {
@@ -211,38 +255,65 @@ function buildKpis(
   const topCategory = sortedByCategory.length
     ? sortedByCategory[0][0]
     : "N/A";
+  const topCategoryAmount = sortedByCategory.length ? sortedByCategory[0][1] : 0;
+  const topCategoryShare = totalCost ? (topCategoryAmount / totalCost) * 100 : 0;
 
   const primaryKpis: Kpi[] = [
     {
       label: "Total Fleet Cost",
       value: formatCurrency(totalCost),
+      trend: getTrend(change),
+      trendValue: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
       accent: "border-b-pink-500",
     },
     {
       label: "Monthly Cost Change",
       value: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-      trend: change >= 0 ? "up" : "down",
-      accent: change >= 0 ? "border-b-rose-500" : "border-b-emerald-500",
-      valueColor: change >= 0 ? "text-rose-600" : "text-emerald-600",
+      trend: monthlyChangeTrend,
+      trendValue: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
+      accent: change > 0 ? "border-b-rose-500" : change < 0 ? "border-b-emerald-500" : "border-b-slate-300",
+      valueColor: change > 0 ? "text-rose-600" : change < 0 ? "text-emerald-600" : "text-slate-600",
     },
     {
       label: "Fuel Cost",
       value: formatCurrency(fuelCost),
+      trend: getTrend(getPercentChange(currentFuelCost, previousFuelCost)),
+      trendValue: `${getPercentChange(currentFuelCost, previousFuelCost) >= 0 ? "+" : ""}${getPercentChange(currentFuelCost, previousFuelCost).toFixed(1)}%`,
       accent: "border-b-pink-400",
     },
     {
       label: "Maintenance Cost",
       value: formatCurrency(maintenanceCost),
+      trend: getTrend(getPercentChange(currentMaintenanceCost, previousMaintenanceCost)),
+      trendValue: `${getPercentChange(currentMaintenanceCost, previousMaintenanceCost) >= 0 ? "+" : ""}${getPercentChange(currentMaintenanceCost, previousMaintenanceCost).toFixed(1)}%`,
       accent: "border-b-rose-400",
+    },
+    {
+      label: "Driver Allowance",
+      value: formatCurrency(driverAllowanceCost),
+      trend: getTrend(getPercentChange(currentDriverAllowanceCost, previousDriverAllowanceCost)),
+      trendValue: `${getPercentChange(currentDriverAllowanceCost, previousDriverAllowanceCost) >= 0 ? "+" : ""}${getPercentChange(currentDriverAllowanceCost, previousDriverAllowanceCost).toFixed(1)}%`,
+      accent: "border-b-violet-500",
+    },
+    {
+      label: "Mobile Data & Internet",
+      value: formatCurrency(mobileDataCost),
+      trend: getTrend(getPercentChange(currentMobileDataCost, previousMobileDataCost)),
+      trendValue: `${getPercentChange(currentMobileDataCost, previousMobileDataCost) >= 0 ? "+" : ""}${getPercentChange(currentMobileDataCost, previousMobileDataCost).toFixed(1)}%`,
+      accent: "border-b-sky-500",
     },
     {
       label: "Avg Cost per Entry",
       value: formatCurrency(averageEntry),
+      trend: getTrend(getPercentChange(currentAverageEntry, previousAverageEntry)),
+      trendValue: `${getPercentChange(currentAverageEntry, previousAverageEntry) >= 0 ? "+" : ""}${getPercentChange(currentAverageEntry, previousAverageEntry).toFixed(1)}%`,
       accent: "border-b-pink-600",
     },
     {
       label: "Unique Vehicles",
       value: String(uniqueVehicles),
+      trend: getTrend(getPercentChange(currentUniqueVehicles, previousUniqueVehicles)),
+      trendValue: `${getPercentChange(currentUniqueVehicles, previousUniqueVehicles) >= 0 ? "+" : ""}${getPercentChange(currentUniqueVehicles, previousUniqueVehicles).toFixed(1)}%`,
       accent: "border-b-fuchsia-500",
     },
   ];
@@ -251,26 +322,36 @@ function buildKpis(
     {
       label: "Fuel Share",
       value: `${fuelShare.toFixed(1)}%`,
+      trend: getTrend(getPercentChange(currentFuelShare, previousFuelShare)),
+      trendValue: `${getPercentChange(currentFuelShare, previousFuelShare) >= 0 ? "+" : ""}${getPercentChange(currentFuelShare, previousFuelShare).toFixed(1)}%`,
       accent: "border-b-pink-500",
     },
     {
       label: "Maintenance Share",
       value: `${maintenanceShare.toFixed(1)}%`,
+      trend: getTrend(getPercentChange(currentMaintenanceShare, previousMaintenanceShare)),
+      trendValue: `${getPercentChange(currentMaintenanceShare, previousMaintenanceShare) >= 0 ? "+" : ""}${getPercentChange(currentMaintenanceShare, previousMaintenanceShare).toFixed(1)}%`,
       accent: "border-b-rose-500",
     },
     {
       label: "Top Expense Category",
-      value: topCategory,
+      value: `${topCategory} (${topCategoryShare.toFixed(1)}%)`,
+      trend: getTrend(getPercentChange(topCategoryAmount, previousMonthTotal)),
+      trendValue: `${getPercentChange(topCategoryAmount, previousMonthTotal) >= 0 ? "+" : ""}${getPercentChange(topCategoryAmount, previousMonthTotal).toFixed(1)}%`,
       accent: "border-b-fuchsia-500",
     },
     {
       label: "Distinct Trips",
       value: String(uniqueTrips),
+      trend: getTrend(getPercentChange(currentUniqueTrips, previousUniqueTrips)),
+      trendValue: `${getPercentChange(currentUniqueTrips, previousUniqueTrips) >= 0 ? "+" : ""}${getPercentChange(currentUniqueTrips, previousUniqueTrips).toFixed(1)}%`,
       accent: "border-b-pink-400",
     },
     {
       label: "Entries Recorded",
       value: String(entries.length),
+      trend: getTrend(getPercentChange(currentMonthEntries.length, previousMonthEntries.length)),
+      trendValue: `${getPercentChange(currentMonthEntries.length, previousMonthEntries.length) >= 0 ? "+" : ""}${getPercentChange(currentMonthEntries.length, previousMonthEntries.length).toFixed(1)}%`,
       accent: "border-b-pink-600",
     },
   ];
@@ -354,10 +435,10 @@ export default async function Home() {
         <GlobalNavbar />
 
         {/* Main Container - Full Width Utilization */}
-        <main className="flex-1 w-full max-w-container mx-auto px-4 sm:px-8 lg:px-12 py-8 flex flex-col gap-8">
+        <main className="flex-1 w-full max-w-none mx-0 px-3 sm:px-4 lg:px-6 py-6 flex flex-col gap-6">
           
           {/* Dashboard Header Banner */}
-          <div className="bg-surface-container-lowest p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-soft flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="bg-white p-6 sm:p-8 rounded-xl border border-pink-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
@@ -375,19 +456,13 @@ export default async function Home() {
 
           </div>
 
-        {/* Filters & Control Controls */}
-        <section className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant shadow-soft">
-          <ControlsRow />
-        </section>
-
         {/* Primary & Secondary KPIs */}
         <section className="space-y-4">
-          <PrimaryKpiRow kpis={primaryKpis} />
-          <SecondaryKpiRow kpis={secondaryKpis} />
+          <KpiGrid kpis={[...primaryKpis, ...secondaryKpis]} />
         </section>
 
         {/* Interactive Analytics Section */}
-        <section className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-soft">
+        <section>
           <AnalyticsRow
             expenseBreakdown={expenseBreakdown}
             topCostDrivers={topCostDrivers}
@@ -406,7 +481,7 @@ export default async function Home() {
           }
 
           return (
-            <section className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-soft">
+            <section className="bg-white p-6 rounded-xl border border-pink-100 shadow-sm">
               <div className="flex items-center justify-between gap-3 mb-5">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Receipts</p>
@@ -419,8 +494,8 @@ export default async function Home() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {receiptEntries.slice(0, 9).map((entry) => (
-                  <div key={entry.id} className="group overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-low transition-all hover:shadow-soft">
-                    <div className="relative aspect-[4/3] overflow-hidden bg-surface-container">
+                  <div key={entry.id} className="group overflow-hidden rounded-lg border border-pink-100 bg-white transition-all hover:shadow-sm">
+                    <div className="relative aspect-[4/3] overflow-hidden bg-pink-50">
                       <img
                         src={entry.receipt_image ?? undefined}
                         alt={`${entry.category} receipt`}
@@ -465,8 +540,8 @@ export default async function Home() {
           );
         })()}
 
-        {/* Data Table Section */}
-        <section className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-soft">
+        {/* Insights and records */}
+        <section>
           <DataTableRow costEntries={costEntries} insights={insights} />
         </section>
       </main>

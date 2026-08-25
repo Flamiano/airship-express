@@ -2,7 +2,6 @@
 
 import { Circle, CircleMarker, MapContainer, Polyline, TileLayer, Tooltip } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
-import { useEffect, useState } from "react";
 
 type MapMarker = {
   id: string;
@@ -26,16 +25,6 @@ export default function LeafletMap({
   paths = [],
   routeColor = "#b80049",
 }: Props) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return null;
-  }
-
   return (
     <MapContainer
       className="h-full w-full"

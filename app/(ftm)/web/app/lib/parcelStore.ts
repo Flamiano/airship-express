@@ -290,6 +290,8 @@ export function useParcelStore() {
               recipientPhone: p.recipient_phone || p.recipientPhone || "",
               destinationAddress:
                 p.dropoff_location || p.dropoffLocation || p.destination || p.delivery_address || p.deliveryAddress || p.address || p.pickup_location || p.pickupLocation || "",
+              bulk_qr_code: p.bulk_qr_code || p.bulkQrCode || undefined,
+              bulkQrCode: p.bulk_qr_code || p.bulkQrCode || undefined,
               destLat: Number(
                 p.dest_lat ?? p.destLat ?? p.dropoff_latitude ?? p.dropoffLatitude ?? p.latitude ?? p.lat ?? 0
               ),
@@ -479,6 +481,8 @@ export async function refreshStoreFromBackend() {
           recipientPhone: p.recipient_phone || p.recipientPhone || "",
           destinationAddress:
             p.dropoff_location || p.dropoffLocation || p.destination || p.delivery_address || p.deliveryAddress || p.address || p.pickup_location || p.pickupLocation || "",
+          bulk_qr_code: p.bulk_qr_code || p.bulkQrCode || undefined,
+          bulkQrCode: p.bulk_qr_code || p.bulkQrCode || undefined,
           destLat: Number(
             p.dest_lat ?? p.destLat ?? p.dropoff_latitude ?? p.dropoffLatitude ?? p.latitude ?? p.lat ?? 0
           ),

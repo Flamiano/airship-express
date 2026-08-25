@@ -142,6 +142,7 @@ export function useParcelStore() {
               return {
                 id: String(booking.id),
                 parcelIds: Array.isArray(booking.parcel_ids) ? booking.parcel_ids : booking.parcelIds || storedParcelIds,
+                routePlanId: booking.route_plan_id || booking.routePlanId || undefined,
                 routeLabel: booking.route_label || booking.routeLabel || [booking.pickup_location, booking.dropoff_location].filter(Boolean).join(" → ") || `Booking ${booking.id}`,
                 totalWeightKg: Number(booking.total_weight_kg ?? booking.totalWeightKg ?? booking.load_kg ?? booking.cargo_weight ?? 0),
                 parcelCount,

@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
+const path = require("path");
+
 const nextConfig = {
+  // Keep Turbopack scoped to this Next.js app. Without an explicit root,
+  // it selects the outer workspace lockfile and mistakes scoped packages
+  // such as node_modules/@airship for App Router parallel-route slots.
+  turbopack: {
+    root: path.join(__dirname, ".."),
+  },
   images: {
     remotePatterns: [
       {

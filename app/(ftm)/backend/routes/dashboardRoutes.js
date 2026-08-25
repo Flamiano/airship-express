@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getServiceSupabase } = require('../config/db');
+const { getServiceSupabase, getParcelsSupabase } = require('../config/db');
 const { normalizeVehicle } = require('../models/Vehicle');
 const { normalizeTrip } = require('../models/Trip');
 
@@ -51,11 +51,13 @@ function buildFallbackDashboardSnapshot() {
       trips: 0,
       bookings: 0,
       drivers: 0,
+      parcels: 0,
     },
     vehicles: [],
     trips: [],
     bookings: [],
     drivers: [],
+    parcels: [],
   };
 }
 
@@ -171,24 +173,29 @@ async function fetchDrivers(serviceSupabase) {
 
 router.get('/', async (req, res) => {
   const supabase = getServiceSupabase();
+  const parcelsSupabase = getParcelsSupabase() || supabase;
   if (!supabase) {
     return res.status(503).json({ error: 'Database is not configured' });
   }
 
   try {
-    const [vehiclesResult, tripsResult, bookingsResult, routePlansResult, routePlanBookingsResult, drivers] = await Promise.all([
+    const [vehiclesResult, tripsResult, bookingsResult, parcelsResult, routePlansResult, routePlanBookingsResult, drivers] = await Promise.all([
       supabase.from('vehicles').select('*').order('created_at', { ascending: false }),
       supabase.from('trips')
         .select(`*, bookings(pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight)`)
         .order('created_at', { ascending: false }),
       supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+      // Parcels can be stored in a separate Supabase project. Query that
+      // connection so a missing `parcels` table in the fleet project does
+      // not prevent the whole dashboard (including fleet analytics) loading.
+      parcelsSupabase.from('parcels').select('*').order('created_at', { ascending: false }),
       supabase.from('route_plans').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('route_plan_bookings').select('*').limit(200),
       fetchDrivers(supabase),
     ]);
 
-    if (vehiclesResult.error || tripsResult.error || bookingsResult.error || routePlansResult.error || routePlanBookingsResult.error) {
-      const queryError = vehiclesResult.error || tripsResult.error || bookingsResult.error || routePlansResult.error || routePlanBookingsResult.error;
+    if (vehiclesResult.error || tripsResult.error || bookingsResult.error || parcelsResult.error || routePlansResult.error || routePlanBookingsResult.error) {
+      const queryError = vehiclesResult.error || tripsResult.error || bookingsResult.error || parcelsResult.error || routePlansResult.error || routePlanBookingsResult.error;
       console.error('Dashboard snapshot query error:', queryError);
       if (queryError && (queryError.code === 'PGRST002' || queryError.code === '42501' || queryError.code === 'PGRST303')) {
         console.warn('Using fallback dashboard snapshot because Supabase data access is temporarily unavailable.');
@@ -272,6 +279,7 @@ router.get('/', async (req, res) => {
       })
       .filter((trip) => !isSeedTrip(trip));
     const bookings = bookingsResult.data || [];
+    const parcels = parcelsResult.data || [];
     const driverRecords = (Array.isArray(drivers) ? drivers : []).filter(
       (driver) =>
         !SEED_DRIVER_IDS.has(driver.id) &&
@@ -374,10 +382,12 @@ router.get('/', async (req, res) => {
         trips: trips.length,
         bookings: bookings.length,
         drivers: driverRecords.length,
+        parcels: parcels.length,
       },
       vehicles,
       trips,
       bookings,
+      parcels,
       drivers: driverRecords,
       routePlans,
       routePlanBookings,

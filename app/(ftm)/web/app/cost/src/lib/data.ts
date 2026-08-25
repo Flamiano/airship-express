@@ -4,6 +4,7 @@ export interface Kpi {
   label: string;
   value: string;
   trend?: Trend;
+  trendValue?: string;
   accent: string; // tailwind border color class, e.g. "border-b-primary"
   valueColor?: string; // tailwind text color class
 }
