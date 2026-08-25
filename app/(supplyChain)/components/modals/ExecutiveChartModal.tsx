@@ -366,7 +366,7 @@ export default function ExecutiveChartModal({
                                     >
                                         <div className="flex items-center gap-2.5 min-w-0">
                                             {/* Hover detail effect (! badge with popover tooltip) */}
-                                            <div className="relative group/tooltip inline-block">
+                                            <div className="info-badge-container">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleInspectItem(item)}
@@ -375,7 +375,7 @@ export default function ExecutiveChartModal({
                                                 >
                                                     !
                                                 </button>
-                                                <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus-within/tooltip:block w-52 p-3 bg-slate-900 text-white dark:bg-slate-950 dark:text-slate-100 text-[11px] rounded-xl shadow-2xl z-50 pointer-events-none border border-slate-700 leading-snug">
+                                                <div className="tooltip-popover">
                                                     <p className="font-bold text-pink-400">{item.title}</p>
                                                     <p className="text-slate-200 dark:text-slate-300 mt-1">{item.subtitle || 'No extra notes'}</p>
                                                 </div>

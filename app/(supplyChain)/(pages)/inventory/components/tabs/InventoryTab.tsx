@@ -2,6 +2,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import { InventoryItem } from '../../types';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
@@ -62,6 +63,16 @@ export function InventoryTab({
     onAddItem,
     onOrderPO,
 }: InventoryTabProps) {
+    const [activeMessageModal, setActiveMessageModal] = useState<{
+        title: string;
+        itemCode?: string;
+        itemName?: string;
+        content: string;
+        author?: string;
+        timestamp?: string;
+        type: 'description' | 'override_reason';
+    } | null>(null);
+
     const allSelected = items.length > 0 && selectedIds.size === items.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < items.length;
 
@@ -114,6 +125,32 @@ export function InventoryTab({
                     <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none"></i>
                 </div>
 
+                <button
+                    type="button"
+                    onClick={onSelectAll}
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
+                        allSelected
+                            ? 'bg-pink-500 text-white border-pink-500 hover:bg-pink-600'
+                            : someSelected
+                                ? 'bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-300 border-pink-300 dark:border-pink-800'
+                                : 'bg-white dark:bg-slate-950/60 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
+                    title={allSelected ? "Deselect all items" : "Select all items"}
+                >
+                    <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(input) => {
+                            if (input) {
+                                input.indeterminate = someSelected;
+                            }
+                        }}
+                        onChange={() => {}}
+                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer pointer-events-none accent-pink-500"
+                    />
+                    <span>{allSelected ? 'Deselect All' : 'Select All'}</span>
+                </button>
+
                 <AppButton
                     type="button"
                     variant="neutral"
@@ -124,14 +161,21 @@ export function InventoryTab({
                     <i className="fas fa-rotate-left text-xs" />
                     <span>Reset</span>
                 </AppButton>
+
+                {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-800/50 text-xs font-semibold text-pink-700 dark:text-pink-300 shadow-2xs animate-in fade-in duration-150">
+                        <i className="fas fa-check-circle text-pink-500"></i>
+                        <span>{selectedIds.size} selected</span>
+                    </div>
+                )}
             </div>
 
             {/* Scrollable Table Container */}
             <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[560px] relative">
                 {isLoading && <TableContentLoader />}
 
-                <table className="w-full border-collapse text-left">
-                    <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider select-none">
+                <table className="w-full table-pro border-collapse text-left">
+                    <thead className="sticky top-0 z-10 bg-slate-100/90 dark:bg-slate-800/90 backdrop-blur-sm border-b border-slate-300/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider text-[11px] select-none">
                         <tr>
                             <th className="w-10 px-3.5 py-3 text-center">
                                 <input
@@ -143,6 +187,7 @@ export function InventoryTab({
                                         }
                                     }}
                                     onChange={onSelectAll}
+                                    aria-label="Select all inventory items"
                                     className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 transition-colors"
                                 />
                             </th>
@@ -152,14 +197,15 @@ export function InventoryTab({
                             <th className="px-3.5 py-3 min-w-[110px]">Stock Level</th>
                             <th className="px-3.5 py-3 min-w-[110px]">Status</th>
                             <th className="px-4 py-3 min-w-[180px]">Latest PO / Request</th>
-                            <th className="px-4 py-3 min-w-[200px]">Audit / Overrides</th>
+                            <th className="px-4 py-3 min-w-[180px]">Audit / Overrides</th>
+                            <th className="px-4 py-3 min-w-[220px]">Comments & Remarks</th>
                             <th className="px-4 py-3 text-right! min-w-[210px] w-[210px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                         {items.length === 0 ? (
                             <tr>
-                                <td colSpan={9} className="py-20 text-center text-slate-400 dark:text-slate-500">
+                                <td colSpan={10} className="py-20 text-center text-slate-400 dark:text-slate-500">
                                     <div className="flex flex-col items-center justify-center gap-3">
                                         <div className="w-14 h-14 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-inner">
                                             <i className="fas fa-box-open text-2xl"></i>
@@ -191,22 +237,23 @@ export function InventoryTab({
                                             }`}
                                     >
                                         {/* Checkbox */}
-                                        <td className="px-3.5 py-3 text-center">
+                                        <td data-label="Select" className="px-3.5 py-3 text-center">
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
                                                 onChange={() => onSelect(item.id)}
+                                                aria-label={`Select ${item.item_name}`}
                                                 className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 transition-colors"
                                             />
                                         </td>
 
                                         {/* Row Index */}
-                                        <td className="px-2 py-3 text-slate-400 dark:text-slate-500 font-mono text-[11px]">
+                                        <td data-label="#" className="px-2 py-3 text-slate-400 dark:text-slate-500 font-mono text-[11px]">
                                             {(currentPage - 1) * itemsPerPage + index + 1}
                                         </td>
 
                                         {/* Item Name & Item Code */}
-                                        <td className="px-4 py-3 whitespace-nowrap">
+                                        <td data-label="Item Information" className="px-4 py-3 whitespace-nowrap">
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-bold text-slate-900 dark:text-slate-100 hover:text-pink-600 transition-colors">
@@ -237,14 +284,14 @@ export function InventoryTab({
                                         </td>
 
                                         {/* Category */}
-                                        <td className="px-3.5 py-3 whitespace-nowrap">
+                                        <td data-label="Category" className="px-3.5 py-3 whitespace-nowrap">
                                             <StatusBadge tone="neutral" size="xs">
                                                 {item.category}
                                             </StatusBadge>
                                         </td>
 
                                         {/* Stock Level */}
-                                        <td className="px-3.5 py-3 whitespace-nowrap">
+                                        <td data-label="Stock Level" className="px-3.5 py-3 whitespace-nowrap">
                                             <div className="space-y-0.5">
                                                 <div className="flex items-baseline gap-1">
                                                     <span className={`text-sm font-extrabold font-mono ${
@@ -267,7 +314,7 @@ export function InventoryTab({
                                         </td>
 
                                         {/* Status Badge */}
-                                        <td className="px-3.5 py-3 whitespace-nowrap">
+                                        <td data-label="Status" className="px-3.5 py-3 whitespace-nowrap">
                                             <StatusBadge
                                                 tone={
                                                     item.status === 'available'
@@ -288,7 +335,7 @@ export function InventoryTab({
                                         </td>
 
                                         {/* Latest PO / Request */}
-                                        <td className="px-4 py-3 whitespace-nowrap">
+                                        <td data-label="Latest PO / Request" className="px-4 py-3 whitespace-nowrap">
                                             {po ? (
                                                 po.is_request ? (
                                                     <StatusBadge tone="amber" icon="fas fa-clock" size="xs">
@@ -321,9 +368,9 @@ export function InventoryTab({
                                         </td>
 
                                         {/* Audit / Overrides Column */}
-                                        <td className="px-4 py-3 whitespace-nowrap">
+                                        <td data-label="Audit / Overrides" className="px-4 py-3 whitespace-nowrap">
                                             {isForced ? (
-                                                <div className="p-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 space-y-1 max-w-[220px]">
+                                                <div className="p-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 space-y-0.5 max-w-[180px]">
                                                     <div className="flex items-center gap-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 truncate">
                                                         <i className="fas fa-user-shield text-[10px] text-amber-600 dark:text-amber-400 shrink-0"></i>
                                                         <span className="truncate">{item.force_updated_by_name || 'Admin'}</span>
@@ -338,10 +385,59 @@ export function InventoryTab({
                                                             })}
                                                         </div>
                                                     )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-300 dark:text-slate-600 text-xs font-mono pl-2">-</span>
+                                            )}
+                                        </td>
+
+                                        {/* Comments & Remarks Column */}
+                                        <td data-label="Comments & Remarks" className="px-4 py-3 min-w-[220px]">
+                                            {item.description || item.force_reason ? (
+                                                <div className="space-y-1.5 max-w-[240px]">
+                                                    {item.description && (
+                                                        <div
+                                                            onClick={() => setActiveMessageModal({
+                                                                title: 'Item Description',
+                                                                itemCode: item.item_code,
+                                                                itemName: item.item_name,
+                                                                content: item.description || '',
+                                                                type: 'description'
+                                                            })}
+                                                            className="flex items-start gap-1.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50 shadow-2xs cursor-pointer hover:border-pink-400 dark:hover:border-pink-500/60 transition-all group/msg"
+                                                            title="Click to view full description"
+                                                        >
+                                                            <i className="fas fa-comment-alt text-pink-500 dark:text-pink-400 text-xs mt-0.5 shrink-0"></i>
+                                                            <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
+                                                                {item.description.length > 32 ? `${item.description.slice(0, 30)}...` : item.description}
+                                                            </p>
+                                                            {item.description.length > 32 && (
+                                                                <i className="fas fa-expand-alt text-[9px] text-slate-400 dark:text-slate-500 group-hover/msg:text-pink-500 transition-colors ml-auto shrink-0 mt-0.5"></i>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     {item.force_reason && (
-                                                        <p className="text-[10px] text-slate-600 dark:text-slate-300 italic truncate" title={item.force_reason}>
-                                                            "{item.force_reason}"
-                                                        </p>
+                                                        <div
+                                                            onClick={() => setActiveMessageModal({
+                                                                title: 'Stock Override Reason',
+                                                                itemCode: item.item_code,
+                                                                itemName: item.item_name,
+                                                                content: item.force_reason || '',
+                                                                author: item.force_updated_by_name || 'Admin',
+                                                                timestamp: item.force_updated_at ? new Date(item.force_updated_at).toLocaleString() : undefined,
+                                                                type: 'override_reason'
+                                                            })}
+                                                            className="flex items-start gap-1.5 p-1.5 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-800/40 text-[10px] text-amber-800 dark:text-amber-300 cursor-pointer hover:border-amber-400 dark:hover:border-amber-600 transition-all group/reason"
+                                                            title="Click to view override reason details"
+                                                        >
+                                                            <i className="fas fa-shield-alt text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 shrink-0"></i>
+                                                            <span className="line-clamp-2">
+                                                                {item.force_reason.length > 32 ? `${item.force_reason.slice(0, 30)}...` : item.force_reason}
+                                                            </span>
+                                                            {item.force_reason.length > 32 && (
+                                                                <i className="fas fa-expand-alt text-[8px] text-amber-500 group-hover/reason:text-amber-700 dark:group-hover/reason:text-amber-200 transition-colors ml-auto shrink-0 mt-0.5"></i>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
                                             ) : (
@@ -350,7 +446,7 @@ export function InventoryTab({
                                         </td>
 
                                         {/* Actions */}
-                                        <td className="px-4 py-3 text-right whitespace-nowrap min-w-[210px] w-[210px]">
+                                        <td data-label="Actions" className="px-4 py-3 text-right whitespace-nowrap min-w-[210px] w-[210px]">
                                             <div className="flex items-center justify-end gap-2.5">
                                                 {/* Add / Request PO Button */}
                                                 <CrudActionButton
@@ -420,6 +516,77 @@ export function InventoryTab({
                     onPageChange={onPageChange}
                 />
             </div>
+
+            {/* Message Detail Modal */}
+            {activeMessageModal && (
+                <div
+                    className="fixed inset-0 bg-slate-950/70 dark:bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+                    onClick={() => setActiveMessageModal(null)}
+                >
+                    <div
+                        className="bg-white dark:bg-[#2a2a2e] border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-150 space-y-4"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-sm shadow-2xs ${
+                                    activeMessageModal.type === 'override_reason'
+                                        ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40'
+                                        : 'bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40'
+                                }`}>
+                                    <i className={`fas ${activeMessageModal.type === 'override_reason' ? 'fa-shield-alt' : 'fa-comment-alt'}`}></i>
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                                        {activeMessageModal.title}
+                                    </h3>
+                                    {activeMessageModal.itemName && (
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                            {activeMessageModal.itemName} <span className="font-mono text-pink-600 dark:text-pink-400">({activeMessageModal.itemCode})</span>
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setActiveMessageModal(null)}
+                                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                                <i className="fas fa-times text-xs"></i>
+                            </button>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-100 dark:border-slate-800/80 space-y-3">
+                            {activeMessageModal.author && (
+                                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 border-b border-slate-200/60 dark:border-slate-700/60 pb-2">
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                                        <i className="fas fa-user-shield text-amber-500"></i>
+                                        {activeMessageModal.author}
+                                    </span>
+                                    {activeMessageModal.timestamp && (
+                                        <span className="font-mono text-[10px] text-slate-400">
+                                            {activeMessageModal.timestamp}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                                {activeMessageModal.content}
+                            </p>
+                        </div>
+
+                        <div className="flex justify-end pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setActiveMessageModal(null)}
+                                className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold text-xs hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
