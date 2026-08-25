@@ -28,10 +28,23 @@ body {
   overscroll-behavior: auto !important;
 }
 
-@media (hover: hover) and (pointer: fine) {
+.supplychain-container {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
   .supplychain-container,
   .supplychain-container * {
     cursor: none !important;
+  }
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .supplychain-container,
+  .supplychain-container * {
+    cursor: auto !important;
   }
 }
 
@@ -358,6 +371,9 @@ body {
       margin-bottom: 12px !important;
       border-radius: 16px !important;
       transition: all 0.2s ease !important;
+      position: relative !important;
+      backface-visibility: hidden !important;
+      -webkit-backface-visibility: hidden !important;
     }
 
     /* Light mode mobile hover */
@@ -509,22 +525,18 @@ body {
       color: #8a8a8e !important;
     }
 
-    /* Subtle gradient border for cards */
+    /* Subtle border accent for mobile cards */
     .table-pro tbody tr::before {
       content: '';
       position: absolute;
       inset: 0;
       border-radius: 16px;
-      padding: 1px;
-      background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), transparent 50%, rgba(236, 72, 153, 0.05));
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
+      border: 1px solid rgba(236, 72, 153, 0.12);
       pointer-events: none;
     }
 
     .dark .table-pro tbody tr::before {
-      background: linear-gradient(135deg, rgba(236, 72, 153, 0.15), transparent 50%, rgba(236, 72, 153, 0.05));
+      border-color: rgba(236, 72, 153, 0.2);
     }
 
     /* Alternating row backgrounds */

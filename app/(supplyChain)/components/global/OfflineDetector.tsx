@@ -328,8 +328,8 @@ export function OfflineDetector({
                         className="fixed inset-0 z-[999]"
                     >
                         <div
-                            className="absolute inset-0 bg-black/5 backdrop-blur-sm transition-all duration-500"
-                            style={{ backdropFilter: `blur(${blurAmount}px)` }}
+                            className={`absolute inset-0 bg-black/20 dark:bg-black/40 transition-all duration-500 ${blurAmount > 0 ? 'backdrop-blur-sm' : ''}`}
+                            style={blurAmount > 0 ? { backdropFilter: `blur(${blurAmount}px)`, WebkitBackdropFilter: `blur(${blurAmount}px)` } : undefined}
                             onClick={() => setShowBanner(true)}
                         />
                     </motion.div>

@@ -54,7 +54,7 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
         <>
             <motion.div
                 aria-hidden
-                className="pointer-events-none fixed left-0 top-0 z-[999999]"
+                className="hidden md:block pointer-events-none fixed left-0 top-0 z-[999999]"
                 style={{ x: trailX, y: trailY, translateX: "-50%", translateY: "-50%" }}
             >
                 <motion.span
@@ -69,7 +69,7 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
 
             <motion.div
                 aria-hidden
-                className="pointer-events-none fixed left-0 top-0 z-[999999]"
+                className="hidden md:block pointer-events-none fixed left-0 top-0 z-[999999]"
                 style={{ x: arrowX, y: arrowY }}
             >
                 {hoveringInteractive ? (
