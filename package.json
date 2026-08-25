@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix \"app/(ftm)/web\" run dev",
-    "build": "npm --prefix \"app/(ftm)/web\" run build",
-    "start": "npm --prefix \"app/(ftm)/web\" run start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
