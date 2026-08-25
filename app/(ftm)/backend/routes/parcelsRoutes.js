@@ -42,7 +42,7 @@ function isParcelAvailableForRoutePlanning(parcel) {
   if (!parcel || typeof parcel !== 'object') return false;
 
   const status = String(parcel.status ?? parcel.parcel_status ?? '').trim().toLowerCase();
-  if (['in_transit', 'transit', 'delivered', 'cancelled', 'canceled', 'completed', 'closed'].includes(status)) {
+  if (['delivered', 'cancelled', 'canceled', 'completed', 'closed'].includes(status)) {
     return false;
   }
 

@@ -19,15 +19,15 @@ const insightGlyphMap: Record<string, string> = {
 
 export default function CostOptimizationInsights({ insights }: { insights: Insight[] }) {
   return (
-    <div className="bg-surface-container-lowest rounded-DEFAULT p-6 border border-outline-variant shadow-soft col-span-1 flex flex-col gap-4">
-      <h3 className="font-title-md text-title-md text-on-surface mb-2 border-b border-outline-variant pb-2">
+    <div className="bg-white rounded-2xl p-5 border border-pink-100 shadow-sm col-span-1 flex flex-col gap-4">
+      <h3 className="font-title-md text-title-md text-on-surface mb-2 border-b border-pink-100 pb-3">
         Cost Optimization Insights
       </h3>
       <div className="flex flex-col gap-3">
         {insights.map((insight) => (
           <div
             key={insight.label}
-            className={`bg-surface-container p-3 rounded-md shadow-sm flex items-center justify-between ${
+            className={`bg-pink-50/40 p-3 rounded-full shadow-sm flex items-center justify-between ${
               insight.borderLeft ? "border-l-4 border-primary" : ""
             }`}
           >

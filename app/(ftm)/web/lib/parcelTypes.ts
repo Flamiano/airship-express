@@ -57,6 +57,7 @@ export type Booking = {
   id: string;
   parcelIds: string[];
   parcelCount?: number;
+  routePlanId?: string;
   routeLabel: string;
   totalWeightKg: number;
   createdAt: string;

@@ -7,30 +7,9 @@ import { getDashboardSnapshot } from "../../lib/api";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
-const LeafletMap = dynamic(() => import("./LeafletMap"), { ssr: false });
+const LeafletMap = dynamic(() => import("../../components/LeafletMap"), { ssr: false });
 
 import RoleRestricted from "../../components/RoleRestricted";
-
-async function fetchOsrmServiceAreaRoute(points: Array<{ lat: number; lng: number }>) {
-  if (points.length < 2) return [];
-
-  try {
-    const coordinates = points.map((point) => `${point.lng},${point.lat}`).join(";");
-    const response = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`,
-      { signal: AbortSignal.timeout(8000) },
-    );
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const geometry = data?.routes?.[0]?.geometry?.coordinates;
-    return Array.isArray(geometry)
-      ? geometry.map(([lng, lat]: [number, number]) => ({ lat, lng }))
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 export type DashboardVehicle = {
   id?: string;
@@ -74,11 +53,13 @@ type VrdsDashboardSnapshot = {
     trips?: number;
     bookings?: number;
     drivers?: number;
+      parcels?: number;
   };
-  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; last_location_lat?: number; last_location_lng?: number }>;
+  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; last_location_lat?: number; last_location_lng?: number; fuel_efficiency?: number; fuelEfficiency?: number }>;
   trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; from_location?: string; to_location?: string }>; 
   bookings?: Array<{ id?: string; pickup_location?: string; dropoff_location?: string }>;
   drivers?: Array<{ id?: string; full_name?: string }>; 
+  parcels?: Array<{ id?: string; status?: string; fuel_efficiency?: number; fuelEfficiency?: number }>;
 };
 
 export default function VrdsDashboardPage() {
@@ -86,9 +67,28 @@ export default function VrdsDashboardPage() {
   const [alertActionMessage, setAlertActionMessage] = useState<string | null>(null);
   const [optimizationMessage, setOptimizationMessage] = useState<string | null>(null);
   const [optimizing, setOptimizing] = useState(false);
+  const [showMetricValues, setShowMetricValues] = useState(false);
   const [snapshot, setSnapshot] = useState<VrdsDashboardSnapshot>({ vehicles: [], trips: [], bookings: [], drivers: [] });
   const [loading, setLoading] = useState(true);
-  const [serviceAreaRoute, setServiceAreaRoute] = useState<Array<{ lat: number; lng: number }>>([]);
+
+  useEffect(() => {
+    const handleMetricVisibilityShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey) return;
+
+      if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        setShowMetricValues(true);
+      }
+
+      if (event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        setShowMetricValues(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleMetricVisibilityShortcut);
+    return () => window.removeEventListener("keydown", handleMetricVisibilityShortcut);
+  }, []);
 
   const handleScramble = () => {
     setScrambleStatus("Backup rider dispatched. Monitoring response.");
@@ -135,33 +135,26 @@ export default function VrdsDashboardPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    fetchOsrmServiceAreaRoute(SERVICE_AREAS.map((area) => area.position)).then((route) => {
-      if (active && route.length > 1) setServiceAreaRoute(route);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const vehicles = snapshot.vehicles ?? [];
   const trips = snapshot.trips ?? [];
   const bookings = snapshot.bookings ?? [];
+  const parcels = snapshot.parcels ?? [];
   const totalVehicles = snapshot.counts?.vehicles ?? vehicles.length;
-  const activeDeliveries = trips.filter((trip) => /transit|assigned|scheduled|dispatch|in transit/i.test(trip.status ?? "")).length;
-  const completedTrips = trips.filter((trip) => /delivered|completed|done|success/i.test(trip.status ?? "")).length;
-  const delayedTrips = trips.filter((trip) => /delayed|late|delay|exception|problem|hold/i.test(trip.status ?? "")).length;
+  const totalParcels = snapshot.counts?.parcels ?? parcels.length;
+  const inTransitParcels = parcels.filter((parcel) => /in[_ ]?transit/i.test(parcel.status ?? "")).length;
+  const bookedParcels = parcels.filter((parcel) => /booked/i.test(parcel.status ?? "")).length;
+  const deliveredParcels = parcels.filter((parcel) => /delivered|completed/i.test(parcel.status ?? "")).length;
+  const delayedParcels = parcels.filter((parcel) => /delayed|late|exception/i.test(parcel.status ?? "")).length;
   const activeVehicles = vehicles.filter((vehicle) => /active|available|ready|assigned|transit|in transit/i.test(vehicle.status ?? "")).length;
-  const vehicleUtilization = totalVehicles > 0 ? Math.round((activeVehicles / totalVehicles) * 100) : 0;
-  const coverageZones = new Set(
-    trips
-      .flatMap((trip: any) => [trip.from_location, trip.to_location, trip.fromLocation, trip.toLocation])
-      .filter(Boolean)
-      .map(String)
-  ).size || new Set(bookings.flatMap((booking: any) => [booking.pickup_location, booking.dropoff_location]).filter(Boolean).map(String)).size;
-  const onTimeRate = trips.length > 0 ? Math.round((completedTrips / trips.length) * 100) : 0;
+  const parcelShare = (count: number) => totalParcels > 0 ? `${((count / totalParcels) * 100).toFixed(1)}%` : "—";
+  const activeVehicleShare = totalVehicles > 0 ? `${((activeVehicles / totalVehicles) * 100).toFixed(1)}%` : "—";
+  const fuelEfficiencyValues = vehicles
+    .map((vehicle) => Number(vehicle.fuelEfficiency ?? vehicle.fuel_efficiency))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const averageFuelEfficiency = fuelEfficiencyValues.length > 0
+    ? `${(fuelEfficiencyValues.reduce((sum, value) => sum + value, 0) / fuelEfficiencyValues.length).toFixed(1)} km/L`
+    : "—";
+  const displayMetricValue = (value: string) => showMetricValues ? value : "****";
   const alerts = useMemo(() => {
     const criticalTrips = trips.filter((trip) => /delayed|late|delay|exception|problem|hold/i.test(trip.status ?? ""));
     if (criticalTrips.length > 0) {
@@ -241,52 +234,23 @@ export default function VrdsDashboardPage() {
         )}
 
         {/* Key Metrics / Stat Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard
-            icon="schedule"
-            label="On-Time Delivery Rate"
-            value={`${onTimeRate}%`}
-            sub={
-              <span className="text-emerald-600 inline-flex items-center gap-1 font-medium">
-                <span className="material-symbols-outlined text-[15px]">trending_up</span>
-                {completedTrips} deliveries completed on time
-              </span>
-            }
-          />
-          <StatCard
-            icon="local_shipping"
-            label="Active Fleet Deliveries"
-            value={String(activeDeliveries)}
-            sub={
-              <span className="text-slate-500 inline-flex items-center gap-1.5 font-medium">
-                <span className="w-2 h-2 rounded-full bg-pink-500 inline-block" />
-                {loading ? "Loading live dispatch" : `${activeDeliveries} active trips`}
-              </span>
-            }
-          />
-          <StatCard
-            icon="bar_chart"
-            label="Vehicle Utilization"
-            value={`${vehicleUtilization}%`}
-            progress={vehicleUtilization}
-          />
-          <StatCard
-            icon="map"
-            label="Coverage Zones"
-            value={`${coverageZones} zones`}
-            sub={
-              <span className="text-pink-600 font-medium">
-                {bookings.length} recent booking locations
-              </span>
-            }
-          />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-8">
+          <StatCard icon="inventory_2" label="Total Parcels" value={displayMetricValue(String(totalParcels))} trendValue="100%" sub="All parcel records" />
+          <StatCard icon="local_shipping" label="Parcels In Transit" value={displayMetricValue(String(inTransitParcels))} trendValue={parcelShare(inTransitParcels)} sub="Share of parcels" />
+          <StatCard icon="assignment_turned_in" label="Booked Parcels" value={displayMetricValue(String(bookedParcels))} trendValue={parcelShare(bookedParcels)} sub="Share of parcels" />
+          <StatCard icon="task_alt" label="Delivered Parcels" value={displayMetricValue(String(deliveredParcels))} trendValue={parcelShare(deliveredParcels)} sub="Share of parcels" />
+          <StatCard icon="warning" label="Delayed Parcels" value={displayMetricValue(String(delayedParcels))} trendValue={parcelShare(delayedParcels)} sub="Share of parcels" />
+          <StatCard icon="book_online" label="Bookings" value={displayMetricValue(String(snapshot.counts?.bookings ?? bookings.length))} trendValue="—" sub="Total booking records" />
+          <StatCard icon="directions_car" label="Vehicles" value={displayMetricValue(String(totalVehicles))} trendValue={activeVehicleShare} sub={`${activeVehicles} active`} />
+          <StatCard icon="groups" label="Drivers" value={displayMetricValue(String(snapshot.counts?.drivers ?? snapshot.drivers?.length ?? 0))} trendValue="—" sub="Registered drivers" />
+          <StatCard icon="local_gas_station" label="Fuel Efficiency" value={displayMetricValue(averageFuelEfficiency)} trendValue="—" sub="No efficiency benchmark" />
         </div>
 
         {/* Main Grid Section: Operations Map & Action Panel */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
           {/* Map Section (Spans 8 columns on large screens) */}
-          <div className="lg:col-span-8 bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-pink-100 shadow-sm shadow-pink-500/5 flex flex-col justify-between">
+          <div className="lg:col-span-8 flex flex-col gap-3">
             <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-pink-100/70 text-pink-600">
@@ -306,13 +270,12 @@ export default function VrdsDashboardPage() {
             </div>
 
             {/* Interactive Map Wrapper */}
-            <div className="grid min-h-[460px] grid-cols-1 overflow-hidden rounded-xl border border-pink-100 bg-slate-50 md:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="grid min-h-[460px] grid-cols-1 overflow-hidden rounded-2xl border border-pink-100 bg-slate-50 shadow-sm shadow-pink-500/5 md:grid-cols-[minmax(0,1fr)_260px]">
               <div className="min-h-[320px] relative">
                 <LeafletMap
                   center={{ lat: 14.62, lng: 121.05 }}
                   zoom={10}
                   markers={SERVICE_AREA_MARKERS}
-                  paths={serviceAreaRoute.length > 1 ? [serviceAreaRoute] : []}
                 />
               </div>
 
@@ -463,25 +426,32 @@ function StatCard({
   value,
   sub,
   progress,
+  trendValue,
 }: {
   icon: string;
   label: string;
   value: string;
   sub?: React.ReactNode;
   progress?: number;
+  trendValue?: string;
 }) {
   return (
-    <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-pink-100 shadow-sm shadow-pink-500/5 flex flex-col justify-between hover:border-pink-200 transition-all">
+    <div className="bg-white/90 backdrop-blur-md rounded-md p-3 border border-pink-100 shadow-sm shadow-pink-500/5 flex min-h-[104px] flex-col justify-between hover:border-pink-200 transition-all">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-        <div className="w-9 h-9 rounded-xl bg-pink-50 flex items-center justify-center text-pink-600 border border-pink-100">
-          <span className="material-symbols-outlined text-[20px]">{icon}</span>
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
+        <div className="w-7 h-7 rounded-full bg-pink-50 flex items-center justify-center text-pink-600 border border-pink-100">
+          <span className="material-symbols-outlined text-[16px]">{icon}</span>
         </div>
       </div>
       <div className="mt-3">
-        <div className="text-3xl font-black text-slate-900 tracking-tight">{value}</div>
+        <div className="flex items-center gap-1.5">
+          <div className="text-2xl font-black text-slate-900 tracking-tight">{value}</div>
+          <span className="text-[11px] font-bold text-slate-400" title="Current snapshot share">
+            → {trendValue ?? "—"}
+          </span>
+        </div>
         {progress !== undefined && (
-          <div className="mt-3">
+          <div className="mt-2">
             <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-pink-500 to-rose-600 rounded-full transition-all duration-500"
@@ -494,7 +464,7 @@ function StatCard({
             </div>
           </div>
         )}
-        {sub && <div className="mt-2 text-xs">{sub}</div>}
+        {sub && <div className="mt-1 text-[10px]">{sub}</div>}
       </div>
     </div>
   );

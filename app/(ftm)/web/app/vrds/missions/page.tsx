@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { optimizeRoute, SAMPLE_OPTIMIZATION_PAYLOAD } from "../../lib/optimize";
-import { useParcelStore, advanceDispatch } from "../../lib/parcelStore";
+import { useParcelStore } from "../../lib/parcelStore";
 import { getRoutePlan, getTrips } from "../../lib/api";
 import { HUB_POS } from "../../lib/parcelTypes";
 import GlobalNavbar from "../../components/GlobalNavbar";
@@ -71,7 +70,7 @@ export default function VrdsMissionsPage() {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [showRouteLines, setShowRouteLines] = useState(true);
   const [timeUpdate, setTimeUpdate] = useState(0); // Incremented every minute to trigger ETA recalculation
-  const { bookings, parcels, drivers } = useParcelStore();
+  const { bookings, parcels, drivers, vehicles } = useParcelStore();
   const [trips, setTrips] = useState<any[]>([]);
   const [routePlans, setRoutePlans] = useState<Record<string, any>>({});
   const [roadPaths, setRoadPaths] = useState<Record<string, LatLng[]>>({});
@@ -183,9 +182,9 @@ export default function VrdsMissionsPage() {
     }
 
     // Fallback: use provided duration or defaults
-    const durationMinutes = trip?.durationMinutes || 35;
+    const durationMinutes = Number(trip?.durationMinutes ?? trip?.duration_minutes);
     return {
-      etaMinutes: durationMinutes,
+      etaMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 0,
       progress: Number(trip?.progress || 0),
     };
   };
@@ -197,8 +196,19 @@ export default function VrdsMissionsPage() {
     return driver?.name || `Driver ${String(driverId)}`;
   };
 
+  const resolveDriverPhone = (driverId?: string | null) => {
+    if (!driverId) return null;
+    const driver = drivers.find((item) => String(item.id) === String(driverId)) as any;
+    return driver?.phone || driver?.phoneNumber || null;
+  };
+
   const DELIVERIES: Delivery[] = useMemo(() => {
-    const persistedDeliveries = trips.map((trip) => {
+    const persistedDeliveries = trips.filter((trip) => {
+      const booking = bookings.find((item) => item.id === trip.bookingId || item.id === trip.booking_id);
+      const driverId = trip.driverId || trip.driver_id || booking?.driverId;
+      const vehicleId = trip.vehicleId || trip.vehicle_id || booking?.vehicleId;
+      return Boolean(driverId && vehicleId);
+    }).map((trip) => {
       const booking = bookings.find((item) => item.id === trip.bookingId || item.id === trip.booking_id);
       const bookingParcels = parcels.filter((p) => p.bookingId === trip.bookingId || p.bookingId === trip.booking_id);
       const routePlanId = booking?.routePlanId || bookingParcels.find((parcel: any) => parcel.routePlanId)?.routePlanId || trip.routePlanId || trip.route_plan_id;
@@ -266,6 +276,7 @@ export default function VrdsMissionsPage() {
         id: trip.id,
         name: driverName,
         driverName,
+        driverPhone: resolveDriverPhone(trip.driverId || trip.driver_id || booking?.driverId),
         vehiclePlate: trip.vehicleId || "Assigned vehicle",
         parcelSummary: `${parcelCount} parcels — ${destinationName}${stopCountLabel}`,
         parcelCount,
@@ -296,7 +307,7 @@ export default function VrdsMissionsPage() {
         const routePlan = b.routePlanId ? routePlans[b.routePlanId] : null;
         
         const { etaMinutes, progress } = calculateEtaAndProgress(b, b, osrmMetrics[b.id]);
-        const isRush = etaMinutes <= 15;
+        const isRush = etaMinutes > 0 && etaMinutes <= 15;
 
         // Extract courier info with smart fallback
         // Priority: parcel courier > route plan courier > booking ID (for color diversity)
@@ -333,6 +344,7 @@ export default function VrdsMissionsPage() {
           id: b.id,
           name: driverName,
           driverName,
+          driverPhone: (b as any).driverPhone || resolveDriverPhone(b.driverId),
           vehiclePlate: b.vehiclePlate || "Unassigned",
           parcelSummary: `${bookingParcels.length || b.parcelIds.length} parcels — ${destination}${routePlanStops.length > 1 ? ` • ${routePlanStops.length} stops` : ""}`,
           parcelCount: bookingParcels.length || b.parcelIds.length || 0,
@@ -353,13 +365,73 @@ export default function VrdsMissionsPage() {
         } as Delivery;
       });
 
-    // Filter to only show deliveries created through the booking/route-planning page (with routePlanId)
-    const allDeliveries = [...persistedDeliveries, ...localDeliveries];
-    const validDeliveries = allDeliveries.filter((d) => {
-      const booking = bookings.find((b) => b.id === d.bookingId);
-      const trip = trips.find((t) => t.bookingId === d.bookingId || t.booking_id === d.bookingId);
-      const hasRoutePlan = booking?.routePlanId || trip?.routePlanId || trip?.route_plan_id;
-      return Boolean(hasRoutePlan || booking || trip || d.bookingId);
+    const inTransitParcels = parcels.filter((parcel) => {
+      if (parcel.status !== "IN_TRANSIT" || !parcel.bookingId) return false;
+      const booking = bookings.find((item) => String(item.id) === String(parcel.bookingId));
+      return Boolean(booking?.driverId && booking?.vehicleId);
+    });
+    const inTransitGroups = new Map<string, typeof inTransitParcels>();
+    inTransitParcels.forEach((parcel) => {
+      const groupKey = parcel.bookingId || parcel.bulk_qr_code || parcel.id;
+      inTransitGroups.set(groupKey, [...(inTransitGroups.get(groupKey) || []), parcel]);
+    });
+
+    const parcelDeliveries = Array.from(inTransitGroups.entries()).map(([groupKey, groupParcels]) => {
+      const firstParcel = groupParcels[0];
+      const booking = bookings.find((item) => String(item.id) === String(firstParcel.bookingId || groupKey));
+      const assignedDriver = booking?.driverId ? drivers.find((driver) => String(driver.id) === String(booking.driverId)) : null;
+      const assignedVehicle = booking?.vehicleId ? vehicles.find((vehicle) => String(vehicle.id) === String(booking.vehicleId)) : null;
+      const destination = firstParcel.destinationAddress || "Destination pending";
+      const destinationPosition = firstParcel.destLat || firstParcel.destLng
+        ? { lat: Number(firstParcel.destLat), lng: Number(firstParcel.destLng) }
+        : resolveDestination(destination);
+      const { etaMinutes, progress } = calculateEtaAndProgress(firstParcel);
+      const parcelBookingId = firstParcel.bookingId || `in-transit-${groupKey}`;
+
+      return {
+        id: `parcel-${groupKey}`,
+        name: firstParcel.courier || "In-transit parcel",
+        driverName: booking?.driverName || assignedDriver?.name || "Unassigned driver",
+        driverPhone: (booking as any)?.driverPhone || resolveDriverPhone(booking?.driverId),
+        vehiclePlate: booking?.vehiclePlate || assignedVehicle?.plate || "Not assigned",
+        parcelSummary: `${groupParcels.length} parcel${groupParcels.length === 1 ? "" : "s"} — ${destination}`,
+        parcelCount: groupParcels.length,
+        parcelDetails: groupParcels.slice(0, 4).map((parcel) =>
+          `${parcel.trackingNumber} • ${parcel.destinationAddress || "Address pending"}`
+        ),
+        origin: "Airship Express Hub - Binondo, Manila",
+        destination,
+        originPos: HUB_POS,
+        destPos: destinationPosition,
+        currentPos: HUB_POS,
+        progress,
+        etaMinutes,
+        status: "in-transit",
+        bookingId: parcelBookingId,
+        courier: firstParcel.courier || "LBC",
+        stops: [],
+      } as Delivery;
+    });
+
+    // A trip is the canonical mission; an assigned booking is the fallback;
+    // in-transit parcels are only a final fallback. Deduplicate by booking so
+    // one delivery cannot produce multiple cards from those three sources.
+    const missionsByBooking = new Map<string, Delivery>();
+    for (const delivery of [...persistedDeliveries, ...localDeliveries, ...parcelDeliveries]) {
+      const missionKey = String(delivery.bookingId || delivery.id);
+      if (!missionsByBooking.has(missionKey)) missionsByBooking.set(missionKey, delivery);
+    }
+
+    // Keep dispatched missions visible before OSRM returns an ETA. Previously
+    // an ETA of zero filtered out every new mission, which also prevented the
+    // OSRM effect below from ever fetching its route and ETA.
+    const validDeliveries = Array.from(missionsByBooking.values()).filter((d) => {
+      if (d.status === "completed" || d.status === "cancelled") return false;
+      const booking = bookings.find((b) => String(b.id) === String(d.bookingId));
+      const trip = trips.find(
+        (t) => String(t.bookingId || t.booking_id) === String(d.bookingId)
+      );
+      return Boolean(booking || trip || d.bookingId);
     });
 
     // Show all valid active mission deliveries, newest first
@@ -697,34 +769,20 @@ export default function VrdsMissionsPage() {
                 </div>
 
                 {DELIVERIES.length === 0 ? (
-                  <p className="py-8 text-slate-500">No active deliveries yet. Dispatch a booking to start tracking.</p>
+                  <p className="py-8 text-slate-500">No booked deliveries with an assigned driver and vehicle yet.</p>
                 ) : (
-                  <div className="space-y-8">
-                    {critical && (
-                      <DeliveryCard 
-                        delivery={critical} 
-                        isSelected={selectedDeliveryId === critical.id}
-                        onSelect={(id) => {
-                          setSelectedDeliveryId(id);
-                          setView("list");
-                        }}
-                      />
-                    )}
-                    <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
-                      {others.map((delivery) => (
-                        <DeliveryCard 
-                          key={delivery.id} 
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                      {[...(critical ? [critical] : []), ...others].map((delivery) => (
+                        <DeliveryCard
+                          key={delivery.id}
                           delivery={delivery}
                           isSelected={selectedDeliveryId === delivery.id}
-                          onSelect={(id) => {
-                            setSelectedDeliveryId(id);
-                            setView("list");
-                          }}
+                          onSelect={setSelectedDeliveryId}
                         />
                       ))}
-                    </div>
                   </div>
                 )}
+
               </section>
 
               <aside className="space-y-4">
@@ -954,6 +1012,7 @@ type Delivery = {
   progress: number;
   etaMinutes: number;
   driverName: string;
+  driverPhone?: string | null;
   status: "critical" | "in-transit" | "approaching" | "completed" | "cancelled";
   bookingId: string;
   courier?: string;
@@ -986,6 +1045,7 @@ function StatItem({
 }
 
 function formatEta(min: number) {
+  if (!Number.isFinite(min) || min <= 0) return "—";
   if (min >= 60) {
     const h = Math.floor(min / 60);
     const m = min % 60;
@@ -1003,85 +1063,44 @@ const DELIVERY_STATUS_LABEL: Record<Delivery["status"], string> = {
 };
 
 function DeliveryCard({ delivery, isSelected, onSelect }: { delivery: Delivery; isSelected?: boolean; onSelect?: (id: string) => void }) {
-  const [optimizationMessage, setOptimizationMessage] = useState<string | null>(null);
-  const [optimizing, setOptimizing] = useState(false);
-  const [showAdvanceConfirmation, setShowAdvanceConfirmation] = useState(false);
-
-  const advance = () => {
-    advanceDispatch(delivery.bookingId);
-    setShowAdvanceConfirmation(false);
-  };
-
   if (delivery.status === "critical") {
     return (
       <>
       <article 
         onClick={() => onSelect?.(delivery.id)}
-        className={`rounded-3xl border p-6 shadow-sm cursor-pointer transition-all ${
+        className={`rounded-lg border p-4 cursor-pointer transition-colors ${
           isSelected 
-            ? 'border-rose-600 bg-rose-50 shadow-lg shadow-rose-200' 
+            ? 'border-rose-600 bg-rose-50' 
             : 'border-slate-200 bg-white hover:shadow-md'
         }`}
       >
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600">
                 <span className="material-symbols-outlined text-[16px]">warning</span>
                 RUSH PRIORITY
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mt-1">{delivery.driverName || delivery.name}</h3>
-              <p className="text-xs text-slate-500">Driver: {delivery.driverName} • Vehicle: {delivery.vehiclePlate}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Courier</p>
+              <h3 className="text-base font-bold text-slate-900 mt-1">{delivery.driverName || delivery.name}</h3>
+              <p className="text-xs text-slate-500">{delivery.vehiclePlate || "Vehicle not assigned"}</p>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-extrabold text-rose-600">{formatEta(delivery.etaMinutes)}</div>
+              <div className="text-xl font-bold text-rose-600">{formatEta(delivery.etaMinutes)}</div>
               <div className="text-[10px] font-bold uppercase text-slate-400">ETA</div>
             </div>
-          </div>
-
-          <div className="space-y-1 text-sm text-slate-600">
-            <p><span className="font-semibold text-slate-900">Parcel count:</span> {delivery.parcelCount}</p>
-            <p><span className="font-semibold text-slate-900">Parcel details:</span> {delivery.parcelDetails[0] || delivery.parcelSummary}</p>
           </div>
 
           <div className="h-1.5 w-full bg-slate-100 overflow-hidden">
             <div className="h-full bg-rose-600 transition-all" style={{ width: `${delivery.progress}%` }} />
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-1">
-            <span>Origin: {delivery.origin}</span>
-            <span>Destination: {delivery.destination}</span>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-rose-600">RUSH PRIORITY</span>
+            <span className="font-medium text-slate-500">{delivery.progress}% complete</span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-4 pt-1">
-            <button
-              type="button"
-              onClick={async () => {
-                setOptimizing(true);
-                setOptimizationMessage(null);
-                try {
-                  const r = await optimizeRoute(SAMPLE_OPTIMIZATION_PAYLOAD);
-                  setOptimizationMessage(`Optimized — ETA ${r.etaMinutes}m, ${r.distanceMi.toFixed(1)} mi`);
-                } catch {
-                  setOptimizationMessage("Optimization unavailable — fallback used.");
-                } finally {
-                  setOptimizing(false);
-                }
-              }}
-              disabled={optimizing}
-              className="text-xs font-bold text-rose-600 hover:text-rose-800 underline disabled:opacity-60"
-            >
-              {optimizing ? "Optimizing…" : "Reroute"}
-            </button>
-            <button className="text-xs font-bold text-slate-700 hover:text-slate-900 underline">Call Driver</button>
-            <button onClick={() => setShowAdvanceConfirmation(true)} className="text-xs font-bold text-slate-700 hover:text-slate-900 underline">
-              Advance Status →
-            </button>
-          </div>
-          {optimizationMessage && <div className="text-xs font-medium text-rose-700">{optimizationMessage}</div>}
         </div>
       </article>
-      {showAdvanceConfirmation && <AdvanceStatusModal delivery={delivery} onCancel={() => setShowAdvanceConfirmation(false)} onConfirm={advance} />}
       </>
     );
   }
@@ -1090,29 +1109,23 @@ function DeliveryCard({ delivery, isSelected, onSelect }: { delivery: Delivery; 
     <>
     <article 
       onClick={() => onSelect?.(delivery.id)}
-      className={`rounded-3xl border p-6 shadow-sm cursor-pointer transition-all ${
+      className={`rounded-lg border p-4 cursor-pointer transition-colors ${
         isSelected 
-          ? 'border-pink-600 bg-pink-50 shadow-lg shadow-pink-200' 
+          ? 'border-pink-600 bg-pink-50' 
           : 'border-slate-200 bg-white hover:shadow-md'
       }`}
     >
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">{delivery.driverName || delivery.name}</h3>
-            <p className="text-xs text-slate-500">
-              {delivery.driverName} • {delivery.vehiclePlate}
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Courier</p>
+            <h3 className="text-base font-bold text-slate-900">{delivery.driverName || delivery.name}</h3>
+            <p className="text-xs text-slate-500">{delivery.vehiclePlate || "Vehicle not assigned"}</p>
           </div>
           <div className="text-right">
-            <div className="text-xl font-extrabold text-pink-600">{formatEta(delivery.etaMinutes)}</div>
+            <div className="text-lg font-bold text-pink-600">{formatEta(delivery.etaMinutes)}</div>
             <div className="text-[10px] font-bold uppercase text-slate-400">ETA</div>
           </div>
-        </div>
-
-        <div className="space-y-1 text-sm text-slate-700">
-          <p><span className="font-semibold text-slate-900">Parcel count:</span> {delivery.parcelCount}</p>
-          <p><span className="font-semibold text-slate-900">Parcel details:</span> {delivery.parcelDetails[0] || delivery.parcelSummary}</p>
         </div>
 
         <div className="h-1.5 w-full bg-slate-100 overflow-hidden">
@@ -1123,42 +1136,11 @@ function DeliveryCard({ delivery, isSelected, onSelect }: { delivery: Delivery; 
           <span className="font-semibold text-pink-600">
             {DELIVERY_STATUS_LABEL[delivery.status]} • {delivery.progress}%
           </span>
-          <button onClick={() => setShowAdvanceConfirmation(true)} className="font-bold text-slate-700 hover:text-slate-900 underline">
-            Advance Status →
-          </button>
+          <span className="font-medium text-slate-500">ETA shown above</span>
         </div>
       </div>
     </article>
-    {showAdvanceConfirmation && <AdvanceStatusModal delivery={delivery} onCancel={() => setShowAdvanceConfirmation(false)} onConfirm={advance} />}
     </>
   );
 }
 
-function AdvanceStatusModal({
-  delivery,
-  onCancel,
-  onConfirm,
-}: {
-  delivery: Delivery;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="advance-status-title">
-      <div className="w-full max-w-md rounded-2xl border border-pink-200 bg-white p-6 shadow-2xl">
-        <h2 id="advance-status-title" className="text-lg font-bold text-slate-900">Advance delivery status?</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Update <span className="font-semibold text-slate-900">{delivery.name}</span> from {delivery.progress}% progress to the next delivery stage?
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            Cancel
-          </button>
-          <button type="button" onClick={onConfirm} className="rounded-lg bg-pink-600 px-4 py-2 text-xs font-semibold text-white hover:bg-pink-700">
-            Confirm Advance
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

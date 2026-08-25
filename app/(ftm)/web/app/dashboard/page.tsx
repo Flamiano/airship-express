@@ -492,15 +492,10 @@ export default function Home() {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-pink-50/60 via-white to-rose-50/40 text-slate-800 font-sans w-full">
         <GlobalNavbar />
-        <main className="flex-1 w-full px-4 sm:px-6 py-6">
-          <div className="animate-pulse space-y-6">
-            <div className="h-24 rounded-2xl border border-pink-100 bg-white/80" />
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-24 rounded-2xl border border-pink-100 bg-white/80" />
-              ))}
-            </div>
-            <div className="h-64 rounded-2xl border border-pink-100 bg-white/80" />
+        <main className="flex flex-1 items-center justify-center px-4 py-6 sm:px-6">
+          <div className="flex items-center gap-3 rounded-xl border border-pink-100 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
+            <span className="material-symbols-outlined animate-spin text-pink-600">progress_activity</span>
+            Loading dashboard…
           </div>
         </main>
       </div>
@@ -598,9 +593,28 @@ export default function Home() {
     ? ((totalFuelCost / totalOperatingCost) * 100).toFixed(1) 
     : "0.0";
   const maintenanceCost = costEntries.filter(e => /maintenance|service|repair/i.test(e.category || "")).reduce((sum, e) => sum + (e.amount || 0), 0);
+  const driverAllowanceCost = costEntries.filter((entry) => /driver\s*allowance|allowance/i.test(String(entry.category || ""))).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const mobileDataCost = costEntries.filter((entry) => /mobile\s*data|data\s*(?:&|and)?\s*internet|internet/i.test(String(entry.category || ""))).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const avgCostPerVehicle = snapshot.vehicles.length > 0 
     ? (totalOperatingCost / snapshot.vehicles.length).toFixed(2) 
     : "0.00";
+  const snapshotPercentage = (count: number, total: number) =>
+    total > 0 ? `${((count / total) * 100).toFixed(1)}%` : "—";
+  const kpiPercentages: Record<string, string> = {
+    "active-vehicles": snapshotPercentage(activeVehiclesCount, totalVehiclesCount),
+    "in-transit": snapshotPercentage(activeTripsCount, totalTripsCount),
+    "pending-bookings": snapshotPercentage(pendingBookingsCount, totalBookingsCount),
+    "total-vehicles": totalVehiclesCount > 0 ? "100%" : "—",
+    "completed-trips": snapshotPercentage(completedTrips, totalTripsCount),
+    "total-bookings": totalBookingsCount > 0 ? "100%" : "—",
+    "total-drivers": totalDriversCount > 0 ? "100%" : "—",
+    "fleet-efficiency": "—",
+    "on-time-rate": `${onTimeRate}%`,
+    "system-health": "—",
+    "total-parcels": totalParcelsCount > 0 ? "100%" : "—",
+    "total-fuel": "—",
+    "operating-cost": "—",
+  };
 
   const toggleKPIVisibility = (kpiId: string) => {
     const newHidden = new Set(hiddenKPIs);
@@ -618,6 +632,12 @@ export default function Home() {
     }
     return value;
   };
+
+  const renderKPITrend = (kpiId: string) => (
+    <span className="ml-1 text-[10px] font-bold text-slate-400" title="Current snapshot percentage">
+      → {kpiPercentages[kpiId] ?? "—"}
+    </span>
+  );
 
   if (dashboardFullscreen) {
     return (
@@ -660,161 +680,183 @@ export default function Home() {
         </div>
 
         {/* Top KPI Cards - Clean Essentials Only (15 Cards) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-3 w-full">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-2.5 w-full">
           
           {/* Card 1: Active Vehicles */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('active-vehicles')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('active-vehicles')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">directions_car</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Live</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('active-vehicles', activeVehiclesCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('active-vehicles', activeVehiclesCount)}{renderKPITrend('active-vehicles')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Active Vehicles</div>
             </div>
           </div>
 
           {/* Card 2: In-Transit Trips */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('in-transit')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('in-transit')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">alt_route</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Active</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('in-transit', activeTripsCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('in-transit', activeTripsCount)}{renderKPITrend('in-transit')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">In Transit</div>
             </div>
           </div>
 
           {/* Card 3: Pending Bookings */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('pending-bookings')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('pending-bookings')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">book_online</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Queue</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('pending-bookings', pendingBookingsCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('pending-bookings', pendingBookingsCount)}{renderKPITrend('pending-bookings')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Pending Bookings</div>
             </div>
           </div>
 
           {/* Card 4: Total Vehicles */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('total-vehicles')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-vehicles')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">local_shipping</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Fleet</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-vehicles', totalVehiclesCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-vehicles', totalVehiclesCount)}{renderKPITrend('total-vehicles')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Vehicles</div>
             </div>
           </div>
 
           {/* Card 5: Completed Trips */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('completed-trips')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('completed-trips')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">done</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Done</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('completed-trips', completedTrips)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('completed-trips', completedTrips)}{renderKPITrend('completed-trips')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Completed Trips</div>
             </div>
           </div>
 
           {/* Card 6: Total Bookings */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('total-bookings')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-bookings')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">receipt_long</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Orders</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-bookings', totalBookingsCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-bookings', totalBookingsCount)}{renderKPITrend('total-bookings')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Bookings</div>
             </div>
           </div>
 
           {/* Card 7: Registered Drivers */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('total-drivers')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-drivers')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">badge</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Staff</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-drivers', totalDriversCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-drivers', totalDriversCount)}{renderKPITrend('total-drivers')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Drivers Assigned</div>
             </div>
           </div>
 
           {/* Card 8: Fleet Efficiency */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('fleet-efficiency')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('fleet-efficiency')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">bolt</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Avg</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('fleet-efficiency', fleetEfficiency)} km/L</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('fleet-efficiency', fleetEfficiency)} km/L{renderKPITrend('fleet-efficiency')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Fleet Efficiency</div>
             </div>
           </div>
 
           {/* Card 9: On-Time Rate */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('on-time-rate')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('on-time-rate')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">trending_up</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">KPI</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('on-time-rate', onTimeRate)}%</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('on-time-rate', onTimeRate)}%{renderKPITrend('on-time-rate')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">On-Time Rate</div>
             </div>
           </div>
 
           {/* Card 10: System Health */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('system-health')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('system-health')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">health_and_safety</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">100%</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('system-health', systemHealth)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('system-health', systemHealth)}{renderKPITrend('system-health')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">System Health</div>
             </div>
           </div>
 
           {/* Card 11: Total Parcels */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('total-parcels')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-parcels')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">local_shipping</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Count</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-parcels', totalParcelsCount)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-parcels', totalParcelsCount)}{renderKPITrend('total-parcels')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Parcels</div>
             </div>
           </div>
 
           {/* Card 12: Total Fuel Consumed */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('total-fuel')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-fuel')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">local_gas_station</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Fuel</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-fuel', totalFuelConsumed.toFixed(1))}L</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-fuel', totalFuelConsumed.toFixed(1))}L{renderKPITrend('total-fuel')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Fuel</div>
             </div>
           </div>
 
           {/* Card 15: Total Operating Cost */}
-          <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-3.5 shadow-sm shadow-pink-500/5 flex flex-col justify-between cursor-pointer hover:shadow-md hover:bg-white/95 transition-all" onClick={() => toggleKPIVisibility('operating-cost')}>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('operating-cost')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">account_balance</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700">Cost</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('operating-cost', `₱${totalOperatingCost.toFixed(2)}`)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('operating-cost', `₱${totalOperatingCost.toFixed(2)}`)}{renderKPITrend('operating-cost')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Operating Cost</div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('driver-allowance')}>
+            <div className="flex items-center justify-between text-[#b80049]">
+              <span className="material-symbols-outlined text-[20px]">payments</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Driver</span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('driver-allowance', `₱${driverAllowanceCost.toFixed(2)}`)}</div>
+              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Driver Allowance</div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('mobile-data')}>
+            <div className="flex items-center justify-between text-[#b80049]">
+              <span className="material-symbols-outlined text-[20px]">wifi</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">Data</span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('mobile-data', `₱${mobileDataCost.toFixed(2)}`)}</div>
+              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Data &amp; Internet</div>
             </div>
           </div>
 

@@ -48,8 +48,8 @@ function ExpenseBreakdownCard({ expenseBreakdown, totalCost }: { expenseBreakdow
   const toggleTotal = () => setShowTotal((visible) => !visible);
 
   return (
-    <div className="bg-surface-container-lowest rounded-DEFAULT p-6 border border-outline-variant shadow-soft col-span-1">
-      <h3 className="font-title-md text-title-md text-on-surface mb-6 border-b border-outline-variant/60 pb-2">
+    <div className="bg-white rounded-md p-5 border border-pink-100 shadow-sm col-span-1">
+      <h3 className="font-title-md text-title-md text-on-surface mb-6 border-b border-pink-100 pb-2">
         Expense Breakdown
       </h3>
       <div className="flex flex-col items-center">
@@ -88,8 +88,8 @@ function ExpenseBreakdownCard({ expenseBreakdown, totalCost }: { expenseBreakdow
 
 function TrendChartCard({ trendData }: { trendData: TrendData }) {
   return (
-    <div className="bg-surface-container-lowest rounded-DEFAULT p-6 border border-outline-variant shadow-soft col-span-1 lg:col-span-2">
-      <div className="flex justify-between items-center mb-6 border-b border-outline-variant/60 pb-2">
+    <div className="bg-white rounded-md p-5 border border-pink-100 shadow-sm col-span-1 lg:col-span-2">
+      <div className="flex justify-between items-center mb-6 border-b border-pink-100 pb-2">
         <h3 className="font-title-md text-title-md text-on-surface">
           Monthly Cost Trend
         </h3>
@@ -111,8 +111,8 @@ function TrendChartCard({ trendData }: { trendData: TrendData }) {
 
 function TopCostDriversCard({ topCostDrivers }: { topCostDrivers: CostDriver[] }) {
   return (
-    <div className="bg-surface-container-lowest rounded-DEFAULT p-6 border border-outline-variant shadow-soft col-span-1">
-      <h3 className="font-title-md text-title-md text-on-surface mb-6 border-b border-outline-variant/60 pb-2">
+    <div className="bg-white rounded-md p-5 border border-pink-100 shadow-sm col-span-1">
+      <h3 className="font-title-md text-title-md text-on-surface mb-6 border-b border-pink-100 pb-2">
         Top Cost Drivers
       </h3>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(180px,1fr)_minmax(150px,162px)] gap-5 items-center">

@@ -146,6 +146,8 @@ export default function VrdsBookingsPage() {
   );
 
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [assignmentStep, setAssignmentStep] = useState<"driver" | "vehicle">("driver");
   const [toast, setToast] = useState<string | null>(null);
   const [errorFor, setErrorFor] = useState<{ id: string; message: string } | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -199,7 +201,7 @@ export default function VrdsBookingsPage() {
     [openBookings]
   );
 
-  const selectedBooking = selectedBookingId ? bookingsById[selectedBookingId] : filteredBookings[0] ?? null;
+  const selectedBooking = selectedBookingId ? bookingsById[selectedBookingId] : null;
 
   const assignedBookings = openBookings.filter((booking) => booking.driverId && booking.vehicleId).length;
 
@@ -216,6 +218,29 @@ export default function VrdsBookingsPage() {
   const handleAssignVehicle = (bookingId: string, vehicleId: string) => {
     assignVehicle(bookingId, vehicleId);
     showToast(`Vehicle updated for booking #${bookingId}`);
+  };
+
+  const handleGenerateAssignment = (booking: Booking) => {
+    const driver = availableDrivers[0];
+    const vehicle = availableVehicles
+      .filter((item) => item.capacityKg >= booking.totalWeightKg)
+      .sort((a, b) => a.capacityKg - b.capacityKg)[0];
+
+    if (!driver || !vehicle) {
+      setErrorFor({
+        id: booking.id,
+        message: !driver
+          ? "No available driver can be assigned right now."
+          : "No available vehicle has enough capacity for this booking.",
+      });
+      return;
+    }
+
+    assignDriver(booking.id, driver.id);
+    assignVehicle(booking.id, vehicle.id);
+    setErrorFor(null);
+    setAssignmentStep("vehicle");
+    showToast(`Suggested ${driver.name} with ${vehicle.plateNumber}. Review and dispatch when ready.`);
   };
 
   const handleConfirm = async (booking: Booking) => {
@@ -406,7 +431,7 @@ export default function VrdsBookingsPage() {
         <div className="grid gap-6 lg:grid-cols-12 items-start">
           
           {/* LEFT: Booking Queue List */}
-          <section className="lg:col-span-6 xl:col-span-7 2xl:col-span-7 space-y-4">
+          <section className="lg:col-span-12 space-y-4">
             
             {/* Search & Filter */}
             <div className="bg-white border border-rose-100 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -449,7 +474,7 @@ export default function VrdsBookingsPage() {
                 <p className="text-xs text-slate-500">Try adjusting your filters or search terms.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {filteredBookings.map((booking) => {
                   const isSelected = selectedBooking?.id === booking.id;
                   const vehicle = vehicles.find((v) => v.id === booking.vehicleId);
@@ -461,7 +486,11 @@ export default function VrdsBookingsPage() {
                   return (
                     <div
                       key={booking.id}
-                      onClick={() => setSelectedBookingId(booking.id)}
+                      onClick={() => {
+                        setSelectedBookingId(booking.id);
+                        setAssignmentStep("driver");
+                        setIsInspectorOpen(true);
+                      }}
                       className={`group relative cursor-pointer bg-white rounded-2xl border p-5 transition-all duration-200 shadow-xs hover:shadow-md ${
                         isSelected
                           ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10"
@@ -512,7 +541,7 @@ export default function VrdsBookingsPage() {
                       </div>
 
                       {/* Stats Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+                      <div className="grid grid-cols-2 gap-2 pt-2">
                         <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                             Parcels
@@ -562,25 +591,44 @@ export default function VrdsBookingsPage() {
             )}
           </section>
 
-          {/* RIGHT: Detail Inspector Sidebar */}
-          <aside className="lg:col-span-6 xl:col-span-5 2xl:col-span-5 sticky top-6 space-y-5">
+          {/* Booking Dispatch Inspector Modal */}
+          {isInspectorOpen && selectedBooking && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 sm:p-6"
+              onMouseDown={() => setIsInspectorOpen(false)}
+            >
+              <aside
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="dispatch-inspector-title"
+                className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
             <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-xs space-y-6">
               
               {/* Header */}
               <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 block">
-                    Dispatch Inspector
+                    Assignment · {assignmentStep === "driver" ? "Step 1 of 2" : "Step 2 of 2"}
                   </span>
-                  <h2 className="text-lg font-extrabold text-slate-900">
-                    {selectedBooking ? `Booking #${selectedBooking.id}` : "Select a Booking"}
+                  <h2 id="dispatch-inspector-title" className="text-lg font-extrabold text-slate-900">
+                    {selectedBooking ? `Assign booking #${selectedBooking.id}` : "Select a Booking"}
                   </h2>
                 </div>
-                {selectedBooking && (
+                <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
                     {displayParcels.length} Parcels
                   </span>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setIsInspectorOpen(false)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-lg leading-none text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                    aria-label="Close dispatch inspector"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
 
               {selectedBooking ? (
@@ -593,9 +641,18 @@ export default function VrdsBookingsPage() {
                     </div>
                   )}
 
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateAssignment(selectedBooking)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+                  >
+                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                    Generate Assignment
+                  </button>
+
                   {/* Vehicle Capacity Meter */}
                   {selectedBooking.vehicleId && (
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
+                    <div className="hidden bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
                       {(() => {
                         const veh = vehicles.find((v) => v.id === selectedBooking.vehicleId);
                         const cap = veh?.capacityKg || 1;
@@ -625,7 +682,7 @@ export default function VrdsBookingsPage() {
                   )}
 
                   {/* SECTION 1: DROP ASSIGNMENT TARGETS SECTION */}
-                  <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                  <div className="hidden bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                         <IconSend className="w-3.5 h-3.5 text-rose-500" />
@@ -734,16 +791,16 @@ export default function VrdsBookingsPage() {
                   </div>
 
                   {/* SECTION 2: DRIVERS POOL SECTION */}
-                  <div className="space-y-2.5">
+                  <div className={assignmentStep === "driver" ? "space-y-2.5" : "hidden"}>
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                         <IconUser className="w-3.5 h-3.5 text-indigo-500" />
                         Available Drivers ({availableDrivers.length})
                       </h3>
-                      <span className="text-[10px] text-slate-400">Click or Drag to Assign</span>
+                      <span className="text-[10px] text-slate-400">Select a driver</span>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 gap-2">
                       {availableDrivers.length === 0 ? (
                         <p className="text-[11px] text-slate-400 italic text-center py-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                           No drivers available in pool
@@ -754,23 +811,21 @@ export default function VrdsBookingsPage() {
                           return (
                             <div
                               key={driver.id}
-                              draggable
-                              onDragStart={() => setDraggedAssignment({ type: "driver", id: driver.id })}
-                              onClick={() => handleAssignDriver(selectedBooking.id, driver.id)}
-                              className={`p-2.5 rounded-xl border flex items-center justify-between transition cursor-grab active:cursor-grabbing text-xs ${
+                              onClick={() => handleAssignDriver(selectedBooking.id, isAssigned ? "" : driver.id)}
+                              className={`min-w-0 cursor-pointer rounded-xl border p-2.5 transition text-xs ${
                                 isAssigned
                                   ? "bg-indigo-50 border-indigo-200 text-indigo-900"
                                   : "bg-white border-slate-200 hover:border-slate-300"
                               }`}
                             >
-                              <div className="flex items-center gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[10px] text-slate-600">
                                   {driver.name.slice(0, 2).toUpperCase()}
                                 </div>
-                                <span className="font-semibold text-slate-800">{driver.name}</span>
+                                <span className="truncate font-semibold text-slate-800">{driver.name}</span>
                               </div>
-                              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                                {isAssigned ? "Assigned" : "Select"}
+                              <span className="mt-2 inline-flex text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                                {isAssigned ? "Remove" : "Select"}
                               </span>
                             </div>
                           );
@@ -780,16 +835,16 @@ export default function VrdsBookingsPage() {
                   </div>
 
                   {/* SECTION 3: FLEET VEHICLES POOL SECTION */}
-                  <div className="space-y-2.5">
+                  <div className={assignmentStep === "vehicle" ? "space-y-2.5" : "hidden"}>
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                         <IconTruck className="w-3.5 h-3.5 text-amber-500" />
                         Available Vehicles ({availableVehicles.length})
                       </h3>
-                      <span className="text-[10px] text-slate-400">Click or Drag to Assign</span>
+                      <span className="text-[10px] text-slate-400">Select a vehicle</span>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 gap-2">
                       {availableVehicles.length === 0 ? (
                         <p className="text-[11px] text-slate-400 italic text-center py-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                           No fleet vehicles available in pool
@@ -800,24 +855,22 @@ export default function VrdsBookingsPage() {
                           return (
                             <div
                               key={vehicle.id}
-                              draggable
-                              onDragStart={() => setDraggedAssignment({ type: "vehicle", id: vehicle.id })}
-                              onClick={() => handleAssignVehicle(selectedBooking.id, vehicle.id)}
-                              className={`p-2.5 rounded-xl border flex items-center justify-between transition cursor-grab active:cursor-grabbing text-xs ${
+                              onClick={() => handleAssignVehicle(selectedBooking.id, isAssigned ? "" : vehicle.id)}
+                              className={`min-w-0 cursor-pointer rounded-xl border p-2.5 transition text-xs ${
                                 isAssigned
                                   ? "bg-amber-50 border-amber-200 text-amber-900"
                                   : "bg-white border-slate-200 hover:border-slate-300"
                               }`}
                             >
-                              <div className="flex items-center gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
                                 <IconTruck className="w-4 h-4 text-slate-400" />
-                                <div>
-                                  <span className="font-bold text-slate-800 block">{vehicle.plateNumber}</span>
-                                  <span className="text-[10px] text-slate-400 block">{vehicle.model} ({vehicle.capacityKg}kg cap)</span>
+                                <div className="min-w-0">
+                                  <span className="block truncate font-bold text-slate-800">{vehicle.plateNumber}</span>
+                                  <span className="block truncate text-[10px] text-slate-400">{vehicle.model} ({vehicle.capacityKg}kg cap)</span>
                                 </div>
                               </div>
-                              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                                {isAssigned ? "Assigned" : "Select"}
+                              <span className="mt-2 inline-flex text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                                {isAssigned ? "Remove" : "Select"}
                               </span>
                             </div>
                           );
@@ -827,13 +880,13 @@ export default function VrdsBookingsPage() {
                   </div>
 
                   {/* SECTION 4: PARCELS MANIFEST INSPECTOR */}
-                  <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                  <div className="hidden space-y-2.5 pt-2 border-t border-slate-100">
                     <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                       <IconPackage className="w-3.5 h-3.5 text-rose-500" />
                       Payload Manifest ({displayParcels.length})
                     </h3>
 
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
                       {displayParcels.map((parcel) => (
                         <div key={parcel.id} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1 text-xs">
                           <div className="flex items-center justify-between font-mono font-bold text-slate-700">
@@ -850,15 +903,36 @@ export default function VrdsBookingsPage() {
                   </div>
 
                   {/* SECTION 5: DISPATCH ACTION BUTTON */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <button
-                      onClick={() => handleConfirm(selectedBooking)}
-                      disabled={!selectedBooking.driverId || !selectedBooking.vehicleId}
-                      className="w-full py-3.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-black text-sm shadow-md transition-all flex items-center justify-center gap-2"
-                    >
-                      <IconSend className="w-4 h-4" />
-                      Authorize & Dispatch Order #{selectedBooking.id}
-                    </button>
+                  <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+                    {assignmentStep === "vehicle" && (
+                      <button
+                        type="button"
+                        onClick={() => setAssignmentStep("driver")}
+                        className="rounded-xl border border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        Back
+                      </button>
+                    )}
+                    {assignmentStep === "driver" ? (
+                      <button
+                        type="button"
+                        onClick={() => setAssignmentStep("vehicle")}
+                        disabled={!selectedBooking.driverId}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                      >
+                        Next: Assign Vehicle
+                        <span className="material-symbols-outlined text-base">arrow_forward</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConfirm(selectedBooking)}
+                        disabled={!selectedBooking.driverId || !selectedBooking.vehicleId}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                      >
+                        <IconSend className="w-4 h-4" />
+                        Authorize & Dispatch
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -867,7 +941,9 @@ export default function VrdsBookingsPage() {
                 </div>
               )}
             </div>
-          </aside>
+              </aside>
+            </div>
+          )}
         </div>
       </main>
 

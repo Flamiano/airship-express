@@ -355,20 +355,18 @@ export default function FvmOverviewPage() {
         </div>
 
         {/* Compact KPI Bento Grid (Smaller size cards) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {kpiCards.map((card) => (
             <div
               key={card.label}
-              className="bg-white/90 backdrop-blur-md rounded-2xl p-4 relative overflow-hidden group border border-pink-200/60 shadow-sm hover:shadow transition-all flex flex-col justify-between"
+              className="rounded-lg border border-slate-200 bg-white p-3 transition-colors hover:border-pink-300"
             >
-              <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
-                <span className={`material-symbols-outlined text-5xl ${card.iconColor}`}>{card.icon}</span>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{card.label}</h3>
+                <span className={`material-symbols-outlined text-lg ${card.iconColor}`}>{card.icon}</span>
               </div>
-              <div>
-                <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">{card.label}</h3>
-                <p className="text-3xl font-black text-slate-900 tracking-tight">{card.value}</p>
-              </div>
-              <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-bold ${card.footColor} bg-pink-50/80 px-2.5 py-1 rounded-xl border border-pink-200/40 w-fit`}>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{card.value}</p>
+              <div className={`mt-2 flex items-center gap-1 text-[10px] font-semibold ${card.footColor}`}>
                 <span className="material-symbols-outlined text-xs">{card.footIcon}</span>
                 <span>{card.footText}</span>
               </div>

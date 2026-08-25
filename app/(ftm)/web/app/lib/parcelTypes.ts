@@ -32,6 +32,8 @@ export type Parcel = {
   recipientName: string;
   recipientPhone: string;
   destinationAddress: string;
+  bulk_qr_code?: string;
+  bulkQrCode?: string;
   destLat: number;
   destLng: number;
   parcelType: ParcelType;
@@ -69,8 +71,10 @@ export type Booking = {
   createdAt: string;
   status: BookingStatus;
   driverId?: string;
+  driver_id?: string;
   driverName?: string;
   vehicleId?: string;
+  vehicle_id?: string;
   vehiclePlate?: string;
   dispatch?: DispatchState;
 };

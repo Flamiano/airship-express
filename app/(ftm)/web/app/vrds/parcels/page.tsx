@@ -29,7 +29,7 @@ const COURIER_BRANDING: Record<CourierName, { label: string; badge: string; acce
   "Airship Express": { label: "Airship Express", badge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200", accent: "bg-fuchsia-600 text-white", icon: "A" },
 };
 
-const STATUS_FILTERS = ["All", "RECEIVED", "READY_FOR_BOOKING", "BOOKED", "IN_TRANSIT"] as const;
+const STATUS_FILTERS = ["All", "RECEIVED", "BOOKED", "IN_TRANSIT"] as const;
 const SORT_OPTIONS = ["Newest", "Weight", "Destination"] as const;
 import { PERSISTED_SERVICE_AREA_KEY, ALL_SERVICE_AREA_SENTINEL, SERVICE_AREA_CITIES, SERVICE_CITY_BOUNDS, inferCityFromCoordinates } from "@/app/lib/serviceAreas";
 
@@ -366,7 +366,7 @@ export default function VrdsParcelsPage() {
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-200 bg-pink-50/40 p-1.5">
                 {STATUS_FILTERS.map((status) => {
                   const isActive = filterStatus === status;
-                  const label = status === "All" ? "All" : status === "RECEIVED" ? "Received" : status === "READY_FOR_BOOKING" ? "Ready" : status === "BOOKED" ? "Booked" : "In Transit";
+                  const label = status === "All" ? "All" : status === "RECEIVED" ? "Pick Up" : status === "BOOKED" ? "Booked" : "In Transit";
 
                   return (
                     <button
@@ -651,7 +651,7 @@ function ParcelCard({
                 : "bg-blue-100 text-blue-800"
             }`}
           >
-            {PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
+            {parcel.status === "RECEIVED" ? "Pick Up" : PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
           </span>
         </div>
 
@@ -1048,7 +1048,7 @@ function ParcelDetailsModal({
                 {brand.label}
               </span>
               <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-bold text-pink-700">
-                {PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
+                {parcel.status === "RECEIVED" ? "Pick Up" : PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
               </span>
             </div>
             <h3 className="mt-2 text-xl font-black text-slate-900">{parcel.trackingNumber}</h3>
