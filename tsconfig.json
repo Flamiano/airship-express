@@ -21,10 +21,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@/payroll-benefits-dashboard/components/*": ["./app/(hr-dashboard)/payroll-benefits-dashboard/components/*"],
-      "@/payroll-benefits-dashboard/hooks/*": ["./app/(hr-dashboard)/payroll-benefits-dashboard/hooks/*"],
-      "@/payroll-benefits-dashboard/utils/*": ["./app/(hr-dashboard)/payroll-benefits-dashboard/utils/*"],
-      "@/payroll-benefits-dashboard/modules/*": ["./app/(hr-dashboard)/payroll-benefits-dashboard/modules/*"]
+      "@/payroll-benefits-dashboard/components/*": ["app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/*"],
+      "@/payroll-benefits-dashboard/hooks/*": ["app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/*"],
+      "@/payroll-benefits-dashboard/utils/*": ["app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/utils/*"],
+      "@/payroll-benefits-dashboard/modules/*": ["app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/modules/*"]
     }
   },
   "include": [

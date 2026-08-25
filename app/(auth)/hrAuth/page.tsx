@@ -1,205 +1,185 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff } from "lucide-react";
-import { supabase } from "@/app/(hr-dashboard)/supabase/client";
+import { createClient } from "@/app/(hr-dashboard)/supabase/client";
 import ToastProvider, {
     useToast,
-} from "@/app/(hr-dashboard)/payroll-benefits-dashboard/components/ui/Toast";
+} from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Toast";
 import Loader from "@/app/components/Loader";
 
 function HRLoginContent() {
     const router = useRouter();
     const toast = useToast();
+    const supabase = createClient();
 
     const [employeeId, setEmployeeId] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [debugInfo, setDebugInfo] = useState<string>("");
+
+    // Check if user is already logged in
+    useEffect(() => {
+        const checkSession = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                    const { data: userRole } = await supabase
+                        .from('hr_admin')
+                        .select('role')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (userRole) {
+                        const dashboardMap = {
+                            super_admin: '/payroll-benefits-dashboard',
+                            hr_payroll_admin: '/payroll-benefits-dashboard',
+                            hr_performance_admin: '/performance-development-dashboard',
+                            hr_recruitment_admin: '/recruitment-dashboard',
+                            hr_workforce_admin: '/workforce-dashboard',
+                        };
+                        const dashboard = dashboardMap[userRole.role as keyof typeof dashboardMap];
+                        if (dashboard) {
+                            router.push(dashboard);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking session:', error);
+            }
+        };
+        checkSession();
+    }, [router, supabase]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setError(null);
+        setDebugInfo("");
 
         if (!employeeId || !password) {
-            setError(
-                "Enter your employee ID and password to continue."
-            );
-
-            toast.showWarning(
-                "Please fill in all fields",
-                "Validation Error"
-            );
-
+            setError("Enter your employee ID and password to continue.");
+            toast.showWarning("Please fill in all fields", "Validation Error");
             return;
         }
 
         setIsSubmitting(true);
 
         try {
+            setDebugInfo("Step 1: Checking role...");
+            console.log("=== Login Attempt ===");
+            console.log("Employee ID:", employeeId);
+
+            // Step 1: Get role from API
             const roleRes = await fetch("/api/auth/role", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    employeeId,
-                }),
+                body: JSON.stringify({ employeeId }),
             });
 
-            if (!roleRes.ok) {
-                const roleData = await roleRes
-                    .json()
-                    .catch(() => null);
+            setDebugInfo(`Step 2: Role API response status: ${roleRes.status}`);
+            console.log("Role API status:", roleRes.status);
 
-                const roleMessage =
-                    roleData?.message ??
-                    "Employee ID or password is incorrect.";
-
-                setError(roleMessage);
-
-                toast.showError(
-                    roleMessage,
-                    "Login Failed"
-                );
-
+            let roleData;
+            try {
+                roleData = await roleRes.json();
+                console.log("Role API response:", roleData);
+            } catch (parseError) {
+                console.error("Failed to parse role response:", parseError);
+                setDebugInfo("Failed to parse role response");
+                setError("Server error. Please try again.");
+                toast.showError("Server error. Please try again.", "Error");
                 return;
             }
 
-            const roleData = await roleRes.json();
-            let authEndpoint: string;
-
-            switch (roleData.role) {
-                case "super_admin":
-                case "hr_payroll_admin":
-                    authEndpoint =
-                        "/payroll-benefits-dashboard/api/auth/hrAuth";
-                    break;
-
-                case "hr_performance_admin":
-                    authEndpoint =
-                        "/performance-development-dashboard/api/auth/hrAuth";
-                    break;
-
-                case "hr_recruitment_admin":
-                    authEndpoint =
-                        "/recruitment-dashboard/api/auth/hrAuth";
-                    break;
-
-                case "hr_workforce_admin":
-                    authEndpoint =
-                        "/workforce-dashboard/api/auth/hrAuth";
-                    break;
-
-                default:
-                    setError(
-                        "Your account does not have access to an HR dashboard."
-                    );
-
-                    toast.showError(
-                        "Your account does not have access to an HR dashboard.",
-                        "Access Denied"
-                    );
-
-                    return;
+            if (!roleRes.ok) {
+                const roleMessage = roleData?.message ?? "Employee ID or password is incorrect.";
+                setError(roleMessage);
+                toast.showError(roleMessage, "Login Failed");
+                setDebugInfo(`Role API failed: ${roleMessage}`);
+                return;
             }
-            const res = await fetch(authEndpoint, {
+
+            setDebugInfo(`Step 3: Role found: ${roleData.role}`);
+
+            // Step 2: Authenticate
+            setDebugInfo("Step 4: Authenticating...");
+            console.log("Calling auth API...");
+
+            const authRes = await fetch("/api/auth/hrAuth", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    employeeId,
-                    password,
-                }),
+                body: JSON.stringify({ employeeId, password }),
             });
 
-            if (!res.ok) {
-                const data = await res
-                    .json()
-                    .catch(() => null);
+            setDebugInfo(`Step 5: Auth API response status: ${authRes.status}`);
+            console.log("Auth API status:", authRes.status);
 
-                const base =
-                    data?.message ??
-                    "Employee ID or password is incorrect.";
-
-                const debug = data?.debug
-                    ? ` (${JSON.stringify(data.debug)})`
-                    : "";
-
-                setError(base + debug);
-
-                toast.showError(
-                    base + debug,
-                    "Login Failed"
-                );
-
+            let authData;
+            try {
+                authData = await authRes.json();
+                console.log("Auth API response:", authData);
+            } catch (parseError) {
+                console.error("Failed to parse auth response:", parseError);
+                setDebugInfo("Failed to parse auth response");
+                setError("Server error. Please try again.");
+                toast.showError("Server error. Please try again.", "Error");
                 return;
             }
 
-            const data = await res.json();
+            if (!authRes.ok) {
+                const authMessage = authData?.message ?? "Employee ID or password is incorrect.";
+                setError(authMessage);
+                toast.showError(authMessage, "Login Failed");
+                setDebugInfo(`Auth failed: ${authMessage}`);
+                return;
+            }
 
-            /*
-             * STEP 4:
-             * Sync the Supabase session on the client.
-             */
-            if (data.session) {
-                const {
-                    error: setSessionError,
-                } = await supabase.auth.setSession({
-                    access_token:
-                        data.session.access_token,
+            setDebugInfo(`Step 6: Auth successful for ${authData.fullName}`);
 
-                    refresh_token:
-                        data.session.refresh_token,
+            // Step 3: Sync session
+            if (authData.session) {
+                setDebugInfo("Step 7: Syncing session...");
+                const { error: setSessionError } = await supabase.auth.setSession({
+                    access_token: authData.session.access_token,
+                    refresh_token: authData.session.refresh_token,
                 });
 
                 if (setSessionError) {
-                    console.error(
-                        "Failed to sync session client-side:",
-                        setSessionError
-                    );
-
-                    toast.showError(
-                        "Failed to sync session. Please try again.",
-                        "Session Error"
-                    );
-
+                    console.error("Failed to sync session client-side:", setSessionError);
+                    toast.showError("Failed to sync session. Please try again.", "Session Error");
+                    setDebugInfo(`Session sync failed: ${setSessionError.message}`);
                     return;
                 }
+                setDebugInfo("Step 8: Session synced successfully");
             }
 
-            toast.showSuccess(
-                `Welcome back, ${data.fullName || "User"}!`,
-                "Login Successful"
-            );
+            // Step 4: Show success and redirect
+            const successMsg = authData.message || `Welcome back, ${authData.fullName || "User"}!`;
+            toast.showSuccess(successMsg, "Login Successful");
+            setDebugInfo("Step 9: Login complete, redirecting...");
+
+            const redirectUrl = authData.redirectTo || roleData.dashboardUrl || "/payroll-benefits-dashboard";
 
             setTimeout(() => {
-                router.push(
-                    data.redirectTo ||
-                        "/payroll-benefits-dashboard"
-                );
-
+                router.push(redirectUrl);
                 router.refresh();
             }, 500);
+
         } catch (err) {
-            console.error(
-                "HR login error:",
-                err
-            );
-
-            setError(
-                "Something went wrong. Try again."
-            );
-
-            toast.showError(
-                "Something went wrong. Please try again.",
-                "Unexpected Error"
-            );
+            console.error("HR login error:", err);
+            const errorMessage = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+            setError(errorMessage);
+            toast.showError(errorMessage, "Unexpected Error");
+            setDebugInfo(`Error: ${errorMessage}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -207,6 +187,7 @@ function HRLoginContent() {
 
     return (
         <div className="h-dvh w-full bg-paper text-ink font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px]">
+            {/* Left side - Hero section */}
             <div className="relative hidden lg:flex flex-col justify-between border-r border-line px-16 py-14 overflow-hidden">
                 <div className="absolute bottom-14 right-14 rotate-[-6deg] select-none">
                     <div className="flex items-center gap-2 rounded-full border border-line px-4 py-2">
@@ -220,10 +201,7 @@ function HRLoginContent() {
                 <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                        duration: 0.5,
-                        ease: "easeOut",
-                    }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
                 >
                     <Image
                         src="/images/logo-remove-bg.png"
@@ -239,16 +217,11 @@ function HRLoginContent() {
                     className="max-w-lg"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                        duration: 0.55,
-                        ease: "easeOut",
-                        delay: 0.1,
-                    }}
+                    transition={{ duration: 0.55, ease: "easeOut", delay: 0.1 }}
                 >
                     <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
                         Human Resources
                     </p>
-
                     <h1 className="mt-5 font-bricolage text-[44px] font-medium leading-[1.05] tracking-tight">
                         Every route starts
                         <br />
@@ -256,7 +229,6 @@ function HRLoginContent() {
                         <br />
                         behind it.
                     </h1>
-
                     <p className="mt-5 text-[15px] leading-relaxed text-muted">
                         Sign in to manage recruitment, attendance,
                         performance, and payroll &mdash; everything
@@ -271,6 +243,7 @@ function HRLoginContent() {
                 </div>
             </div>
 
+            {/* Right side - Login form */}
             <div className="h-dvh overflow-y-auto flex items-center justify-center px-5 py-8 sm:px-12 sm:py-16 relative">
                 <AnimatePresence>
                     {isSubmitting && (
@@ -289,11 +262,7 @@ function HRLoginContent() {
                     className="w-full max-w-sm relative z-10"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                        duration: 0.5,
-                        ease: "easeOut",
-                        delay: 0.15,
-                    }}
+                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.15 }}
                 >
                     <div className="mb-6 sm:mb-10 lg:hidden">
                         <Image
@@ -309,11 +278,9 @@ function HRLoginContent() {
                     <p className="font-rethink text-[12px] sm:text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
                         Welcome back
                     </p>
-
                     <h2 className="mt-2 sm:mt-3 font-bricolage text-[24px] sm:text-[28px] lg:text-[30px] font-medium tracking-tight">
                         Sign in to HR
                     </h2>
-
                     <p className="mt-2 sm:mt-2.5 text-[13.5px] sm:text-[14.5px] leading-relaxed text-muted">
                         Use the employee ID and password issued by HR.
                     </p>
@@ -330,17 +297,14 @@ function HRLoginContent() {
                             >
                                 Employee ID
                             </label>
-
                             <input
                                 id="employeeId"
                                 name="employeeId"
                                 type="text"
                                 autoComplete="username"
                                 value={employeeId}
-                                onChange={(e) =>
-                                    setEmployeeId(e.target.value)
-                                }
-                                placeholder="AX-01234"
+                                onChange={(e) => setEmployeeId(e.target.value)}
+                                placeholder="AX-01001"
                                 className="mt-2 block w-full border-0 border-b border-line bg-transparent px-0 py-2 text-[14px] sm:text-[15px] text-ink placeholder:text-line outline-none transition focus:border-accent"
                             />
                         </div>
@@ -353,7 +317,6 @@ function HRLoginContent() {
                                 >
                                     Password
                                 </label>
-
                                 <a
                                     href="/forgot-password"
                                     className="text-[11.5px] sm:text-[12.5px] font-medium text-accent hover:text-accent-dark"
@@ -366,44 +329,23 @@ function HRLoginContent() {
                                 <input
                                     id="password"
                                     name="password"
-                                    type={
-                                        showPassword
-                                            ? "text"
-                                            : "password"
-                                    }
+                                    type={showPassword ? "text" : "password"}
                                     autoComplete="current-password"
                                     value={password}
-                                    onChange={(e) =>
-                                        setPassword(e.target.value)
-                                    }
+                                    onChange={(e) => setPassword(e.target.value)}
                                     placeholder="••••••••"
                                     className="mt-2 block w-full border-0 border-b border-line bg-transparent px-0 py-2 pr-12 text-[14px] sm:text-[15px] text-ink placeholder:text-line outline-none transition focus:border-accent"
                                 />
-
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setShowPassword(
-                                            (v) => !v
-                                        )
-                                    }
+                                    onClick={() => setShowPassword((v) => !v)}
                                     className="absolute bottom-1.5 right-0 text-muted transition-colors hover:text-ink"
-                                    aria-label={
-                                        showPassword
-                                            ? "Hide password"
-                                            : "Show password"
-                                    }
+                                    aria-label={showPassword ? "Hide password" : "Show password"}
                                 >
                                     {showPassword ? (
-                                        <EyeOff
-                                            size={17}
-                                            strokeWidth={1.75}
-                                        />
+                                        <EyeOff size={17} strokeWidth={1.75} />
                                     ) : (
-                                        <Eye
-                                            size={17}
-                                            strokeWidth={1.75}
-                                        />
+                                        <Eye size={17} strokeWidth={1.75} />
                                     )}
                                 </button>
                             </div>
@@ -418,14 +360,19 @@ function HRLoginContent() {
                             </div>
                         )}
 
+                        {/* Debug info */}
+                        {debugInfo && (
+                            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-200">
+                                Debug: {debugInfo}
+                            </div>
+                        )}
+
                         <button
                             type="submit"
                             disabled={isSubmitting}
                             className="w-full bg-ink px-4 py-3.5 text-[14px] font-medium tracking-wide text-paper transition-colors duration-200 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            {isSubmitting
-                                ? "Signing in…"
-                                : "Sign in"}
+                            {isSubmitting ? "Signing in…" : "Sign in"}
                         </button>
                     </form>
 
