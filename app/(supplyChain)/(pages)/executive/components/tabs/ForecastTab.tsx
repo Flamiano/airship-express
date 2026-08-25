@@ -6,7 +6,7 @@ import { ExecutiveDataPayload } from "../../hooks/useExecutiveData";
 
 interface ForecastTabProps {
     data: ExecutiveDataPayload;
-    onOpenModal: (reportType: string) => void;
+    onOpenModal: (reportType: string, extraData?: any) => void;
 }
 
 const CHART_COLORS = {
@@ -128,7 +128,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
     return (
         <div className="space-y-6">
             <div
-                onClick={() => onOpenModal('forecast')}
+                onClick={() => onOpenModal('forecast', forecastApiData)}
                 className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-pink-300 dark:hover:border-pink-800 transition-all cursor-pointer group"
             >
                 <div className="flex items-center justify-between mb-4">
@@ -156,7 +156,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                         )}
                         <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onOpenModal('forecast'); }}
+                            onClick={(e) => { e.stopPropagation(); onOpenModal('forecast', forecastApiData); }}
                             className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 hover:underline cursor-pointer"
                         >
                             Inspect WASM Modal

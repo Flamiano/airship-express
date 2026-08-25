@@ -39,7 +39,7 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
     }, [activeTab, router]);
 
     // Handle opening modals with prefilled report content & CSV download action
-    const openReportModal = useCallback((reportType: string) => {
+    const openReportModal = useCallback((reportType: string, extraData?: any) => {
         const { parcels, inventory, purchaseOrders, procurement, documents, couriers, suppliers, pageKpis } = data;
 
         if (reportType === 'executive') {
@@ -248,25 +248,80 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
                 viewAllLabel: "Open Suppliers Directory"
             });
         } else if (reportType === 'forecast') {
+            const p7 = extraData?.parcel_7_day;
+
+            // Historical Actual Items from Supabase database
+            const histDates: string[] = p7?.historical?.dates || data.dailyTrend.map(d => d.dateStr);
+            const histCounts: number[] = p7?.historical?.counts || data.dailyTrend.map(d => d.receivedCount);
+            const histDisplay: string[] = p7?.historical?.display_dates || data.dailyTrend.map(d => d.dayLabel);
+
+            // Future WASM Predictions
+            const fcDates: string[] = p7?.dates || [];
+            const fcValues: number[] = p7?.predictions || [];
+            const confidence = p7?.confidence || "90%";
+            const modelUsed = p7?.model_used || "AutoTheta Time-Series WASM";
+
+            const historicalList = histDates.map((dateStr, idx) => {
+                const actualVal = histCounts[idx] ?? 0;
+                const label = histDisplay[idx] || dateStr;
+                const isToday = idx === histDates.length - 1;
+                
+                const predForToday = fcValues.length > 0 ? Math.round(fcValues[0]) : actualVal;
+                const compStr = isToday ? ` | Predicted for today: ${predForToday} parcels (Comparing Actual vs Predicted)` : "";
+
+                return {
+                    title: `Date: ${dateStr} (${label}${isToday ? ' - Today' : ''})`,
+                    subtitle: `Actual Supabase Data: ${actualVal} parcels recorded${compStr}`,
+                    value: isToday ? `Actual: ${actualVal} (Fcst: ${predForToday})` : `${actualVal} parcels (Actual)`,
+                    icon: "fa-calendar-check",
+                    badge: isToday ? "Today (Actual)" : "Actual Recorded",
+                    badgeColor: isToday ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300" : "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300",
+                    category: "actual",
+                };
+            });
+
+            const predictedList = fcDates.map((dateStr, idx) => {
+                const predVal = Math.round(fcValues[idx] ?? 0);
+                const dayOffset = idx + 1;
+                const isTomorrow = idx === 0;
+
+                return {
+                    title: `Date: ${dateStr} (${isTomorrow ? 'Tomorrow - Day +1' : `Day +${dayOffset}`})`,
+                    subtitle: `WASM Model Prediction: ${predVal} parcels | Actual Data: Pending arrival of ${dateStr} (Will display actual recorded when date comes)`,
+                    value: `${predVal} parcels (Predicted)`,
+                    icon: "fa-chart-line",
+                    badge: isTomorrow ? `Tomorrow Fcst: ${predVal}` : `Projected: ${predVal}`,
+                    badgeColor: "bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300",
+                    category: "predicted",
+                };
+            });
+
+            const totalHistorical = histCounts.reduce((a, b) => a + b, 0);
+            const totalProjected = fcValues.reduce((a, b) => a + Math.round(b), 0);
+
             setActiveChartModal({
-                title: "7-Day WASM Predictive Parcel Forecast",
-                subtitle: "Statistical time-series volume projections",
+                title: "7-Day WASM Predictive vs Actual Parcel Forecast",
+                subtitle: "Comparison of actual recorded database intake vs predicted WASM projections",
                 icon: "fa-chart-line",
                 iconColor: "text-pink-600 dark:text-pink-400",
                 iconBg: "bg-pink-50 dark:bg-pink-950/40 border-pink-100 dark:border-pink-900/30",
-                description: "Time-series parcel intake projections generated using the @sipemu/anofox-forecast Rust/WASM engine based on historical database records.",
+                description: "Executes Holt-Winters & AutoTheta forecasting algorithms over historical database records using the @sipemu/anofox-forecast Rust/WASM engine. Shows actual recorded intake alongside projected future volumes. When future dates arrive, actual recorded data automatically populates to compare against predictions.",
                 metrics: [
-                    { label: "7-Day Historical", value: data.dailyTrend.reduce((sum, d) => sum + d.receivedCount, 0), sublabel: "Actual parcels", color: "text-pink-600 dark:text-pink-400" },
-                    { label: "Fulfillment Rate", value: pageKpis.ontimeRate, sublabel: "Current SLA", color: "text-emerald-600 dark:text-emerald-400" },
+                    { label: "Historical Actual", value: `${totalHistorical} parcels`, sublabel: `Past ${histDates.length} days recorded`, color: "text-blue-600 dark:text-blue-400" },
+                    { label: "Projected Next 7 Days", value: `${totalProjected} parcels`, sublabel: `WASM prediction total`, color: "text-pink-600 dark:text-pink-400" },
+                    { label: "Confidence Level", value: confidence, sublabel: modelUsed, color: "text-emerald-600 dark:text-emerald-400" },
                 ],
-                items: data.dailyTrend.map(d => ({
-                    title: `Date: ${d.dayLabel} (${d.dateStr})`,
-                    subtitle: `Recorded intake: ${d.receivedCount} parcels | Delivered: ${d.deliveredCount} parcels`,
-                    value: `${d.receivedCount} parcels`,
-                    icon: "fa-calendar-day",
-                    badge: "Recorded",
-                    badgeColor: "bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300",
-                })),
+                listHeader: "Forecast Manifest: Actual Database Intake & WASM Predictions",
+                items: [...historicalList, ...predictedList],
+                onDownload: () => {
+                    const headers = ["Date", "Type", "Recorded / Predicted Count", "Status Notes"];
+                    const rows = [
+                        ...histDates.map((d, i) => [d, "Actual", histCounts[i] ?? 0, "Recorded in parcels table"]),
+                        ...fcDates.map((d, i) => [d, "Predicted (WASM)", Math.round(fcValues[i] ?? 0), "Holt-Winters projection"])
+                    ];
+                    downloadCSV("WASM_Parcel_Forecast_Actual_vs_Predicted", [], ["7-Day forecast vs actual database intake."], headers, rows);
+                },
+                downloadLabel: "Download Forecast & Actuals (CSV)",
                 viewAllLink: "/forecast",
                 viewAllLabel: "Open Forecasting Engine"
             });
