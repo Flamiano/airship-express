@@ -1,5 +1,3 @@
-//api/chat
-
 import { NextRequest, NextResponse } from "next/server";
 import { orchestrator } from "../../lib/orchestrator";
 

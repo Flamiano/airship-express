@@ -24,7 +24,7 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [activeChartModal, setActiveChartModal] = useState<Omit<ExecutiveChartModalProps, 'isOpen' | 'onClose'> | null>(null);
 
-    // Sync tab state with URL query param
+    // sync tab with url param
     useEffect(() => {
         const tabParam = searchParams.get('tab') as TabType;
         if (tabParam && ['overview', 'operations', 'kpis', 'insights', 'forecast', 'reports'].includes(tabParam)) {
@@ -38,7 +38,7 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
         router.push(`?tab=${tab}`, { scroll: false });
     }, [activeTab, router]);
 
-    // Handle opening modals with prefilled report content & CSV download action
+    // open modal with report content
     const openReportModal = useCallback((reportType: string, extraData?: any) => {
         const { parcels, inventory, purchaseOrders, procurement, documents, couriers, suppliers, pageKpis } = data;
 
@@ -250,12 +250,12 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
         } else if (reportType === 'forecast') {
             const p7 = extraData?.parcel_7_day;
 
-            // Historical Actual Items from Supabase database
+            // historical actuals
             const histDates: string[] = p7?.historical?.dates || data.dailyTrend.map(d => d.dateStr);
             const histCounts: number[] = p7?.historical?.counts || data.dailyTrend.map(d => d.receivedCount);
             const histDisplay: string[] = p7?.historical?.display_dates || data.dailyTrend.map(d => d.dayLabel);
 
-            // Future WASM Predictions
+            // wasm predictions
             const fcDates: string[] = p7?.dates || [];
             const fcValues: number[] = p7?.predictions || [];
             const confidence = p7?.confidence || "90%";
@@ -339,7 +339,7 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
 
     return (
         <div className="space-y-6">
-            {/* Tab Navigation Navigation Bar */}
+            {/* tab navigation */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200/80 dark:border-slate-800 no-scrollbar">
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.key;
@@ -361,7 +361,7 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
                 })}
             </div>
 
-            {/* Render Tab Sub-components */}
+            {/* sub-components */}
             {activeTab === 'overview' && (
                 <OverviewTab data={data} onOpenModal={openReportModal} />
             )}
@@ -386,7 +386,7 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
                 <ReportsTab data={data} onOpenModal={openReportModal} />
             )}
 
-            {/* Interactive Chart Modal */}
+            {/* chart modal */}
             {activeChartModal && (
                 <ExecutiveChartModal
                     isOpen={!!activeChartModal}

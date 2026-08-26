@@ -1,4 +1,3 @@
-// app/(supplyChain)/(pages)/executive/page.tsx
 import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
 import ExecutiveClientPage from './components/ExecutiveClientPage';
 

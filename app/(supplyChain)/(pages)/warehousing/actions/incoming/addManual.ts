@@ -25,9 +25,7 @@ export async function addManualParcel(data: {
 }) {
     try {
         const headersList = await headers();
-        const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
-        // Rate limiting
+        const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'; // rate limiting
         const now = Date.now();
         const userRate = rateLimiter.get(ip);
         if (userRate) {
@@ -45,21 +43,13 @@ export async function addManualParcel(data: {
             }
         } else {
             rateLimiter.set(ip, { count: 1, resetTime: now + 60000 });
-        }
-
-        // Sanitize inputs
+        } // sanitize
         const trimmedBarcode = data.barcode.trim();
         const trimmedDestination = data.destination.trim();
         const trimmedRegion = data.region.trim();
         const trimmedCity = data.city.trim();
-        const trimmedProvince = data.province.trim();
-
-        // Generate tracking number automatically
-        const trackingNumber = generateTrackingNumber();
-
-        // VALIDATION
-
-        // Validate barcode
+        const trimmedProvince = data.province.trim(); // generate tracking
+        const trackingNumber = generateTrackingNumber(); // validation // validate barcode
         if (!trimmedBarcode) {
             return {
                 success: false,
@@ -82,9 +72,7 @@ export async function addManualParcel(data: {
                 error: 'Invalid barcode format. Only alphanumeric, hyphens, and underscores allowed.',
                 status: 400,
             };
-        }
-
-        // Validate destination
+        } // validate destination
         if (!trimmedDestination) {
             return {
                 success: false,
@@ -99,9 +87,7 @@ export async function addManualParcel(data: {
                 error: 'Destination must be at least 2 characters',
                 status: 400,
             };
-        }
-
-        // Validate region
+        } // validate region
         if (!trimmedRegion) {
             return {
                 success: false,
@@ -116,9 +102,7 @@ export async function addManualParcel(data: {
                 error: 'Region must be at least 2 characters',
                 status: 400,
             };
-        }
-
-        // Validate city
+        } // validate city
         if (!trimmedCity) {
             return {
                 success: false,
@@ -133,9 +117,7 @@ export async function addManualParcel(data: {
                 error: 'City must be at least 2 characters',
                 status: 400,
             };
-        }
-
-        // Validate province
+        } // validate province
         if (!trimmedProvince) {
             return {
                 success: false,
@@ -150,9 +132,7 @@ export async function addManualParcel(data: {
                 error: 'Province must be at least 2 characters',
                 status: 400,
             };
-        }
-
-        // Validate optional fields
+        } // validate optional
         if (data.sender_name && data.sender_name.trim().length < 2) {
             return {
                 success: false,
@@ -167,9 +147,7 @@ export async function addManualParcel(data: {
                 error: 'Customer name must be at least 2 characters',
                 status: 400,
             };
-        }
-
-        // Validate customer number - digits only, max 11
+        } // validate customer number
         if (data.customer_number) {
             const customerNumber = data.customer_number.trim();
             if (!/^\d+$/.test(customerNumber)) {
@@ -186,11 +164,7 @@ export async function addManualParcel(data: {
                     status: 400,
                 };
             }
-        }
-
-        // CHECK FOR DUPLICATES
-
-        // Check barcode duplicate
+        } // check dupes // check barcode
         const { data: existingBarcode, error: checkBarcodeError } = await supabase
             .from('receiving_queue')
             .select('barcode')
@@ -212,9 +186,7 @@ export async function addManualParcel(data: {
                 error: 'Duplicate barcode detected - already in queue',
                 status: 409,
             };
-        }
-
-        // GET COURIER NAME
+        } // get courier
 
         let courierName = null;
         if (data.courier_id) {
@@ -227,9 +199,7 @@ export async function addManualParcel(data: {
             if (!courierError && courier) {
                 courierName = courier.name;
             }
-        }
-
-        // PREPARE INSERT DATA
+        } // prep data
 
         const insertData = {
             barcode: trimmedBarcode,
@@ -244,9 +214,7 @@ export async function addManualParcel(data: {
             customer_number: data.customer_number?.trim() || null,
             status: 'pending',
             scanned_at: new Date().toISOString(),
-        };
-
-        // INSERT WITH RETRY LOGIC
+        }; // insert
 
         let retries = 3;
         let inserted = false;

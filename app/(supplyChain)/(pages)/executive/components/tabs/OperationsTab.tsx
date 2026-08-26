@@ -36,7 +36,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
         const mutedColor = '#6b6b76';
         const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
 
-        // 1. Courier Volume Breakdown (from parcels table)
+        // courier volume
         if (courierCanvasRef.current) {
             if (courierInstance.current) courierInstance.current.destroy();
             const ctx = courierCanvasRef.current.getContext('2d');
@@ -68,7 +68,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
             }
         }
 
-        // 2. Parcel Fulfillment Status (from parcels table)
+        // parcel fulfillment
         if (statusCanvasRef.current) {
             if (statusInstance.current) statusInstance.current.destroy();
             const ctx = statusCanvasRef.current.getContext('2d');
@@ -99,7 +99,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
             }
         }
 
-        // 3. Document Category Distribution (from documents table)
+        // document categories
         if (documentCanvasRef.current) {
             if (documentInstance.current) documentInstance.current.destroy();
             const ctx = documentCanvasRef.current.getContext('2d');
@@ -131,7 +131,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
             }
         }
 
-        // 4. Supplier Categories (from suppliers table)
+        // supplier categories
         if (supplierCanvasRef.current) {
             if (supplierInstance.current) supplierInstance.current.destroy();
             const ctx = supplierCanvasRef.current.getContext('2d');
@@ -173,7 +173,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Courier Parcel Volume Breakdown */}
+                {/* 1. courier volume */}
                 <div
                     onClick={() => onOpenModal('couriers')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-indigo-300 dark:hover:border-indigo-800 transition-all cursor-pointer group"
@@ -182,7 +182,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                         <div className="font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
                             <i className="fas fa-truck text-indigo-500"></i>
                             <span>Courier Parcel Volume Breakdown</span>
-                            {/* Hover info badge ! with popover details about the chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
@@ -210,7 +210,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                     </div>
                 </div>
 
-                {/* 2. Parcel Fulfillment Status */}
+                {/* 2. parcel fulfillment */}
                 <div
                     onClick={() => onOpenModal('parcels')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-emerald-300 dark:hover:border-emerald-800 transition-all cursor-pointer group"
@@ -219,7 +219,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                         <div className="font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
                             <i className="fas fa-tasks text-emerald-500"></i>
                             <span>Parcel Fulfillment Status</span>
-                            {/* Hover info badge ! with popover details about the chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
@@ -247,7 +247,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                     </div>
                 </div>
 
-                {/* 3. Document Category Distribution */}
+                {/* 3. document categories */}
                 <div
                     onClick={() => onOpenModal('documents')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-cyan-300 dark:hover:border-cyan-800 transition-all cursor-pointer group"
@@ -256,7 +256,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                         <div className="font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
                             <i className="fas fa-folder-open text-cyan-500"></i>
                             <span>Document Category Distribution</span>
-                            {/* Hover info badge ! with popover details about the chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
@@ -284,7 +284,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                     </div>
                 </div>
 
-                {/* 4. Supplier Classification */}
+                {/* 4. supplier classification */}
                 <div
                     onClick={() => onOpenModal('suppliers')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-purple-300 dark:hover:border-purple-800 transition-all cursor-pointer group"
@@ -293,7 +293,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                         <div className="font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
                             <i className="fas fa-building text-purple-500"></i>
                             <span>Supplier Classification</span>
-                            {/* Hover info badge ! with popover details about the chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"

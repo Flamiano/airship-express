@@ -226,7 +226,7 @@ export default function Documents() {
 
             const rawDocs = data || [];
 
-            // 1. Resolve forced user names
+            // resolve forced user names
             const forcedIds = rawDocs
                 .map((d: any) => d.force_inserted_by)
                 .filter((id: string | null): id is string => Boolean(id));
@@ -248,7 +248,7 @@ export default function Documents() {
                 }
             }
 
-            // 2. Resolve linked Purchase Orders safely
+            // resolve linked purchase orders
             const purchaseIds = rawDocs
                 .map((d: any) => d.purchase_id)
                 .filter((id: string | null): id is string => Boolean(id));
@@ -423,7 +423,7 @@ export default function Documents() {
         }
     }, [userName, userEmail]);
 
-    // Insert document with session_id and role
+    // insert document
     const insertDocument = useCallback(async (documentData: any) => {
         if (!documentData.title) {
             throw new Error('Document title is required');
@@ -445,7 +445,7 @@ export default function Documents() {
         return data;
     }, [userSessionId, userRole]);
 
-    // Update document with session_id and role
+    // update document
     const updateDocument = useCallback(async (id: string, updates: any) => {
         const updateData = {
             ...updates,
@@ -511,38 +511,7 @@ export default function Documents() {
                 { deleted_by: deletedBy }
             );
 
-            // const archiveData = {
-            //     id: doc.id,
-            //     title: doc.title,
-            //     file_name: doc.file_name,
-            //     file_size: doc.file_size,
-            //     file_type: doc.file_type,
-            //     storage_path: doc.storage_path,
-            //     category: doc.category,
-            //     document_type: doc.document_type,
-            //     supplier: doc.supplier,
-            //     po_number: doc.po_number,
-            //     parcel_batch: doc.parcel_batch,
-            //     uploaded_by: doc.uploaded_by,
-            //     notes: doc.notes,
-            //     version: doc.version,
-            //     created_at: doc.created_at,
-            //     updated_at: doc.updated_at,
-            //     deleted_by: deletedBy,
-            //     original_id: doc.id,
-            //     session_id: doc.session_id || null,
-            //     role: doc.role || null,
-            // };
 
-            // const { error: archiveError } = await supabase
-            //     .from('documents_archive')
-            //     .insert(archiveData);
-
-            // if (archiveError) {
-            //     console.error('Archive error:', archiveError);
-            //     toast.error(`Failed to archive document: ${archiveError.message}`, { id: toastId });
-            //     return;
-            // }
 
             const { error } = await supabase
                 .from('documents')
@@ -671,38 +640,7 @@ export default function Documents() {
                         { deleted_by: deletedBy, bulk_delete: true }
                     );
 
-                    // const archiveData = {
-                    //     id: doc.id,
-                    //     title: doc.title,
-                    //     file_name: doc.file_name,
-                    //     file_size: doc.file_size,
-                    //     file_type: doc.file_type,
-                    //     storage_path: doc.storage_path,
-                    //     category: doc.category,
-                    //     document_type: doc.document_type,
-                    //     supplier: doc.supplier,
-                    //     po_number: doc.po_number,
-                    //     parcel_batch: doc.parcel_batch,
-                    //     uploaded_by: doc.uploaded_by,
-                    //     notes: doc.notes,
-                    //     version: doc.version,
-                    //     created_at: doc.created_at,
-                    //     updated_at: doc.updated_at,
-                    //     deleted_by: deletedBy,
-                    //     original_id: doc.id,
-                    //     session_id: doc.session_id || null,
-                    //     role: doc.role || null,
-                    // };
 
-                    // const { error: archiveError } = await supabase
-                    //     .from('documents_archive')
-                    //     .insert(archiveData);
-
-                    // if (archiveError) {
-                    //     console.error('Archive error for', doc.title, archiveError);
-                    //     failCount++;
-                    //     continue;
-                    // }
 
                     await supabase.storage.from('documents').remove([doc.storage_path]);
 
@@ -846,7 +784,7 @@ export default function Documents() {
                     continue;
                 }
 
-                // Insert with session_id and role
+                // insert document
                 const insertData = {
                     title: `${documentType} - ${file.name}`,
                     file_name: file.name,

@@ -38,7 +38,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
         const mutedColor = '#6b6b76';
         const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
 
-        // 1. Real 7-Day Parcel Trend from Supabase parcels table
+        // parcel trend 7d
         if (parcelsCanvasRef.current) {
             if (parcelsChartInstance.current) parcelsChartInstance.current.destroy();
 
@@ -86,7 +86,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
             }
         }
 
-        // 2. Real Inventory Category Breakdown from Supabase inventory_items table
+        // inventory categories
         if (inventoryCanvasRef.current) {
             if (inventoryChartInstance.current) inventoryChartInstance.current.destroy();
 
@@ -120,7 +120,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
             }
         }
 
-        // 3. Real Procurement Status Breakdown from Supabase purchase_requests table
+        // procurement status
         if (procurementCanvasRef.current) {
             if (procurementChartInstance.current) procurementChartInstance.current.destroy();
 
@@ -164,9 +164,9 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
 
     return (
         <div className="space-y-6">
-            {/* Overview Charts Grid */}
+            {/* charts grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Parcel Volume Trend */}
+                {/* parcel trend */}
                 <div
                     onClick={() => onOpenModal('parcels')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-pink-300 dark:hover:border-pink-800 transition-all cursor-pointer group"
@@ -175,7 +175,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                         <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
                             <i className="fas fa-chart-line text-pink-500"></i>
                             <span>Parcel Volume Trend</span>
-                            {/* Hover info badge ! with details about chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
@@ -203,7 +203,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                     </div>
                 </div>
 
-                {/* Inventory Category Breakdown */}
+                {/* inventory categories */}
                 <div
                     onClick={() => onOpenModal('inventory')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-emerald-300 dark:hover:border-emerald-800 transition-all cursor-pointer group"
@@ -212,7 +212,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                         <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
                             <i className="fas fa-boxes text-emerald-500"></i>
                             <span>Inventory SKU Breakdown</span>
-                            {/* Hover info badge ! with details about chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
@@ -240,7 +240,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                     </div>
                 </div>
 
-                {/* Procurement Pipeline */}
+                {/* procurement pipeline */}
                 <div
                     onClick={() => onOpenModal('procurement')}
                     className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-indigo-300 dark:hover:border-indigo-800 transition-all cursor-pointer group"
@@ -249,7 +249,7 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                         <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
                             <i className="fas fa-shopping-bag text-indigo-500"></i>
                             <span>Procurement Requests</span>
-                            {/* Hover info badge ! with details about chart */}
+                            {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
@@ -278,14 +278,14 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                 </div>
             </div>
 
-            {/* Middle Section: Operations Summary, Procurement Card, Quick Actions */}
+            {/* middle section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <OperationsSummary data={data.operationsSummary} />
                 <ProcurementCard data={data.procurementSummary} />
                 <QuickActions />
             </div>
 
-            {/* Bottom Section: Recent Transactions */}
+            {/* bottom section */}
             <RecentTransactions transactions={data.recentTransactions} />
         </div>
     );

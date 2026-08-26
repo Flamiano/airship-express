@@ -149,7 +149,7 @@ export function IncomingTable({
             return;
         }
 
-        // Check if any selected parcels are already received
+        // check received
         const selectedParcels = initialParcels.filter(p => selectedIds.has(p.id));
         const alreadyReceived = selectedParcels.filter(p => p.status === 'verified');
 
@@ -164,7 +164,7 @@ export function IncomingTable({
 
             if (!confirmed) return;
 
-            // Remove already received parcels from selection
+            // remove received
             const pendingIds = selectedParcels
                 .filter(p => p.status !== 'verified')
                 .map(p => p.id);
@@ -174,15 +174,15 @@ export function IncomingTable({
                 return;
             }
 
-            // Update selectedIds to only pending ones
+            // update selected
             setSelectedIds(new Set(pendingIds));
 
-            // Continue with receive
+            // continue receive
             await processReceive(pendingIds);
             return;
         }
 
-        // All selected are pending
+        // all pending
         const confirmed = await confirm({
             title: `Receive ${selectedIds.size} Parcels`,
             message: `Are you sure you want to mark ${selectedIds.size} selected parcel(s) as received? This will move them to the receiving queue.`,
@@ -321,7 +321,7 @@ export function IncomingTable({
                 </div>
             )}
 
-            {/* Bulk Actions Toolbar */}
+            {/* bulk actions */}
             <BulkActionsToolbar
                 selectedCount={selectedIds.size}
                 itemLabel="parcels"
@@ -359,7 +359,7 @@ export function IncomingTable({
             />
 
             <div className="overflow-x-auto bg-white dark:bg-slate-900 border-t border-slate-200/60 dark:border-slate-800">
-                {/* Mobile Select All Bar - Visible only on mobile */}
+                {/* select all mobile */}
                 <div className="md:hidden flex items-center justify-between px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800">
                     <label className="flex items-center gap-2.5 cursor-pointer select-none">
                         <input

@@ -22,7 +22,7 @@ export default function ArchivePage() {
     const [activeTab, setActiveTab] = useState<ArchiveTab>(isValidTab ? tabFromUrl : DEFAULT_TAB);
     const [isAnimating, setIsAnimating] = useState(false);
 
-    // Update tab with URL persistence
+    // update tab
     const updateTab = useCallback((tab: ArchiveTab) => {
         setIsAnimating(true);
         setTimeout(() => setIsAnimating(false), 300);
@@ -33,7 +33,7 @@ export default function ArchivePage() {
         router.push(`?${params.toString()}`, { scroll: false });
     }, [router, searchParams]);
 
-    // Sync active tab with URL on initial load and when URL changes
+    // sync active tab
     useEffect(() => {
         const tab = searchParams.get('tab') as ArchiveTab;
         if (tab && VALID_TABS.includes(tab)) {
@@ -45,7 +45,7 @@ export default function ArchivePage() {
         }
     }, [searchParams, router]);
 
-    // Tab configuration for rendering tabs
+    // tab config
     const tabs = [
         { key: 'documents' as const, label: 'Documents', icon: 'fa-file-alt' },
         { key: 'purchase_orders' as const, label: 'Purchase Orders', icon: 'fa-file-invoice' },
@@ -56,7 +56,7 @@ export default function ArchivePage() {
     return (
         <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
             <div className={`p-6 space-y-6  mx-auto animate-in fade-in duration-300 bgCard ${isAnimating ? 'opacity-50 transition-opacity duration-200' : 'opacity-100'}`}>
-                {/* Header Section */}
+                {/* header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-slate-800 pb-5">
                     <div className="flex items-center gap-3.5">
                         <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0">
@@ -73,7 +73,7 @@ export default function ArchivePage() {
                     </div>
                 </div>
 
-                {/* Tab Switcher */}
+                {/* tabs */}
                 <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 p-1.5 rounded-full border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] overflow-x-auto no-scrollbar w-fit">
                     {tabs.map((tab) => (
                         <button
@@ -91,7 +91,7 @@ export default function ArchivePage() {
                     ))}
                 </div>
 
-                {/* Content with fade animation */}
+                {/* content */}
                 <div className="transition-opacity duration-300 ease-in-out">
                     {activeTab === 'documents' && <DocumentsTab />}
                     {activeTab === 'purchase_orders' && <PurchaseOrdersTab />}

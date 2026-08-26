@@ -99,7 +99,7 @@ export default function Suppliers() {
         notes: "",
     });
 
-    // New state for viewing purchase order details
+    // po detail state
     const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<PurchaseOrder | null>(null);
     const [showPurchaseOrderModal, setShowPurchaseOrderModal] = useState(false);
 
@@ -108,7 +108,7 @@ export default function Suppliers() {
     const categoryChartRef = useRef<HTMLCanvasElement>(null);
     const categoryChartInstance = useRef<Chart | null>(null);
 
-    // register chart.js components once
+    // register charts
     useEffect(() => {
         if (!isRegistered) {
             Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend, ArcElement, DoughnutController);
@@ -116,13 +116,13 @@ export default function Suppliers() {
         }
     }, []);
 
-    // fetch initial data
+    // fetch data
     useEffect(() => {
         fetchSuppliers();
         fetchPurchaseOrders();
     }, []);
 
-    // reset page when filters change
+    // reset pagination
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, categoryFilter]);
@@ -427,7 +427,7 @@ export default function Suppliers() {
         }
     };
 
-    // New function to handle viewing purchase order details
+    // view po details
     const handleViewPurchaseOrder = (order: PurchaseOrder) => {
         setSelectedPurchaseOrder(order);
         setShowPurchaseOrderModal(true);
@@ -450,7 +450,7 @@ export default function Suppliers() {
     const activeSuppliers = suppliers.filter(s => s.is_active).length;
     const totalOrders = purchaseOrders.length;
 
-    // Update: Use 'paid' instead of 'Delivered' for spending calculation
+    // calc spending
     const supplierOrderCounts = suppliers.map(s => {
         const supplierOrders = purchaseOrders.filter(po => po.supplier_id === s.id);
         const paidOrders = purchaseOrders.filter(po => po.supplier_id === s.id && po.paid === true);
@@ -498,7 +498,7 @@ export default function Suppliers() {
         return acc;
     }, {} as Record<string, number>);
 
-    // Update: Use paid instead of delivered
+    // use paid
     const supplierStats = {
         totalOrders: purchaseOrders.length,
         totalSpent: purchaseOrders.reduce((sum, po) => sum + (po.total_amount || 0), 0),
@@ -507,7 +507,7 @@ export default function Suppliers() {
         statusCounts,
     };
 
-    // create the activity bar chart - Updated to use paid
+    // create activity chart
     const createActivityChart = () => {
         if (activityChartInstance.current) {
             activityChartInstance.current.destroy();
@@ -528,7 +528,7 @@ export default function Suppliers() {
             return;
         }
 
-        // get top 5 suppliers by order count
+        // get top 5
         const supplierOrderCounts = suppliers.map(s => {
             const supplierOrders = purchaseOrders.filter(po => po.supplier_id === s.id);
             const paidOrders = purchaseOrders.filter(po => po.supplier_id === s.id && po.paid === true);
@@ -655,7 +655,7 @@ export default function Suppliers() {
         });
     };
 
-    // create the category doughnut chart
+    // create category chart
     const createCategoryChart = () => {
         if (categoryChartInstance.current) {
             categoryChartInstance.current.destroy();
@@ -756,13 +756,13 @@ export default function Suppliers() {
         });
     };
 
-    // initialize charts after data is loaded and dom is ready
+    // init charts
     useEffect(() => {
         if (isLoading) return;
 
-        // wait for dom to be fully rendered
+        // wait for dom
         const timer = setTimeout(() => {
-            // check if canvas elements exist before creating charts
+            // check canvas
             if (activityChartRef.current && categoryChartRef.current) {
                 createActivityChart();
                 createCategoryChart();
@@ -774,7 +774,7 @@ export default function Suppliers() {
         };
     }, [suppliers, purchaseOrders, isLoading]);
 
-    // handle window resize
+    // handle resize
     useEffect(() => {
         const handleResize = () => {
             if (activityChartInstance.current) {
@@ -789,7 +789,7 @@ export default function Suppliers() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // cleanup charts on unmount
+    // cleanup charts
     useEffect(() => {
         return () => {
             if (activityChartInstance.current) {
@@ -2213,7 +2213,7 @@ export default function Suppliers() {
                     </div>
                 )}
 
-                {/* New Purchase Order Detail Modal */}
+                {/* po detail modal */}
                 {showPurchaseOrderModal && selectedPurchaseOrder && (
                     <div className="fixed inset-0 z-[90] bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
                         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/70 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">

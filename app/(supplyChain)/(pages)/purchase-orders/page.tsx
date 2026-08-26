@@ -2,9 +2,7 @@
 
 "use client";
 
-// ============================================================
-// 1. IMPORTS
-// ============================================================
+// imports
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Chart from "chart.js/auto";
@@ -34,9 +32,7 @@ import { FileText, MoreHorizontal } from "lucide-react";
 import DocumentViewerModal, { ViewDocumentData } from "@/app/(supplyChain)/components/modals/DocumentViewerModal";
 import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
 
-// ============================================================
-// 2. TYPES & INTERFACES
-// ============================================================
+// types
 interface PurchaseOrder {
     id: string;
     po_number: string;
@@ -84,16 +80,12 @@ interface Supplier {
     is_active: boolean;
 }
 
-// ============================================================
-// 3. UTILITY FUNCTIONS
-// ============================================================
+// utilities
 const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 
 
 
-// ============================================================
-// 4. EMPTY STATE COMPONENT
-// ============================================================
+// empty state
 function EmptyState({
     title,
     description,
@@ -152,9 +144,7 @@ function EmptyState({
     );
 }
 
-// ============================================================
-// 5. MAIN PURCHASE ORDERS COMPONENT
-// ============================================================
+// component
 export default function PurchaseOrders() {
     const searchParams = useSearchParams();
     const { confirm } = useConfirm();
@@ -186,11 +176,11 @@ export default function PurchaseOrders() {
     const [isPurchaseRequestModalOpen, setIsPurchaseRequestModalOpen] = useState(false);
     const [selectedRequestForPO, setSelectedRequestForPO] = useState<any>(null);
 
-    // Selection & Bulk actions
+    // bulk actions
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isSelectAll, setIsSelectAll] = useState(false);
 
-    // Manage PO Action Modal (Status & Delete & Communication)
+    // action modal
     const [actionModalOrder, setActionModalOrder] = useState<PurchaseOrder | null>(null);
     const [actionModalAiMessage, setActionModalAiMessage] = useState('');
     const [isGeneratingActionAI, setIsGeneratingActionAI] = useState(false);
@@ -198,7 +188,7 @@ export default function PurchaseOrders() {
     const [actionSupplierMessenger, setActionSupplierMessenger] = useState('');
     const [isSendingActionComm, setIsSendingActionComm] = useState(false);
 
-    // Phase 4: OCR Receipt Verification Modal & Minimized Indicator states
+    // ocr states
     const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
     const [receiptModalPO, setReceiptModalPO] = useState<PurchaseOrder | null>(null);
     const [receiptVerificationId, setReceiptVerificationId] = useState<string | null>(null);
@@ -207,7 +197,7 @@ export default function PurchaseOrders() {
     const [isDocViewerOpen, setIsDocViewerOpen] = useState(false);
     const ACTIVE_OCR_STORAGE_KEY = 'supplychain_active_verification_job';
 
-    // Load active verification job from localStorage on initial render
+    // load job
     useEffect(() => {
         try {
             const saved = localStorage.getItem(ACTIVE_OCR_STORAGE_KEY);
@@ -235,7 +225,7 @@ export default function PurchaseOrders() {
 
     const handledDeepLinkRef = useRef<string | null>(null);
 
-    // Deep link detection for ?po_id= and ?verification=
+    // deep linking
     useEffect(() => {
         const poParam = searchParams.get('po_id');
         const verificationParam = searchParams.get('verification');
@@ -252,7 +242,7 @@ export default function PurchaseOrders() {
         if (poParam) {
             const target = combinedList.find(p => p.id === poParam);
             if (target) {
-                // If PO is already verified/matched, forced, paid, or has an approved document:
+                // handle verified status
                 if (
                     target.verification?.match_result === 'matched' ||
                     target.verification?.match_result === 'forced' ||
@@ -275,12 +265,12 @@ export default function PurchaseOrders() {
                     });
                     setIsDocViewerOpen(true);
                 } else if (target.verification?.match_result === 'mismatched' || verificationParam) {
-                    // Open OCR mismatch review modal
+                    // mismatch modal
                     setReceiptModalPO(target);
                     setReceiptVerificationId(target.verification?.id || verificationParam || null);
                     setIsReceiptModalOpen(true);
                 } else {
-                    // Fresh upload required
+                    // upload required
                     setReceiptModalPO(target);
                     setReceiptVerificationId(null);
                     setIsReceiptModalOpen(true);
@@ -296,7 +286,7 @@ export default function PurchaseOrders() {
         }
     }, [searchParams, purchaseOrders, allOrders]);
 
-    // Fetch supplier info & reset communication states when actionModalOrder changes
+    // fetch supplier
     useEffect(() => {
         if (actionModalOrder) {
             setActionModalAiMessage('');
@@ -388,9 +378,7 @@ export default function PurchaseOrders() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // ============================================================
-    // FETCH DATA
-    // ============================================================
+    // fetch data
     const fetchData = useCallback(async (opts?: { silent?: boolean }) => {
         const silent = opts?.silent ?? false;
 
@@ -401,17 +389,17 @@ export default function PurchaseOrders() {
                 setIsRefreshing(true);
             }
 
-            // Build query
+            // build query
             let query = supabase
                 .from('purchase_orders')
                 .select('*', { count: 'exact' });
 
-            // Apply status filter
+            // status filter
             if (activeStatusFilter !== 'all') {
                 query = query.eq('status', activeStatusFilter);
             }
 
-            // Apply search filter
+            // search filter
             if (debouncedSearch) {
                 query = query.or(
                     `po_number.ilike.%${debouncedSearch}%,` +
@@ -419,15 +407,15 @@ export default function PurchaseOrders() {
                 );
             }
 
-            // Get total count
+            // get total
             const { count: totalCount, error: countError } = await query;
             if (countError) throw countError;
 
-            // Apply pagination
+            // pagination
             const from = (currentPage - 1) * itemsPerPage;
             const to = from + itemsPerPage - 1;
 
-            // Fetch paginated orders
+            // fetch orders
             let ordersQuery = query.range(from, to).order('created_at', { ascending: false });
             const { data: orders, error: ordersError } = await ordersQuery;
 
@@ -444,7 +432,7 @@ export default function PurchaseOrders() {
                     try {
                         const orderIds = enrichedOrders.map(o => o.id);
                         
-                        // 1. Fetch document_verifications
+                        // fetch verifications
                         const { data: verifs } = await supabase
                             .from('document_verifications')
                             .select('id, purchase_order_id, match_result, uploaded_file_url, compared_fields, extracted_json, created_at')
@@ -458,7 +446,7 @@ export default function PurchaseOrders() {
                             }
                         });
 
-                        // 2. Fetch linked records in documents table
+                        // fetch documents
                         const { data: linkedDocs } = await supabase
                             .from('documents')
                             .select('id, title, file_name, storage_path, file_type, notes, uploaded_by, purchase_id')
@@ -485,7 +473,7 @@ export default function PurchaseOrders() {
                 setTotalItems(totalCount || 0);
             }
 
-            // Also fetch all purchase orders for stats, chart distribution & recent activity
+            // fetch stats
             const { data: allOrdersData, error: allOrdersError } = await supabase
                 .from('purchase_orders')
                 .select('*')
@@ -533,7 +521,7 @@ export default function PurchaseOrders() {
                 }
                 setAllOrders(enrichedAll);
 
-                // Auto-sync persistent activeVerificationJob if it was stuck in 'processing'
+                // auto-sync job
                 try {
                     const saved = localStorage.getItem(ACTIVE_OCR_STORAGE_KEY);
                     if (saved) {
@@ -560,7 +548,7 @@ export default function PurchaseOrders() {
                                         verificationId: matchedPO.verification?.id || parsed.verificationId,
                                     });
                                 } else if (parsed.timestamp && Date.now() - parsed.timestamp > 3 * 60 * 1000) {
-                                    // Job expired after 3 minutes
+                                    // check expiry
                                     updateActiveVerificationJob(null);
                                 }
                             }
@@ -571,7 +559,7 @@ export default function PurchaseOrders() {
                 }
             }
 
-            // Fetch suppliers
+            // fetch suppliers
             const { data: suppliersData, error: suppliersError } = await supabase
                 .from('suppliers')
                 .select('*')
@@ -598,7 +586,7 @@ export default function PurchaseOrders() {
         fetchData();
     }, [fetchData]);
 
-    // Realtime subscriptions
+    // realtime
     useEffect(() => {
         const ordersSubscription = supabase
             .channel('purchase_orders_changes')
@@ -612,9 +600,7 @@ export default function PurchaseOrders() {
         };
     }, [fetchData]);
 
-    // ============================================================
-    // CRUD OPERATIONS
-    // ============================================================
+    // crud operations
     const handleOrderCreated = useCallback(async (orderData: any) => {
         try {
             if (orderData.request_id) {
@@ -819,7 +805,7 @@ export default function PurchaseOrders() {
             return;
         }
 
-        // If trying to mark as Paid, only allow orders with Confirmed or Delivered status
+        // validate status
         if (paidState) {
             const selectedOrders = datasetOrders.filter(po => selectedIds.has(po.id));
             const invalidOrders = selectedOrders.filter(po => po.status === 'Draft' || po.status === 'Sent');
@@ -900,7 +886,7 @@ export default function PurchaseOrders() {
 
         if (currentStatus === newStatus) return;
 
-        // Changing to or from Confirmed requires Admin
+        // admin check
         if ((newStatus === 'Confirmed' || currentStatus === 'Confirmed') && !isAdmin) {
             toast.error("Permission denied: Only Administrators can set or modify the 'Confirmed' status of a purchase order.");
             return;
@@ -1080,7 +1066,7 @@ export default function PurchaseOrders() {
             const data = await response.json();
 
             if (data.success) {
-                // Update status from Draft to Sent in database
+                // update status
                 await handleUpdateStatus(actionModalOrder.id, 'Sent', { skipConfirm: true });
 
                 toast.success(`Email sent to ${emailTo} and status updated to Sent!`, {
@@ -1133,7 +1119,7 @@ export default function PurchaseOrders() {
                 console.warn('Could not copy to clipboard:', clipError);
             }
 
-            // Update status from Draft to Sent
+            // update status
             await handleUpdateStatus(actionModalOrder.id, 'Sent', { skipConfirm: true });
 
             if (actionSupplierMessenger) {
@@ -1176,9 +1162,7 @@ export default function PurchaseOrders() {
         }
     };
 
-    // ============================================================
-    // CHARTS - Using colors from Supplier page
-    // ============================================================
+    // charts
     const datasetOrders = allOrders.length > 0 ? allOrders : purchaseOrders;
 
     useEffect(() => {
@@ -1219,7 +1203,7 @@ export default function PurchaseOrders() {
                 }
             });
 
-            // Ensure all statuses are represented
+            // init statuses
             const allStatuses = ['Draft', 'Sent', 'Confirmed', 'Delivered', 'Cancelled'];
             allStatuses.forEach(status => {
                 if (!statusData[status]) statusData[status] = 0;
@@ -1228,7 +1212,7 @@ export default function PurchaseOrders() {
             const sortedLabels = allStatuses.filter(st => (statusData[st] || 0) > 0 || allStatuses.indexOf(st) < 5);
             const sortedData = sortedLabels.map(label => statusData[label] || 0);
 
-            // Status color mapping matching Supplier Categories palette
+            // color mapping
             const colorMap: Record<string, string> = {
                 'Draft': '#64748B',      // Slate
                 'Sent': '#6366F1',       // Indigo
@@ -1308,7 +1292,7 @@ export default function PurchaseOrders() {
             });
         };
 
-        // Render once canvas is mounted and layout ready
+        // wait for render
         animationFrameId = requestAnimationFrame(() => {
             setTimeout(createChart, 100);
         });
@@ -1323,9 +1307,7 @@ export default function PurchaseOrders() {
         };
     }, [datasetOrders, loading]);
 
-    // ============================================================
-    // FILTERING & PAGINATION
-    // ============================================================
+    // filtering
     const filteredOrders = purchaseOrders.filter((order) => {
         const matchesStatus = activeStatusFilter === 'all' || order.status === activeStatusFilter;
         const matchesSearch = (order.po_number || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
@@ -1344,7 +1326,7 @@ export default function PurchaseOrders() {
         }
     };
 
-    // Calculate stats using full dataset
+    // calc stats
     const statsSource = allOrders.length > 0 ? allOrders : purchaseOrders;
     const totalOrders = statsSource.length;
     const pendingConfirmation = statsSource.filter(o => o.status === 'Sent' || o.status === 'Draft').length;
@@ -1354,9 +1336,7 @@ export default function PurchaseOrders() {
         .filter(o => o.paid === true)
         .reduce((sum, o) => sum + (o.total_amount || 0), 0);
 
-    // ============================================================
-    // HANDLE CREATE PO FROM APPROVED REQUEST
-    // ============================================================
+    // create po handler
     const handleOpenApprovedRequests = () => {
         setIsApprovedRequestsModalOpen(true);
     };
@@ -1372,7 +1352,7 @@ export default function PurchaseOrders() {
     return (
         <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 fade-in bgCard">
-                {/* Header */}
+                {/* header */}
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">
                     <div className="flex items-start gap-3.5">
                         <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5 transition-colors">
@@ -1420,7 +1400,7 @@ export default function PurchaseOrders() {
                     </div>
                 </div>
 
-                {/* AI Suggested Questions */}
+                {/* ai questions */}
                 <AiQuestions
                     title="AI Suggested Questions"
                     subtitle="Click to ask"
@@ -1444,7 +1424,7 @@ export default function PurchaseOrders() {
                     ]}
                 />
 
-                {/* Stats Cards */}
+                {/* stats */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <Cards
                         frontIcon="fa-solid fa-file-invoice"
@@ -1511,9 +1491,9 @@ export default function PurchaseOrders() {
                     />
                 </div>
 
-                {/* Charts & Activity */}
+                {/* charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* PO Status Categories Card */}
+                    {/* po status */}
                     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col justify-between transition-all">
                         <div className="flex items-center justify-between mb-3">
                             <div>
@@ -1561,7 +1541,7 @@ export default function PurchaseOrders() {
                         </div>
                     </div>
 
-                    {/* Recent Activity Card */}
+                    {/* activity */}
                     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col transition-all">
                         <div className="flex items-center justify-between mb-3">
                             <div>
@@ -1632,7 +1612,7 @@ export default function PurchaseOrders() {
                     </div>
                 </div>
 
-                {/* Table */}
+                {/* table */}
                 <div
                     ref={tableContainerRef}
                     id="purchase-orders-table"
@@ -1640,7 +1620,7 @@ export default function PurchaseOrders() {
                 >
                     {isRefreshing && <TableContentLoader />}
 
-                    {/* Filter Bar */}
+                    {/* filter bar */}
                     <div className="flex-shrink-0 p-4 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-slate-900/60 backdrop-blur-xl transition-all">
                         <div className="flex flex-wrap items-center gap-3">
                             <div className="font-semibold text-slate-900 dark:text-white text-sm mr-2 flex items-center gap-2">
@@ -1699,7 +1679,7 @@ export default function PurchaseOrders() {
                         </div>
                     </div>
 
-                    {/* Bulk Action Toolbar */}
+                    {/* bulk toolbar */}
                     {selectedIds.size > 0 && (
                         <div className="px-4 py-2.5 bg-pink-50/90 dark:bg-pink-950/40 border-b border-pink-100 dark:border-pink-900/30 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
                             <div className="flex items-center gap-2.5">
@@ -1722,7 +1702,7 @@ export default function PurchaseOrders() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                                {/* Bulk Status Dropdown */}
+                                {/* bulk status */}
                                 <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 rounded-xl px-2.5 py-1 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                                     <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Status:</span>
                                     <select
@@ -1745,7 +1725,7 @@ export default function PurchaseOrders() {
                                     </select>
                                 </div>
 
-                                {/* Bulk Mark Paid */}
+                                {/* mark paid */}
                                 <button
                                     type="button"
                                     onClick={() => handleBulkUpdatePaid(true)}
@@ -1757,7 +1737,7 @@ export default function PurchaseOrders() {
                                     <span>Mark Paid</span>
                                 </button>
 
-                                {/* Bulk Mark Unpaid */}
+                                {/* mark unpaid */}
                                 <button
                                     type="button"
                                     onClick={() => handleBulkUpdatePaid(false)}
@@ -1769,7 +1749,7 @@ export default function PurchaseOrders() {
                                     <span>Mark Unpaid</span>
                                 </button>
 
-                                {/* Bulk Delete */}
+                                {/* bulk delete */}
                                 <button
                                     type="button"
                                     onClick={handleBulkDelete}
@@ -1784,7 +1764,7 @@ export default function PurchaseOrders() {
                         </div>
                     )}
 
-                    {/* Table Body */}
+                    {/* body */}
                     <div className="flex-1 overflow-y-auto max-h-[500px] relative">
                         <div className="transition-opacity duration-200">
                             <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
@@ -2041,7 +2021,7 @@ export default function PurchaseOrders() {
                                                                     </svg>
                                                                 )}
 
-                                                                {/* View Document Button */}
+                                                                {/* view doc */}
                                                                 {(order.verification?.uploaded_file_url || order.document?.storage_path) && (
                                                                     <CrudActionButton
                                                                         action="custom"
@@ -2070,7 +2050,7 @@ export default function PurchaseOrders() {
                                                                     />
                                                                 )}
 
-                                                                {/* Manage Order Modal Trigger Button */}
+                                                                {/* manage order */}
                                                                 <CrudActionButton
                                                                     action="custom"
                                                                     label="Manage"
@@ -2092,7 +2072,7 @@ export default function PurchaseOrders() {
                         </div>
                     </div>
 
-                    {/* Pagination */}
+                    {/* pagination */}
                     <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1">
                         <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
                             <span className="text-slate-500 dark:text-slate-400 font-medium">
@@ -2149,14 +2129,14 @@ export default function PurchaseOrders() {
                     </div>
                 </div>
 
-                {/* Approved Requests Selection Modal */}
+                {/* selection modal */}
                 <ApprovedRequestsModal
                     isOpen={isApprovedRequestsModalOpen}
                     onClose={() => setIsApprovedRequestsModalOpen(false)}
                     onSelectRequest={handleSelectRequestForPO}
                 />
 
-                {/* Purchase Order Modal - Shared modal with Procurement */}
+                {/* po modal */}
                 <PurchaseOrderModal
                     isOpen={isPurchaseOrderModalOpen}
                     onClose={() => {
@@ -2168,7 +2148,7 @@ export default function PurchaseOrders() {
                     onOrderCreated={handleOrderCreated}
                 />
 
-                {/* Make Purchase Request Modal */}
+                {/* pr modal */}
                 <PurchaseRequestModal
                     isOpen={isPurchaseRequestModalOpen}
                     onClose={() => setIsPurchaseRequestModalOpen(false)}
@@ -2177,7 +2157,7 @@ export default function PurchaseOrders() {
                     onRequestSubmitted={handleRequestSubmitted}
                 />
 
-                {/* Chart Detail Modal */}
+                {/* chart detail */}
                 <ChartDetailModal
                     isOpen={chartDetailModal.isOpen}
                     onClose={() => setChartDetailModal(prev => ({ ...prev, isOpen: false }))}
@@ -2187,7 +2167,7 @@ export default function PurchaseOrders() {
                     totalAmount={chartDetailModal.totalAmount}
                 />
 
-                {/* Manage Purchase Order Modal */}
+                {/* manage po */}
                 {actionModalOrder && (
                     <div
                         className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
@@ -2197,7 +2177,7 @@ export default function PurchaseOrders() {
                             className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/70 w-full max-w-md border border-slate-200/80 dark:border-slate-800 overflow-hidden"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {/* Modal Header */}
+                            {/* header */}
                             <div className="px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200/50 dark:border-pink-800/40 flex items-center justify-center text-pink-600 dark:text-pink-400">
@@ -2223,9 +2203,9 @@ export default function PurchaseOrders() {
                                 </AppButton>
                             </div>
 
-                            {/* Modal Content */}
+                            {/* content */}
                             <div className="p-6 space-y-5">
-                                {/* Order Quick Info */}
+                                {/* quick info */}
                                 <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
                                     <div>
                                         <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Current Status</span>
@@ -2272,7 +2252,7 @@ export default function PurchaseOrders() {
                                     </div>
                                 </div>
 
-                                {/* Send via Email & Messenger (Shown when status is Draft) */}
+                                {/* send options */}
                                 {actionModalOrder.status === 'Draft' && (
                                     <div className="bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900 border border-indigo-100 dark:border-indigo-800/30 rounded-xl p-4 shadow-xs space-y-3">
                                         <div className="flex items-center justify-between">
@@ -2315,7 +2295,7 @@ export default function PurchaseOrders() {
                                             </div>
                                         </div>
 
-                                        {/* AI Message Preview */}
+                                        {/* ai message */}
                                         <div className="bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl p-3 border border-indigo-100/80 dark:border-indigo-800/20 text-xs text-slate-800 dark:text-slate-200 leading-relaxed shadow-2xs min-h-[70px] max-h-[140px] overflow-y-auto">
                                             {isGeneratingActionAI ? (
                                                 <div className="flex items-center justify-center h-16">
@@ -2340,7 +2320,7 @@ export default function PurchaseOrders() {
                                             )}
                                         </div>
 
-                                        {/* Supplier Contact Info & Send Buttons */}
+                                        {/* supplier contact */}
                                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
                                             <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                                                 {actionSupplierEmail ? (
@@ -2390,7 +2370,7 @@ export default function PurchaseOrders() {
                                     </div>
                                 )}
 
-                                {/* Status Options */}
+                                {/* status options */}
                                 <div>
                                     <div className="flex items-center justify-between mb-2.5">
                                         <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
@@ -2413,7 +2393,7 @@ export default function PurchaseOrders() {
                                             const isRestricted = !canUpdateStatus || (requiresAdmin && !isAdmin);
                                             const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted;
 
-                                            // Solid background styles
+                                            // solid background
                                             const getSolidButtonStyles = () => {
                                                 if (isCurrent) {
                                                     switch (status) {
@@ -2430,7 +2410,7 @@ export default function PurchaseOrders() {
                                                     return "bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60";
                                                 }
 
-                                                // Available status buttons (solid vibrant style on interaction)
+                                                // status buttons
                                                 switch (status) {
                                                     case 'Draft': return "bg-slate-100 hover:bg-slate-700 text-slate-800 hover:text-white dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700/80 shadow-2xs hover:shadow-sm cursor-pointer";
                                                     case 'Sent': return "bg-blue-50 hover:bg-blue-600 text-blue-800 hover:text-white dark:bg-blue-950/40 dark:hover:bg-blue-600 dark:text-blue-200 border-blue-200 dark:border-blue-800/40 shadow-2xs hover:shadow-sm cursor-pointer";
@@ -2488,7 +2468,7 @@ export default function PurchaseOrders() {
                                     </div>
                                 </div>
 
-                                {/* Danger Zone: Delete Button */}
+                                {/* delete button */}
                                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
                                     <AppButton
                                         type="button"
@@ -2507,7 +2487,7 @@ export default function PurchaseOrders() {
                     </div>
                 )}
 
-                {/* Phase 4: OCR Receipt Verification Modal */}
+                {/* ocr modal */}
                 {isReceiptModalOpen && receiptModalPO && (
                     <UploadReceiptModal
                         isOpen={isReceiptModalOpen}
@@ -2524,7 +2504,7 @@ export default function PurchaseOrders() {
                     />
                 )}
 
-                {/* Phase 4: Minimized Persistent Verification Indicator */}
+                {/* verification indicator */}
                 <ReceiptProcessingIndicator
                     job={activeVerificationJob}
                     onClick={() => {
@@ -2543,7 +2523,7 @@ export default function PurchaseOrders() {
                     onDismiss={() => updateActiveVerificationJob(null)}
                 />
 
-                {/* On-Demand Lazy Document Viewer Modal */}
+                {/* doc viewer */}
                 <DocumentViewerModal
                     isOpen={isDocViewerOpen}
                     onClose={() => {

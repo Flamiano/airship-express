@@ -61,7 +61,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
 
     const isParcel = item.isParcel || item.title.toLowerCase().includes("parcel") || item.title.toLowerCase().includes("tracking");
 
-    // Construct parcel object for ParcelTrackingCard & progress calculation
+    // build parcel object
     const parcelObj = useMemo(() => {
         return {
             id: 1,
@@ -94,7 +94,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                 className="bg-white dark:bg-slate-900 rounded-2xl max-w-3xl lg:max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl dark:shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden transform transition-all duration-300"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Modal Header */}
+                {/* header */}
                 <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900">
                     <div>
                         <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
@@ -130,16 +130,16 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                     </AppButton>
                 </div>
 
-                {/* Modal Scrollable Body */}
+                {/* body */}
                 <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/30 overscroll-contain">
                     {isParcel ? (
                         <>
-                            {/* Interactive Leaflet Delivery Tracking Map */}
+                            {/* tracking map */}
                             <ParcelTrackingCard parcel={parcelObj} />
 
-                            {/* Overall Progress & Metadata Card */}
+                            {/* progress card */}
                             <div className="p-5 bg-white dark:bg-slate-900/90 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow duration-200 space-y-4">
-                                {/* Header & Percentage Badge */}
+                                {/* header */}
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[11px] font-semibold flex items-center gap-1.5">
                                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${isDelivered ? 'bg-emerald-500 animate-pulse' : 'bg-pink-500 animate-pulse'}`} />
@@ -153,7 +153,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                                     </StatusBadge>
                                 </div>
 
-                                {/* Clean Progress Bar */}
+                                {/* progress bar */}
                                 <div className="w-full bg-slate-100 dark:bg-slate-800/80 h-2.5 rounded-full overflow-hidden relative p-0.5 ring-1 ring-slate-900/5 dark:ring-white/5">
                                     <div
                                         className={`h-full rounded-full transition-all duration-1000 ease-out relative ${isDelivered
@@ -164,7 +164,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                                     />
                                 </div>
 
-                                {/* Delivery Complete Banner */}
+                                {/* complete banner */}
                                 {isDelivered && (
                                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-300/80 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-xs font-semibold">
                                         <i className="fas fa-check-circle text-sm text-emerald-600 dark:text-emerald-400" />
@@ -172,7 +172,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                                     </div>
                                 )}
 
-                                {/* Metadata Grid */}
+                                {/* metadata */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs">
                                     <div className="p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/60 space-y-1">
                                         <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">Sender</p>
@@ -197,7 +197,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                                 </div>
                             </div>
 
-                            {/* Vertical Timeline */}
+                            {/* timeline */}
                             <div className="relative pl-2 pt-2">
                                 <div className="absolute left-6 top-5 bottom-5 w-0.5 bg-slate-200 dark:bg-slate-800 rounded-full" />
                                 <div
@@ -296,7 +296,7 @@ export default function ItemDetailModal({ item, onClose }: ItemDetailModalProps)
                     )}
                 </div>
 
-                {/* Modal Footer with standard AppButton */}
+                {/* footer */}
                 <div className="flex items-center justify-end px-6 py-3.5 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 gap-2 shrink-0">
                     <AppButton
                         variant="neutral"

@@ -65,9 +65,7 @@ interface GroupedParcel {
 interface ExistingQrCodes {
     cityQrMap: Map<string, string>;
     courierQrMap: Map<string, string>;
-}
-
-// Get status badge color
+} // badge color
 const getStatusBadge = (status: string): string => {
     switch (status) {
         case 'received':
@@ -81,9 +79,7 @@ const getStatusBadge = (status: string): string => {
         default:
             return 'bg-slate-100 text-slate-700 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700/60 shadow-2xs font-semibold';
     }
-};
-
-// Get status label
+}; // status label
 const getStatusLabel = (status: string): string => {
     switch (status) {
         case 'received':
@@ -97,9 +93,7 @@ const getStatusLabel = (status: string): string => {
         default:
             return status.charAt(0).toUpperCase() + status.slice(1);
     }
-};
-
-// Memoized animated component
+}; // animated component
 const AnimatedRegionContent = memo(({
     region,
     children
@@ -157,9 +151,7 @@ export default function SortingPanel() {
     const limit = 10;
     const { confirm } = useConfirm();
 
-    const debouncedSearch = useDebounce(searchTerm, 300);
-
-    // Helper function to sanitize string for QR code
+    const debouncedSearch = useDebounce(searchTerm, 300); // sanitize qr
     const sanitizeForQr = useCallback((text: string): string => {
         return text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20) || 'DEFAULT';
     }, []);
@@ -176,19 +168,13 @@ export default function SortingPanel() {
             document.body.removeChild(textArea);
             toast.success('QR Code copied to clipboard!', { duration: 2000 });
         });
-    };
-
-    // Generate random code for bulk QR
+    }; // rand qr
     const generateRandomCode = useCallback(() => {
         return Math.random().toString(36).substring(2, 8).toUpperCase();
-    }, []);
-
-    // Check if all parcels have all QR codes
+    }, []); // check qr
     const allHaveAllQr = useCallback(() => {
         return parcels.length > 0 && parcels.every(p => p.bulk_qr_code && p.bulk_qr_city && p.bulk_qr_courier);
-    }, [parcels]);
-
-    // Get existing QR codes from all parcels
+    }, [parcels]); // existing qr
     const buildExistingQrMaps = useCallback((parcelsList: Parcel[]) => {
         const cityMap = new Map<string, string>();
         const courierMap = new Map<string, string>();
@@ -227,9 +213,7 @@ export default function SortingPanel() {
                 <p className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-2">
                     <i className="fas fa-exclamation-triangle"></i>
                     BEFORE YOU CONTINUE
-                </p>
-
-                {/* Batch Summary Box */}
+                </p>{/* batch summary */}
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200/80 dark:border-slate-700/60 text-xs space-y-1">
                     <p className="font-medium text-slate-700 dark:text-slate-200 flex items-center gap-2">
                         <i className="fas fa-boxes text-slate-400 dark:text-slate-500"></i>
@@ -239,9 +223,7 @@ export default function SortingPanel() {
                         <li>Items: <span className="font-semibold text-slate-900 dark:text-white">{parcels.length} parcel{parcels.length > 1 ? 's' : ''}</span></li>
                         <li>Action: Assign shared Global, City, and Courier QR codes & Move to Ready for Pickup</li>
                     </ul>
-                </div>
-
-                {/* Note & Recommendation */}
+                </div>{/* note */}
                 <div className="space-y-2 text-xs">
                     <p className="flex items-start gap-2">
                         <i className="fas fa-info-circle text-blue-500 dark:text-blue-400 mt-0.5 text-xs"></i>
@@ -277,31 +259,22 @@ export default function SortingPanel() {
         setGeneratingAllBulk(true);
         const toastId = toast.loading(`Generating all bulk QR codes for ${parcels.length} parcels...`);
 
-        try {
-            // Build existing QR maps from all parcels
+        try { // build qr maps
             const existingMaps = buildExistingQrMaps(parcels);
             const generatedCityQrs = new Map<string, string>();
-            const generatedCourierQrs = new Map<string, string>();
-
-            // Find or assign the main Global QR Code
+            const generatedCourierQrs = new Map<string, string>(); // main global qr
             const existingGlobalQr = parcels.find(p => p.bulk_qr_code)?.bulk_qr_code;
-            const globalQrCode = existingGlobalQr || `BULK-${generateRandomCode()}`;
-
-            // Group parcels by their QR code combinations for batch updates
+            const globalQrCode = existingGlobalQr || `BULK-${generateRandomCode()}`; // group qr
             const cityGroups: Record<string, number[]> = {};
             const courierGroups: Record<string, number[]> = {};
             const globalIds: number[] = [];
 
-            parcels.forEach((parcel) => {
-                // Track which parcels need global QR
+            parcels.forEach((parcel) => { // global qr needs
                 if (!parcel.bulk_qr_code) {
                     globalIds.push(parcel.id);
-                }
-
-                // Group by city for city QR
+                } // group city
                 if (!parcel.bulk_qr_city) {
-                    const cityKey = sanitizeForQr(parcel.city || 'UNASSIGNED');
-                    // Check if we already have a QR for this city
+                    const cityKey = sanitizeForQr(parcel.city || 'UNASSIGNED'); // check city qr
                     let cityQr = existingMaps.cityQrMap.get(cityKey) || generatedCityQrs.get(cityKey);
                     if (!cityQr) {
                         cityQr = `BULK-${cityKey || 'CITY'}-${generateRandomCode()}`;
@@ -311,9 +284,7 @@ export default function SortingPanel() {
                         cityGroups[cityQr] = [];
                     }
                     cityGroups[cityQr].push(parcel.id);
-                }
-
-                // Group by courier for courier QR
+                } // group courier
                 if (!parcel.bulk_qr_courier) {
                     const courierKey = sanitizeForQr(parcel.courier || 'UNASSIGNED');
                     let courierQr = existingMaps.courierQrMap.get(courierKey) || generatedCourierQrs.get(courierKey);
@@ -326,9 +297,7 @@ export default function SortingPanel() {
                     }
                     courierGroups[courierQr].push(parcel.id);
                 }
-            });
-
-            // 1. Update Global QR for all parcels that don't have it
+            }); // update global qr
             if (globalIds.length > 0) {
                 const { error: globalError } = await supabase
                     .from('parcels')
@@ -336,9 +305,7 @@ export default function SortingPanel() {
                     .in('id', globalIds);
 
                 if (globalError) throw globalError;
-            }
-
-            // 2. Update City QR for each city group
+            } // update city qr
             for (const [qrCode, ids] of Object.entries(cityGroups)) {
                 const { error: cityError } = await supabase
                     .from('parcels')
@@ -346,9 +313,7 @@ export default function SortingPanel() {
                     .in('id', ids);
 
                 if (cityError) throw cityError;
-            }
-
-            // 3. Update Courier QR for each courier group
+            } // update courier qr
             for (const [qrCode, ids] of Object.entries(courierGroups)) {
                 const { error: courierError } = await supabase
                     .from('parcels')
@@ -356,9 +321,7 @@ export default function SortingPanel() {
                     .in('id', ids);
 
                 if (courierError) throw courierError;
-            }
-
-            // Update all processed parcels in the current batch to ready_for_pickup
+            } // update status
             const allParcelIds = parcels.map(p => p.id);
             if (allParcelIds.length > 0) {
                 const { error: statusError } = await supabase
@@ -389,9 +352,7 @@ export default function SortingPanel() {
         } finally {
             setGeneratingAllBulk(false);
         }
-    };
-
-    // fetch data from supabase with pagination
+    }; // fetch data
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
@@ -427,9 +388,7 @@ export default function SortingPanel() {
             setParcels(parcelsData || []);
             setFilteredParcels(parcelsData || []);
             setTotalItems(count || 0);
-            setTotalPages(Math.ceil((count || 0) / limit));
-
-            // Build existing QR maps from all parcels
+            setTotalPages(Math.ceil((count || 0) / limit)); // build qr maps
             if (parcelsData) {
                 const maps = buildExistingQrMaps(parcelsData);
                 setExistingQrCodes(maps);
@@ -654,40 +613,30 @@ export default function SortingPanel() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [fetchData]);
-
-    // Toggle region expansion
+    }, [fetchData]); // toggle region
     const toggleRegion = (regionName: string) => {
         setRegionGroups(prev => prev.map(region =>
             region.region === regionName
                 ? { ...region, expanded: !region.expanded }
                 : region
         ));
-    };
-
-    // Expand all regions
+    }; // expand all
     const expandAllRegions = () => {
         setRegionGroups(prev => prev.map(region => ({
             ...region,
             expanded: true
         })));
-    };
-
-    // Collapse all regions
+    }; // collapse all
     const collapseAllRegions = () => {
         setRegionGroups(prev => prev.map(region => ({
             ...region,
             expanded: false
         })));
-    };
-
-    // Show parcels for a specific city
+    }; // show city
     const handleViewCityParcels = (city: string, parcels: Parcel[]) => {
         setSelectedParcels(parcels);
         setShowModal(true);
-    };
-
-    // Show parcels for a specific courier
+    }; // show courier
     const handleViewCourierParcels = (courierName: string) => {
         const courier = courierStats.find(c => c.name === courierName);
         if (courier) {
@@ -695,15 +644,11 @@ export default function SortingPanel() {
             setSelectedCourier(courierName);
             setShowCourierModal(true);
         }
-    };
-
-    // View parcel details - opens view modal
+    }; // view parcel
     const handleViewParcel = (parcel: Parcel) => {
         setViewParcel(parcel);
         setShowViewModal(true);
-    };
-
-    // Delete single parcel
+    }; // delete
     const handleDeleteParcel = async (parcelId: number, barcode: string) => {
         const confirmed = await confirm({
             title: "Delete Parcel",
@@ -728,9 +673,7 @@ export default function SortingPanel() {
             toast.success(`Parcel ${barcode} deleted successfully!`, {
                 id: toastId,
                 duration: 3000,
-            });
-
-            // Remove from selected parcels if it was selected
+            }); // remove selected
             setSelectedParcelIds(prev => {
                 const updated = new Set(prev);
                 updated.delete(parcelId);
@@ -746,9 +689,7 @@ export default function SortingPanel() {
                 duration: 5000,
             });
         }
-    };
-
-    // Handle bulk delete
+    }; // bulk delete
     const handleBulkDelete = async () => {
         if (selectedParcelIds.size === 0) {
             toast.warning('No parcels selected for deletion');
@@ -794,9 +735,7 @@ export default function SortingPanel() {
         } finally {
             setDeleting(false);
         }
-    };
-
-    // Handle select all checkbox
+    }; // select all
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
             const ids = new Set(filteredParcels.map(p => p.id));
@@ -804,9 +743,7 @@ export default function SortingPanel() {
         } else {
             setSelectedParcelIds(new Set());
         }
-    };
-
-    // Handle individual checkbox
+    }; // select one
     const handleSelectParcel = (id: number, checked: boolean) => {
         const newSelected = new Set(selectedParcelIds);
         if (checked) {
@@ -815,16 +752,12 @@ export default function SortingPanel() {
             newSelected.delete(id);
         }
         setSelectedParcelIds(newSelected);
-    };
-
-    // Handle page navigation
+    }; // page nav
     const handlePageChange = (newPage: number) => {
         if (newPage >= 1 && newPage <= totalPages) {
             setPage(newPage);
         }
-    };
-
-    // Get color for courier badges
+    }; // badge color
     const getCourierColor = (name: string, index: number): string => {
         const colors: { [key: string]: string } = {
             'Lazada': 'bg-pink-500',
@@ -839,9 +772,7 @@ export default function SortingPanel() {
             'FedEx': 'bg-blue-500'
         };
         return colors[name] || ['bg-pink-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-cyan-500', 'bg-rose-500'][index % 7];
-    };
-
-    // Generate city bulk QR
+    }; // city qr
     const handleGenerateCityBulkQr = async (city: string, parcels: Parcel[]) => {
         if (parcels.length === 0) {
             toast.warning('No parcels in this city');
@@ -852,9 +783,7 @@ export default function SortingPanel() {
         if (allHaveBulkQr) {
             toast.info(`All parcels in ${city} already have city bulk QR codes`, { duration: 3000 });
             return;
-        }
-
-        // Check if we can reuse existing city QR
+        } // reuse city qr
         const sanitizedCity = sanitizeForQr(city);
         const existingCityQr = existingQrCodes.cityQrMap.get(sanitizedCity);
 
@@ -950,9 +879,7 @@ export default function SortingPanel() {
         } finally {
             setGeneratingBulk(false);
         }
-    };
-
-    // Generate courier bulk QR
+    }; // courier qr
     const handleGenerateCourierBulkQr = async (courierName: string) => {
         const courier = courierStats.find(c => c.name === courierName);
         if (!courier || courier.parcels.length === 0) {
@@ -969,9 +896,7 @@ export default function SortingPanel() {
                 }
             });
             return;
-        }
-
-        // Check if we can reuse existing courier QR
+        } // reuse courier qr
         const sanitizedCourier = sanitizeForQr(courierName);
         const existingCourierQr = existingQrCodes.courierQrMap.get(sanitizedCourier);
 
@@ -1067,9 +992,7 @@ export default function SortingPanel() {
         } finally {
             setGeneratingBulk(false);
         }
-    };
-
-    // Generate bulk QR for selected parcels in modal
+    }; // bulk qr modal
     const handleGenerateBulkQr = async () => {
         if (selectedParcels.length === 0) {
             toast.warning('No parcels selected');
@@ -1127,9 +1050,7 @@ export default function SortingPanel() {
         } finally {
             setGeneratingBulk(false);
         }
-    };
-
-    // Add a new function to copy QR from table rows
+    }; // copy qr
     const handleCopyTableQr = (text: string | null | undefined, e: React.MouseEvent) => {
         e.stopPropagation();
         if (text) {
@@ -1140,8 +1061,7 @@ export default function SortingPanel() {
     if (loading) {
         return (
             <div data-panel="sorting" className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-                <div className="space-y-5">
-                    {/* Header Skeleton */}
+                <div className="space-y-5">{/* header skeleton */}
                     <div className="flex flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                             <div className="h-8 w-48 bg-slate-200 dark:bg-slate-800 rounded-lg animate-pulse"></div>
@@ -1151,9 +1071,7 @@ export default function SortingPanel() {
                             <div className="h-6 w-24 bg-slate-200 dark:bg-slate-800 rounded-full animate-pulse"></div>
                             <div className="h-10 w-10 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
                         </div>
-                    </div>
-
-                    {/* Search Bar Skeleton */}
+                    </div>{/* search skeleton */}
                     <div className="flex flex-wrap items-center gap-2.5">
                         <div className="relative flex-1 min-w-[180px]">
                             <div className="h-10 w-full bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
@@ -1161,9 +1079,7 @@ export default function SortingPanel() {
                         <div className="h-10 w-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
                         <div className="h-10 w-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
                         <div className="h-10 w-48 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
-                    </div>
-
-                    {/* Cards Grid Skeleton */}
+                    </div>{/* cards skeleton */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 sm:gap-4">
                         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                             <div key={i} className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
@@ -1187,9 +1103,7 @@ export default function SortingPanel() {
                                 </div>
                             </div>
                         ))}
-                    </div>
-
-                    {/* Table Skeleton */}
+                    </div>{/* table skeleton */}
                     <div className="flex-1 overflow-y-auto max-h-[600px] p-4 space-y-5 bg-slate-50/30 dark:bg-slate-950/40">
                         <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
                             <div className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-2.5 border-b border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
@@ -1221,9 +1135,7 @@ export default function SortingPanel() {
                                 ))}
                             </div>
                         </div>
-                    </div>
-
-                    {/* Courier Summary Skeleton */}
+                    </div>{/* courier skeleton */}
                     <div className="text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-2 mb-4">
                             <div className="h-7 w-7 bg-slate-200 dark:bg-slate-800 rounded-lg animate-pulse"></div>
@@ -1673,17 +1585,13 @@ export default function SortingPanel() {
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* Scrollable Content Container - Table with delete and bulk delete */}
+                </div>{/* container */}
                 <div className="flex-1 overflow-y-auto max-h-[600px] p-4 space-y-5 bg-slate-50/30 dark:bg-slate-950/40">
                     {loading ? (
                         <TableContentLoader />
                     ) : groupedParcels.length > 0 ? (
                         groupedParcels.map((group) => (
-                            <div key={group.date} className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-2xs bg-white dark:bg-slate-900 transition-colors">
-
-                                {/* Date Group Header with Selection Info */}
+                            <div key={group.date} className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-2xs bg-white dark:bg-slate-900 transition-colors">{/* date header */}
                                 <div className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-2.5 border-b border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <input
@@ -1712,9 +1620,7 @@ export default function SortingPanel() {
                                     <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-950/80 px-2.5 py-0.5 rounded-full border border-slate-200/60 dark:border-slate-800 shadow-2xs">
                                         {group.parcels.length} {group.parcels.length === 1 ? 'parcel' : 'parcels'}
                                     </span>
-                                </div>
-
-                                {/* Table View with Checkboxes and Delete Actions */}
+                                </div>{/* table */}
                                 <div className="overflow-x-auto">
                                     <table className="table-pro w-full">
                                         <thead>
@@ -1811,9 +1717,7 @@ export default function SortingPanel() {
                                                         </td>
                                                         <td data-label="Time" className="text-slate-400 dark:text-slate-500 text-[11px] font-mono whitespace-nowrap">
                                                             {new Date(parcel.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </td>
-
-                                                        {/* QR Code Cells */}
+                                                        </td>{/* qr cells */}
                                                         <td data-label="Global QR" className="text-center">
                                                             {parcel.bulk_qr_code ? (
                                                                 <button
@@ -1893,9 +1797,7 @@ export default function SortingPanel() {
                         </div>
                     )}
                 </div>
-            </div>
-
-            {/* Courier Pickup Summary */}
+            </div>{/* courier summary */}
             <div className="text-slate-900 dark:text-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="flex items-center gap-2">
@@ -2010,9 +1912,7 @@ export default function SortingPanel() {
                         </div>
                     )}
                 </div>
-            </div>
-
-            {/* City Parcels Modal */}
+            </div>{/* city modal */}
             <Portal>
                 {showModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
@@ -2157,9 +2057,7 @@ export default function SortingPanel() {
                         </div>
                     </div>
                 )}
-            </Portal>
-
-            {/* Courier Parcels Modal */}
+            </Portal>{/* courier modal */}
             <Portal>
                 {showCourierModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 dark:bg-slate-950/70 p-4 backdrop-blur-md animate-in fade-in duration-200">
@@ -2307,15 +2205,13 @@ export default function SortingPanel() {
                         </div>
                     </div>
                 )}
-            </Portal>
-
-            {/* View Parcel Modal */}
+            </Portal>{/* view modal */}
             <Portal>
                 {showViewModal && viewParcel && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
                         <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white dark:bg-slate-900 shadow-2xl dark:shadow-black/70 border border-slate-200/80 dark:border-slate-800 animate-in zoom-in-95 slide-in-from-bottom-4 duration-200">
 
-                            {/* Header */}
+                            {/* header */}
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 p-5">
                                 <div className="flex items-center gap-3">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-500 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
@@ -2343,11 +2239,8 @@ export default function SortingPanel() {
                                 >
                                     <i className="fas fa-times text-xs"></i>
                                 </AppButton>
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                                {/* Main Info Grid */}
+                            </div>{/* content */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-5">{/* main info */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
                                         <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Barcode</label>
@@ -2385,9 +2278,7 @@ export default function SortingPanel() {
                                             </span>
                                         </p>
                                     </div>
-                                </div>
-
-                                {/* Customer Info */}
+                                </div>{/* customer */}
                                 {(viewParcel.customer_name || viewParcel.customer_number) && (
                                     <div className="bg-blue-50 dark:bg-blue-950/20 rounded-xl p-4 border border-blue-100 dark:border-blue-900/30">
                                         <h4 className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2">Customer Information</h4>
@@ -2406,9 +2297,7 @@ export default function SortingPanel() {
                                             )}
                                         </div>
                                     </div>
-                                )}
-
-                                {/* QR Codes */}
+                                )}{/* qr codes */}
                                 {(viewParcel.bulk_qr_code || viewParcel.bulk_qr_city || viewParcel.bulk_qr_courier) && (
                                     <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
                                         <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">QR Codes</h4>
@@ -2450,9 +2339,7 @@ export default function SortingPanel() {
                                             )}
                                         </div>
                                     </div>
-                                )}
-
-                                {/* Timestamps */}
+                                )}{/* time */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
                                     <div>
                                         <span className="font-medium text-slate-400 dark:text-slate-500">Created:</span>
@@ -2461,7 +2348,7 @@ export default function SortingPanel() {
                                 </div>
                             </div>
 
-                            {/* Footer */}
+                            {/* footer */}
                             <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 p-4">
                                 <div className="flex items-center gap-2">
                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(viewParcel.status)}`}>

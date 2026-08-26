@@ -62,7 +62,7 @@ class LRUImageCache {
             return null;
         }
 
-        // moves accessed item to the front
+        // move recent
         this.cache.delete(id);
         this.cache.set(id, entry);
         return entry;
@@ -149,7 +149,7 @@ const formatFileSize = (bytes: number) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// renders a single card in grid view
+// grid card
 interface GalleryCardProps {
     item: MediaItem;
     hasError: boolean;
@@ -297,7 +297,7 @@ const GalleryCard = memo(function GalleryCard({
     );
 });
 
-// renders a single row in list view
+// list row
 interface GalleryListItemProps {
     item: MediaItem;
     hasError: boolean;
@@ -421,7 +421,7 @@ const GalleryListItem = memo(function GalleryListItem({
     );
 });
 
-// manages gallery items, filtering, and preview state
+// gallery state
 export default function MediaGallery() {
     const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -440,7 +440,7 @@ export default function MediaGallery() {
     const [showFilters, setShowFilters] = useState(false);
     const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-    // keeps zoom, rotation, and pan coordinates for the modal viewer
+    // viewer state
     const [zoom, setZoom] = useState<number>(1);
     const [rotation, setRotation] = useState<number>(0);
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -462,13 +462,13 @@ export default function MediaGallery() {
     const itemsPerPage = 12;
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // finds the index of the currently opened image
+    // find active index
     const selectedItemIndex = useMemo(() => {
         if (!selectedItem) return -1;
         return mediaItems.findIndex(item => item.id === selectedItem.id);
     }, [selectedItem, mediaItems]);
 
-    // resets zoom and pan back to standard values
+    // reset view
     const resetZoomAndPan = useCallback(() => {
         setZoom(1);
         setRotation(0);
@@ -496,7 +496,7 @@ export default function MediaGallery() {
         setRotation(prev => (prev - 90 + 360) % 360);
     }, []);
 
-    // navigates to the next image in list
+    // next image
     const handleNextImage = useCallback(() => {
         if (selectedItemIndex >= 0 && selectedItemIndex < mediaItems.length - 1) {
             const nextItem = mediaItems[selectedItemIndex + 1];
@@ -505,7 +505,7 @@ export default function MediaGallery() {
         }
     }, [selectedItemIndex, mediaItems, resetZoomAndPan]);
 
-    // navigates to the previous image in list
+    // prev image
     const handlePrevImage = useCallback(() => {
         if (selectedItemIndex > 0) {
             const prevItem = mediaItems[selectedItemIndex - 1];
@@ -514,7 +514,7 @@ export default function MediaGallery() {
         }
     }, [selectedItemIndex, mediaItems, resetZoomAndPan]);
 
-    // listens for keyboard shortcuts while the viewer is open
+    // keyboard listeners
     useEffect(() => {
         if (!isPreviewOpen) return;
 
@@ -538,7 +538,7 @@ export default function MediaGallery() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isPreviewOpen, handleNextImage, handlePrevImage, handleZoomIn, handleZoomOut, resetZoomAndPan]);
 
-    // changes zoom level on mouse wheel movement
+    // mouse zoom
     const handleWheelZoom = useCallback((e: React.WheelEvent) => {
         e.preventDefault();
         if (e.deltaY < 0) {
@@ -552,7 +552,7 @@ export default function MediaGallery() {
         }
     }, []);
 
-    // handles mouse drag when zoomed in
+    // mouse drag
     const handleMouseDown = (e: React.MouseEvent) => {
         if (zoom <= 1) return;
         setIsDragging(true);
@@ -571,7 +571,7 @@ export default function MediaGallery() {
         setIsDragging(false);
     };
 
-    // Double click to toggle 1x <-> 2x
+    // toggle zoom
     const handleDoubleClick = () => {
         if (zoom > 1) {
             resetZoomAndPan();
@@ -797,7 +797,7 @@ export default function MediaGallery() {
         fetchImages(nextPage, true);
     };
 
-    // preloads and decodes initial images to smooth out rendering
+    // preload images
     useEffect(() => {
         if (mediaItems.length > 0 && !loading) {
             const preloadCount = Math.min(10, mediaItems.length);

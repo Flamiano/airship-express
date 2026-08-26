@@ -19,7 +19,7 @@ const generateTrackingNumber = () => {
     return `TRK-${dateStr}-${randomStr}`;
 };
 
-// RECEIVE ALL PARCELS
+// receive all parcels
 
 export async function receiveAllParcels() {
     try {
@@ -120,7 +120,7 @@ export async function receiveAllParcels() {
     }
 }
 
-// SCAN BARCODE
+// scan barcode
 
 export async function scanBarcode(barcodeValue: string) {
     try {
@@ -237,7 +237,7 @@ export async function scanBarcode(barcodeValue: string) {
     }
 }
 
-// DELETE SINGLE PARCEL
+// delete single parcel
 
 export async function deleteParcel(parcelId: number) {
     try {
@@ -303,7 +303,7 @@ export async function deleteParcel(parcelId: number) {
     }
 }
 
-// DELETE MULTIPLE PARCELS
+// delete multiple parcels
 
 export async function deleteMultipleParcels(parcelIds: number[]) {
     try {
@@ -393,7 +393,7 @@ export async function deleteMultipleParcels(parcelIds: number[]) {
     }
 }
 
-// RECEIVE MULTIPLE PARCELS
+// receive multiple parcels
 
 export async function receiveMultipleParcels(parcelIds: number[]) {
     try {
@@ -425,7 +425,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             };
         }
 
-        // Fetch parcels to receive
+        // fetch parcels
         const { data: parcels, error: fetchError } = await supabase
             .from('receiving_queue')
             .select('*')
@@ -447,7 +447,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             };
         }
 
-        // Check which parcels are already verified
+        // check verified
         const alreadyVerified = parcels.filter(p => p.status === 'verified');
         const pendingParcels = parcels.filter(p => p.status !== 'verified');
 
@@ -466,10 +466,10 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
                 };
             }
 
-            // Continue with only pending parcels
+            // continue pending
             const pendingIds = pendingParcels.map(p => p.id);
 
-            // Transform pending parcels for insertion
+            // transform pending
             const parcelsToInsert = pendingParcels.map((p: any) => ({
                 barcode: p.barcode,
                 tracking_number: p.tracking_number,
@@ -486,7 +486,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
                 updated_at: new Date().toISOString(),
             }));
 
-            // Insert into parcels table
+            // insert parcels
             const { error: insertError } = await supabase
                 .from('parcels')
                 .insert(parcelsToInsert);
@@ -506,14 +506,14 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
                 };
             }
 
-            // Delete received parcels from queue
+            // delete from queue
             const { error: deleteError } = await supabase
                 .from('receiving_queue')
                 .delete()
                 .in('id', pendingIds);
 
             if (deleteError) {
-                // Still return success but with warning
+                // return success warning
                 revalidatePath('/warehousing');
                 return {
                     success: true,
@@ -542,7 +542,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             };
         }
 
-        // All selected are pending - proceed with all
+        // proceed all
         const parcelsToInsert = parcels.map((p: any) => ({
             barcode: p.barcode,
             tracking_number: p.tracking_number,
@@ -559,7 +559,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             updated_at: new Date().toISOString(),
         }));
 
-        // Insert into parcels table
+        // insert parcels
         const { error: insertError } = await supabase
             .from('parcels')
             .insert(parcelsToInsert);
@@ -579,7 +579,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             };
         }
 
-        // Delete received parcels from queue
+        // delete from queue
         const allIds = parcels.map(p => p.id);
         const { error: deleteError } = await supabase
             .from('receiving_queue')
@@ -587,7 +587,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             .in('id', allIds);
 
         if (deleteError) {
-            // Still return success but with warning
+            // return success warning
             revalidatePath('/warehousing');
             return {
                 success: true,
@@ -622,7 +622,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
     }
 }
 
-// ADD MANUAL PARCEL
+// add manual parcel
 
 export async function addManualParcel(data: {
     barcode: string;
@@ -655,7 +655,7 @@ export async function addManualParcel(data: {
         const trimmedCustomerName = data.customer_name ? sanitizeSearch(data.customer_name) : '';
         const trimmedCustomerNumber = data.customer_number ? sanitizeSearch(data.customer_number) : '';
 
-        // Validate barcode
+        // validate barcode
         if (!trimmedBarcode || trimmedBarcode.length < 3 || trimmedBarcode.length > 50) {
             return {
                 success: false,
@@ -664,7 +664,7 @@ export async function addManualParcel(data: {
             };
         }
 
-        // Validate destination
+        // validate destination
         if (!trimmedDestination || trimmedDestination.length < 2) {
             return {
                 success: false,
@@ -673,7 +673,7 @@ export async function addManualParcel(data: {
             };
         }
 
-        // Validate region
+        // validate region
         if (!trimmedRegion || trimmedRegion.length < 2) {
             return {
                 success: false,
@@ -682,7 +682,7 @@ export async function addManualParcel(data: {
             };
         }
 
-        // Validate city
+        // validate city
         if (!trimmedCity || trimmedCity.length < 2) {
             return {
                 success: false,
@@ -691,7 +691,7 @@ export async function addManualParcel(data: {
             };
         }
 
-        // Validate customer number if provided
+        // validate customer
         if (trimmedCustomerNumber && !/^\d+$/.test(trimmedCustomerNumber)) {
             return {
                 success: false,
@@ -708,7 +708,7 @@ export async function addManualParcel(data: {
             };
         }
 
-        // Check for duplicates in queue
+        // check dup queue
         const { data: existingQueue, error: checkQueueError } = await supabase
             .from('receiving_queue')
             .select('barcode')
@@ -731,7 +731,7 @@ export async function addManualParcel(data: {
             };
         }
 
-        // Check for duplicates in parcels
+        // check dup parcels
         const { data: existingParcels, error: checkParcelsError } = await supabase
             .from('parcels')
             .select('barcode')
@@ -756,7 +756,7 @@ export async function addManualParcel(data: {
 
         const trackingNumber = generateTrackingNumber();
 
-        // Get courier name if courier_id is provided
+        // get courier name
         let courierName = data.courier;
         if (data.courier_id) {
             const { data: courier, error: courierError } = await supabase

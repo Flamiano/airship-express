@@ -9,7 +9,7 @@ export async function getLastScan() {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-        //  fetch last scan from server
+        // fetch last scan
         const { data, error } = await supabase
             .from('receiving_queue')
             .select('barcode, status')

@@ -149,7 +149,7 @@ export default function ParcelTrackingMap({
 
     const parcelMarkerRef = useRef<L.Marker>(null);
 
-    // Auto open popup when map mounts
+    // auto open popup
     useEffect(() => {
         const timer = setTimeout(() => {
             if (parcelMarkerRef.current) {
@@ -168,7 +168,7 @@ export default function ParcelTrackingMap({
                 zoomControl={false}
                 className="w-full h-full min-h-[300px] z-0"
             >
-                {/* OpenStreetMap Tile Layer */}
+                {/* tile layer */}
                 <TileLayer
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -176,7 +176,7 @@ export default function ParcelTrackingMap({
 
                 <ZoomControl position="bottomright" />
 
-                {/* Auto Bounds Manager */}
+                {/* bounds manager */}
                 <MapBoundsManager
                     originCoord={originLatLng}
                     destCoord={destLatLng}
@@ -184,7 +184,7 @@ export default function ParcelTrackingMap({
                     route={allRoutePoints}
                 />
 
-                {/* 1. Completed Route Polyline (Solid Pink #EC4899) */}
+                {/* completed route */}
                 {completedRoute.length > 1 && (
                     <Polyline
                         positions={completedRoute}
@@ -198,7 +198,7 @@ export default function ParcelTrackingMap({
                     />
                 )}
 
-                {/* 2. Remaining Route Polyline (Dashed Slate) */}
+                {/* remaining route */}
                 {remainingRoute.length > 1 && (
                     <Polyline
                         positions={remainingRoute}
@@ -213,7 +213,7 @@ export default function ParcelTrackingMap({
                     />
                 )}
 
-                {/* 3. Origin Marker (Airship HQ - Binondo) */}
+                {/* origin marker */}
                 <Marker position={originLatLng} icon={originIcon}>
                     <Popup>
                         <div className="text-xs p-1 space-y-1 font-sans min-w-[170px]">
@@ -229,7 +229,7 @@ export default function ParcelTrackingMap({
                     </Popup>
                 </Marker>
 
-                {/* 4. Destination Marker */}
+                {/* destination marker */}
                 <Marker position={destLatLng} icon={destIcon}>
                     <Popup>
                         <div className="text-xs p-1 space-y-1 font-sans min-w-[170px]">
@@ -245,11 +245,11 @@ export default function ParcelTrackingMap({
                     </Popup>
                 </Marker>
 
-                {/* 5. Custom Parcel Marker at Current Location */}
+                {/* parcel marker */}
                 <Marker ref={parcelMarkerRef} position={currentCoord} icon={parcelIcon} zIndexOffset={1000}>
                     <Popup>
                         <div className="text-xs font-sans space-y-2 p-1 min-w-[220px]">
-                            {/* Header */}
+                            {/* header */}
                             <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
                                 <div className="flex items-center gap-1.5 font-bold text-slate-900">
                                     <span className="w-5 h-5 rounded-lg bg-pink-100 text-pink-600 inline-flex items-center justify-center text-[10px]">
@@ -262,7 +262,7 @@ export default function ParcelTrackingMap({
                                 </span>
                             </div>
 
-                            {/* Details List */}
+                            {/* details */}
                             <div className="space-y-1 text-[11px] text-slate-600">
                                 <div className="flex justify-between">
                                     <span className="text-slate-400 font-medium">Courier:</span>

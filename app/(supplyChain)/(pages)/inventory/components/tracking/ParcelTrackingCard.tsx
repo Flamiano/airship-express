@@ -16,7 +16,7 @@ import {
 import { getStatusBadge, getStatusLabel, getStatusTone } from '../../utils/helpers';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 
-// Dynamically import ParcelTrackingMap with SSR disabled to prevent browser API window/Leaflet errors
+// import map component without ssr
 const DynamicParcelTrackingMap = dynamic(
     () => import('./ParcelTrackingMap'),
     {
@@ -65,7 +65,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
 
     const courierName = parcel.courier || 'Airship Express';
 
-    // Calculate expected delivery date (2 business days from creation or formatted)
+    // calculate expected delivery date
     const expectedDelivery = useMemo(() => {
         const base = new Date(parcel.created_at || Date.now());
         const exp = new Date(base.getTime() + 2 * 24 * 60 * 60 * 1000);
@@ -76,7 +76,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
         });
     }, [parcel.created_at]);
 
-    // Fetch OSRM Road geometry on mount/change
+    // fetch route geometry
     useEffect(() => {
         let isMounted = true;
         setIsLoadingRoute(true);
@@ -99,7 +99,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
         };
     }, [origin, destination]);
 
-    // Split road into completed and remaining polylines
+    // split route lines
     const { completed, remaining, currentCoord } = useMemo(() => {
         return splitRouteByProgress(routeCoordinates, progressPercentage);
     }, [routeCoordinates, progressPercentage]);
@@ -118,7 +118,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-5 space-y-4 transition-all">
-            {/* Header: "Parcel Tracking" & Status */}
+            {/* header */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
@@ -133,13 +133,13 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Courier Badge */}
+                    {/* courier badge */}
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                         <i className="fas fa-truck text-[11px] text-pink-500"></i>
                         <span>{courierName}</span>
                     </span>
 
-                    {/* Status Badge */}
+                    {/* status badge */}
                     <StatusBadge
                         tone={getStatusTone(parcel.status)}
                         size="xs"
@@ -150,7 +150,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                 </div>
             </div>
 
-            {/* Interactive Leaflet Map Container */}
+            {/* map container */}
             <div className="h-[280px] sm:h-[320px] w-full rounded-xl overflow-hidden relative">
                 {isLoadingRoute && (
                     <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xs z-10 flex items-center justify-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
@@ -173,7 +173,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                 />
             </div>
 
-            {/* Visual Delivery Progress Indicator: Manila ━━━━━━━ 📦 ─ ─ ─ ─ ─ Quezon City */}
+            {/* progress indicator */}
             <div className="bg-slate-50/70 dark:bg-slate-950/40 rounded-xl p-3 border border-slate-100 dark:border-slate-800/80 space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                     <div className="flex items-center gap-1 text-slate-700 dark:text-slate-300 truncate max-w-[120px]">
@@ -181,7 +181,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                         <span className="truncate">Manila (Binondo)</span>
                     </div>
 
-                    {/* Mid visual representation */}
+                    {/* mid visual */}
                     <div className="flex-1 mx-3 flex items-center justify-center relative">
                         <div className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-full relative overflow-hidden">
                             <div
@@ -207,7 +207,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                     </div>
                 </div>
 
-                {/* Progress Stats Summary */}
+                {/* stats summary */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/60 text-xs">
                     <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                         <span className="font-semibold text-slate-800 dark:text-slate-200">Current:</span>

@@ -209,26 +209,26 @@ export default function IncomingPanel() {
         setMounted(true);
     }, []);
 
-    //  Handle page change
+    // page change
     const handlePageChange = useCallback((newPage: number) => {
         if (newPage >= 1 && newPage <= totalPages) {
             setPage(newPage);
         }
     }, [totalPages]);
 
-    //  Handle filter change - reset to page 1
+    // filter change
     const handleFilterChange = useCallback((courier: string) => {
         setFilter(courier);
         setPage(1);
     }, []);
 
-    //  Handle search - reset to page 1
+    // search
     const handleSearch = useCallback((searchTerm: string) => {
         setSearch(searchTerm);
         setPage(1);
     }, []);
 
-    //  Initial load
+    // initial load
     useEffect(() => {
         isMounted.current = true;
         fetchParcelsData(true);

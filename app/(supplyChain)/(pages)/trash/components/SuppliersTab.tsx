@@ -313,7 +313,7 @@ export function SuppliersTab() {
 
     return (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
-            {/* Stats */}
+            {/* stats */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-handshake"
@@ -376,7 +376,7 @@ export function SuppliersTab() {
                 />
             </div>
 
-            {/* Search & Filter */}
+            {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-3.5">
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="relative flex-1 min-w-[220px]">
@@ -419,7 +419,7 @@ export function SuppliersTab() {
                 </div>
             </div>
 
-            {/* Bulk Actions */}
+            {/* actions */}
             <BulkActionsToolbar
                 selectedCount={selectedSupplierIds.size}
                 itemLabel="suppliers"
@@ -446,7 +446,7 @@ export function SuppliersTab() {
                 onClear={() => setSelectedSupplierIds(new Set())}
             />
 
-            {/* Table */}
+            {/* table */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden hover:shadow-md transition-shadow duration-200">
                 <div className="overflow-x-auto relative">
                     {supplierLoading && <TableContentLoader />}
@@ -590,7 +590,7 @@ export function SuppliersTab() {
                     </table>
                 </div>
 
-                {/* Pagination */}
+                {/* pagination */}
                 <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/40 dark:bg-slate-900/40">
                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                         Showing <span className="font-semibold text-slate-700 dark:text-slate-300">

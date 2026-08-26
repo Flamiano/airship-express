@@ -5,9 +5,7 @@ import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
 import { headers } from 'next/headers';
 
-// ============================================================
-// TYPES
-// ============================================================
+// types
 interface PurchaseRequestItem {
     name: string;
     quantity: number;
@@ -60,34 +58,7 @@ interface Supplier {
     is_active: boolean;
 }
 
-// // ============================================================
-// // RATE LIMITING (Simple in-memory)
-// // ============================================================
-// const rateLimiter = new Map<string, { count: number; resetTime: number }>();
-
-// function isRateLimited(key: string): boolean {
-//     const now = Date.now();
-//     const userRate = rateLimiter.get(key);
-
-//     if (userRate) {
-//         if (now < userRate.resetTime) {
-//             if (userRate.count >= 10) {
-//                 return true;
-//             }
-//             userRate.count++;
-//         } else {
-//             rateLimiter.set(key, { count: 1, resetTime: now + 60000 });
-//         }
-//     } else {
-//         rateLimiter.set(key, { count: 1, resetTime: now + 60000 });
-//     }
-
-//     return false;
-// }
-
-// ============================================================
-// GENERATE REQUEST NUMBER
-// ============================================================
+// generate request number
 function generateRequestNumber(): string {
     const date = new Date();
     const year = date.getFullYear();
@@ -97,20 +68,13 @@ function generateRequestNumber(): string {
     return `PR-${year}${month}${day}-${random}`;
 }
 
-// ============================================================
-// GET - Fetch purchase requests with pagination & filtering
-// ============================================================
+// get
 export async function GET(request: NextRequest) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-        // if (isRateLimited(`${ip}:procurement_get`)) {
-        //     return NextResponse.json(
-        //         { success: false, error: 'Too many requests. Please wait.' },
-        //         { status: 429 }
-        //     );
-        // }
+
 
         const searchParams = request.nextUrl.searchParams;
         const page = parseInt(searchParams.get('page') || '1');
@@ -120,14 +84,12 @@ export async function GET(request: NextRequest) {
         const includeOrders = searchParams.get('includeOrders') === 'true';
         const includeSuppliers = searchParams.get('includeSuppliers') === 'true';
 
-        // ============================================================
-        // BUILD QUERY
-        // ============================================================
+        // build query
         let query = supabase
             .from('purchase_requests')
             .select('*', { count: 'exact' });
 
-        // Apply search filter
+        // search filter
         if (search) {
             query = query.or(
                 `request_number.ilike.%${search}%,` +
@@ -137,18 +99,18 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Apply tab filter
+        // tab filter
         if (tab === 'pending') {
             query = query.eq('status', 'Pending');
         } else if (tab === 'approved') {
             query = query.in('status', ['Approved', 'Completed']);
         }
 
-        // Get total count first
+        // get total
         const { count: totalCount, error: countError } = await query;
         if (countError) throw countError;
 
-        // Apply pagination
+        // pagination
         const from = (page - 1) * limit;
         const to = from + limit - 1;
 
@@ -160,7 +122,7 @@ export async function GET(request: NextRequest) {
 
         if (requestsError) {
             if (requestsError.code === 'PGRST103') {
-                // Range error - return empty array with correct pagination
+                // range error
                 return NextResponse.json({
                     success: true,
                     data: {
@@ -175,9 +137,7 @@ export async function GET(request: NextRequest) {
             throw requestsError;
         }
 
-        // ============================================================
-        // TRANSFORM REQUESTS
-        // ============================================================
+        // transform
         const transformedRequests: PurchaseRequest[] = (requests || []).map((req: any) => ({
             id: req.id,
             request_number: req.request_number || '',
@@ -197,9 +157,7 @@ export async function GET(request: NextRequest) {
             updated_at: req.updated_at,
         }));
 
-        // ============================================================
-        // PREPARE RESPONSE DATA
-        // ============================================================
+        // prepare response
         const responseData: any = {
             requests: transformedRequests,
             totalItems: totalCount || 0,
@@ -208,7 +166,7 @@ export async function GET(request: NextRequest) {
             totalPages: Math.ceil((totalCount || 0) / limit)
         };
 
-        // Include purchase orders if requested
+        // include pos
         if (includeOrders) {
             const { data: orders, error: ordersError } = await supabase
                 .from('purchase_orders')
@@ -220,7 +178,7 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // Include suppliers if requested
+        // include suppliers
         if (includeSuppliers) {
             const { data: suppliers, error: suppliersError } = await supabase
                 .from('suppliers')
@@ -233,9 +191,7 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // ============================================================
-        // GET COUNTS
-        // ============================================================
+        // get counts
         try {
             const { count: allCount } = await supabase
                 .from('purchase_requests')
@@ -274,24 +230,17 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// ============================================================
-// POST - Create a new purchase request
-// ============================================================
+// post
 export async function POST(request: NextRequest) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-        // if (isRateLimited(`${ip}:procurement_post`)) {
-        //     return NextResponse.json(
-        //         { success: false, error: 'Too many requests. Please wait.' },
-        //         { status: 429 }
-        //     );
-        // }
+
 
         const body = await request.json();
 
-        // Validate required fields
+        // validate
         const {
             type,
             description,
@@ -314,7 +263,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Validate items
+        // validate items
         if (!items || items.length === 0) {
             return NextResponse.json(
                 { success: false, error: 'At least one item is required' },
@@ -333,7 +282,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Verify supplier exists
+        // verify supplier
         const { data: supplier, error: supplierError } = await supabase
             .from('suppliers')
             .select('id, name')
@@ -347,7 +296,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Sanitize input
+        // sanitize
         const sanitizedRequestedBy = sanitizeText(requested_by);
         const sanitizedReason = sanitizeText(reason);
         const sanitizedItems = items.map((item: PurchaseRequestItem) => ({
@@ -355,10 +304,10 @@ export async function POST(request: NextRequest) {
             quantity: sanitizeNumber(item.quantity),
         }));
 
-        // Generate request number
+        // generate number
         const requestNumber = generateRequestNumber();
 
-        // Insert into database
+        // insert
         const { data, error } = await supabase
             .from('purchase_requests')
             .insert({
@@ -404,20 +353,13 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// ============================================================
-// PUT - Update an existing purchase request
-// ============================================================
+// put
 export async function PUT(request: NextRequest) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-        // if (isRateLimited(`${ip}:procurement_put`)) {
-        //     return NextResponse.json(
-        //         { success: false, error: 'Too many requests. Please wait.' },
-        //         { status: 429 }
-        //     );
-        // }
+
 
         const body = await request.json();
         const { id, ...updateData } = body;
@@ -429,7 +371,7 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        // Verify request exists
+        // verify request
         const { data: existing, error: checkError } = await supabase
             .from('purchase_requests')
             .select('id, status')
@@ -443,7 +385,7 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        // Only allow editing of pending requests
+        // pending only
         if (existing.status !== 'Pending') {
             return NextResponse.json(
                 { success: false, error: 'Only pending requests can be edited' },
@@ -451,7 +393,7 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        // Sanitize update data
+        // sanitize
         const sanitizedUpdate: any = { updated_at: new Date().toISOString() };
 
         if (updateData.requested_by) sanitizedUpdate.requested_by = sanitizeText(updateData.requested_by);
@@ -460,7 +402,7 @@ export async function PUT(request: NextRequest) {
         if (updateData.description) sanitizedUpdate.description = updateData.description;
         if (updateData.department) sanitizedUpdate.department = updateData.department;
         if (updateData.supplier_id) {
-            // Verify supplier exists
+            // verify supplier
             const { data: supplier, error: supplierError } = await supabase
                 .from('suppliers')
                 .select('id, name')
@@ -497,7 +439,7 @@ export async function PUT(request: NextRequest) {
             }));
         }
 
-        // Update in database
+        // update
         const { data, error } = await supabase
             .from('purchase_requests')
             .update(sanitizedUpdate)
@@ -528,28 +470,21 @@ export async function PUT(request: NextRequest) {
     }
 }
 
-// ============================================================
-// DELETE - Delete one or multiple purchase requests
-// ============================================================
+// delete
 export async function DELETE(request: NextRequest) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-        // if (isRateLimited(`${ip}:procurement_delete`)) {
-        //     return NextResponse.json(
-        //         { success: false, error: 'Too many requests. Please wait.' },
-        //         { status: 429 }
-        //     );
-        // }
+
 
         const searchParams = request.nextUrl.searchParams;
         const id = searchParams.get('id');
         const ids = searchParams.get('ids');
 
-        // Handle single delete
+        // single delete
         if (id) {
-            // Verify request exists and is pending
+            // verify request
             const { data: existing, error: checkError } = await supabase
                 .from('purchase_requests')
                 .select('id, status')
@@ -590,7 +525,7 @@ export async function DELETE(request: NextRequest) {
             });
         }
 
-        // Handle bulk delete
+        // bulk delete
         if (ids) {
             let idsArray: string[];
             try {
@@ -606,7 +541,7 @@ export async function DELETE(request: NextRequest) {
                 );
             }
 
-            // Verify all requests exist and are pending
+            // verify requests
             const { data: existing, error: checkError } = await supabase
                 .from('purchase_requests')
                 .select('id, status')
@@ -667,20 +602,13 @@ export async function DELETE(request: NextRequest) {
     }
 }
 
-// ============================================================
-// PATCH - Approve or reject a purchase request
-// ============================================================
+// patch
 export async function PATCH(request: NextRequest) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-        // if (isRateLimited(`${ip}:procurement_patch`)) {
-        //     return NextResponse.json(
-        //         { success: false, error: 'Too many requests. Please wait.' },
-        //         { status: 429 }
-        //     );
-        // }
+
 
         const body = await request.json();
         const { id, action } = body;
@@ -699,7 +627,7 @@ export async function PATCH(request: NextRequest) {
             );
         }
 
-        // Verify request exists and is pending
+        // verify request
         const { data: existing, error: checkError } = await supabase
             .from('purchase_requests')
             .select('id, status')

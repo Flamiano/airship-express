@@ -29,11 +29,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get the authenticated user from the session
+        // get auth user
         let senderName = sender_name || "Procurement Team";
         let senderPosition = sender_position || "Procurement Manager";
 
-        // Try to get user from session if not provided
+        // get user
         if (!sender_name || !sender_position) {
             try {
                 const cookieStore = await cookies();
@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
                                 return cookieStore.get(name)?.value;
                             },
                             set(name: string, value: string, options: any) {
-                                // Not setting cookies in API route
+                                // no cookies
                             },
                             remove(name: string, options: any) {
-                                // Not removing cookies in API route
+                                // no cookies
                             },
                         },
                     }

@@ -54,7 +54,7 @@ export function DocumentsTab() {
 
     const debouncedDocSearchTerm = useDebounce(docSearchTerm, 300);
 
-    // Fetch archived documents
+    // fetch docs
     const fetchArchivedDocuments = useCallback(async () => {
         setDocsLoading(true);
         try {
@@ -99,7 +99,7 @@ export function DocumentsTab() {
         }
     }, []);
 
-    // Restore document
+    // restore doc
     const handleRestoreDocument = async (doc: ArchivedDocument) => {
         const confirmed = await confirm({
             title: 'Restore Document',
@@ -160,7 +160,7 @@ export function DocumentsTab() {
         }
     };
 
-    // Delete document permanently
+    // delete doc
     const handleDeleteDocumentPermanently = async (doc: ArchivedDocument) => {
         const confirmed = await confirm({
             title: 'Permanent Delete',
@@ -209,7 +209,7 @@ export function DocumentsTab() {
         }
     };
 
-    // Bulk operations
+    // bulk ops
     const handleBulkRestoreDocuments = async () => {
         if (selectedDocIds.size === 0) return;
 
@@ -325,7 +325,7 @@ export function DocumentsTab() {
         }
     };
 
-    // Utility functions
+    // utils
     const formatDate = (dateString: string) => {
         if (!isMounted) return '';
         return new Date(dateString).toLocaleDateString('en-US', {
@@ -349,7 +349,7 @@ export function DocumentsTab() {
         setDocSearchTerm(sanitizeSearch(e.target.value));
     };
 
-    // Filtered data
+    // filtered
     const filteredDocuments = useMemo(() => {
         const search = sanitizeSearch(debouncedDocSearchTerm);
         return archivedDocuments.filter(doc => {
@@ -362,7 +362,7 @@ export function DocumentsTab() {
         });
     }, [archivedDocuments, debouncedDocSearchTerm, docTypeFilter]);
 
-    // Get paginated data
+    // paginated
     const getPaginatedData = <T,>(data: T[], page: number): T[] => {
         const startIndex = (page - 1) * ITEMS_PER_PAGE;
         const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -371,13 +371,13 @@ export function DocumentsTab() {
 
     const paginatedDocuments = getPaginatedData(filteredDocuments, docPage);
 
-    // Document types for filter
+    // doc types
     const docTypes = useMemo(() => ['all', ...Array.from(new Set(archivedDocuments.map(doc => doc.document_type)))], [archivedDocuments]);
 
-    // Selection state
+    // selection
     const isAllDocsSelected = filteredDocuments.length > 0 && selectedDocIds.size === filteredDocuments.length;
 
-    // Update total pages
+    // total pages
     useEffect(() => {
         setDocTotalPages(Math.max(1, Math.ceil(filteredDocuments.length / ITEMS_PER_PAGE)));
         if (docPage > Math.ceil(filteredDocuments.length / ITEMS_PER_PAGE)) {
@@ -392,7 +392,7 @@ export function DocumentsTab() {
 
     return (
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
-            {/* Stats */}
+            {/* stats */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-file-archive"
@@ -455,7 +455,7 @@ export function DocumentsTab() {
                 />
             </div>
 
-            {/* Search & Filter */}
+            {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="relative flex-1 min-w-[220px]">
@@ -498,7 +498,7 @@ export function DocumentsTab() {
                 </div>
             </div>
 
-            {/* Bulk Actions */}
+            {/* actions */}
             <BulkActionsToolbar
                 selectedCount={selectedDocIds.size}
                 itemLabel="documents"
@@ -525,7 +525,7 @@ export function DocumentsTab() {
                 onClear={() => setSelectedDocIds(new Set())}
             />
 
-            {/* Table */}
+            {/* table */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 overflow-hidden hover:shadow-md transition-shadow duration-200">
                 <div className="overflow-x-auto relative">
                     {docsLoading && <TableContentLoader />}
@@ -698,7 +698,7 @@ export function DocumentsTab() {
                     </table>
                 </div>
 
-                {/* Pagination */}
+                {/* pagination */}
                 <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/40 dark:bg-slate-900/40">
                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                         Showing <span className="font-semibold text-slate-700 dark:text-slate-300">

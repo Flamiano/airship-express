@@ -68,7 +68,7 @@ export default function TabsWrapper({ children }: TabsWrapperProps) {
         };
     }, []);
 
-    //  render yung children with hidden class based on data-panel
+    // render children
     const renderChildren = () => {
         return Children.map(children, (child) => {
             if (isValidElement<PanelProps>(child)) {

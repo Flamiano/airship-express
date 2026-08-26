@@ -102,7 +102,7 @@ export function useExecutiveData() {
     const [isLoadedFromCache, setIsLoadedFromCache] = useState(false);
     const isMounted = useRef(true);
 
-    // Hydrate synchronously from sessionStorage cache
+    // hydrate from cache
     useEffect(() => {
         isMounted.current = true;
         try {
@@ -120,7 +120,7 @@ export function useExecutiveData() {
         }
     }, []);
 
-    // Query strictly real tables in tables.sql
+    // fetch data
     const fetchData = useCallback(async (isManualRefresh = false) => {
         if (isManualRefresh) {
             setIsRefreshing(true);
@@ -189,7 +189,7 @@ export function useExecutiveData() {
             const couriers = couriersRes.data || [];
             const suppliers = suppliersRes.data || [];
 
-            // 1. Calculate Real Daily Parcel Trends for last 7 days
+            // daily parcel trends 7d
             const dailyTrend: DailyTrendPoint[] = [];
             const now = new Date();
             for (let i = 6; i >= 0; i--) {
@@ -209,7 +209,7 @@ export function useExecutiveData() {
                 });
             }
 
-            // 2. Real Today vs Yesterday Parcels
+            // today vs yesterday
             const todayStr = now.toISOString().split('T')[0];
             const yesterdayDate = new Date(now);
             yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -226,7 +226,7 @@ export function useExecutiveData() {
                 parcelsChangePct = `+100% vs yesterday`;
             }
 
-            // 3. Ready for Dispatch & Dispatched MTD
+            // dispatch stats mtd
             const readyParcels = parcels.filter(p => p.status === 'ready' || p.status === 'ready_for_pickup' || p.status === 'sorting');
             const readyPctVal = parcels.length > 0 ? ((readyParcels.length / parcels.length) * 100).toFixed(1) : "0.0";
 
@@ -249,7 +249,7 @@ export function useExecutiveData() {
                 ontimeRate: `${ontimeRateVal}%`,
             };
 
-            // 4. Real Operations Summary
+            // operations summary
             const receivingQueuePending = receivingQueue.filter(q => q.status === 'pending').length;
             const sortingParcels = parcels.filter(p => p.status === 'sorting').length;
             const deliveredParcels = parcels.filter(p => p.status === 'delivered').length;
@@ -262,7 +262,7 @@ export function useExecutiveData() {
                 anomaliesCount,
             };
 
-            // 5. Real Procurement Summary
+            // procurement summary
             const openPOs = purchaseOrders.filter(po => po.status !== 'Cancelled' && po.status !== 'Delivered').length;
             const pendingApprovals = procurement.filter(pr => pr.status === 'Pending').length;
             const mtdSpend = purchaseOrders
@@ -281,7 +281,7 @@ export function useExecutiveData() {
                 budgetUtilizationPct,
             };
 
-            // 6. Real Breakdown Distributions
+            // breakdowns
             const courierBreakdown: Record<string, number> = {};
             parcels.forEach(p => {
                 const c = (p.courier || 'Unassigned').trim();
@@ -318,7 +318,7 @@ export function useExecutiveData() {
                 supplierCategoryBreakdown[cat] = (supplierCategoryBreakdown[cat] || 0) + 1;
             });
 
-            // 7. Real Recent Transactions from database
+            // recent transactions
             const recentTransactions: ExecutiveTransaction[] = parcels.slice(0, 6).map((p) => ({
                 id: p.tracking_number || p.barcode || String(p.id),
                 consignee: p.destination || p.sender_name || "Database Record",
@@ -328,7 +328,7 @@ export function useExecutiveData() {
                 received: p.created_at ? new Date(p.created_at).toLocaleString('sv-SE').slice(0, 16) : "-",
             }));
 
-            // 8. Real Automated Insights
+            // automated insights
             const insights: ExecutiveInsight[] = [];
             if (parcelsTodayCount > 0 || parcelsYesterdayCount > 0) {
                 insights.push({
@@ -386,7 +386,7 @@ export function useExecutiveData() {
                 actionLink: '/warehousing?tab=sorting',
             });
 
-            // 9. Real Tab KPIs
+            // tab kpis
             const activeCouriersCount = Object.keys(courierBreakdown).length;
             const kpis: ExecutiveKPI[] = [
                 {

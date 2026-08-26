@@ -30,7 +30,7 @@ async function getAnofox() {
     return anofoxLib;
 }
 
-// Process STRICTLY from real supabase parcels table
+// process supabase parcels
 function processDailyParcelData(parcels: any[]) {
     const courierCounts: Record<string, number> = {};
     const statusCounts: Record<string, number> = {};
@@ -44,14 +44,14 @@ function processDailyParcelData(parcels: any[]) {
     for (let h = 0; h < 24; h++) hourMap[h] = 0;
 
     parcels.forEach((p) => {
-        // 1. Courier distribution (for Pie Chart)
+        // courier distribution
         const courier = (p.courier || 'Unknown').trim();
         courierCounts[courier] = (courierCounts[courier] || 0) + 1;
 
-        // 2. Status distribution
+        // status distribution
         const status = (p.status || 'Unknown').trim();
 
-        // 3. Temporal analysis
+        // temporal analysis
         if (p.created_at) {
             const d = new Date(p.created_at);
             const dateStr = d.toISOString().split('T')[0];
@@ -66,7 +66,7 @@ function processDailyParcelData(parcels: any[]) {
         }
     });
 
-    // Determine Busiest Month
+    // busiest month
     let busiestMonth = { month: 'N/A', count: 0 };
     monthMap.forEach((cnt, mo) => {
         if (cnt > busiestMonth.count) {
@@ -79,7 +79,7 @@ function processDailyParcelData(parcels: any[]) {
         }
     });
 
-    // Determine Busiest Day of Week
+    // busiest day
     let busiestDay = { day: 'N/A', count: 0 };
     Object.entries(dayOfWeekMap).forEach(([day, cnt]) => {
         if (cnt > busiestDay.count) {
@@ -87,7 +87,7 @@ function processDailyParcelData(parcels: any[]) {
         }
     });
 
-    // Determine Busiest Time of Day (Hour Window)
+    // busiest time
     let busiestHour = { timeRange: 'N/A', count: 0 };
     Object.entries(hourMap).forEach(([hrStr, cnt]) => {
         const hr = parseInt(hrStr);
@@ -104,7 +104,7 @@ function processDailyParcelData(parcels: any[]) {
         }
     });
 
-    // Continuous daily timeline
+    // daily timeline
     let sortedDates: string[] = [];
     let dailyCounts: number[] = [];
 
@@ -187,7 +187,7 @@ function processDailyParcelData(parcels: any[]) {
     };
 }
 
-// Process purchase orders strictly from supabase
+// process supabase pos
 function processMonthlyExpenseData(purchaseOrders: any[]) {
     const monthlyMap = new Map<string, number>();
     let totalExpenseSum = 0;
@@ -216,7 +216,7 @@ export async function GET() {
     try {
         const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
 
-        // 1. Fetch strictly from Supabase Database
+        // fetch database
         const [{ data: parcels, error: parcelErr }, { data: expenses, error: expenseErr }] = await Promise.all([
             supabase
                 .from('parcels')
@@ -241,21 +241,21 @@ export async function GET() {
         const parcelList = parcels || [];
         const expenseList = expenses || [];
         
-        // Strictly filter to Paid POs with status 'Confirmed' or 'Delivered'
+        // filter paid pos
         const validStatuses = ['Confirmed', 'Delivered'];
         const qualifiedExpenseList = expenseList.filter(po => 
             po.paid === true && validStatuses.includes(po.status)
         );
 
-        // 2. Aggregate raw database records
+        // aggregate records
         const parcelAgg = processDailyParcelData(parcelList);
         const expenseAgg = processMonthlyExpenseData(qualifiedExpenseList);
 
-        // 3. Load @sipemu/anofox-forecast
+        // load forecast
         const anofox = await getAnofox();
         const { TimeSeries, HoltWintersForecaster, AutoThetaForecaster, NaiveForecaster, SESForecaster } = anofox;
 
-        // 4. Forecast Parcels (Next 7 Days with 95% CI)
+        // forecast parcels
         let parcelPredictions: number[] = [];
         let parcelLower: number[] = [];
         let parcelUpper: number[] = [];
@@ -296,7 +296,7 @@ export async function GET() {
             }
         }
 
-        // Generate the next 7 future dates
+        // future dates
         const lastDateStr = parcelAgg.dates[parcelAgg.dates.length - 1] || new Date().toISOString().split('T')[0];
         const next7Days: string[] = [];
         const baseDate = new Date(lastDateStr);
@@ -307,7 +307,7 @@ export async function GET() {
 
         const totalNextWeek = parcelPredictions.reduce((a: number, b: number) => a + b, 0);
 
-        // 5. Forecast Monthly Expense (Next Month with 90% CI)
+        // forecast expense
         let expensePrediction = 0;
         let expenseLower = 0;
         let expenseUpper = 0;
@@ -332,7 +332,7 @@ export async function GET() {
             expenseUpper = Math.max(0, Math.round(expensePrediction * 1.15));
         }
 
-        // Dynamically compute Parcel confidence level
+        // parcel confidence
         let parcelConfidence = "0%";
         let parcelAlgorithmUsed = "No Data";
         let parcelExplanation = "No parcel records found in Supabase. Register parcel intakes to enable statistical time-series forecasting.";
@@ -355,7 +355,7 @@ export async function GET() {
             parcelExplanation = `Insufficient sample size (${parcelAgg.dates.length} days). Low 20% confidence estimate.`;
         }
 
-        // Dynamically compute Expense confidence level
+        // expense confidence
         let expenseConfidence = "0%";
         let expenseAlgorithmUsed = "No Data";
         let expenseExplanation = "No qualifying paid purchase orders (Confirmed/Delivered) found. Mark purchase orders as paid in Procurement to generate outlay predictions.";

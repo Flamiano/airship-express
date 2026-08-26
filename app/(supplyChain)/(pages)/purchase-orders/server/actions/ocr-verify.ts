@@ -76,7 +76,7 @@ function isVendorMatching(extracted?: string, expected?: string): boolean {
     if (ext === exp) return true;
     if (ext.includes(exp) || exp.includes(ext)) return true;
 
-    // Check individual significant word tokens (>= 4 chars)
+    // check tokens
     const extWords = (extracted || '').toLowerCase().split(/\s+/).filter(w => w.length >= 4);
     const expWords = (expected || '').toLowerCase().split(/\s+/).filter(w => w.length >= 4);
     return extWords.some(w => expWords.includes(w));
@@ -103,7 +103,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             return { success: false, error: 'Missing purchase order ID or file data', status: 400 };
         }
 
-        // 1. Fetch the Purchase Order record
+        // fetch po
         const { data: po, error: poError } = await supabase
             .from('purchase_orders')
             .select('*')
@@ -114,7 +114,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             return { success: false, error: 'Purchase Order not found', status: 404 };
         }
 
-        // 2. Resolve an authentic User UUID from public.users table
+        // resolve user
         let validUserUUID: string | null = null;
 
         if (userEmail) {
@@ -132,11 +132,11 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             if (fallbackUser?.id) validUserUUID = fallbackUser.id;
         }
 
-        // 3. Upload file buffer to Supabase Storage ('documents' bucket)
+        // upload file
         const fileExt = fileName.split('.').pop() || 'png';
         const storagePath = `documents/${po.po_number || po_id}_${Date.now()}.${fileExt}`;
         
-        // Strip data:image/...;base64, prefix if present
+        // strip base64 prefix
         const pureBase64 = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
         const fileBuffer = Buffer.from(pureBase64, 'base64');
 
@@ -156,7 +156,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             .getPublicUrl(storagePath);
         const uploadedFileUrl = publicUrlData?.publicUrl || storagePath;
 
-        // 4. Insert Initial pending record in `document_verifications`
+        // insert verification
         let dvRecord: any = null;
         let dvInsertError: any = null;
 
@@ -178,7 +178,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             console.error('First DV insert error:', err1);
             dvInsertError = err1;
 
-            // Fallback: try fetching any valid user id from users table
+            // fallback user
             const { data: altUser } = await supabase.from('users').select('id').limit(1).maybeSingle();
             if (altUser?.id && altUser.id !== validUserUUID) {
                 const { data: secondTry, error: err2 } = await supabase
@@ -213,7 +213,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
 
         const dvId = dvRecord.id;
 
-        // 4b. Insert into `public.documents` table immediately so the file is recorded
+        // insert document
         const sanitizedFileName = (fileName || `receipt_${po.po_number || 'po'}.png`).slice(0, 250);
         const sanitizedTitle = `Receipt - ${po.po_number || po.supplier_name}`.slice(0, 250);
         const sanitizedType = (fileType || fileExt || 'image/png').slice(0, 48);
@@ -274,7 +274,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             }
         }
 
-        // Link document_id to document_verifications
+        // link document
         if (newDocId) {
             await supabase
                 .from('document_verifications')
@@ -282,7 +282,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
                 .eq('id', dvId);
         }
 
-        // 5. OCR with Gemini using strict JSON schema
+        // ocr gemini
         let extracted: ExtractedReceiptJSON = {
             vendor_name: '',
             total_amount: 0,
@@ -367,13 +367,13 @@ Return ONLY a valid JSON object matching the following structure without any mar
             }
         }
 
-        // Store raw extracted JSON in document_verifications
+        // store json
         await supabase
             .from('document_verifications')
             .update({ extracted_json: extracted })
             .eq('id', dvId);
 
-        // 6. Compare Extracted JSON vs purchase_orders record
+        // compare json
         const poItems = Array.isArray(po.items) ? po.items : [];
         const vendorMatched = isVendorMatching(extracted.vendor_name, po.supplier_name);
         const amountDiff = Math.abs((Number(extracted.total_amount) || 0) - (Number(po.total_amount) || 0));
@@ -413,10 +413,10 @@ Return ONLY a valid JSON object matching the following structure without any mar
             all_matched: allMatched,
         };
 
-        // 7. Handle Outcomes
+        // outcomes
         if (allMatched) {
-            // --- 4.5 ON MATCH ---
-            // A. Update documents notes
+            // on match
+            // update notes
             if (newDocId) {
                 await supabase
                     .from('documents')
@@ -424,7 +424,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                     .eq('id', newDocId);
             }
 
-            // B. Update document_verifications
+            // update verifications
             await supabase
                 .from('document_verifications')
                 .update({
@@ -436,7 +436,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                 })
                 .eq('id', dvId);
 
-            // C. Update purchase_orders (paid = true)
+            // update po
             await supabase
                 .from('purchase_orders')
                 .update({
@@ -447,7 +447,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                 })
                 .eq('id', po.id);
 
-            // D. Emit Notification (ocr_complete) & Log Activity History
+            // emit notification
             try {
                 await supabase.from('activity_history').insert({
                     action_type: 'upload',
@@ -492,8 +492,8 @@ Return ONLY a valid JSON object matching the following structure without any mar
                 comparedFields,
             };
         } else {
-            // --- 4.6 ON MISMATCH ---
-            // Update document_verifications and document notes
+            // on mismatch
+            // update verifications and notes
             if (newDocId) {
                 await supabase
                     .from('documents')
@@ -510,7 +510,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                 })
                 .eq('id', dvId);
 
-            // Emit Mismatch Notification
+            // emit notification
             try {
                 await supabase.from('notifications').insert({
                     creator_name: 'OCR Verification System',
@@ -559,7 +559,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             reason = 'Authorized administrative override',
         } = input;
 
-        // Role Authorization Guard: Only Admin or Manager permitted
+        // auth guard
         const isAdminOrManager = userRole === 'Admin' || userRole === 'Manager';
         if (!isAdminOrManager) {
             return {
@@ -569,7 +569,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             };
         }
 
-        // Fetch verification record and PO record
+        // fetch records
         const { data: dv, error: dvErr } = await supabase
             .from('document_verifications')
             .select('*')
@@ -591,7 +591,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             return { success: false, error: 'Purchase Order not found', status: 404 };
         }
 
-        // 2. Resolve an authentic User UUID from public.users
+        // resolve user
         let validUserUUID: string | null = null;
 
         if (userEmail) {
@@ -609,7 +609,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             if (anyUser?.id) validUserUUID = anyUser.id;
         }
 
-        // 1. Insert into documents with force_inserted_by
+        // insert document
         const fileName = `Receipt_${po.po_number || 'PO'}.png`;
         let newDocId: string | null = null;
 
@@ -667,7 +667,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             }
         }
 
-        // 2. Update document_verifications
+        // update verifications
         await supabase
             .from('document_verifications')
             .update({
@@ -678,7 +678,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             })
             .eq('id', dv.id);
 
-        // 3. Update purchase_orders (paid = true)
+        // update po
         await supabase
             .from('purchase_orders')
             .update({
@@ -689,7 +689,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             })
             .eq('id', po.id);
 
-        // 4. Emit Audit Notification & Log Activity History
+        // emit notification
         try {
             await supabase.from('activity_history').insert({
                 action_type: 'upload',

@@ -76,13 +76,13 @@ export function InventoryTab({
     const allSelected = items.length > 0 && selectedIds.size === items.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < items.length;
 
-    // Calculate the correct range display
+    // calculate range
     const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
     const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm dark:shadow-slate-950/50 overflow-hidden transition-colors flex flex-col">
-            {/* Filter Bar - Stays fixed */}
+            {/* filter bar */}
             <div className="flex-shrink-0 p-4 border-b border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center gap-3 bg-slate-50/60 dark:bg-slate-900/40 backdrop-blur-md">
                 <div className="relative flex-1 min-w-[220px] max-w-xs group">
                     <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-pink-500 text-xs pointer-events-none transition-colors"></i>
@@ -170,7 +170,7 @@ export function InventoryTab({
                 )}
             </div>
 
-            {/* Scrollable Table Container */}
+            {/* table container */}
             <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[620px] relative">
                 {isLoading && <TableContentLoader />}
 
@@ -234,7 +234,7 @@ export function InventoryTab({
                                             : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
                                             }`}
                                     >
-                                        {/* Checkbox */}
+                                        {/* checkbox */}
                                         <td data-label="Select" className="px-3.5 py-3 text-center">
                                             <input
                                                 type="checkbox"
@@ -245,12 +245,12 @@ export function InventoryTab({
                                             />
                                         </td>
 
-                                        {/* Row Index */}
+                                        {/* row index */}
                                         <td data-label="#" className="px-2 py-3 text-slate-400 dark:text-slate-500 font-mono text-[11px]">
                                             {(currentPage - 1) * itemsPerPage + index + 1}
                                         </td>
 
-                                        {/* Item Name & Item Code */}
+                                        {/* item name */}
                                         <td data-label="Item Information" className="px-4 py-3 whitespace-nowrap">
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2">
@@ -281,14 +281,14 @@ export function InventoryTab({
                                             </div>
                                         </td>
 
-                                        {/* Category */}
+                                        {/* category */}
                                         <td data-label="Category" className="px-3.5 py-3 whitespace-nowrap">
                                             <StatusBadge tone="neutral" size="xs">
                                                 {item.category}
                                             </StatusBadge>
                                         </td>
 
-                                        {/* Combined Stock & Status */}
+                                        {/* stock */}
                                         <td data-label="Stock & Status" className="px-4 py-3 whitespace-nowrap">
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2">
@@ -327,7 +327,7 @@ export function InventoryTab({
                                             </div>
                                         </td>
 
-                                        {/* Latest PO / Request */}
+                                        {/* po */}
                                         <td data-label="Latest PO / Activity" className="px-4 py-3 whitespace-nowrap">
                                             {po ? (
                                                 po.is_request ? (
@@ -360,7 +360,7 @@ export function InventoryTab({
                                             )}
                                         </td>
 
-                                        {/* Remarks & Audit Column (Simplified Popup Buttons) */}
+                                        {/* remarks */}
                                         <td data-label="Remarks & Audit" className="px-4 py-3 min-w-[190px]">
                                             {item.description || item.force_reason ? (
                                                 <div className="flex flex-wrap items-center gap-1.5">
@@ -406,10 +406,10 @@ export function InventoryTab({
                                             )}
                                         </td>
 
-                                        {/* Streamlined Actions */}
+                                        {/* actions */}
                                         <td data-label="Actions" className="px-4 py-3 text-right whitespace-nowrap min-w-[190px] w-[190px]">
                                             <div className="flex items-center justify-end gap-1.5">
-                                                {/* PO Order Button */}
+                                                {/* po button */}
                                                 <CrudActionButton
                                                     action="custom"
                                                     label="Order"
@@ -419,7 +419,7 @@ export function InventoryTab({
                                                     onClick={() => onOrderPO?.(item)}
                                                 />
 
-                                                {/* Stock In Button */}
+                                                {/* stock in */}
                                                 <CrudActionButton
                                                     action="custom"
                                                     label="In"
@@ -429,7 +429,7 @@ export function InventoryTab({
                                                     onClick={() => onStockIn(item.item_name, item)}
                                                 />
 
-                                                {/* Stock Out Button */}
+                                                {/* stock out */}
                                                 <CrudActionButton
                                                     action="custom"
                                                     label="Out"
@@ -439,7 +439,7 @@ export function InventoryTab({
                                                     onClick={() => onStockOut(item.item_name)}
                                                 />
 
-                                                {/* Edit Button */}
+                                                {/* edit */}
                                                 <CrudActionButton
                                                     action="edit"
                                                     ariaLabel="Edit Item"
@@ -447,7 +447,7 @@ export function InventoryTab({
                                                     onClick={() => onEdit(item)}
                                                 />
 
-                                                {/* Delete Button */}
+                                                {/* delete */}
                                                 <CrudActionButton
                                                     action="delete"
                                                     ariaLabel="Delete Item"
@@ -464,7 +464,7 @@ export function InventoryTab({
                 </table>
             </div>
 
-            {/* Pagination Bar - FIXED */}
+            {/* pagination */}
             <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/60 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                     Showing <span className="font-bold text-slate-800 dark:text-slate-200">{startIndex}</span> to{' '}
@@ -478,7 +478,7 @@ export function InventoryTab({
                 />
             </div>
 
-            {/* Message Detail Modal */}
+            {/* message modal */}
             {activeMessageModal && (
                 <div
                     className="fixed inset-0 bg-slate-950/70 dark:bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"

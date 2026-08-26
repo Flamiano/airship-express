@@ -75,7 +75,7 @@ import { PurchaseRequestModal } from "@/app/(supplyChain)/components/modals/Purc
 import { PurchaseOrderModal } from "@/app/(supplyChain)/components/modals/PurchaseOrderModal";
 import { ChartDetailModal } from "@/app/(supplyChain)/components/modals/ChartDetailModal";
 
-// Re-export modals for backward compatibility
+// re-export modals
 export { PurchaseRequestModal, PurchaseOrderModal, ChartDetailModal };
 
 
@@ -275,7 +275,7 @@ export default function Procurement() {
         fetchData();
     }, [fetchData]);
 
-    // realtime subscriptions
+    // realtime
     useEffect(() => {
         const requestsSubscription = supabase
             .channel('purchase_requests_changes')
@@ -305,9 +305,7 @@ export default function Procurement() {
         };
     }, [fetchData]);
 
-    // ============================================================
-    // CRUD OPERATIONS
-    // ============================================================
+    // crud operations
 
     const handleRequestSubmitted = async (newRequest: any) => {
         try {
@@ -852,7 +850,7 @@ export default function Procurement() {
     return (
         <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 fade-in bgCard">
-                {/* Header */}
+                {/* header */}
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">
                     <div className="flex items-start gap-3.5">
                         <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5 transition-colors">
@@ -895,7 +893,7 @@ export default function Procurement() {
                     </AppButton>
                 </div>
 
-                {/* AI Suggested Questions */}
+                {/* ai questions */}
                 <AiQuestions
                     title="AI Suggested Questions"
                     subtitle="Click to ask"
@@ -919,7 +917,7 @@ export default function Procurement() {
                     ]}
                 />
 
-                {/* Cards */}
+                {/* cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Cards
                         frontIcon="fa-solid fa-file-invoice"
@@ -989,7 +987,7 @@ export default function Procurement() {
                     />
                 </div>
 
-                {/* Charts */}
+                {/* charts */}
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 xl:col-span-2 transition-all">
                         <div className="flex items-center justify-between">
@@ -1025,7 +1023,7 @@ export default function Procurement() {
                     </div>
                 </div>
 
-                {/* Table */}
+                {/* table */}
                 <div
                     ref={tableContainerRef}
                     id="procurement-table"
@@ -1033,13 +1031,13 @@ export default function Procurement() {
                 >
                     {isRefreshing && <TableContentLoader />}
 
-                    {/* Filter Bar */}
+                    {/* filter bar */}
                     <div className="flex-shrink-0 p-3.5 sm:p-4 border-b border-slate-200/80 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md transition-all">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
 
-                            {/* Left Side: Title & Search Bar */}
+                            {/* left */}
                             <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
-                                {/* Header Title */}
+                                {/* title */}
                                 <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2.5 shrink-0">
                                     <div className="p-1.5 rounded-lg bg-pink-50 dark:bg-pink-950/50 border border-pink-200/50 dark:border-pink-800/50 text-pink-500 dark:text-pink-400">
                                         <i className="fas fa-list text-xs" />
@@ -1050,7 +1048,7 @@ export default function Procurement() {
                                     )}
                                 </div>
 
-                                {/* Search Input Box */}
+                                {/* search */}
                                 <div className="relative flex-1 max-w-sm">
                                     <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none" />
                                     <input
@@ -1071,9 +1069,9 @@ export default function Procurement() {
                                 </div>
                             </div>
 
-                            {/* Right Side: Tab Filters & CTA Link */}
+                            {/* right */}
                             <div className="flex items-center justify-between sm:justify-end gap-2 ">
-                                {/* Filter Tabs Container */}
+                                {/* tabs */}
                                 <div className="inline-flex gap-1 bg-slate-200/70 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/50 dark:border-white/5">
                                     {[
                                         { key: "all", label: "All", count: totalCounts.all },
@@ -1108,7 +1106,7 @@ export default function Procurement() {
                                     })}
                                 </div>
 
-                                {/* Purchase Orders Button Link */}
+                                {/* po link */}
                                 <Link
                                     href="/purchase-orders"
                                     className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white bg-pink-600 hover:bg-pink-700 active:bg-pink-800 dark:bg-pink-600 dark:hover:bg-pink-500 rounded-lg transition-all shadow-xs hover:shadow-sm"
@@ -1120,7 +1118,7 @@ export default function Procurement() {
                         </div>
                     </div>
 
-                    {/* Table Body */}
+                    {/* body */}
                     <div data-lenis-prevent className="flex-1 overflow-y-auto max-h-[500px] relative overscroll-contain">
                         <div className={`transition-opacity duration-200 ${isTabTransitioning ? "opacity-30 pointer-events-none" : "opacity-100"}`}>
                             <div data-lenis-prevent className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overscroll-contain">
@@ -1346,7 +1344,7 @@ export default function Procurement() {
                         </div>
                     </div>
 
-                    {/* Pagination */}
+                    {/* pagination */}
                     <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1">
                         <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
                             <span className="text-slate-500 dark:text-slate-400 font-medium">

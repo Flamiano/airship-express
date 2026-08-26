@@ -103,9 +103,7 @@ export default function DashboardPanel() {
         alert(message);
     };
 
-    const colors = ['#818CF8', '#F472B6', '#FBBF24', '#34D399', '#A78BFA', '#FB7185', '#60A5FA', '#FCD34D'];
-
-    // Check if mobile
+    const colors = ['#818CF8', '#F472B6', '#FBBF24', '#34D399', '#A78BFA', '#FB7185', '#60A5FA', '#FCD34D']; // check mobile
     useEffect(() => {
         const checkMobile = () => {
             setIsMobile(window.innerWidth < 768);
@@ -113,9 +111,7 @@ export default function DashboardPanel() {
         checkMobile();
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
-    }, []);
-
-    // Prevent background scrolling when forecast modal is open
+    }, []); // scroll lock
     useEffect(() => {
         if (selectedForecast) {
             const originalOverflow = document.body.style.overflow;
@@ -149,18 +145,14 @@ export default function DashboardPanel() {
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
             const sevenDaysAgo = new Date(today);
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-            //  1. Get total scanned today
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7); // total scanned
             const { count: scannedCount, error: scannedError } = await supabase
                 .from('parcels')
                 .select('*', { count: 'exact', head: true })
                 .gte('created_at', startOfDay.toISOString())
                 .lte('created_at', endOfDay.toISOString());
 
-            if (scannedError) throw scannedError;
-
-            //  2. Get detailed hourly data for peak hour
+            if (scannedError) throw scannedError; // hourly data
             const { data: hourlyData, error: hourlyError } = await supabase
                 .from('parcels')
                 .select('created_at')
@@ -188,17 +180,13 @@ export default function DashboardPanel() {
                 }
                 highestParcels = maxCount;
                 peakHour = maxHour;
-            }
-
-            //  3. Get monthly total - FIX: handle null
+            } // monthly total
             const { count: monthlyCount, error: monthlyError } = await supabase
                 .from('parcels')
                 .select('*', { count: 'exact', head: true })
                 .gte('created_at', thirtyDaysAgo.toISOString());
 
-            if (monthlyError) throw monthlyError;
-
-            //  4. Get top courier with count
+            if (monthlyError) throw monthlyError; // top courier
             const { data: courierStats, error: courierStatsError } = await supabase
                 .from('parcels')
                 .select('courier')
@@ -228,14 +216,10 @@ export default function DashboardPanel() {
                 }
                 topCourier = maxName || 'N/A';
                 topCourierCount = maxCount;
-            }
-
-            //  5. Get courier breakdown for all couriers
+            } // courier breakdown
             const courierBreakdown = Object.entries(courierCounts)
                 .map(([name, count]) => ({ name, count }))
-                .sort((a, b) => b.count - a.count);
-
-            //  6. Get busiest day in the last 7 days
+                .sort((a, b) => b.count - a.count); // busiest day
             const { data: dailyData, error: dailyError } = await supabase
                 .from('parcels')
                 .select('created_at')
@@ -260,13 +244,9 @@ export default function DashboardPanel() {
 
             const busiestDayName = busiestDate
                 ? new Date(busiestDate).toLocaleDateString('en-US', { weekday: 'long' })
-                : 'N/A';
-
-            //  7. Calculate average daily - FIX: handle null monthlyCount
+                : 'N/A'; // avg daily
             const safeMonthlyCount = monthlyCount || 0;
-            const avgDaily = safeMonthlyCount > 0 ? Math.round(safeMonthlyCount / 30) : 0;
-
-            //  8. Set courier details
+            const avgDaily = safeMonthlyCount > 0 ? Math.round(safeMonthlyCount / 30) : 0; // courier details
             setCourierDetails({
                 topCourier: { name: topCourier, count: topCourierCount },
                 courierBreakdown,
@@ -281,17 +261,13 @@ export default function DashboardPanel() {
                     dayName: busiestDayName
                 },
                 avgDaily,
-            });
-
-            //  9. Get courier data for chart (last 7 days)
+            }); // courier data
             const { data: courierChartData, error: courierChartError } = await supabase
                 .from('parcels')
                 .select('courier, created_at')
                 .gte('created_at', sevenDaysAgo.toISOString());
 
-            if (courierChartError) throw courierChartError;
-
-            //  Generate proper date labels for the last 7 days
+            if (courierChartError) throw courierChartError; // date labels
             const dateLabels: string[] = [];
             const fullDateLabels: string[] = [];
             const dateMap: Record<string, number> = {};
@@ -306,9 +282,7 @@ export default function DashboardPanel() {
                 dateLabels.push(dayName);
                 fullDateLabels.push(`${dayName}, ${monthDay}`);
                 dateMap[dateKey] = 6 - i;
-            }
-
-            //  Initialize courier data with zeros for all 7 days
+            } // init courier data
             const courierMap: Record<string, number[]> = {};
 
             if (courierChartData) {
@@ -330,9 +304,7 @@ export default function DashboardPanel() {
                 name,
                 data: courierMap[name],
                 color: colors[index % colors.length],
-            }));
-
-            //  10. Generate forecast via Model Forecasting API with fallback
+            })); // forecast
             let forecast: {
                 day: string;
                 dateFormatted?: string;
@@ -414,9 +386,7 @@ export default function DashboardPanel() {
                 }
             } catch (err) {
                 console.warn('Could not fetch model forecast from /forecast/api, using local estimation:', err);
-            }
-
-            // Fallback if API returned empty
+            } // fallback
             if (forecast.length === 0) {
                 const dailyValues = Object.values(dailyCountMap);
                 const avg = dailyValues.length > 0
@@ -473,9 +443,7 @@ export default function DashboardPanel() {
         } finally {
             setLoading(false);
         }
-    }, []);
-
-    // Initialize chart based on screen size
+    }, []); // init chart
     useEffect(() => {
         if (loading || !chartRef.current) return;
 
@@ -485,9 +453,7 @@ export default function DashboardPanel() {
         }
 
         const ctx = chartRef.current.getContext("2d");
-        if (!ctx) return;
-
-        // Mobile: Pie Chart - Enhanced
+        if (!ctx) return; // mobile chart
         if (isMobile) {
             const courierTotals: Record<string, number> = {};
             stats.courierData.forEach((courier) => {
@@ -558,8 +524,7 @@ export default function DashboardPanel() {
                     },
                 },
             });
-        }
-        // Desktop: Line Chart - Enhanced
+        } // desktop chart
         else {
             const datasets: ChartDataset[] = stats.courierData.map((courier, index) => ({
                 label: courier.name,
@@ -688,9 +653,7 @@ export default function DashboardPanel() {
                 },
             });
         }
-    }, [loading, stats.courierData, stats.dailyFullDates, isMobile]);
-
-    // Real-time subscription
+    }, [loading, stats.courierData, stats.dailyFullDates, isMobile]); // real-time
     useEffect(() => {
         isMounted.current = true;
         console.log('Setting up dashboard real-time subscription...');
@@ -726,8 +689,7 @@ export default function DashboardPanel() {
     }
 
     return (
-        <div data-panel="dashboard" className="p-4 sm:p-8 space-y-6 sm:space-y-8 mx-auto ">
-            {/* Header */}
+        <div data-panel="dashboard" className="p-4 sm:p-8 space-y-6 sm:space-y-8 mx-auto ">{/* header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
                 <div className="flex items-start gap-3.5">
                     <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
@@ -776,9 +738,7 @@ export default function DashboardPanel() {
                         <span className="hidden sm:inline">Refresh</span>
                     </AppButton>
                 </div>
-            </div>
-
-            {/* Cards */}
+            </div>{/* cards */}
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
                 <Cards
                     frontIcon="fas fa-box mr-1"
@@ -859,9 +819,7 @@ export default function DashboardPanel() {
                     tooltipLink="/warehousing?tab=incoming&view=daily"
                     badge={`${courierDetails.busiestDay.count} parcels`}
                 />
-            </div>
-
-            {/* Chart - Mobile: Doughnut, Desktop: Line */}
+            </div>{/* chart */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm dark:shadow-2xl dark:shadow-black/40 flex flex-col justify-between transition-all hover:shadow-md dark:hover:shadow-2xl">
                 <div>
                     <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -926,9 +884,7 @@ export default function DashboardPanel() {
                         </div>
                     )}
                 </div>
-            </div>
-
-            {/* AI and Forecast */}
+            </div>{/* ai forecast */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
                 <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm dark:shadow-2xl dark:shadow-black/40 flex flex-col justify-between transition-all hover:shadow-md dark:hover:shadow-2xl">
                     <div>
@@ -1080,21 +1036,15 @@ export default function DashboardPanel() {
                         />
                     </div>
                 </div>
-            </div>
-
-            {/* Forecast Detail Modal with Portal */}
+            </div>{/* modal */}
             {selectedForecast && (
                 <Portal>
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-                        {/* Backdrop */}
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">{/* backdrop */}
                         <div
                             className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
                             onClick={() => setSelectedForecast(null)}
-                        />
-
-                        {/* Modal Card */}
-                        <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
-                            {/* Modal Header */}
+                        />{/* card */}
+                        <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">{/* header */}
                             <div className="relative px-6 pt-6 pb-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-indigo-50/60 via-white to-purple-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="flex items-center gap-3.5">
@@ -1129,11 +1079,8 @@ export default function DashboardPanel() {
                                         <i className="fas fa-times text-sm" />
                                     </button>
                                 </div>
-                            </div>
-
-                            {/* Modal Body */}
-                            <div className="p-6 space-y-5">
-                                {/* Key Stats Cards */}
+                            </div>{/* body */}
+                            <div className="p-6 space-y-5">{/* stats */}
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-slate-800/50 border border-indigo-100/80 dark:border-slate-700/60">
                                         <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
@@ -1158,9 +1105,7 @@ export default function DashboardPanel() {
                                             expected range bounds
                                         </span>
                                     </div>
-                                </div>
-
-                                {/* Model Metadata Banner */}
+                                </div>{/* metadata */}
                                 <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-2">
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
@@ -1189,9 +1134,7 @@ export default function DashboardPanel() {
                                             {stats.forecastConfidence || '95% Confidence'}
                                         </span>
                                     </div>
-                                </div>
-
-                                {/* Operational Recommendation */}
+                                </div>{/* recommend */}
                                 <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/30 space-y-1.5">
                                     <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
                                         <i className="fas fa-lightbulb text-amber-500" />
@@ -1201,9 +1144,7 @@ export default function DashboardPanel() {
                                         {selectedForecast.recommendation || 'Maintain standard shift operations and monitor inbound queue.'}
                                     </p>
                                 </div>
-                            </div>
-
-                            {/* Modal Footer */}
+                            </div>{/* footer */}
                             <div className="px-6 py-4 bg-slate-50/80 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
                                 <button
                                     type="button"

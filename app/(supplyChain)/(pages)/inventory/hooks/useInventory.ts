@@ -11,7 +11,7 @@ export function useInventory() {
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
-    // FETCH DATA
+    // fetch data
     const fetchInventory = useCallback(async () => {
         try {
             setLoading(true);
@@ -29,13 +29,13 @@ export function useInventory() {
         }
     }, []);
 
-    // CREATE
+    // create
     const addItem = useCallback(async (formData: AddItemFormData) => {
         setSaving(true);
         const toastId = toast.loading('Adding item...');
 
         try {
-            // Calculate status
+            // calculate status
             let status = 'available';
             if (formData.current_stock <= 0) status = 'out-of-stock';
             else if (formData.current_stock < formData.minimum_stock) status = 'low-stock';
@@ -69,7 +69,7 @@ export function useInventory() {
         }
     }, [fetchInventory]);
 
-    // UPDATE
+    // update
     const updateItem = useCallback(async (formData: EditItemFormData) => {
         setSaving(true);
         const toastId = toast.loading('Updating item...');
@@ -109,7 +109,7 @@ export function useInventory() {
         }
     }, [fetchInventory]);
 
-    // DELETE (Single)
+    // delete single
     const deleteItem = useCallback(async (id: string, itemName: string) => {
         setDeleting(true);
         const toastId = toast.loading(`Deleting ${itemName}...`);
@@ -132,7 +132,7 @@ export function useInventory() {
         }
     }, [fetchInventory]);
 
-    // DELETE (Bulk)
+    // delete bulk
     const deleteMultipleItems = useCallback(async (ids: string[]) => {
         setDeleting(true);
         const toastId = toast.loading(`Deleting ${ids.length} items...`);
@@ -155,7 +155,7 @@ export function useInventory() {
         }
     }, [fetchInventory]);
 
-    // STOCK IN
+    // stock in
     const stockIn = useCallback(async (itemName: string, quantity: number, supplier?: string, reference?: string, remarks?: string) => {
         const item = items.find(i => i.item_name === itemName);
         if (!item) {
@@ -184,7 +184,7 @@ export function useInventory() {
         }
     }, [items, fetchInventory]);
 
-    // STOCK OUT
+    // stock out
     const stockOut = useCallback(async (itemName: string, quantity: number, department?: string, purpose?: string, remarks?: string) => {
         const item = items.find(i => i.item_name === itemName);
         if (!item) {

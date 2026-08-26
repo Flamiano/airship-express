@@ -334,7 +334,7 @@ export function PurchaseOrdersTab() {
 
     return (
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
-            {/* Stats */}
+            {/* stats */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-file-invoice"
@@ -397,7 +397,7 @@ export function PurchaseOrdersTab() {
                 />
             </div>
 
-            {/* Search & Filter */}
+            {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="relative flex-1 min-w-[220px]">
@@ -440,7 +440,7 @@ export function PurchaseOrdersTab() {
                 </div>
             </div>
 
-            {/* Bulk Actions */}
+            {/* actions */}
             <BulkActionsToolbar
                 selectedCount={selectedPoIds.size}
                 itemLabel="purchase orders"
@@ -467,7 +467,7 @@ export function PurchaseOrdersTab() {
                 onClear={() => setSelectedPoIds(new Set())}
             />
 
-            {/* Table */}
+            {/* table */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden hover:shadow-md transition-shadow duration-200">
                 <div className="overflow-x-auto relative">
                     {poLoading && <TableContentLoader />}
@@ -601,7 +601,7 @@ export function PurchaseOrdersTab() {
                     </table>
                 </div>
 
-                {/* Pagination */}
+                {/* pagination */}
                 <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/40 dark:bg-slate-900/40">
                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                         Showing <span className="font-semibold text-slate-700 dark:text-slate-300">

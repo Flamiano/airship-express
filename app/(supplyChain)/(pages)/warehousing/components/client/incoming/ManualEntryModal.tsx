@@ -11,7 +11,7 @@ export default function ManualEntryModal() {
     };
 
     useEffect(() => {
-        // Manual Entry Modal functions
+        // modal functions
         window.openManualEntryModal = function () {
             const modal = document.getElementById("manualEntryModal");
             if (modal) {
@@ -25,7 +25,7 @@ export default function ManualEntryModal() {
             if (modal) {
                 modal.classList.add("hidden");
                 document.body.style.overflow = "auto";
-                // Reset form
+                // reset form
                 const inputs = modal.querySelectorAll("input, textarea, select");
                 inputs.forEach((input: any) => {
                     if (input.type === "text" || input.type === "textarea") {
@@ -66,7 +66,7 @@ export default function ManualEntryModal() {
             }, 1000);
         };
 
-        // Close modal on backdrop click
+        // close on backdrop
         const modal = document.getElementById("manualEntryModal");
         if (modal) {
             modal.addEventListener("click", (e) => {
@@ -76,7 +76,7 @@ export default function ManualEntryModal() {
             });
         }
 
-        // Close modal on Escape key
+        // close on esc
         document.addEventListener("keydown", (e) => {
             if (e.key === "Escape" && window.closeManualEntryModal) {
                 window.closeManualEntryModal();
@@ -93,7 +93,7 @@ export default function ManualEntryModal() {
         >
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/60 w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-slate-800 overflow-hidden">
 
-                {/* Modal Header */}
+                {/* header */}
                 <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-slate-800/80">
                     <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
@@ -121,7 +121,7 @@ export default function ManualEntryModal() {
                     </AppButton>
                 </div>
 
-                {/* Form Body */}
+                {/* body */}
                 <form
                     className="flex-1 overflow-y-auto p-6 space-y-4.5"
                     onSubmit={(e) => {

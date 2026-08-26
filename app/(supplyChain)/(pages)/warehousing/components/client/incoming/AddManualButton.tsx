@@ -142,7 +142,7 @@ function ManualEntryModal({
         fetchCouriers();
     }, []);
 
-    // City suggestions
+    // city suggestions
     useEffect(() => {
         if (formData.city.length > 1) {
             const filtered = philippineLocations.filter(loc =>
@@ -174,7 +174,7 @@ function ManualEntryModal({
         }
     }, [formData.city]);
 
-    // Province suggestions
+    // province suggestions
     useEffect(() => {
         if (formData.province.length > 1) {
             const filtered = philippineLocations.filter(loc =>
@@ -217,7 +217,7 @@ function ManualEntryModal({
     };
 
     const handleCustomerNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // Only allow digits, max length 11
+        // validate digits
         const value = e.target.value.replace(/\D/g, '').slice(0, 11);
         setFormData({ ...formData, customer_number: value });
     };
@@ -296,7 +296,7 @@ function ManualEntryModal({
             errors.push('Customer name cannot contain only spaces');
         }
 
-        // Validate customer number - only digits, max 11
+        // validate customer number
         if (formData.customer_number && !/^\d+$/.test(formData.customer_number)) {
             errors.push('Customer number must contain only digits');
         }

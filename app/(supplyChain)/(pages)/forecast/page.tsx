@@ -66,12 +66,12 @@ export default function Forecast() {
     const [retraining, setRetraining] = useState(false);
     const [forecastData, setForecastData] = useState<ForecastData | null>(null);
 
-    // AI Summary state
+    // ai summary
     const [aiSummary, setAiSummary] = useState<string | null>(null);
     const [summarizing, setSummarizing] = useState(false);
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
-    // Chart Deep Dive Modal State
+    // modal state
     const [activeChartModal, setActiveChartModal] = useState<{
         isOpen: boolean;
         type: 'parcels' | 'expense' | 'couriers';
@@ -153,7 +153,7 @@ export default function Forecast() {
             const gridColor = isDark ? "rgba(255,255,255,0.06)" : "#F1F5F9";
             const textColor = isDark ? "#8a8a8e" : "#64748B";
 
-            // 1. Next 7 Days Parcel Volume Chart with Dynamic Granularity
+            // 7d parcel volume
             if (parcelChartRef.current && forecastData?.parcel_7_day?.historical?.counts?.length) {
                 if (parcelChartInstance.current) {
                     parcelChartInstance.current.destroy();
@@ -271,7 +271,7 @@ export default function Forecast() {
                 }
             }
 
-            // 2. Next Month Expense Forecast Chart
+            // expense forecast
             if (expenseChartRef.current && (forecastData?.expense_next_month?.historical?.amounts?.length || forecastData?.expense_next_month?.prediction)) {
                 if (expenseChartInstance.current) {
                     expenseChartInstance.current.destroy();
@@ -352,7 +352,7 @@ export default function Forecast() {
                 }
             }
 
-            // 3. Pie Chart: Courier Share
+            // courier share
             if (courierPieRef.current && forecastData?.raw_db_stats?.courier_breakdown && Object.keys(forecastData.raw_db_stats.courier_breakdown).length > 0) {
                 if (courierPieInstance.current) {
                     courierPieInstance.current.destroy();
@@ -490,7 +490,7 @@ export default function Forecast() {
     return (
         <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 bgCard dark:bg-ink/90 pb-16">
-                {/* Standard Page Header */}
+                {/* header */}
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-ink/20 pb-5">
                     <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">
                         <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5">
@@ -553,7 +553,7 @@ export default function Forecast() {
                     </div>
                 </div>
 
-                {/* AI Executive Summary Card */}
+                {/* ai summary */}
                 {aiSummary && (
                     <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900 border border-slate-200/80 dark:border-ink/30 shadow-2xs">
                         <div className="flex items-center justify-between gap-4 mb-3 border-b border-slate-200/70 dark:border-ink/20 pb-3">
@@ -681,7 +681,7 @@ export default function Forecast() {
                     />
                 </div>
 
-               {/* Peak Insights Banner Cards */}
+               {/* insights banner */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                     <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                         <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
@@ -729,7 +729,7 @@ export default function Forecast() {
                     </div>
                 </div>
 
-                {/* Full-Width Parcel Volume 7-Day Forecast */}
+                {/* 7d forecast */}
                 <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs">
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
                         <div>
@@ -805,9 +805,9 @@ export default function Forecast() {
                     </div>
                 </div>
 
-                {/* Side-by-Side Lower Charts: Procurement Spend & Courier Share */}
+                {/* lower charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Procurement PO Expenses Forecast */}
+                    {/* po expenses */}
                     <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs flex flex-col justify-between">
                         <div>
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
@@ -873,7 +873,7 @@ export default function Forecast() {
                         </div>
                     </div>
 
-                    {/* Courier Distribution Share */}
+                    {/* courier share */}
                     <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/20 shadow-2xs flex flex-col justify-between">
                         <div>
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-ink/20 pb-3 flex-wrap">
@@ -932,7 +932,7 @@ export default function Forecast() {
                     </div>
                 </div>
 
-                {/* Chart Deep Dive Inspection Modal */}
+                {/* inspection modal */}
                 {activeChartModal.isOpen && forecastData && (
                     <div 
                         className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
@@ -944,7 +944,7 @@ export default function Forecast() {
                             className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-ink/30 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
                             data-lenis-prevent
                         >
-                            {/* Modal Header */}
+                            {/* header */}
                             <div className="p-5 border-b border-slate-200 dark:border-ink/20 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/60 shrink-0">
                                 <div className="flex items-center gap-3">
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg text-white shadow-sm ${
@@ -971,7 +971,7 @@ export default function Forecast() {
                                 </AppButton>
                             </div>
 
-                            {/* Modal Body */}
+                            {/* body */}
                             <div 
                                 className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain"
                                 data-lenis-prevent
@@ -1219,7 +1219,7 @@ export default function Forecast() {
                                 )}
                             </div>
 
-                            {/* Modal Footer */}
+                            {/* footer */}
                             <div className="p-4 border-t border-slate-200 dark:border-ink/20 flex items-center justify-between bg-slate-50 dark:bg-ink/40 shrink-0">
                                 <div className="text-xs text-slate-400">
                                     <i className="fas fa-microchip text-pink-500 mr-1"></i>
@@ -1238,7 +1238,7 @@ export default function Forecast() {
                     </div>
                 )}
 
-                {/* AI Interpretation Modal */}
+                {/* ai modal */}
                 {isAiModalOpen && (
                     <div 
                         className="fixed inset-0 z-99990 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
@@ -1250,7 +1250,7 @@ export default function Forecast() {
                             className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-ink/30 shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden"
                             data-lenis-prevent
                         >
-                            {/* Modal Header */}
+                            {/* header */}
                             <div className="p-5 border-b border-slate-200 dark:border-ink/20 flex items-center justify-between bg-pink-50/60 dark:bg-pink-950/30 shrink-0">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl bg-pink-600 text-white flex items-center justify-center text-lg shadow-sm">
@@ -1272,7 +1272,7 @@ export default function Forecast() {
                                 </AppButton>
                             </div>
 
-                            {/* Modal Body */}
+                            {/* body */}
                             <div 
                                 className="p-6 overflow-y-auto space-y-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain"
                                 data-lenis-prevent
@@ -1319,7 +1319,7 @@ export default function Forecast() {
                                 )}
                             </div>
 
-                            {/* Modal Footer */}
+                            {/* footer */}
                             <div className="p-4 border-t border-slate-200 dark:border-ink/20 flex items-center justify-between bg-slate-50 dark:bg-ink/40 shrink-0">
                                 <div className="text-xs text-slate-400">
                                     <i className="fas fa-shield-halved text-pink-500 mr-1"></i>
