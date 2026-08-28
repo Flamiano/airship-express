@@ -938,7 +938,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         {messages.length > 1 && (
                             <button
                                 onClick={onClose}
-                                className="text-white/90 dark:text-slate-300 hover:text-white dark:hover:text-pink-300 p-2 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-white/20 dark:border-slate-700 shadow-xs transition-all duration-150 active:scale-95 cursor-pointer"
+                                className="text-white/90 dark:text-slate-300 hover:text-white dark:hover:text-pink-300 p-2 rounded-full bg-white/10 hover:bg-white/20 dark:bg-slate-800/80 dark:hover:bg-slate-700 border border-white/20 dark:border-slate-700 shadow-[0_2px_6px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.2)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-150 active:scale-95 cursor-pointer"
                                 title="Minimize chat"
                                 aria-label="Minimize assistant drawer"
                             >
@@ -966,7 +966,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                         localStorage.removeItem(STORAGE_KEY);
                                     }
                                 }}
-                                className="text-white/90 dark:text-slate-300 hover:text-white dark:hover:text-pink-300 p-2 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-white/20 dark:border-slate-700 shadow-xs transition-all duration-150 active:scale-95 cursor-pointer"
+                                className="text-white/90 dark:text-slate-300 hover:text-white dark:hover:text-pink-300 p-2 rounded-full bg-white/10 hover:bg-white/20 dark:bg-slate-800/80 dark:hover:bg-slate-700 border border-white/20 dark:border-slate-700 shadow-[0_2px_6px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.2)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-150 active:scale-95 cursor-pointer"
                                 title="Clear chat"
                                 aria-label="Clear chat history"
                             >
@@ -976,7 +976,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
                         <button
                             onClick={onClose}
-                            className="text-white/90 dark:text-slate-300 hover:text-white dark:hover:text-pink-300 p-2 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-white/20 dark:border-slate-700 shadow-xs transition-all duration-150 active:scale-95 cursor-pointer"
+                            className="text-white/90 dark:text-slate-300 hover:text-white dark:hover:text-pink-300 p-2 rounded-full bg-white/10 hover:bg-white/20 dark:bg-slate-800/80 dark:hover:bg-slate-700 border border-white/20 dark:border-slate-700 shadow-[0_2px_6px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.2)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-150 active:scale-95 cursor-pointer"
                             title="Close drawer"
                             aria-label="Close assistant drawer"
                         >
@@ -1053,7 +1053,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                                             setInput(suggestion);
                                                             setTimeout(() => handleSendMessage(), 100);
                                                         }}
-                                                        className="text-xs font-semibold bg-white dark:bg-slate-800 hover:bg-[#ffe6f0] dark:hover:bg-[#341427] border border-pink-200/90 dark:border-slate-700 hover:border-pink-300 text-pink-700 dark:text-pink-300 px-3.5 py-1.5 rounded-full transition-all shadow-xs active:scale-95 text-left cursor-pointer"
+                                                        className="text-xs font-semibold bg-[#ffe6f0] hover:bg-[#ffd9e8] text-pink-700 border border-pink-300/90 shadow-[0_2px_6px_rgba(244,63,94,0.16),0_1px_2px_rgba(0,0,0,0.06),inset_0_1px_0_#ffffff] dark:bg-[#341427] dark:hover:bg-[#421932] dark:text-pink-200 dark:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] px-3.5 py-1.5 rounded-full transition-all duration-200 active:scale-95 text-left cursor-pointer"
                                                     >
                                                         {suggestion}
                                                     </button>
@@ -1079,7 +1079,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     {showScrollButton && (
                         <button
                             onClick={scrollToBottom}
-                            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white dark:bg-slate-800 hover:bg-[#ffe6f0] dark:hover:bg-[#341427] text-pink-600 dark:text-pink-400 border border-pink-200/90 dark:border-slate-700 shadow-lg rounded-full p-2.5 transition-all duration-200 hover:scale-105 active:scale-95 z-10 cursor-pointer"
+                            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#ffe6f0] hover:bg-[#ffd9e8] text-pink-700 border border-pink-300/90 shadow-[0_4px_12px_rgba(244,63,94,0.25),inset_0_1px_0_#ffffff] dark:bg-[#341427] dark:hover:bg-[#421932] dark:text-pink-200 dark:border-[#67224c] dark:shadow-[0_4px_14px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.15)] rounded-full p-2.5 transition-all duration-200 hover:scale-105 active:scale-95 z-10 cursor-pointer"
                             aria-label="Scroll to bottom"
                         >
                             <i className="fas fa-arrow-down text-xs" />
@@ -1104,7 +1104,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     key={q}
                                     onClick={() => handleSuggested(q)}
                                     disabled={isLoading}
-                                    className="text-xs font-semibold bg-white dark:bg-slate-800 hover:bg-[#ffe6f0] dark:hover:bg-[#341427] border border-slate-200/90 dark:border-slate-700 hover:border-pink-300 text-slate-700 dark:text-slate-200 hover:text-pink-700 dark:hover:text-pink-300 px-3 py-1.5 rounded-full transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 cursor-pointer shadow-xs"
+                                    className="text-xs font-semibold bg-slate-100 hover:bg-[#ffe6f0] text-slate-700 hover:text-pink-700 border border-slate-200/90 hover:border-pink-300 shadow-[0_2px_6px_rgba(0,0,0,0.06),inset_0_1px_0_#ffffff] dark:bg-slate-800 dark:hover:bg-[#341427] dark:text-slate-200 dark:hover:text-pink-200 dark:border-slate-700 dark:hover:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] px-3.5 py-1.5 rounded-full transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
                                 >
                                     {q}
                                 </button>

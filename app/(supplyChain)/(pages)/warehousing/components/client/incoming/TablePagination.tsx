@@ -68,7 +68,7 @@ export function TablePagination({
     }
 
     return (
-        <div className="pagination-container-class">
+        <div className="pagination-container-class dark:bg-slate-900">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Showing{" "}
                 <span className="font-bold text-slate-900 dark:text-slate-100">{startItem}</span> to{" "}

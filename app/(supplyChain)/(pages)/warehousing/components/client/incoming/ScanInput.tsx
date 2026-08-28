@@ -60,7 +60,6 @@ export default function ScanInput({
                         duration: 3000,
                     });
                 }
-                setIsScanning(false);
                 setBarcode("");
                 return;
             }
@@ -80,21 +79,13 @@ export default function ScanInput({
             });
         } finally {
             setIsScanning(false);
-            if (isListening) {
-                inputRef.current?.focus();
-            }
         }
-    }, [isScanning, isListening, onScan]);
+    }, [isScanning, onScan]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (!isListening) {
-            if (e.key === ' ') {
+        if (!isListening || isScanning) {
+            if (e.key === ' ' || (e.key.length === 1 && !/[a-zA-Z0-9-]/.test(e.key))) {
                 e.preventDefault();
-                return;
-            }
-            if (e.key.length === 1 && !/[a-zA-Z0-9-]/.test(e.key)) {
-                e.preventDefault();
-                return;
             }
             return;
         }
@@ -129,9 +120,10 @@ export default function ScanInput({
             e.preventDefault();
             return;
         }
-    }, [isListening, barcode, processBarcode]);
+    }, [isListening, isScanning, barcode, processBarcode]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (isScanning) return;
         const sanitized = sanitizeBarcode(e.target.value);
         setBarcode(sanitized);
         if (isListening) {
@@ -148,7 +140,6 @@ export default function ScanInput({
             onStartListening?.();
             setBarcode("");
             bufferRef.current = "";
-            inputRef.current?.focus();
             toast.info('Scanner ready', { duration: 1500 });
         }
     };
@@ -161,10 +152,10 @@ export default function ScanInput({
     };
 
     useEffect(() => {
-        if (isListening) {
+        if (isListening && !isScanning) {
             inputRef.current?.focus();
         }
-    }, [isListening]);
+    }, [isListening, isScanning]);
 
     useEffect(() => {
         return () => {
@@ -190,8 +181,7 @@ export default function ScanInput({
                             value={barcode}
                             onChange={handleChange}
                             onKeyDown={handleKeyDown}
-                            disabled={isScanning}
-                            readOnly={!isListening}
+                            readOnly={!isListening || isScanning}
                             placeholder={
                                 isListening
                                     ? "Scan barcode or type and press Enter..."
@@ -200,7 +190,7 @@ export default function ScanInput({
                             className={`w-full rounded-xl border py-2.5 pl-10 pr-24 text-sm font-mono text-slate-800 dark:text-slate-200 transition-all outline-hidden ${isListening
                                 ? 'border-emerald-500 dark:border-emerald-600 focus-visible:ring-emerald-500/20'
                                 : 'border-slate-300 dark:border-slate-800 focus-visible:border-pink-500 focus-visible:ring-pink-500/20'
-                                } ${isScanning ? 'cursor-not-allowed bg-slate-50 dark:bg-slate-800/50 opacity-75' : ''}`}
+                                } ${isScanning ? 'cursor-wait bg-slate-50 dark:bg-slate-800/50 opacity-75' : ''}`}
                         />
 
                         <div className="absolute right-2.5 top-1/2 -translate-y-1/2">

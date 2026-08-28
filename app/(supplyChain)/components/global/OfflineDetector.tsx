@@ -147,11 +147,6 @@ export function OfflineDetector({
 
                 if (showToast && !toastShownRef.current.online) {
                     toastShownRef.current.online = true;
-                    toast.success('Back online', {
-                        duration: 3000,
-                        position: 'bottom-center',
-                        id: 'online-toast',
-                    });
                 }
             }
             const offlineDuration = Date.now() - (wasOffline ? Date.now() - 1000 : Date.now());

@@ -73,7 +73,7 @@ const AiQuestions = ({
 
     return (
         <div className={`p-4 sm:p-5 
-                bg-white dark:bg-[#2a2a2e] 
+                bg-white dark:bg-slate-900
                 border border-slate-200/90 dark:border-slate-800 
                 rounded-3xl shadow-xs dark:shadow-xl 
                 ${className}`}>

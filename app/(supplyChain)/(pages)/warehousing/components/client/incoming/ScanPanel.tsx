@@ -59,7 +59,7 @@ export default function ScanPanel({ scanned, topCourier, onScan }: ScanPanelProp
     };
 
     return (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 dark:bg-slate-900">
             <div className="md:col-span-2 flex flex-col justify-between">
                 <div>
                     <ScanInput

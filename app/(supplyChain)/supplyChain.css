@@ -16,7 +16,7 @@
 .dark body,
 .dark .min-h-screen,
 .dark main {
-  background-color: #131217 !important;
+  background-color: var(--color-ink) !important;
 }
 
 html,
@@ -906,16 +906,17 @@ details > summary::-webkit-details-marker {
 
 
 .dark .bgCard {
-  background: var(--color-ink, #2a2a2e) !important;
+  background: var(--slate-900, #2a2a2e) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4),
               0 8px 10px -6px rgba(0, 0, 0, 0.3) !important;
 }
 
 .dark .card {
-  background: var(--color-ink, #2a2a2e) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.4) !important;
+background: var(--slate-900, #2a2a2e) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4),
+              0 8px 10px -6px rgba(0, 0, 0, 0.3) !important;
 }
 
 .dark .bg-white {

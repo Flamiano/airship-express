@@ -300,7 +300,7 @@ export function IncomingTable({
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden transition-all">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden transition-all dark:bg-slate-900">
             {duplicateCount > 0 && (
                 <div className="px-4 py-3 bg-rose-50/80 dark:bg-rose-950/40 border-b border-rose-200/80 dark:border-rose-900/40 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-xs sm:text-sm text-rose-700 dark:text-rose-300 font-medium">
@@ -358,7 +358,7 @@ export function IncomingTable({
                 onClear={() => setSelectedIds(new Set())}
             />
 
-            <div className="overflow-x-auto bg-white dark:bg-slate-900 border-t border-slate-200/60 dark:border-slate-800">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto bg-white dark:bg-slate-900 border-t border-slate-200/60 dark:border-slate-800">
                 {/* select all mobile */}
                 <div className="md:hidden flex items-center justify-between px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800">
                     <label className="flex items-center gap-2.5 cursor-pointer select-none">
@@ -384,8 +384,8 @@ export function IncomingTable({
 
                 <table className="table-pro w-full text-left border-collapse">
                     <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
-                            <th className="w-10 text-center py-3 px-3">
+                        <tr>
+                            <th className="w-10 text-center">
                                 <input
                                     type="checkbox"
                                     checked={allSelected}
@@ -398,17 +398,17 @@ export function IncomingTable({
                                     className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-pink-500 focus:ring-pink-500 focus:ring-2 cursor-pointer accent-pink-500"
                                 />
                             </th>
-                            <th className="w-12 text-center py-3 px-3">#</th>
-                            <th className="py-3 px-4">Barcode</th>
-                            <th className="py-3 px-4">Tracking</th>
-                            <th className="py-3 px-4">Sender</th>
-                            <th className="py-3 px-4">Customer</th>
-                            <th className="py-3 px-4">Customer Number</th>
-                            <th className="py-3 px-4">Destination</th>
-                            <th className="py-3 px-4">Region</th>
-                            <th className="py-3 px-4">Courier</th>
-                            <th className="py-3 px-4">Status</th>
-                            <th className="text-right! py-3 px-4 w-[80px] min-w-[80px]">Actions</th>
+                            <th className="w-12 text-center">#</th>
+                            <th>Barcode</th>
+                            <th>Tracking</th>
+                            <th>Sender</th>
+                            <th>Customer</th>
+                            <th>Customer Number</th>
+                            <th>Destination</th>
+                            <th>Region</th>
+                            <th>Courier</th>
+                            <th>Status</th>
+                            <th className="text-right! w-[80px] min-w-[80px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs text-slate-700 dark:text-slate-300">

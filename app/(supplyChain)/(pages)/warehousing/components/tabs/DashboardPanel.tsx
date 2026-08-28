@@ -414,8 +414,8 @@ export default function DashboardPanel() {
                         width,
                         lower: Math.max(0, Math.round(parcels * 0.85)),
                         upper: Math.round(parcels * 1.15),
-                        recommendation: forecastChanges[index] > 10 
-                            ? 'High intake expected. Ensure sorting lanes are staffed.' 
+                        recommendation: forecastChanges[index] > 10
+                            ? 'High intake expected. Ensure sorting lanes are staffed.'
                             : 'Standard operational volume expected.',
                     };
                 });
@@ -739,14 +739,14 @@ export default function DashboardPanel() {
                     </AppButton>
                 </div>
             </div>{/* cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
                 <Cards
                     frontIcon="fas fa-box mr-1"
                     header="Received Parcels"
                     data={stats.scannedParcels.toLocaleString()}
                     arrow="fas fa-arrow-up mr-1"
                     description="Today"
-                    
+
                     backHeader="Received Parcels Details"
                     backIcon="fas fa-box"
                     headerTextColor="text-slate-200"
@@ -757,28 +757,12 @@ export default function DashboardPanel() {
                 />
 
                 <Cards
-                    frontIcon="fas fa-truck mr-1"
-                    header="Top Courier"
-                    data={courierDetails.topCourier.name || 'N/A'}
-                    arrow="fas fa-trophy mr-1"
-                    description={`${courierDetails.topCourier.count} parcels today`}
-                    
-                    backHeader="Top Courier Details"
-                    backIcon="fas fa-truck"
-                    headerTextColor="text-slate-200"
-                    backDescription={`Top Courier: ${courierDetails.topCourier.name}\n\n📦 Today's Volume: ${courierDetails.topCourier.count} parcel(s)\n\n Active Couriers: ${courierDetails.courierBreakdown.length}`}
-                    tooltip="Click to see courier volume details"
-                    tooltipLink="/warehousing?tab=incoming"
-                    badge={courierDetails.topCourier.count > 0 ? `${courierDetails.topCourier.count} pkgs` : ''}
-                />
-
-                <Cards
                     frontIcon="fas fa-clock mr-1"
                     header="Peak Hour Volume"
                     data={stats.highestParcels.toString()}
                     arrow="fas fa-arrow-up mr-1"
                     description={courierDetails.peakHour.timeRange}
-                    
+
                     backHeader="Peak Hour Details"
                     backIcon="fas fa-clock"
                     headerTextColor="text-slate-200"
@@ -794,7 +778,7 @@ export default function DashboardPanel() {
                     data={stats.monthlyTotal.toLocaleString()}
                     arrow="fas fa-arrow-up mr-1"
                     description="Last 30 days"
-                    
+
                     backHeader="Monthly Parcel Details"
                     backIcon="fas fa-chart-line"
                     headerTextColor="text-slate-200"
@@ -810,7 +794,7 @@ export default function DashboardPanel() {
                     data={courierDetails.busiestDay.dayName || 'N/A'}
                     arrow="fas fa-arrow-up mr-1"
                     description={`${courierDetails.busiestDay.count} parcels`}
-                    
+
                     backHeader="Busiest Day Details"
                     backIcon="fas fa-calendar-check"
                     headerTextColor="text-slate-200"
@@ -1056,11 +1040,10 @@ export default function DashboardPanel() {
                                                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                                                     {selectedForecast.day}
                                                 </h3>
-                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                    selectedForecast.change >= 0
-                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40"
-                                                        : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40"
-                                                }`}>
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${selectedForecast.change >= 0
+                                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40"
+                                                    : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40"
+                                                    }`}>
                                                     <i className={`fas text-[9px] ${selectedForecast.change >= 0 ? "fa-arrow-trend-up" : "fa-arrow-trend-down"}`} />
                                                     {selectedForecast.change >= 0 ? `+${selectedForecast.change}%` : `${selectedForecast.change}%`}
                                                 </span>

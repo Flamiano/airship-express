@@ -12,6 +12,7 @@ import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { Clipboard, Eye } from "lucide-react";
 
 interface Parcel {
     id: number;
@@ -1419,10 +1420,13 @@ export default function SortingPanel() {
                                                     <button
                                                         type="button"
                                                         onClick={() => copyToClipboard(city.bulkQrCity!)}
-                                                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors p-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
-                                                        title="Copy QR code"
+                                                        className="group/cardcityqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#e0f2fe] hover:bg-[#bae6fd] text-sky-900 border border-sky-300/90 shadow-[0_2px_6px_rgba(14,165,233,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0c2a3a] dark:hover:bg-[#13374b] dark:text-sky-200 dark:border-[#1b4e68] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                        title="Copy City QR"
                                                     >
-                                                        <i className="fas fa-copy text-xs"></i>
+                                                        <Clipboard className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                                                        <span className="max-w-0 overflow-hidden opacity-0 group-hover/cardcityqr:max-w-[120px] group-hover/cardcityqr:opacity-100 group-hover/cardcityqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                            {city.bulkQrCity}
+                                                        </span>
                                                     </button>
                                                 </div>
                                             )}
@@ -1432,12 +1436,13 @@ export default function SortingPanel() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleViewCityParcels(city.city, city.parcels)}
-                                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-pink-600 dark:text-pink-400 transition-colors hover:text-pink-700 dark:hover:text-pink-300 hover:underline cursor-pointer"
+                                                className="group/viewcity inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold bg-[#ffe6f0] hover:bg-[#ffd9e8] text-pink-700 border border-pink-300/90 shadow-[0_2px_6px_rgba(244,63,94,0.16),inset_0_1px_0_#ffffff] dark:bg-[#341427] dark:hover:bg-[#421932] dark:text-pink-200 dark:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                title="View parcels"
                                             >
-                                                <span>View parcels</span>
-                                                <svg className="w-3 h-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                                                </svg>
+                                                <Eye className="w-3.5 h-3.5 shrink-0 text-pink-600 dark:text-pink-400" />
+                                                <span className="max-w-0 overflow-hidden opacity-0 group-hover/viewcity:max-w-[100px] group-hover/viewcity:opacity-100 group-hover/viewcity:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                    View parcels
+                                                </span>
                                             </button>
 
                                             <div className="flex items-center gap-1.5">
@@ -1510,13 +1515,17 @@ export default function SortingPanel() {
                                                             </div>
 
                                                             <div className="flex items-center gap-1 shrink-0">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleViewCityParcels(city.city, city.parcels)}
-                                                                    className="rounded px-2 py-0.5 text-[10px] font-semibold text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-700 dark:hover:text-pink-300 transition-colors cursor-pointer"
-                                                                >
-                                                                    View
-                                                                </button>
+                                                                 <button
+                                                                     type="button"
+                                                                     onClick={() => handleViewCityParcels(city.city, city.parcels)}
+                                                                     className="group/viewregioncity inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[#ffe6f0] hover:bg-[#ffd9e8] text-pink-700 border border-pink-300/90 shadow-[0_2px_6px_rgba(244,63,94,0.16),inset_0_1px_0_#ffffff] dark:bg-[#341427] dark:hover:bg-[#421932] dark:text-pink-200 dark:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                                     title="View parcels"
+                                                                 >
+                                                                     <Eye className="w-3 h-3 shrink-0 text-pink-600 dark:text-pink-400" />
+                                                                     <span className="max-w-0 overflow-hidden opacity-0 group-hover/viewregioncity:max-w-[80px] group-hover/viewregioncity:opacity-100 group-hover/viewregioncity:ml-1 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                                         View
+                                                                     </span>
+                                                                 </button>
                                                                 <StatusBadge
                                                                     tone={city.hasBulkQr ? 'emerald' : 'neutral'}
                                                                     icon={city.hasBulkQr ? 'fas fa-check-circle' : 'fas fa-qrcode'}
@@ -1531,10 +1540,13 @@ export default function SortingPanel() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => copyToClipboard(city.bulkQrCity!)}
-                                                                        className="rounded p-0.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-                                                                        title="Copy QR code"
+                                                                        className="group/regioncityqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#e0f2fe] hover:bg-[#bae6fd] text-sky-900 border border-sky-300/90 shadow-[0_2px_6px_rgba(14,165,233,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0c2a3a] dark:hover:bg-[#13374b] dark:text-sky-200 dark:border-[#1b4e68] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                                        title="Copy City QR"
                                                                     >
-                                                                        <i className="fas fa-copy text-[10px]"></i>
+                                                                        <Clipboard className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                                                                        <span className="max-w-0 overflow-hidden opacity-0 group-hover/regioncityqr:max-w-[120px] group-hover/regioncityqr:opacity-100 group-hover/regioncityqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                                            {city.bulkQrCity}
+                                                                        </span>
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -1721,12 +1733,15 @@ export default function SortingPanel() {
                                                         <td data-label="Global QR" className="text-center">
                                                             {parcel.bulk_qr_code ? (
                                                                 <button
-                                                                    onClick={(e) => handleCopyTableQr(parcel.bulk_qr_code, e)}
-                                                                    className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-md border border-emerald-200/60 dark:border-emerald-800/60 transition-all cursor-pointer"
+                                                                    type="button"
+                                                                    onClick={(e) => handleCopyTableQr(parcel.bulk_qr_code!, e)}
+                                                                    className="group/globalqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#e6f8ef] hover:bg-[#d5f3e4] text-emerald-800 border border-emerald-300/90 shadow-[0_2px_6px_rgba(16,185,129,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0f2c1f] dark:hover:bg-[#153a29] dark:text-emerald-200 dark:border-[#1d573c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
                                                                     title="Copy Global QR"
                                                                 >
-                                                                    <i className="fas fa-copy text-[9px]"></i>
-                                                                    <span className="max-w-[60px] truncate">{parcel.bulk_qr_code}</span>
+                                                                    <Clipboard className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                                                    <span className="max-w-0 overflow-hidden opacity-0 group-hover/globalqr:max-w-[120px] group-hover/globalqr:opacity-100 group-hover/globalqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                                        {parcel.bulk_qr_code}
+                                                                    </span>
                                                                 </button>
                                                             ) : (
                                                                 <span className="text-slate-300 dark:text-slate-600 text-[10px]">—</span>
@@ -1736,12 +1751,15 @@ export default function SortingPanel() {
                                                         <td data-label="City QR" className="text-center">
                                                             {parcel.bulk_qr_city ? (
                                                                 <button
-                                                                    onClick={(e) => handleCopyTableQr(parcel.bulk_qr_city, e)}
-                                                                    className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-md border border-blue-200/60 dark:border-blue-800/60 transition-all cursor-pointer"
+                                                                    type="button"
+                                                                    onClick={(e) => handleCopyTableQr(parcel.bulk_qr_city!, e)}
+                                                                    className="group/cityqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#e0f2fe] hover:bg-[#bae6fd] text-sky-900 border border-sky-300/90 shadow-[0_2px_6px_rgba(14,165,233,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0c2a3a] dark:hover:bg-[#13374b] dark:text-sky-200 dark:border-[#1b4e68] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
                                                                     title="Copy City QR"
                                                                 >
-                                                                    <i className="fas fa-copy text-[9px]"></i>
-                                                                    <span className="max-w-[60px] truncate">{parcel.bulk_qr_city}</span>
+                                                                    <Clipboard className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                                                                    <span className="max-w-0 overflow-hidden opacity-0 group-hover/cityqr:max-w-[120px] group-hover/cityqr:opacity-100 group-hover/cityqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                                        {parcel.bulk_qr_city}
+                                                                    </span>
                                                                 </button>
                                                             ) : (
                                                                 <span className="text-slate-300 dark:text-slate-600 text-[10px]">—</span>
@@ -1751,12 +1769,15 @@ export default function SortingPanel() {
                                                         <td data-label="Courier QR" className="text-center">
                                                             {parcel.bulk_qr_courier ? (
                                                                 <button
-                                                                    onClick={(e) => handleCopyTableQr(parcel.bulk_qr_courier, e)}
-                                                                    className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-md border border-purple-200/60 dark:border-purple-800/60 transition-all cursor-pointer"
+                                                                    type="button"
+                                                                    onClick={(e) => handleCopyTableQr(parcel.bulk_qr_courier!, e)}
+                                                                    className="group/courierqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#f3e8ff] hover:bg-[#e9d5ff] text-purple-900 border border-purple-300/90 shadow-[0_2px_6px_rgba(168,85,247,0.16),inset_0_1px_0_#ffffff] dark:bg-[#2e1065] dark:hover:bg-[#3b0764] dark:text-purple-200 dark:border-[#581c87] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
                                                                     title="Copy Courier QR"
                                                                 >
-                                                                    <i className="fas fa-copy text-[9px]"></i>
-                                                                    <span className="max-w-[60px] truncate">{parcel.bulk_qr_courier}</span>
+                                                                    <Clipboard className="w-3.5 h-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                                                                    <span className="max-w-0 overflow-hidden opacity-0 group-hover/courierqr:max-w-[120px] group-hover/courierqr:opacity-100 group-hover/courierqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                                        {parcel.bulk_qr_courier}
+                                                                    </span>
                                                                 </button>
                                                             ) : (
                                                                 <span className="text-slate-300 dark:text-slate-600 text-[10px]">—</span>
@@ -1797,6 +1818,18 @@ export default function SortingPanel() {
                         </div>
                     )}
                 </div>
+                {totalItems > 0 && (
+                    <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-3 border-t border-slate-100 dark:border-slate-800">
+                        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            Showing {parcels.length} of {totalItems} parcels
+                        </div>
+                        <Pagination
+                            currentPage={page}
+                            totalPages={totalPages}
+                            onPageChange={handlePageChange}
+                        />
+                    </div>
+                )}
             </div>{/* courier summary */}
             <div className="text-slate-900 dark:text-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -1858,10 +1891,11 @@ export default function SortingPanel() {
                                                         e.stopPropagation();
                                                         copyToClipboard(qrCode);
                                                     }}
-                                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors p-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                                                    title="Copy QR code"
+                                                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-mono font-semibold bg-[#f3e8ff] hover:bg-[#e9d5ff] text-purple-900 border border-purple-300/90 shadow-[0_2px_6px_rgba(168,85,247,0.16),inset_0_1px_0_#ffffff] dark:bg-[#2e1065] dark:hover:bg-[#3b0764] dark:text-purple-200 dark:border-[#581c87] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-200 ease-in-out cursor-pointer active:scale-95"
+                                                    title="Copy Courier QR"
                                                 >
-                                                    <i className="fas fa-copy text-xs"></i>
+                                                    <Clipboard className="w-3 h-3 shrink-0 text-purple-600 dark:text-purple-400" />
+                                                    <span className="font-bold">Copy</span>
                                                 </button>
                                             </div>
                                         )}
@@ -1871,23 +1905,26 @@ export default function SortingPanel() {
                                         <button
                                             type="button"
                                             onClick={() => handleViewCourierParcels(courier.name)}
-                                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-all hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-600 dark:hover:text-pink-400 group/btn"
+                                            className="w-full inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold bg-[#ffe6f0] hover:bg-[#ffd9e8] text-pink-700 border border-pink-300/90 shadow-[0_2px_6px_rgba(244,63,94,0.16),inset_0_1px_0_#ffffff] dark:bg-[#341427] dark:hover:bg-[#421932] dark:text-pink-200 dark:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] transition-all duration-200 ease-in-out cursor-pointer active:scale-95"
+                                            title="View parcels"
                                         >
-                                            <span>View parcels</span>
-                                            <i className="fas fa-arrow-right text-[10px] text-slate-400 dark:text-slate-500 group-hover/btn:text-pink-500 group-hover/btn:translate-x-0.5 transition-all"></i>
+                                            <Eye className="w-3.5 h-3.5 shrink-0 text-pink-600 dark:text-pink-400" />
+                                            <span className="font-bold">View parcels</span>
                                         </button>
 
                                         <button
                                             type="button"
                                             onClick={() => handleGenerateCourierBulkQr(courier.name)}
                                             disabled={generatingBulk || courier.parcels.length === 0 || hasQr}
-                                            className={`w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${hasQr
-                                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 cursor-default border border-emerald-200/60 dark:border-emerald-800/60'
-                                                : 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none'
+                                            className={`w-full inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200 ease-in-out cursor-pointer active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${hasQr
+                                                ? 'bg-[#e6f8ef] text-emerald-800 border border-emerald-300/90 shadow-[0_2px_6px_rgba(16,185,129,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0f2c1f] dark:text-emerald-200 dark:border-[#1d573c]'
+                                                : 'bg-[#e6f8ef] hover:bg-[#d5f3e4] text-emerald-800 border border-emerald-300/90 shadow-[0_2px_6px_rgba(16,185,129,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0f2c1f] dark:hover:bg-[#153a29] dark:text-emerald-200 dark:border-[#1d573c]'
                                                 }`}
                                         >
-                                            <i className={`fas ${hasQr ? 'fa-check-circle text-emerald-600 dark:text-emerald-400' : 'fa-qrcode'} text-xs`}></i>
-                                            <span>{hasQr ? 'Courier QR Generated' : 'Generate Courier QR'}</span>
+                                            <i className={`fas ${hasQr ? 'fa-check-circle text-emerald-600 dark:text-emerald-400' : 'fa-qrcode'} text-xs shrink-0`} />
+                                            <span className="font-bold">
+                                                {hasQr ? 'Courier QR Ready' : 'Generate Courier QR'}
+                                            </span>
                                         </button>
                                     </div>
                                 </div>
@@ -2306,11 +2343,15 @@ export default function SortingPanel() {
                                                 <div className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-800">
                                                     <span className="text-xs font-mono text-slate-600 dark:text-slate-400">Global: {viewParcel.bulk_qr_code}</span>
                                                     <button
+                                                        type="button"
                                                         onClick={() => copyToClipboard(viewParcel.bulk_qr_code!)}
-                                                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-                                                        title="Copy QR code"
+                                                        className="group/modalglobalqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#e6f8ef] hover:bg-[#d5f3e4] text-emerald-800 border border-emerald-300/90 shadow-[0_2px_6px_rgba(16,185,129,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0f2c1f] dark:hover:bg-[#153a29] dark:text-emerald-200 dark:border-[#1d573c] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                        title="Copy Global QR"
                                                     >
-                                                        <i className="fas fa-copy text-xs"></i>
+                                                        <Clipboard className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                                        <span className="max-w-0 overflow-hidden opacity-0 group-hover/modalglobalqr:max-w-[120px] group-hover/modalglobalqr:opacity-100 group-hover/modalglobalqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                            Copy QR
+                                                        </span>
                                                     </button>
                                                 </div>
                                             )}
@@ -2318,22 +2359,31 @@ export default function SortingPanel() {
                                                 <div className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-800">
                                                     <span className="text-xs font-mono text-slate-600 dark:text-slate-400">City: {viewParcel.bulk_qr_city}</span>
                                                     <button
+                                                        type="button"
                                                         onClick={() => copyToClipboard(viewParcel.bulk_qr_city!)}
-                                                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-                                                        title="Copy QR code"
+                                                        className="group/modalcityqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#e0f2fe] hover:bg-[#bae6fd] text-sky-900 border border-sky-300/90 shadow-[0_2px_6px_rgba(14,165,233,0.16),inset_0_1px_0_#ffffff] dark:bg-[#0c2a3a] dark:hover:bg-[#13374b] dark:text-sky-200 dark:border-[#1b4e68] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                        title="Copy City QR"
                                                     >
-                                                        <i className="fas fa-copy text-xs"></i>
+                                                        <Clipboard className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                                                        <span className="max-w-0 overflow-hidden opacity-0 group-hover/modalcityqr:max-w-[120px] group-hover/modalcityqr:opacity-100 group-hover/modalcityqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                            Copy QR
+                                                        </span>
                                                     </button>
                                                 </div>
                                             )}
                                             {viewParcel.bulk_qr_courier && (
                                                 <div className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-800">
                                                     <span className="text-xs font-mono text-slate-600 dark:text-slate-400">Courier: {viewParcel.bulk_qr_courier}</span>
-                                                    <button onClick={() => copyToClipboard(viewParcel.bulk_qr_courier!)}
-                                                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-                                                        title="Copy QR code"
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => copyToClipboard(viewParcel.bulk_qr_courier!)}
+                                                        className="group/modalcourierqr inline-flex items-center rounded-full p-1.5 text-[10px] font-mono font-semibold bg-[#f3e8ff] hover:bg-[#e9d5ff] text-purple-900 border border-purple-300/90 shadow-[0_2px_6px_rgba(168,85,247,0.16),inset_0_1px_0_#ffffff] dark:bg-[#2e1065] dark:hover:bg-[#3b0764] dark:text-purple-200 dark:border-[#581c87] transition-all duration-300 ease-in-out cursor-pointer active:scale-95"
+                                                        title="Copy Courier QR"
                                                     >
-                                                        <i className="fas fa-copy text-xs"></i>
+                                                        <Clipboard className="w-3.5 h-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                                                        <span className="max-w-0 overflow-hidden opacity-0 group-hover/modalcourierqr:max-w-[120px] group-hover/modalcourierqr:opacity-100 group-hover/modalcourierqr:ml-1.5 transition-all duration-300 ease-in-out whitespace-nowrap font-bold">
+                                                            Copy QR
+                                                        </span>
                                                     </button>
                                                 </div>
                                             )}

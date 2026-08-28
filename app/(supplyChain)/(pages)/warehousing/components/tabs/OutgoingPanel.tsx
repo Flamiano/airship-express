@@ -10,6 +10,7 @@ import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { Send } from "lucide-react";
 
 interface Parcel {
@@ -807,6 +808,11 @@ export default function OutgoingPanel({ isVisible = true }) {
 
                         <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
                             <div className="relative flex-1">
+                                <i
+                                    className={`fas fa-barcode absolute left-3.5 top-1/2 -translate-y-1/2 text-sm transition-colors ${isListening ? 'text-emerald-500' : 'text-slate-400'
+                                        }`}
+                                    aria-hidden="true"
+                                />
                                 <input
                                     ref={inputRef}
                                     id="outgoing-barcode"
@@ -815,12 +821,16 @@ export default function OutgoingPanel({ isVisible = true }) {
                                     onChange={handleChange}
                                     onKeyDown={handleKeyDown}
                                     onPaste={handlePaste}
-                                    readOnly={!isListening}
-                                    className={`w-full h-11 border rounded-xl pl-3.5 pr-28 text-sm font-mono transition-all focus:outline-none focus:ring-2 ${isListening
-                                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-emerald-500 ring-2 ring-emerald-500/20 focus:border-emerald-500'
-                                        : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                                        }`}
-                                    placeholder={isListening ? "Scanning barcodes..." : "Click Start to enable scanning"}
+                                    readOnly={!isListening || isScanning}
+                                    className={`w-full rounded-xl border py-2.5 pl-10 pr-24 text-sm font-mono text-slate-800 dark:text-slate-200 transition-all outline-hidden ${isListening
+                                        ? 'border-emerald-500 dark:border-emerald-600 focus-visible:ring-emerald-500/20'
+                                        : 'border-slate-300 dark:border-slate-800 focus-visible:border-pink-500 focus-visible:ring-pink-500/20'
+                                        } ${isScanning ? 'cursor-wait bg-slate-50 dark:bg-slate-800/50 opacity-75' : ''}`}
+                                    placeholder={
+                                        isListening
+                                            ? "Scan barcode or type and press Enter..."
+                                            : "Click Start to enable scanning mode"
+                                    }
                                     disabled={isScanning}
                                     autoFocus
                                     spellCheck={false}
@@ -938,11 +948,11 @@ export default function OutgoingPanel({ isVisible = true }) {
             </div>
 
             <div className="card border border-slate-200/80 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-sm dark:shadow-none overflow-hidden text-slate-900 dark:text-slate-100">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold select-none">
+                <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table className="table-pro w-full text-left border-collapse">
+                        <thead>
                             <tr>
-                                <th className="p-3.5 pl-4 w-10">
+                                <th className="w-10 text-center">
                                     <input
                                         type="checkbox"
                                         checked={allSelected}
@@ -955,17 +965,17 @@ export default function OutgoingPanel({ isVisible = true }) {
                                         className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-pink-500 focus:ring-pink-500/20 focus:ring-2 cursor-pointer transition-colors"
                                     />
                                 </th>
-                                <th className="p-3.5 w-10 text-slate-400 dark:text-slate-500">#</th>
-                                <th className="p-3.5">Barcode</th>
-                                <th className="p-3.5">Tracking</th>
-                                <th className="p-3.5">Courier</th>
-                                <th className="p-3.5">Destination</th>
-                                <th className="p-3.5">Driver</th>
-                                <th className="p-3.5">Status</th>
-                                <th className="p-3.5 pr-4 text-right! w-[130px] min-w-[130px]">Actions</th>
+                                <th className="w-10 text-center">#</th>
+                                <th>Barcode</th>
+                                <th>Tracking</th>
+                                <th>Courier</th>
+                                <th>Destination</th>
+                                <th>Driver</th>
+                                <th>Status</th>
+                                <th className="text-right! w-[130px] min-w-[130px]">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-medium text-slate-700 dark:text-slate-300">
+                        <tbody>
                             {loading ? (
                                 <tr>
                                     <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">
@@ -1029,7 +1039,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                                                 : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/60'
                                                 }`}
                                         >
-                                            <td className="p-3.5 pl-4">
+                                            <td data-label="Select" className="text-center">
                                                 <input
                                                     type="checkbox"
                                                     checked={isSelected}
@@ -1037,8 +1047,8 @@ export default function OutgoingPanel({ isVisible = true }) {
                                                     className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-pink-500 focus:ring-pink-500/20 focus:ring-2 cursor-pointer transition-colors"
                                                 />
                                             </td>
-                                            <td className="p-3.5 font-bold text-slate-400 dark:text-slate-500">{index + 1}</td>
-                                            <td className="p-3.5">
+                                            <td data-label="#" className="text-center font-bold text-slate-400 dark:text-slate-500">{index + 1}</td>
+                                            <td data-label="Barcode">
                                                 <div className="inline-flex items-center gap-1.5 font-mono text-slate-900 dark:text-slate-100 font-semibold">
                                                     <span>{parcel.barcode}</span>
                                                     {parcel.bulk_qr_code && (
@@ -1053,8 +1063,8 @@ export default function OutgoingPanel({ isVisible = true }) {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{parcel.tracking_number}</td>
-                                            <td className="p-3.5">
+                                            <td data-label="Tracking" className="font-mono text-slate-500 dark:text-slate-400">{parcel.tracking_number}</td>
+                                            <td data-label="Courier">
                                                 <StatusBadge
                                                     tone="pink"
                                                     icon={<i className="fas fa-truck text-[10px]" />}
@@ -1063,8 +1073,8 @@ export default function OutgoingPanel({ isVisible = true }) {
                                                     {getCourierDisplay(parcel.courier, parcel.courier_id)}
                                                 </StatusBadge>
                                             </td>
-                                            <td className="p-3.5 text-slate-600 dark:text-slate-300">{parcel.destination || 'N/A'}</td>
-                                            <td className="p-3.5">
+                                            <td data-label="Destination" className="text-slate-600 dark:text-slate-300">{parcel.destination || 'N/A'}</td>
+                                            <td data-label="Driver">
                                                 {parcel.driver_name ? (
                                                     <StatusBadge
                                                         tone="emerald"
@@ -1077,10 +1087,10 @@ export default function OutgoingPanel({ isVisible = true }) {
                                                     <span className="text-xs text-slate-400 dark:text-slate-500 italic">Unassigned</span>
                                                 )}
                                             </td>
-                                            <td className="p-3.5">
+                                            <td data-label="Status">
                                                 {renderStatusBadge(parcel.status)}
                                             </td>
-                                            <td className="p-3.5 pr-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                            <td data-label="Actions" className="text-right whitespace-nowrap w-[130px] min-w-[130px]">
                                                 <div className="flex items-center justify-end gap-2.5">
                                                     <CrudActionButton
                                                         action="custom"
@@ -1107,7 +1117,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                     </table>
                 </div>
 
-                <div className="p-3.5 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="flex-shrink-0 pagination-container-class p-3.5 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-3">
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                         <span>Showing {parcels.length} of {stats.total} parcel(s) ready for pickup</span>
                         {bulkQrCode && (
@@ -1125,37 +1135,11 @@ export default function OutgoingPanel({ isVisible = true }) {
                         )}
                     </div>
 
-                    {totalPages > 1 && (
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                disabled={page === 1}
-                                onClick={() => handlePageChange(page - 1)}
-                                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                                </svg>
-                                Prev
-                            </button>
-
-                            <span className="px-3 py-1.5 rounded-xl bg-pink-500 text-white text-xs font-bold shadow-sm shadow-pink-500/20">
-                                {page}
-                            </span>
-
-                            <button
-                                type="button"
-                                disabled={page === totalPages}
-                                onClick={() => handlePageChange(page + 1)}
-                                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
-                            >
-                                Next
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                                </svg>
-                            </button>
-                        </div>
-                    )}
+                    <Pagination
+                        currentPage={page}
+                        totalPages={totalPages}
+                        onPageChange={handlePageChange}
+                    />
                 </div>
             </div>
 

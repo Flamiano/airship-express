@@ -251,7 +251,7 @@ export default function IncomingPanel() {
         <>
             <div
                 data-panel="incoming"
-                className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 mx-auto min-h-screen bg-slate-50/50"
+                className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 mx-auto min-h-screen bg-slate-50/50 card"
             >
                 <section className="space-y-5">
                     <IncomingHeader onReceiveAll={() => fetchParcelsData(true)} />
@@ -262,7 +262,7 @@ export default function IncomingPanel() {
                     />
                 </section>
 
-                <section className="space-y-4">
+                <section className="space-y-4 ">
                     <TableFilters
                         onFilterChange={handleFilterChange}
                         onSearch={handleSearch}
@@ -297,7 +297,7 @@ export default function IncomingPanel() {
                             </div>
                         </div>
                     ) : hasNoData ? (
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center dark:bg-slate-900">
                             <i className="fas fa-box-open text-4xl text-slate-300 mb-4"></i>
                             <h3 className="text-lg font-semibold text-slate-700">No pending parcels</h3>
                             <p className="text-sm text-slate-500 mt-1">

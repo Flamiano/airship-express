@@ -19,7 +19,7 @@ export const Pagination = ({
     if (totalPages <= 0) return null;
 
     return (
-        <div className="inline-flex items-center gap-1.5 p-1 rounded-full bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 shadow-2xs select-none">
+        <div className="inline-flex items-center gap-1.5 p-1 rounded-full bg-slate-100/90 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs select-none dark:bg-slate-900">
             <AppButton
                 type="button"
                 variant="neutral"

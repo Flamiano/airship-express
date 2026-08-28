@@ -57,7 +57,7 @@ export default function IncomingHeader({ onReceiveAll }: IncomingHeaderProps) {
     };
 
     return (
-        <div className="flex flex-col gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 pb-4 border-b border-slate-200/80 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1.5">
                 <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-500 dark:text-pink-400 ring-1 ring-inset ring-pink-500/10 dark:ring-pink-500/20">

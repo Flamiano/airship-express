@@ -83,7 +83,7 @@ export default function Suppliers() {
         (currentPOPage - 1) * PO_ITEMS_PER_PAGE,
         currentPOPage * PO_ITEMS_PER_PAGE
     );
-    const POTotalPages = Math.ceil(purchaseOrders.length / PO_ITEMS_PER_PAGE);
+    const POTotalPages = Math.max(1, Math.ceil(purchaseOrders.length / PO_ITEMS_PER_PAGE));
 
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -441,7 +441,7 @@ export default function Suppliers() {
         return matchesSearch && matchesCategory;
     });
 
-    const totalPages = Math.ceil(filteredSuppliers.length / ITEMS_PER_PAGE);
+    const totalPages = Math.max(1, Math.ceil(filteredSuppliers.length / ITEMS_PER_PAGE));
     const paginatedSuppliers = filteredSuppliers.slice(
         (currentPage - 1) * ITEMS_PER_PAGE,
         currentPage * ITEMS_PER_PAGE
@@ -1160,7 +1160,7 @@ export default function Suppliers() {
                         </div>
 
                         {/* pagination */}
-                        <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1">
+                        <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1 ">
                             <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
                                 <span className="text-slate-500 dark:text-slate-400 font-medium">
                                     Showing <span className="font-semibold text-slate-800 dark:text-white">
@@ -1202,13 +1202,11 @@ export default function Suppliers() {
                                 )}
                             </div>
 
-                            {filteredSuppliers.length > ITEMS_PER_PAGE && (
-                                <Pagination
-                                    currentPage={currentPage}
-                                    totalPages={totalPages}
-                                    onPageChange={setCurrentPage}
-                                />
-                            )}
+                            <Pagination
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={setCurrentPage}
+                            />
                         </div>
                     </div>
 
@@ -1341,7 +1339,7 @@ export default function Suppliers() {
                             </div>
                         </div>
 
-                        <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1 border-t border-slate-100 dark:border-slate-900">
                             <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
                                 <span className="text-slate-500 dark:text-slate-400 font-medium">
                                     Showing <span className="font-semibold text-slate-800 dark:text-white">
@@ -1372,13 +1370,11 @@ export default function Suppliers() {
                                 )}
                             </div>
 
-                            {purchaseOrders.length > 0 && (
-                                <Pagination
-                                    currentPage={currentPOPage}
-                                    totalPages={POTotalPages}
-                                    onPageChange={setCurrentPOPage}
-                                />
-                            )}
+                            <Pagination
+                                currentPage={currentPOPage}
+                                totalPages={POTotalPages}
+                                onPageChange={setCurrentPOPage}
+                            />
                         </div>
                     </div>
                 </div>
@@ -2072,7 +2068,7 @@ export default function Suppliers() {
                                             .filter(po => po.supplier_name === selectedChartData.supplierName)
                                             .slice(0, 5)
                                             .map((po) => (
-                                                 <div key={po.id} className="flex items-center justify-between text-xs">
+                                                <div key={po.id} className="flex items-center justify-between text-xs">
                                                     <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
                                                         {po.po_number}
                                                     </span>
