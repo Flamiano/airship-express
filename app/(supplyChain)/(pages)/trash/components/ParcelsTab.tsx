@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CardsSkeleton, TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -369,67 +370,71 @@ export function ParcelsTab() {
     return (
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Cards
-                    frontIcon="fa-solid fa-boxes"
-                    header="Total Archived"
-                    data={String(archivedParcels.length)}
-                    arrow="fa-solid fa-folder-open"
-                    description="Parcels in storage"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Archived Parcels"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Total Archived: ${archivedParcels.length} parcel(s)`}
-                    tooltip="View parcel details"
-                    frontTextColor="text-pink-500 dark:text-pink-400"
-                    descriptionTextColor="text-pink-600 dark:text-pink-400"
-                />
+            {parcelLoading && archivedParcels.length === 0 ? (
+                <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4" />
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Cards
+                        frontIcon="fa-solid fa-boxes"
+                        header="Total Archived"
+                        data={String(archivedParcels.length)}
+                        arrow="fa-solid fa-folder-open"
+                        description="Parcels in storage"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Archived Parcels"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Total Archived: ${archivedParcels.length} parcel(s)`}
+                        tooltip="View parcel details"
+                        frontTextColor="text-pink-500 dark:text-pink-400"
+                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-truck"
-                    header="Couriers"
-                    data={String(new Set(archivedParcels.map(p => p.courier)).size)}
-                    arrow="fa-solid fa-route"
-                    description="Distinct couriers"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Courier Info"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Couriers: ${Array.from(new Set(archivedParcels.map(p => p.courier))).join(', ') || 'None'}`}
-                    tooltip="View courier details"
-                    frontTextColor="text-indigo-500 dark:text-indigo-400"
-                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-truck"
+                        header="Couriers"
+                        data={String(new Set(archivedParcels.map(p => p.courier)).size)}
+                        arrow="fa-solid fa-route"
+                        description="Distinct couriers"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Courier Info"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Couriers: ${Array.from(new Set(archivedParcels.map(p => p.courier))).join(', ') || 'None'}`}
+                        tooltip="View courier details"
+                        frontTextColor="text-indigo-500 dark:text-indigo-400"
+                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-city"
-                    header="Destinations"
-                    data={String(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean)).size)}
-                    arrow="fa-solid fa-map-location-dot"
-                    description="Distinct destinations"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Destinations"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Destinations: ${Array.from(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean))).join(', ') || 'None'}`}
-                    tooltip="View destinations"
-                    frontTextColor="text-blue-500 dark:text-blue-400"
-                    descriptionTextColor="text-blue-600 dark:text-blue-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-city"
+                        header="Destinations"
+                        data={String(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean)).size)}
+                        arrow="fa-solid fa-map-location-dot"
+                        description="Distinct destinations"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Destinations"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Destinations: ${Array.from(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean))).join(', ') || 'None'}`}
+                        tooltip="View destinations"
+                        frontTextColor="text-blue-500 dark:text-blue-400"
+                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-tags"
-                    header="Statuses"
-                    data={String(Math.max(0, parcelStatuses.length - 1))}
-                    arrow="fa-solid fa-layer-group"
-                    description="Distinct statuses"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Status Categories"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Statuses: ${parcelStatuses.filter(s => s !== 'all').join(', ') || 'None'}`}
-                    tooltip="View status categories"
-                    frontTextColor="text-purple-500 dark:text-purple-400"
-                    descriptionTextColor="text-purple-600 dark:text-purple-400"
-                />
-            </div>
+                    <Cards
+                        frontIcon="fa-solid fa-tags"
+                        header="Statuses"
+                        data={String(Math.max(0, parcelStatuses.length - 1))}
+                        arrow="fa-solid fa-layer-group"
+                        description="Distinct statuses"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Status Categories"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Statuses: ${parcelStatuses.filter(s => s !== 'all').join(', ') || 'None'}`}
+                        tooltip="View status categories"
+                        frontTextColor="text-purple-500 dark:text-purple-400"
+                        descriptionTextColor="text-purple-600 dark:text-purple-400"
+                    />
+                </div>
+            )}
 
             {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
@@ -560,7 +565,24 @@ export function ParcelsTab() {
                             </tr>
                         </thead>
                         <tbody>
-                            {paginatedParcels.length === 0 ? (
+                            {parcelLoading ? (
+                                <TableRowsSkeleton
+                                    rows={8}
+                                    columns={[
+                                        { type: 'checkbox', width: 'w-10' },
+                                        { type: 'mono', width: 'w-24' },
+                                        { type: 'mono', width: 'w-28' },
+                                        { type: 'text', width: 'w-32' },
+                                        { type: 'text', width: 'w-32' },
+                                        { type: 'text', width: 'w-28' },
+                                        { type: 'badge' },
+                                        { type: 'badge' },
+                                        { type: 'avatar-text', subtext: false },
+                                        { type: 'date' },
+                                        { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                    ]}
+                                />
+                            ) : paginatedParcels.length === 0 ? (
                                 <tr>
                                     <td colSpan={11} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">

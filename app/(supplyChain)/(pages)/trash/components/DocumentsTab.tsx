@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CardsSkeleton, TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -393,67 +394,71 @@ export function DocumentsTab() {
     return (
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Cards
-                    frontIcon="fa-solid fa-file-archive"
-                    header="Total Archived"
-                    data={String(archivedDocuments.length)}
-                    arrow="fa-solid fa-folder-open"
-                    description="Documents in storage"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Archived Documents"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Total Archived: ${archivedDocuments.length} document(s)\nStorage size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}`}
-                    tooltip="View document details"
-                    frontTextColor="text-pink-500 dark:text-pink-400"
-                    descriptionTextColor="text-pink-600 dark:text-pink-400"
-                />
+            {docsLoading && archivedDocuments.length === 0 ? (
+                <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4" />
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Cards
+                        frontIcon="fa-solid fa-file-archive"
+                        header="Total Archived"
+                        data={String(archivedDocuments.length)}
+                        arrow="fa-solid fa-folder-open"
+                        description="Documents in storage"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Archived Documents"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Total Archived: ${archivedDocuments.length} document(s)\nStorage size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}`}
+                        tooltip="View document details"
+                        frontTextColor="text-pink-500 dark:text-pink-400"
+                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-tags"
-                    header="Document Types"
-                    data={String(Math.max(0, docTypes.length - 1))}
-                    arrow="fa-solid fa-layer-group"
-                    description="Distinct classifications"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Classifications"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Types: ${docTypes.filter(t => t !== 'all').join(', ') || 'None'}`}
-                    tooltip="View document categories"
-                    frontTextColor="text-indigo-500 dark:text-indigo-400"
-                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-tags"
+                        header="Document Types"
+                        data={String(Math.max(0, docTypes.length - 1))}
+                        arrow="fa-solid fa-layer-group"
+                        description="Distinct classifications"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Classifications"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Types: ${docTypes.filter(t => t !== 'all').join(', ') || 'None'}`}
+                        tooltip="View document categories"
+                        frontTextColor="text-indigo-500 dark:text-indigo-400"
+                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-database"
-                    header="Total Size"
-                    data={formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}
-                    arrow="fa-solid fa-hard-drive"
-                    description="Storage allocated"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Storage Details"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Total Size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}\nAcross ${archivedDocuments.length} files`}
-                    tooltip="View storage allocation"
-                    frontTextColor="text-blue-500 dark:text-blue-400"
-                    descriptionTextColor="text-blue-600 dark:text-blue-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-database"
+                        header="Total Size"
+                        data={formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}
+                        arrow="fa-solid fa-hard-drive"
+                        description="Storage allocated"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Storage Details"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Total Size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}\nAcross ${archivedDocuments.length} files`}
+                        tooltip="View storage allocation"
+                        frontTextColor="text-blue-500 dark:text-blue-400"
+                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-handshake"
-                    header="Linked Suppliers"
-                    data={String(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean)).size)}
-                    arrow="fa-solid fa-building"
-                    description="Associated suppliers"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Supplier Links"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Suppliers: ${Array.from(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean))).join(', ') || 'None'}`}
-                    tooltip="View associated suppliers"
-                    frontTextColor="text-amber-500 dark:text-amber-400"
-                    descriptionTextColor="text-amber-600 dark:text-amber-400"
-                />
-            </div>
+                    <Cards
+                        frontIcon="fa-solid fa-handshake"
+                        header="Linked Suppliers"
+                        data={String(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean)).size)}
+                        arrow="fa-solid fa-building"
+                        description="Associated suppliers"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Supplier Links"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Suppliers: ${Array.from(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean))).join(', ') || 'None'}`}
+                        tooltip="View associated suppliers"
+                        frontTextColor="text-amber-500 dark:text-amber-400"
+                        descriptionTextColor="text-amber-600 dark:text-amber-400"
+                    />
+                </div>
+            )}
 
             {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
@@ -583,7 +588,23 @@ export function DocumentsTab() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
-                            {paginatedDocuments.length === 0 ? (
+                            {docsLoading ? (
+                                <TableRowsSkeleton
+                                    rows={8}
+                                    columns={[
+                                        { type: 'checkbox', width: 'w-10' },
+                                        { type: 'text', width: 'w-48' },
+                                        { type: 'badge' },
+                                        { type: 'text' },
+                                        { type: 'text' },
+                                        { type: 'text' },
+                                        { type: 'badge' },
+                                        { type: 'avatar-text', subtext: false },
+                                        { type: 'date' },
+                                        { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                    ]}
+                                />
+                            ) : paginatedDocuments.length === 0 ? (
                                 <tr>
                                     <td colSpan={10} className="py-16 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">

@@ -3,6 +3,7 @@
 import React from 'react';
 import { CheckCircle, X, Send, Eye, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -132,16 +133,19 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                         {isLoading ? (
-                            <tr>
-                                <td colSpan={8} className="py-16 text-center text-slate-400 dark:text-slate-500">
-                                    <div className="flex flex-col items-center justify-center gap-3">
-                                        <div className="p-3 bg-pink-50 dark:bg-pink-950/40 rounded-full border border-pink-100 dark:border-pink-900/40">
-                                            <Loader2 className="animate-spin h-6 w-6 text-pink-500 dark:text-pink-400" />
-                                        </div>
-                                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide">Loading appeals data...</span>
-                                    </div>
-                                </td>
-                            </tr>
+                            <TableRowsSkeleton
+                                rows={6}
+                                columns={[
+                                    { type: 'checkbox', width: 'w-12' },
+                                    { type: 'avatar-text', subtext: false },
+                                    { type: 'text', width: 'w-40' },
+                                    { type: 'text', width: 'w-64' },
+                                    { type: 'text', width: 'w-48' },
+                                    { type: 'badge' },
+                                    { type: 'date' },
+                                    { type: 'actions', align: 'right', width: 'w-[150px]' },
+                                ]}
+                            />
                         ) : appeals.length === 0 ? (
                             <tr>
                                 <td colSpan={8} className="py-16 text-center">

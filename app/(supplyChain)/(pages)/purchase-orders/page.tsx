@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { sanitizeText, sanitizeNumber } from "@/app/(supplyChain)/components/global/sanitize";
-import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { CardsSkeleton, ChartSkeleton, TableSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
 import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
@@ -1347,8 +1347,6 @@ export default function PurchaseOrders() {
         setIsPurchaseOrderModalOpen(true);
     };
 
-    if (loading) return <PageSkeleton />;
-
     return (
         <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 fade-in bgCard">
@@ -1425,200 +1423,253 @@ export default function PurchaseOrders() {
                 />
 
                 {/* stats */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Cards
-                        frontIcon="fa-solid fa-file-invoice"
-                        header="Total POs"
-                        data={String(totalOrders)}
-                        arrow="fa-solid fa-arrow-up"
-                        description="All orders"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Overview"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`}
-                        tooltip="View all POs"
-                        tooltipLink="/purchase-orders"
-                        frontTextColor="text-pink-500 dark:text-pink-400"
-                        descriptionTextColor="text-emerald-600 dark:text-emerald-400"
-                    />
+                {loading ? (
+                    <CardsSkeleton count={4} className="grid-cols-2 lg:grid-cols-4" />
+                ) : (
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Cards
+                            frontIcon="fa-solid fa-file-invoice"
+                            header="Total POs"
+                            data={String(totalOrders)}
+                            arrow="fa-solid fa-arrow-up"
+                            description="All orders"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Overview"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`}
+                            tooltip="View all POs"
+                            tooltipLink="/purchase-orders"
+                            frontTextColor="text-pink-500 dark:text-pink-400"
+                            descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                        />
 
-                    <Cards
-                        frontIcon="fa-solid fa-clock"
-                        header="Pending"
-                        data={String(pendingConfirmation)}
-                        arrow="fa-solid fa-hourglass-half"
-                        description="Awaiting confirmation"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Pending Orders"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting supplier confirmation' : 'No pending orders'}`}
-                        tooltip="View pending orders"
-                        tooltipLink="/purchase-orders?status=Sent"
-                        badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined}
-                        frontTextColor="text-amber-500 dark:text-amber-400"
-                        descriptionTextColor="text-amber-600 dark:text-amber-400"
-                    />
+                        <Cards
+                            frontIcon="fa-solid fa-clock"
+                            header="Pending"
+                            data={String(pendingConfirmation)}
+                            arrow="fa-solid fa-hourglass-half"
+                            description="Awaiting confirmation"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Pending Orders"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting supplier confirmation' : 'No pending orders'}`}
+                            tooltip="View pending orders"
+                            tooltipLink="/purchase-orders?status=Sent"
+                            badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined}
+                            frontTextColor="text-amber-500 dark:text-amber-400"
+                            descriptionTextColor="text-amber-600 dark:text-amber-400"
+                        />
 
-                    <Cards
-                        frontIcon="fa-solid fa-circle-check"
-                        header="Completed"
-                        data={String(completed)}
-                        arrow="fa-solid fa-check-double"
-                        description="Delivered"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Completed"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Completed: ${completed}\n${completed > 0 ? 'Orders successfully delivered' : 'No completed orders'}`}
-                        tooltip="View completed orders"
-                        tooltipLink="/purchase-orders?status=Delivered"
-                        frontTextColor="text-emerald-500 dark:text-emerald-400"
-                        descriptionTextColor="text-emerald-600 dark:text-emerald-400"
-                    />
+                        <Cards
+                            frontIcon="fa-solid fa-circle-check"
+                            header="Completed"
+                            data={String(completed)}
+                            arrow="fa-solid fa-check-double"
+                            description="Delivered"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Completed"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Completed: ${completed}\n${completed > 0 ? 'Orders successfully delivered' : 'No completed orders'}`}
+                            tooltip="View completed orders"
+                            tooltipLink="/purchase-orders?status=Delivered"
+                            frontTextColor="text-emerald-500 dark:text-emerald-400"
+                            descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                        />
 
-                    <Cards
-                        frontIcon="fa-solid fa-coins"
-                        header="Total Spend"
-                        data={`₱${totalSpend.toLocaleString()}`}
-                        arrow="fa-solid fa-chart-line"
-                        description="Paid orders"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Financial Summary"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\n${purchaseOrders.filter(o => o.paid).length} paid orders\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No paid orders yet'}`}
-                        tooltip="View financial details"
-                        frontTextColor="text-blue-500 dark:text-blue-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
-                    />
-                </div>
+                        <Cards
+                            frontIcon="fa-solid fa-coins"
+                            header="Total Spend"
+                            data={`₱${totalSpend.toLocaleString()}`}
+                            arrow="fa-solid fa-chart-line"
+                            description="Paid orders"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Financial Summary"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\n${purchaseOrders.filter(o => o.paid).length} paid orders\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No paid orders yet'}`}
+                            tooltip="View financial details"
+                            frontTextColor="text-blue-500 dark:text-blue-400"
+                            descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        />
+                    </div>
+                )}
 
                 {/* charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* po status */}
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col justify-between transition-all">
-                        <div className="flex items-center justify-between mb-3">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">PO Status Categories</h3>
-                                    <div className="relative group">
-                                        <button
-                                            type="button"
-                                            className="w-4 h-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[10px] font-bold inline-flex items-center justify-center hover:text-pink-500 dark:hover:text-pink-400 transition-colors cursor-help"
-                                            aria-label="Information"
-                                        >
-                                            <i className="fas fa-info text-[9px]" />
-                                        </button>
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3.5 bg-slate-900 text-slate-200 text-xs rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20 pointer-events-none border border-slate-700/60">
-                                            <p className="font-semibold text-white mb-1.5 flex items-center gap-1.5 text-xs">
-                                                <i className="fas fa-chart-pie text-pink-400 text-xs" /> Status Metrics
-                                            </p>
-                                            <p className="text-[11px] text-slate-300 leading-relaxed">Distribution of purchase orders across lifecycle stages.</p>
-                                            <p className="mt-2 text-pink-300 text-[10px] font-medium flex items-center gap-1.5 border-t border-slate-800 pt-1.5">
-                                                <i className="fas fa-mouse-pointer text-[9px] text-pink-400" /> Click slice to view detailed orders
-                                            </p>
-                                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-slate-900 border-r border-b border-slate-700/60" />
+                {loading ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <ChartSkeleton
+                            type="doughnut"
+                            badgeIcon="fas fa-chart-pie"
+                            title="PO Status Categories"
+                            subtitle="Distribution by order status"
+                        />
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col justify-between animate-pulse">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="space-y-1">
+                                    <div className="h-4 w-36 bg-slate-200 dark:bg-slate-800 rounded" />
+                                    <div className="h-3 w-44 bg-slate-200/70 dark:bg-slate-800/70 rounded" />
+                                </div>
+                                <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/30" />
+                            </div>
+                            <div className="space-y-2.5">
+                                {[1, 2, 3].map((n) => (
+                                    <div key={n} className="flex items-center gap-3 p-3 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+                                        <div className="w-5 h-5 rounded-full bg-pink-100/60 dark:bg-pink-950/60" />
+                                        <div className="flex-1 space-y-1.5">
+                                            <div className="h-3.5 w-28 bg-slate-200 dark:bg-slate-800 rounded" />
+                                            <div className="h-3 w-40 bg-slate-200/70 dark:bg-slate-800/70 rounded" />
                                         </div>
                                     </div>
-                                </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distribution by order status</p>
+                                ))}
                             </div>
-                            <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
-                                <i className="fas fa-chart-pie text-xs" />
-                            </div>
-                        </div>
-
-                        <div className="h-60 relative w-full flex items-center justify-center">
-                            {datasetOrders.length === 0 ? (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
-                                    <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
-                                        <i className="fas fa-chart-pie text-base" />
-                                    </div>
-                                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No order data available</span>
-                                    <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Status metrics will display once orders are created</span>
-                                </div>
-                            ) : (
-                                <canvas ref={poChartRef} className="w-full h-full max-h-60 cursor-pointer" />
-                            )}
                         </div>
                     </div>
-
-                    {/* activity */}
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col transition-all">
-                        <div className="flex items-center justify-between mb-3">
-                            <div>
-                                <h3 className="font-bold text-sm text-slate-900 dark:text-white">Recent Activity</h3>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Latest purchase order actions</p>
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* po status */}
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col justify-between transition-all">
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-sm text-slate-900 dark:text-white">PO Status Categories</h3>
+                                        <div className="relative group">
+                                            <button
+                                                type="button"
+                                                className="w-4 h-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[10px] font-bold inline-flex items-center justify-center hover:text-pink-500 dark:hover:text-pink-400 transition-colors cursor-help"
+                                                aria-label="Information"
+                                            >
+                                                <i className="fas fa-info text-[9px]" />
+                                            </button>
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3.5 bg-slate-900 text-slate-200 text-xs rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20 pointer-events-none border border-slate-700/60">
+                                                <p className="font-semibold text-white mb-1.5 flex items-center gap-1.5 text-xs">
+                                                    <i className="fas fa-chart-pie text-pink-400 text-xs" /> Status Metrics
+                                                </p>
+                                                <p className="text-[11px] text-slate-300 leading-relaxed">Distribution of purchase orders across lifecycle stages.</p>
+                                                <p className="mt-2 text-pink-300 text-[10px] font-medium flex items-center gap-1.5 border-t border-slate-800 pt-1.5">
+                                                    <i className="fas fa-mouse-pointer text-[9px] text-pink-400" /> Click slice to view detailed orders
+                                                </p>
+                                                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-slate-900 border-r border-b border-slate-700/60" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distribution by order status</p>
+                                </div>
+                                <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
+                                    <i className="fas fa-chart-pie text-xs" />
+                                </div>
                             </div>
-                            <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
-                                <i className="fas fa-clock text-xs" />
+
+                            <div className="h-60 relative w-full flex items-center justify-center">
+                                {datasetOrders.length === 0 ? (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
+                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
+                                            <i className="fas fa-chart-pie text-base" />
+                                        </div>
+                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No order data available</span>
+                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Status metrics will display once orders are created</span>
+                                    </div>
+                                ) : (
+                                    <canvas ref={poChartRef} className="w-full h-full max-h-60 cursor-pointer" />
+                                )}
                             </div>
                         </div>
 
-                        <div className="space-y-2.5">
-                            {[0, 1, 2].map((index) => {
-                                const order = allOrders[index];
-                                const slotNumber = index + 1;
+                        {/* activity */}
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col transition-all">
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Recent Activity</h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Latest purchase order actions</p>
+                                </div>
+                                <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
+                                    <i className="fas fa-clock text-xs" />
+                                </div>
+                            </div>
 
-                                if (order) {
+                            <div className="space-y-2.5">
+                                {[0, 1, 2].map((index) => {
+                                    const order = allOrders[index];
+                                    const slotNumber = index + 1;
+
+                                    if (order) {
+                                        return (
+                                            <div key={order.id} className="flex items-start gap-3 p-3 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700/80 transition-all">
+                                                <div className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 text-[10px] font-bold mt-0.5 border border-pink-200/60 dark:border-pink-900/40">
+                                                    {slotNumber}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                            {order.po_number}
+                                                        </span>
+                                                        <StatusBadge
+                                                            tone={getPOStatusTone(order.status)}
+                                                            dot
+                                                            size="xs"
+                                                        >
+                                                            {order.status}
+                                                        </StatusBadge>
+                                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
+                                                            {order.delivery_date || 'No date'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between mt-1 text-xs">
+                                                        <span className="text-slate-600 dark:text-slate-400 truncate">
+                                                            {order.supplier_name}
+                                                        </span>
+                                                        <span className="font-semibold text-slate-900 dark:text-white shrink-0 ml-2">
+                                                            ₱{order.total_amount.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
                                     return (
-                                        <div key={order.id} className="flex items-start gap-3 p-3 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700/80 transition-all">
-                                            <div className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 text-[10px] font-bold mt-0.5 border border-pink-200/60 dark:border-pink-900/40">
+                                        <div
+                                            key={`empty-slot-${index}`}
+                                            className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-slate-200/80 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20 text-slate-400 dark:text-slate-500"
+                                        >
+                                            <div className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[10px] font-semibold border border-slate-200 dark:border-slate-700/60">
                                                 {slotNumber}
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                                        {order.po_number}
-                                                    </span>
-                                                    <StatusBadge
-                                                        tone={getPOStatusTone(order.status)}
-                                                        dot
-                                                        size="xs"
-                                                    >
-                                                        {order.status}
-                                                    </StatusBadge>
-                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
-                                                        {order.delivery_date || 'No date'}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center justify-between mt-1 text-xs">
-                                                    <span className="text-slate-600 dark:text-slate-400 truncate">
-                                                        {order.supplier_name}
-                                                    </span>
-                                                    <span className="font-semibold text-slate-900 dark:text-white shrink-0 ml-2">
-                                                        ₱{order.total_amount.toLocaleString()}
-                                                    </span>
-                                                </div>
+                                            <div className="flex items-center justify-between w-full text-xs">
+                                                <span className="font-medium text-slate-400 dark:text-slate-500 italic">No recent activity</span>
+                                                <span className="text-[11px] text-slate-300 dark:text-slate-600 font-mono">—</span>
                                             </div>
                                         </div>
                                     );
-                                }
-
-                                return (
-                                    <div
-                                        key={`empty-slot-${index}`}
-                                        className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-slate-200/80 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20 text-slate-400 dark:text-slate-500"
-                                    >
-                                        <div className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[10px] font-semibold border border-slate-200 dark:border-slate-700/60">
-                                            {slotNumber}
-                                        </div>
-                                        <div className="flex items-center justify-between w-full text-xs">
-                                            <span className="font-medium text-slate-400 dark:text-slate-500 italic">No recent activity</span>
-                                            <span className="text-[11px] text-slate-300 dark:text-slate-600 font-mono">—</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                })}
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
 
                 {/* table */}
-                <div
-                    ref={tableContainerRef}
-                    id="purchase-orders-table"
-                    className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden relative flex flex-col"
-                >
-                    {isRefreshing && <TableContentLoader />}
+                {loading ? (
+                    <TableSkeleton
+                        rows={itemsPerPage}
+                        hasFilter
+                        hasSearch
+                        hasPagination
+                        columns={[
+                            { type: 'checkbox', width: 'w-10' },
+                            { header: 'PO Number', type: 'mono' },
+                            { header: 'Supplier', type: 'avatar-text', subtext: false },
+                            { header: 'Total Amount', type: 'currency' },
+                            { header: 'Delivery Date', type: 'date' },
+                            { header: 'Status', type: 'badge' },
+                            { header: 'Payment', type: 'badge' },
+                            { header: 'Actions', type: 'actions', align: 'right', width: 'w-[150px]' },
+                        ]}
+                    />
+                ) : (
+                    <div
+                        ref={tableContainerRef}
+                        id="purchase-orders-table"
+                        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden relative flex flex-col"
+                    >
+                        {isRefreshing && <TableContentLoader />}
 
                     {/* filter bar */}
                     <div className="flex-shrink-0 p-4 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-slate-900/60 backdrop-blur-xl transition-all">
@@ -2128,6 +2179,7 @@ export default function PurchaseOrders() {
                         />
                     </div>
                 </div>
+                )}
 
                 {/* selection modal */}
                 <ApprovedRequestsModal

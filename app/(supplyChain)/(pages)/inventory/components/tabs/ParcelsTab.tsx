@@ -8,6 +8,7 @@ import { getStatusBadge, getStatusLabel, getStatusTone } from '../../utils/helpe
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import { TableSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
@@ -272,7 +273,7 @@ export function ParcelsTab({
                 {/* content */}
                 <div className="flex-1 overflow-y-auto max-h-[600px] p-4 space-y-5 bg-slate-50/30 dark:bg-slate-950/40">
                     {isLoading ? (
-                        <TableContentLoader />
+                        <TableSkeleton rows={6} cardWrapper={false} />
                     ) : groupedParcels.length > 0 ? (
                         groupedParcels.map((group) => (
                             <div key={group.date} className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-2xs bg-white dark:bg-slate-900 transition-colors">

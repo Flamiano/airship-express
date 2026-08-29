@@ -8,6 +8,7 @@ import ScanPanel from "./ScanPanel";
 import TableFilters from "./TableFilters";
 import { IncomingTable } from "./ParcelTable";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { TableSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 
 interface Parcel {
     id: number;
@@ -286,16 +287,7 @@ export default function IncomingPanel() {
                     </div>
 
                     {loading ? (
-                        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-4 animate-pulse">
-                            <div className="h-10 bg-slate-100 rounded-lg w-full"></div>
-                            {Array.from({ length: 5 }).map((_, i) => (
-                                <div key={i} className="h-12 bg-slate-50 rounded-lg w-full"></div>
-                            ))}
-                            <div className="flex justify-between items-center pt-2">
-                                <div className="h-4 bg-slate-100 rounded w-48"></div>
-                                <div className="h-8 bg-slate-100 rounded-lg w-64"></div>
-                            </div>
-                        </div>
+                        <TableSkeleton rows={8} />
                     ) : hasNoData ? (
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center dark:bg-slate-900">
                             <i className="fas fa-box-open text-4xl text-slate-300 mb-4"></i>

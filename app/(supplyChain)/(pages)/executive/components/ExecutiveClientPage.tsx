@@ -5,6 +5,7 @@ import { DownloadBtn } from "@/app/(supplyChain)/components/global/Buttons";
 import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
 import ExecutiveCharts from './ExecutiveCharts';
 import { useExecutiveData } from '../hooks/useExecutiveData';
+import { CardsSkeleton, ChartsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 
 export default function ExecutiveClientPage() {
     const { data, loading, isRefreshing, isLoadedFromCache, refresh } = useExecutiveData();
@@ -72,42 +73,50 @@ export default function ExecutiveClientPage() {
             </div>
 
             {/* KPI Cards Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                <Cards
-                    header="Parcels received today"
-                    data={loading && !data ? "..." : pageKpis.parcelsToday.toLocaleString()}
-                    description={pageKpis.parcelsChangePct}
-                    backHeader="Today Ingestion Log"
-                    backDescription={`Parcels created today: ${pageKpis.parcelsToday}\nTrend: ${pageKpis.parcelsChangePct}`}
-                />
-                <Cards
-                    header="Ready for dispatch"
-                    data={loading && !data ? "..." : pageKpis.readyForDispatch.toLocaleString()}
-                    description={pageKpis.readyPct}
-                    backHeader="Outbound Queue"
-                    backDescription={`Parcels in ready/sorting state: ${pageKpis.readyForDispatch}\nQueue Ratio: ${pageKpis.readyPct}`}
-                />
-                <Cards
-                    header="Dispatched (MTD)"
-                    data={loading && !data ? "..." : pageKpis.dispatchedMtd.toLocaleString()}
-                    description={pageKpis.dispatchedChangePct}
-                    backHeader="Monthly Dispatched Volume"
-                    backDescription={`Month-to-date dispatched shipments: ${pageKpis.dispatchedMtd}`}
-                />
-                <Cards
-                    header="Fulfillment Delivery Rate"
-                    data={loading && !data ? "..." : pageKpis.ontimeRate}
-                    description={`${data?.parcels.filter(p => p.status === 'delivered').length || 0} total delivered`}
-                    backHeader="Delivery SLA Status"
-                    backDescription={`Ratio of delivered parcels out of total database records: ${pageKpis.ontimeRate}`}
-                />
-            </div>
+            {loading && !data ? (
+                <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 xl:grid-cols-4" />
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <Cards
+                        header="Parcels received today"
+                        data={pageKpis.parcelsToday.toLocaleString()}
+                        description={pageKpis.parcelsChangePct}
+                        backHeader="Today Ingestion Log"
+                        backDescription={`Parcels created today: ${pageKpis.parcelsToday}\nTrend: ${pageKpis.parcelsChangePct}`}
+                    />
+                    <Cards
+                        header="Ready for dispatch"
+                        data={pageKpis.readyForDispatch.toLocaleString()}
+                        description={pageKpis.readyPct}
+                        backHeader="Outbound Queue"
+                        backDescription={`Parcels in ready/sorting state: ${pageKpis.readyForDispatch}\nQueue Ratio: ${pageKpis.readyPct}`}
+                    />
+                    <Cards
+                        header="Dispatched (MTD)"
+                        data={pageKpis.dispatchedMtd.toLocaleString()}
+                        description={pageKpis.dispatchedChangePct}
+                        backHeader="Monthly Dispatched Volume"
+                        backDescription={`Month-to-date dispatched shipments: ${pageKpis.dispatchedMtd}`}
+                    />
+                    <Cards
+                        header="Fulfillment Delivery Rate"
+                        data={pageKpis.ontimeRate}
+                        description={`${data?.parcels.filter(p => p.status === 'delivered').length || 0} total delivered`}
+                        backHeader="Delivery SLA Status"
+                        backDescription={`Ratio of delivered parcels out of total database records: ${pageKpis.ontimeRate}`}
+                    />
+                </div>
+            )}
 
             {/* AI Questions */}
             <AiQuestions />
 
             {/* Executive Charts Container */}
-            {data && <ExecutiveCharts data={data} />}
+            {loading && !data ? (
+                <ChartsSkeleton layout="dual-line-doughnut" />
+            ) : (
+                data && <ExecutiveCharts data={data} />
+            )}
         </div>
     );
 }

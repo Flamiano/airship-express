@@ -393,10 +393,6 @@ export default function InventoryClient() {
         setInventoryPage(1);
     };
 
-    if (loading) {
-        return <PageSkeleton />;
-    }
-
     const filteredGroupedParcels = parcels.reduce((acc: GroupedParcels[], parcel) => {
         const date = new Date(parcel.created_at).toLocaleDateString('en-US', {
             year: 'numeric', month: 'long', day: 'numeric'
@@ -416,6 +412,7 @@ export default function InventoryClient() {
                 key="dashboard"
                 inventoryItems={dashboardItems}
                 stats={dashboardStats}
+                isLoading={loading}
                 onStockIn={openStockInModal}
                 onCategoryClick={handleCategoryClick}
                 onStatusClick={handleStatusClick}
@@ -472,7 +469,7 @@ export default function InventoryClient() {
                     setShowStockOutModal(true);
                 }}
                 onAddItem={() => setShowAddModal(true)}
-                isLoading={loadingInventory}
+                isLoading={loading || loadingInventory}
             />
         ),
         parcels: (
@@ -487,7 +484,7 @@ export default function InventoryClient() {
                 currentPage={parcelPage}
                 totalPages={parcelTotalPages}
                 totalItems={totalParcels}
-                isLoading={loadingParcels}
+                isLoading={loading || loadingParcels}
                 onSearchChange={setParcelSearchTerm}
                 onStatusChange={setParcelStatusFilter}
                 onDateFromChange={setParcelDateFrom}

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Search, Filter, Trash2, Loader2, Inbox } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { UserActivity } from '../../types';
@@ -125,14 +126,18 @@ export const ActivityLogTab: React.FC<ActivityLogTabProps> = ({
 
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                         {isLoading ? (
-                            <tr>
-                                <td colSpan={7} className="py-12 text-center text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <Loader2 className="animate-spin h-5 w-5 text-pink-500" />
-                                        <span className="font-medium">Loading activities...</span>
-                                    </div>
-                                </td>
-                            </tr>
+                            <TableRowsSkeleton
+                                rows={6}
+                                columns={[
+                                    { type: 'checkbox', width: 'w-10' },
+                                    { type: 'avatar-text', subtext: false },
+                                    { type: 'badge' },
+                                    { type: 'badge' },
+                                    { type: 'text', width: 'w-64' },
+                                    { type: 'mono', width: 'w-28' },
+                                    { type: 'date' },
+                                ]}
+                            />
                         ) : activities.length === 0 ? (
                             <tr>
                                 <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500">

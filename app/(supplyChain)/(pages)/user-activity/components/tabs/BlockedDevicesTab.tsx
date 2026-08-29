@@ -3,6 +3,7 @@
 import React from 'react';
 import { Undo, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -102,12 +103,20 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                         {isLoading ? (
-                            <tr>
-                                <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">
-                                    <Loader2 className="animate-spin h-5 w-5 inline mr-2 text-pink-500" />
-                                    Loading blocked devices...
-                                </td>
-                            </tr>
+                            <TableRowsSkeleton
+                                rows={6}
+                                columns={[
+                                    { type: 'checkbox', width: 'w-10' },
+                                    { type: 'text', width: 'w-36' },
+                                    { type: 'text', width: 'w-48' },
+                                    { type: 'mono', width: 'w-28' },
+                                    { type: 'badge', align: 'center' },
+                                    { type: 'date' },
+                                    { type: 'text', width: 'w-32' },
+                                    { type: 'badge' },
+                                    { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                ]}
+                            />
                         ) : devices.length === 0 ? (
                             <tr>
                                 <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">

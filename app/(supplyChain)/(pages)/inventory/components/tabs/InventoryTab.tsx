@@ -7,6 +7,7 @@ import { InventoryItem } from '../../types';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
+import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
@@ -201,7 +202,21 @@ export function InventoryTab({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
-                        {items.length === 0 ? (
+                        {isLoading ? (
+                            <TableRowsSkeleton
+                                rows={8}
+                                columns={[
+                                    { type: 'checkbox', width: 'w-10' },
+                                    { type: 'mono', width: 'w-10' },
+                                    { type: 'text', width: 'w-48' },
+                                    { type: 'badge' },
+                                    { type: 'text', width: 'w-28' },
+                                    { type: 'badge' },
+                                    { type: 'text', width: 'w-44' },
+                                    { type: 'actions', align: 'right', width: 'w-[190px]' },
+                                ]}
+                            />
+                        ) : items.length === 0 ? (
                             <tr>
                                 <td colSpan={8} className="py-20 text-center text-slate-400 dark:text-slate-500">
                                     <div className="flex flex-col items-center justify-center gap-3">

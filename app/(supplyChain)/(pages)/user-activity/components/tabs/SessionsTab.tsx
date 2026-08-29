@@ -3,6 +3,7 @@
 import React from 'react';
 import { Search, Ban, Trash2, Loader2 } from 'lucide-react';
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
+import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -119,12 +120,20 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                         {isLoading ? (
-                            <tr>
-                                <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">
-                                    <Loader2 className="animate-spin h-5 w-5 inline mr-2 text-pink-500" />
-                                    Loading sessions...
-                                </td>
-                            </tr>
+                            <TableRowsSkeleton
+                                rows={6}
+                                columns={[
+                                    { type: 'checkbox', width: 'w-10' },
+                                    { type: 'avatar-text', subtext: false },
+                                    { type: 'text', width: 'w-36' },
+                                    { type: 'text', width: 'w-48' },
+                                    { type: 'mono', width: 'w-28' },
+                                    { type: 'date' },
+                                    { type: 'date' },
+                                    { type: 'badge' },
+                                    { type: 'actions', align: 'right', width: 'w-[80px]' },
+                                ]}
+                            />
                         ) : sessions.length === 0 ? (
                             <tr>
                                 <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">

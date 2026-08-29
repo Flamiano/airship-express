@@ -5,7 +5,7 @@ import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { toast } from "sonner";
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
 import Cards from "@/app/(supplyChain)/components/global/Cards";
-import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { CardsSkeleton, TableRowsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
@@ -1061,9 +1061,6 @@ export default function Documents() {
         fetchActivities();
     }, [debouncedActivitySearch, activityFilter, activityDateFrom, activityDateTo, activityPage]);
 
-    if (loading) {
-        return <PageSkeleton />;
-    }
     return (
         <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 bgCard dark:bg-ink/90">
@@ -1113,69 +1110,73 @@ export default function Documents() {
                     </AppButton>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-                    <Cards
-                        frontIcon="fas fa-files"
-                        header="Total Files"
-                        data={totalFiles.toString()}
-                        arrow="fas fa-arrow-up"
-                        description="All uploaded files"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Total Files Overview"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total number of files in the system: ${totalFiles}\n\nIncludes all document types\nUpdated in real-time`}
-                        tooltip="View all files"
-                        tooltipLink="/gallery"
-                        badge={`${totalFiles} files`}
-                    />
+                {loading ? (
+                    <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5" />
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                        <Cards
+                            frontIcon="fas fa-files"
+                            header="Total Files"
+                            data={totalFiles.toString()}
+                            arrow="fas fa-arrow-up"
+                            description="All uploaded files"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Total Files Overview"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total number of files in the system: ${totalFiles}\n\nIncludes all document types\nUpdated in real-time`}
+                            tooltip="View all files"
+                            tooltipLink="/gallery"
+                            badge={`${totalFiles} files`}
+                        />
 
-                    <Cards
-                        frontIcon="fas fa-image"
-                        header="Photos"
-                        data={totalPhotos.toString()}
-                        arrow="fas fa-arrow-up"
-                        description="Image files"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Photo Files"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total photo files stored: ${totalPhotos}\n\n Includes JPG, PNG, HEIC formats\nImage evidence for operations`}
-                        tooltip="View all photos"
-                        tooltipLink="#"
-                        badge={`${totalPhotos} photos`}
-                    />
+                        <Cards
+                            frontIcon="fas fa-image"
+                            header="Photos"
+                            data={totalPhotos.toString()}
+                            arrow="fas fa-arrow-up"
+                            description="Image files"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Photo Files"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total photo files stored: ${totalPhotos}\n\n Includes JPG, PNG, HEIC formats\nImage evidence for operations`}
+                            tooltip="View all photos"
+                            tooltipLink="#"
+                            badge={`${totalPhotos} photos`}
+                        />
 
-                    <Cards
-                        frontIcon="fas fa-file-alt"
-                        header="Documents"
-                        data={(totalFiles - totalPhotos).toString()}
-                        arrow="fas fa-arrow-up"
-                        description="Document files"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Document Files"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total document files stored: ${totalFiles - totalPhotos}\n\n Includes PDF, DOC, XLS formats\nOfficial records and receipts`}
-                        tooltip="View all documents"
-                        tooltipLink="#"
-                        badge={`${totalFiles - totalPhotos} docs`}
-                    />
+                        <Cards
+                            frontIcon="fas fa-file-alt"
+                            header="Documents"
+                            data={(totalFiles - totalPhotos).toString()}
+                            arrow="fas fa-arrow-up"
+                            description="Document files"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Document Files"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total document files stored: ${totalFiles - totalPhotos}\n\n Includes PDF, DOC, XLS formats\nOfficial records and receipts`}
+                            tooltip="View all documents"
+                            tooltipLink="#"
+                            badge={`${totalFiles - totalPhotos} docs`}
+                        />
 
-                    <Cards
-                        frontIcon="fas fa-archive"
-                        header="Archived"
-                        data={archiveCount.toString()}
-                        arrow="fas fa-arrow-down"
-                        description="Deleted documents"
-                        backBg="bg-ink dark:bg-ink/90"
-                        backHeader="Archived Documents"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total archived documents: ${archiveCount}\n\n📦 Deleted files stored in archive\nHistorical record of deletions`}
-                        tooltip="View archive"
-                        tooltipLink="/archive?tab=documents"
-                        badge={`${archiveCount} archived`}
-                        frontTextColor="text-amber-600 dark:text-amber-400"
-                        descriptionTextColor="text-amber-600 dark:text-amber-400"
-                    />
-                </div>
+                        <Cards
+                            frontIcon="fas fa-archive"
+                            header="Archived"
+                            data={archiveCount.toString()}
+                            arrow="fas fa-arrow-down"
+                            description="Deleted documents"
+                            backBg="bg-ink dark:bg-ink/90"
+                            backHeader="Archived Documents"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total archived documents: ${archiveCount}\n\n📦 Deleted files stored in archive\nHistorical record of deletions`}
+                            tooltip="View archive"
+                            tooltipLink="/archive?tab=documents"
+                            badge={`${archiveCount} archived`}
+                            frontTextColor="text-amber-600 dark:text-amber-400"
+                            descriptionTextColor="text-amber-600 dark:text-amber-400"
+                        />
+                    </div>
+                )}
 
                 <div className="mt-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] p-2.5 transition-all">
                     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-0.5">
@@ -1481,7 +1482,21 @@ export default function Documents() {
                                 </thead>
 
                                 <tbody className="divide-y divide-line text-xs">
-                                    {documents.length === 0 ? (
+                                    {loading ? (
+                                        <TableRowsSkeleton
+                                            rows={8}
+                                            columns={[
+                                                { type: 'checkbox', width: 'w-10' },
+                                                { type: 'badge', width: 'w-12', align: 'center' },
+                                                { type: 'avatar-text', subtext: true },
+                                                { type: 'badge' },
+                                                { type: 'text' },
+                                                { type: 'text' },
+                                                { type: 'date' },
+                                                { type: 'actions', align: 'right', width: 'w-[170px]' },
+                                            ]}
+                                        />
+                                    ) : documents.length === 0 ? (
                                         <tr>
                                             <td colSpan={8} className="py-12 text-center text-muted">
                                                 <div className="flex flex-col items-center justify-center gap-2">

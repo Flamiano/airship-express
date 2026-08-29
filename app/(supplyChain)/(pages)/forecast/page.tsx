@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Chart from "chart.js/auto";
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
 import Cards from "@/app/(supplyChain)/components/global/Cards";
-import { PageSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { CardsSkeleton, ChartSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { toast } from "sonner";
@@ -483,10 +483,6 @@ export default function Forecast() {
     const hasExpenseData = (forecastData?.expense_next_month?.historical?.amounts?.length || 0) > 0 || (forecastData?.expense_next_month?.prediction || 0) > 0;
     const hasCourierData = Object.keys(courierMap).length > 0;
 
-    if (loading && !forecastData) {
-        return <PageSkeleton />;
-    }
-
     return (
         <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <div className="p-6 space-y-6 bgCard dark:bg-ink/90 pb-16">
@@ -617,69 +613,73 @@ export default function Forecast() {
                     </div>
                 )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Cards
-                        frontIcon="fa-solid fa-boxes-stacked"
-                        header="Actual Parcels in DB"
-                        data={loading ? "..." : String(totalDbParcels)}
-                        arrow="fa-solid fa-database"
-                        description="Max 6-month window"
-                        backBg="bg-ink dark:bg-slate-900"
-                        backHeader="Parcels Breakdown"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nAggregation View: ${aggregationType}`}
-                        tooltip="View parcel records in Supabase"
-                        tooltipLink="/parcels"
-                        frontTextColor="text-blue-500 dark:text-blue-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
-                    />
+                {loading && !forecastData ? (
+                    <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4" />
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Cards
+                            frontIcon="fa-solid fa-boxes-stacked"
+                            header="Actual Parcels in DB"
+                            data={String(totalDbParcels)}
+                            arrow="fa-solid fa-database"
+                            description="Max 6-month window"
+                            backBg="bg-ink dark:bg-slate-900"
+                            backHeader="Parcels Breakdown"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nAggregation View: ${aggregationType}`}
+                            tooltip="View parcel records in Supabase"
+                            tooltipLink="/parcels"
+                            frontTextColor="text-blue-500 dark:text-blue-400"
+                            descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        />
 
-                    <Cards
-                        frontIcon="fa-solid fa-chart-line-up"
-                        header="7-Day Predicted Volume"
-                        data={loading ? "..." : String(weeklyTotal)}
-                        arrow="fa-solid fa-arrow-trend-up"
-                        description={`${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`}
-                        backBg="bg-ink dark:bg-slate-900"
-                        backHeader="Forecast Algorithm"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units`}
-                        tooltip="Holt-Winters 7-day seasonality model"
-                        frontTextColor="text-pink-500 dark:text-pink-400"
-                        descriptionTextColor="text-emerald-600 dark:text-emerald-400"
-                    />
+                        <Cards
+                            frontIcon="fa-solid fa-chart-line-up"
+                            header="7-Day Predicted Volume"
+                            data={String(weeklyTotal)}
+                            arrow="fa-solid fa-arrow-trend-up"
+                            description={`${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`}
+                            backBg="bg-ink dark:bg-slate-900"
+                            backHeader="Forecast Algorithm"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units`}
+                            tooltip="Holt-Winters 7-day seasonality model"
+                            frontTextColor="text-pink-500 dark:text-pink-400"
+                            descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                        />
 
-                    <Cards
-                        frontIcon="fa-solid fa-money-bill-wave"
-                        header="Next Month PO Expense"
-                        data={loading ? "..." : `₱${expensePrediction.toLocaleString()}`}
-                        arrow="fa-solid fa-receipt"
-                        description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}` : "No qualifying paid POs"}
-                        backBg="bg-ink dark:bg-slate-900"
-                        backHeader="Expense Projections"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}\nCalculated from Confirmed/Delivered paid purchase orders`}
-                        tooltip="View purchase orders"
-                        tooltipLink="/procurement?tab=all"
-                        frontTextColor="text-emerald-500 dark:text-emerald-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
-                    />
+                        <Cards
+                            frontIcon="fa-solid fa-money-bill-wave"
+                            header="Next Month PO Expense"
+                            data={`₱${expensePrediction.toLocaleString()}`}
+                            arrow="fa-solid fa-receipt"
+                            description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}` : "No qualifying paid POs"}
+                            backBg="bg-ink dark:bg-slate-900"
+                            backHeader="Expense Projections"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}\nCalculated from Confirmed/Delivered paid purchase orders`}
+                            tooltip="View purchase orders"
+                            tooltipLink="/procurement?tab=all"
+                            frontTextColor="text-emerald-500 dark:text-emerald-400"
+                            descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        />
 
-                    <Cards
-                        frontIcon="fa-solid fa-truck-fast"
-                        header="Top Courier Partner"
-                        data={loading ? "..." : (sortedCouriers[0]?.[0] || "None")}
-                        arrow="fa-solid fa-trophy"
-                        description={`${sortedCouriers[0]?.[1] || 0} parcels dispatched`}
-                        backBg="bg-ink dark:bg-slate-900"
-                        backHeader="Courier Leaderboard"
-                        headerTextColor="text-muted dark:text-white/80"
-                        backDescription={sortedCouriers.slice(0, 4).map(([name, count], i) => `${i + 1}. ${name}: ${count} parcels`).join('\n') || "No courier data"}
-                        tooltip="Courier volume share"
-                        frontTextColor="text-amber-500 dark:text-amber-400"
-                        descriptionTextColor="text-pink-600 dark:text-pink-400"
-                    />
-                </div>
+                        <Cards
+                            frontIcon="fa-solid fa-truck-fast"
+                            header="Top Courier Partner"
+                            data={sortedCouriers[0]?.[0] || "None"}
+                            arrow="fa-solid fa-trophy"
+                            description={`${sortedCouriers[0]?.[1] || 0} parcels dispatched`}
+                            backBg="bg-ink dark:bg-slate-900"
+                            backHeader="Courier Leaderboard"
+                            headerTextColor="text-muted dark:text-white/80"
+                            backDescription={sortedCouriers.slice(0, 4).map(([name, count], i) => `${i + 1}. ${name}: ${count} parcels`).join('\n') || "No courier data"}
+                            tooltip="Courier volume share"
+                            frontTextColor="text-amber-500 dark:text-amber-400"
+                            descriptionTextColor="text-pink-600 dark:text-pink-400"
+                        />
+                    </div>
+                )}
 
                {/* insights banner */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">

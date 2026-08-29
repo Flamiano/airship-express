@@ -10,7 +10,7 @@ import {
 import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { toast } from 'sonner';
-import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
+import { GallerySkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
@@ -924,10 +924,6 @@ export default function MediaGallery() {
         }, 50);
     };
 
-    if (loading && mediaItems.length === 0) {
-        return <PageSkeleton />;
-    }
-
     return (
         <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
             <div className="mx-auto p-6 bg-slate-50 dark:bg-ink/40 min-h-screen bgCard">
@@ -1191,7 +1187,9 @@ export default function MediaGallery() {
                     )}
                 </div>
 
-                {viewMode === 'grid' ? (
+                {loading && mediaItems.length === 0 ? (
+                    <GallerySkeleton count={8} />
+                ) : viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {mediaItems.map((item) => (
                             <GalleryCard

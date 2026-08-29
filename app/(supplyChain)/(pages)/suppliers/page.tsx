@@ -12,6 +12,7 @@ import { sanitizeNumber, sanitizeText } from "@/app/(supplyChain)/components/glo
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { CardsSkeleton, SupplierChartsSkeleton, SupplierDirectorySkeleton, PurchaseHistorySkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
 
 let isRegistered = false;
 
@@ -864,137 +865,131 @@ export default function Suppliers() {
                     </div>
 
                     {/* stats cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                        <Cards
-                            frontIcon="fas fa-building mr-1"
-                            header="Active Suppliers"
-                            data={activeSuppliers.toString()}
-                            arrow="fas fa-arrow-up mr-1"
-                            description="Total active suppliers"
-                            backHeader="Supplier Stats"
-                            headerTextColor="text-slate-400"
-                            backDescription={`Total suppliers: ${suppliers.length}, Active: ${activeSuppliers}`}
-                            tooltip="View all suppliers"
-                            tooltipLink="#supplierTableId"
-                            badge={`${activeSuppliers} Active`}
-                        />
-                        <Cards
-                            frontIcon="fas fa-shopping-cart mr-1"
-                            header="Total Purchases"
-                            data={supplierStats.totalOrders.toString()}
-                            arrow="fas fa-arrow-up mr-1"
-                            description="Orders placed"
-                            backHeader="Order Stats"
-                            headerTextColor="text-slate-400"
-                            backDescription="Total purchase orders placed across all suppliers"
-                            tooltip="View all purchase orders"
-                            tooltipLink="/purchase-order"
-                            badge={`${supplierStats.totalOrders} Total`}
-                        />
-                        <Cards
-                            frontIcon="fas fa-trophy mr-1"
-                            header="Top Supplier"
-                            data={supplierStats.topSupplierName}
-                            arrow="fas fa-arrow-up mr-1"
-                            description={`${supplierStats.topSupplierOrders} orders`}
-                            backHeader="Top Supplier Details"
-                            headerTextColor="text-slate-200"
-                            backDescription={topSupplier ? `${topSupplier.category} - ${topSupplier.location}` : "No suppliers yet"}
-                            tooltip="View supplier details"
-                            tooltipLink={topSupplier ? `/supplier/${topSupplier.id}` : "#"}
-                            badge={topSupplier ? "Top" : "No Data"}
-                        />
-                        <Cards
-                            frontIcon="fas fa-tags mr-1"
-                            header="Top Category"
-                            data={topCategory}
-                            arrow="fas fa-arrow-up mr-1"
-                            description="Most common supplier type"
-                            backHeader="Category Breakdown"
-                            headerTextColor="text-slate-200"
-                            backDescription={`${topCategory} is the most common supplier category`}
-                            tooltip="View category details"
-                            tooltipLink="#"
-                            badge={topCategory || "N/A"}
-                        />
-                    </div>
+                    {isLoading ? (
+                        <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 xl:grid-cols-4" />
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                            <Cards
+                                frontIcon="fas fa-building mr-1"
+                                header="Active Suppliers"
+                                data={activeSuppliers.toString()}
+                                arrow="fas fa-arrow-up mr-1"
+                                description="Total active suppliers"
+                                backHeader="Supplier Stats"
+                                headerTextColor="text-slate-400"
+                                backDescription={`Total suppliers: ${suppliers.length}, Active: ${activeSuppliers}`}
+                                tooltip="View all suppliers"
+                                tooltipLink="#supplierTableId"
+                                badge={`${activeSuppliers} Active`}
+                            />
+                            <Cards
+                                frontIcon="fas fa-shopping-cart mr-1"
+                                header="Total Purchases"
+                                data={supplierStats.totalOrders.toString()}
+                                arrow="fas fa-arrow-up mr-1"
+                                description="Orders placed"
+                                backHeader="Order Stats"
+                                headerTextColor="text-slate-400"
+                                backDescription="Total purchase orders placed across all suppliers"
+                                tooltip="View all purchase orders"
+                                tooltipLink="/purchase-order"
+                                badge={`${supplierStats.totalOrders} Total`}
+                            />
+                            <Cards
+                                frontIcon="fas fa-trophy mr-1"
+                                header="Top Supplier"
+                                data={supplierStats.topSupplierName}
+                                arrow="fas fa-arrow-up mr-1"
+                                description={`${supplierStats.topSupplierOrders} orders`}
+                                backHeader="Top Supplier Details"
+                                headerTextColor="text-slate-200"
+                                backDescription={topSupplier ? `${topSupplier.category} - ${topSupplier.location}` : "No suppliers yet"}
+                                tooltip="View supplier details"
+                                tooltipLink={topSupplier ? `/supplier/${topSupplier.id}` : "#"}
+                                badge={topSupplier ? "Top" : "No Data"}
+                            />
+                            <Cards
+                                frontIcon="fas fa-tags mr-1"
+                                header="Top Category"
+                                data={topCategory}
+                                arrow="fas fa-arrow-up mr-1"
+                                description="Most common supplier type"
+                                backHeader="Category Breakdown"
+                                headerTextColor="text-slate-200"
+                                backDescription={`${topCategory} is the most common supplier category`}
+                                tooltip="View category details"
+                                tooltipLink="#"
+                                badge={topCategory || "N/A"}
+                            />
+                        </div>
+                    )}
 
                     {/* charts */}
-                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-                        {/* purchase activity card */}
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs xl:col-span-3 flex flex-col justify-between transition-all">
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Purchase Activity by Supplier</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Total orders and paid amount per supplier</p>
+                    {isLoading ? (
+                        <SupplierChartsSkeleton />
+                    ) : (
+                        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                            {/* purchase activity card */}
+                            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs xl:col-span-3 flex flex-col justify-between transition-all">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h3 className="font-bold text-sm text-slate-900 dark:text-white">Purchase Activity by Supplier</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Total orders and paid amount per supplier</p>
+                                    </div>
+                                    <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
+                                        <i className="fas fa-chart-bar text-xs"></i>
+                                    </div>
                                 </div>
-                                <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
-                                    <i className="fas fa-chart-bar text-xs"></i>
+                                <div className="h-60 relative w-full flex items-center justify-center">
+                                    {suppliers.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
+                                            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
+                                                <i className="fas fa-building text-base"></i>
+                                            </div>
+                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No suppliers registered yet</span>
+                                            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Add a supplier to start tracking purchases</span>
+                                        </div>
+                                    ) : purchaseOrders.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
+                                            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
+                                                <i className="fas fa-shopping-cart text-base"></i>
+                                            </div>
+                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No purchase orders yet</span>
+                                            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Create a purchase order to see activity data</span>
+                                        </div>
+                                    ) : (
+                                        <canvas ref={activityChartRef} className="w-full h-full max-h-60"></canvas>
+                                    )}
                                 </div>
                             </div>
-                            <div className="h-60 relative w-full flex items-center justify-center">
-                                {isLoading ? (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-slate-900/60 backdrop-blur-xs z-10 rounded-xl">
-                                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                            <div className="w-4 h-4 rounded-full border-2 border-pink-500 border-t-transparent animate-spin"></div>
-                                            <span>Loading activity...</span>
-                                        </div>
-                                    </div>
-                                ) : suppliers.length === 0 ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
-                                            <i className="fas fa-building text-base"></i>
-                                        </div>
-                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No suppliers registered yet</span>
-                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Add a supplier to start tracking purchases</span>
-                                    </div>
-                                ) : purchaseOrders.length === 0 ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
-                                            <i className="fas fa-shopping-cart text-base"></i>
-                                        </div>
-                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No purchase orders yet</span>
-                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Create a purchase order to see activity data</span>
-                                    </div>
-                                ) : (
-                                    <canvas ref={activityChartRef} className="w-full h-full max-h-60"></canvas>
-                                )}
-                            </div>
-                        </div>
 
-                        {/* supplier categories card */}
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs xl:col-span-2 flex flex-col justify-between transition-all">
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Supplier Categories</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distribution by category</p>
-                                </div>
-                                <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
-                                    <i className="fas fa-chart-pie text-xs"></i>
-                                </div>
-                            </div>
-                            <div className="h-60 relative w-full flex items-center justify-center">
-                                {isLoading ? (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-slate-900/60 backdrop-blur-xs z-10 rounded-xl">
-                                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                            <div className="w-4 h-4 rounded-full border-2 border-pink-500 border-t-transparent animate-spin"></div>
-                                            <span>Loading categories...</span>
-                                        </div>
+                            {/* supplier categories card */}
+                            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs xl:col-span-2 flex flex-col justify-between transition-all">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h3 className="font-bold text-sm text-slate-900 dark:text-white">Supplier Categories</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distribution by category</p>
                                     </div>
-                                ) : suppliers.length === 0 ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
-                                            <i className="fas fa-chart-pie text-base"></i>
-                                        </div>
-                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No data available</span>
-                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Category metrics will display once added</span>
+                                    <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-100 dark:border-pink-900/30">
+                                        <i className="fas fa-chart-pie text-xs"></i>
                                     </div>
-                                ) : (
-                                    <canvas ref={categoryChartRef} className="w-full h-full max-h-60"></canvas>
-                                )}
+                                </div>
+                                <div className="h-60 relative w-full flex items-center justify-center">
+                                    {suppliers.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
+                                            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
+                                                <i className="fas fa-chart-pie text-base"></i>
+                                            </div>
+                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No data available</span>
+                                            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Category metrics will display once added</span>
+                                        </div>
+                                    ) : (
+                                        <canvas ref={categoryChartRef} className="w-full h-full max-h-60"></canvas>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* supplier directory table */}
                     <div className="card flex flex-col">
@@ -1028,9 +1023,9 @@ export default function Suppliers() {
                                     >
                                         <option value="">All categories</option>
                                         {categories.map((cat) => (
-                                            <option key={cat} value={cat} className="dark:bg-slate-900 dark:text-slate-200">
-                                                {cat}
-                                            </option>
+                                             <option key={cat} value={cat} className="dark:bg-slate-900 dark:text-slate-200">
+                                                 {cat}
+                                             </option>
                                         ))}
                                     </select>
                                     <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none" />
@@ -1051,10 +1046,7 @@ export default function Suppliers() {
                         {/* scrollable table */}
                         <div className="flex-1 overflow-y-auto max-h-[500px] relative">
                             {isLoading ? (
-                                <div className="text-center py-12">
-                                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
-                                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading suppliers...</p>
-                                </div>
+                                <SupplierDirectorySkeleton rows={ITEMS_PER_PAGE} />
                             ) : filteredSuppliers.length === 0 ? (
                                 <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                                     No suppliers found
@@ -1241,102 +1233,106 @@ export default function Suppliers() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto max-h-[300px]">
-                            <div className="overflow-x-auto">
-                                <table className="table-pro w-full text-left text-xs border-collapse p-1" id="purchaseOrderTableId">
-                                    <thead className="bg-slate-50/75 dark:bg-slate-900/50 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[11px] sticky top-0 z-10">
-                                        <tr>
-                                            <th className="w-10 py-3.5 px-4">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedPurchaseOrders.size === paginatedPurchaseOrders.length && paginatedPurchaseOrders.length > 0}
-                                                    onChange={handleSelectAllPO}
-                                                    aria-label="Select all purchase orders"
-                                                    className="rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-pink-500 focus:ring-pink-500 dark:focus:ring-offset-slate-900 cursor-pointer"
-                                                />
-                                            </th>
-                                            <th className="py-3.5 px-4">Order #</th>
-                                            <th className="py-3.5 px-4">Supplier</th>
-                                            <th className="py-3.5 px-4">Total</th>
-                                            <th className="py-3.5 px-4">Date</th>
-                                            <th className="py-3.5 px-4">Status</th>
-                                            <th className="py-3.5 px-4">Payment</th>
-                                            <th className="py-3.5 px-4 text-right! w-[125px] min-w-[125px]">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                                        {paginatedPurchaseOrders.length === 0 ? (
+                            {isLoading ? (
+                                <PurchaseHistorySkeleton rows={5} />
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="table-pro w-full text-left text-xs border-collapse p-1" id="purchaseOrderTableId">
+                                        <thead className="bg-slate-50/75 dark:bg-slate-900/50 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[11px] sticky top-0 z-10">
                                             <tr>
-                                                <td colSpan={8} className="text-center py-12 text-slate-400 dark:text-slate-500">
-                                                    <div className="flex flex-col items-center justify-center gap-1.5">
-                                                        <i className="fas fa-shopping-cart text-3xl mb-2 opacity-30" />
-                                                        <span className="text-sm font-medium text-slate-600 dark:text-slate-300">No purchase orders found</span>
-                                                        <span className="text-xs text-slate-400">Orders placed will appear here automatically.</span>
-                                                    </div>
-                                                </td>
+                                                <th className="w-10 py-3.5 px-4">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedPurchaseOrders.size === paginatedPurchaseOrders.length && paginatedPurchaseOrders.length > 0}
+                                                        onChange={handleSelectAllPO}
+                                                        aria-label="Select all purchase orders"
+                                                        className="rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-pink-500 focus:ring-pink-500 dark:focus:ring-offset-slate-900 cursor-pointer"
+                                                    />
+                                                </th>
+                                                <th className="py-3.5 px-4">Order #</th>
+                                                <th className="py-3.5 px-4">Supplier</th>
+                                                <th className="py-3.5 px-4">Total</th>
+                                                <th className="py-3.5 px-4">Date</th>
+                                                <th className="py-3.5 px-4">Status</th>
+                                                <th className="py-3.5 px-4">Payment</th>
+                                                <th className="py-3.5 px-4 text-right! w-[125px] min-w-[125px]">Actions</th>
                                             </tr>
-                                        ) : (
-                                            paginatedPurchaseOrders.map((order) => {
-                                                const isSelected = selectedPurchaseOrders.has(order.id);
-                                                return (
-                                                    <tr
-                                                        key={order.id}
-                                                        className={`transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${isSelected
-                                                            ? 'bg-pink-50/40 dark:bg-pink-950/20'
-                                                            : ''
-                                                            }`}
-                                                    >
-                                                        <td className="py-3.5 px-4">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isSelected}
-                                                                onChange={() => handleToggleSelectPO(order.id)}
-                                                                aria-label={`Select ${order.po_number}`}
-                                                                className="rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-pink-500 focus:ring-pink-500 dark:focus:ring-offset-slate-900 cursor-pointer"
-                                                            />
-                                                        </td>
-                                                        <td data-label="Order #" className="py-3.5 px-4 font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                                                            {order.po_number}
-                                                        </td>
-                                                        <td data-label="Supplier" className="py-3.5 px-4 font-medium text-slate-800 dark:text-slate-200">
-                                                            {order.supplier_name}
-                                                        </td>
-                                                        <td data-label="Total" className="py-3.5 px-4 font-semibold text-slate-900 dark:text-slate-100 font-mono">
-                                                            {order.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                                                        </td>
-                                                        <td data-label="Date" className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px] whitespace-nowrap">
-                                                            {new Date(order.created_at).toLocaleDateString(undefined, {
-                                                                year: 'numeric',
-                                                                month: 'short',
-                                                                day: 'numeric',
-                                                            })}
-                                                        </td>
-                                                        <td data-label="Status" className="py-3.5 px-4">
-                                                            {getStatusBadge(order.status)}
-                                                        </td>
-                                                        <td data-label="Payment" className="py-3.5 px-4">
-                                                            {getPaidBadge(order.paid || false)}
-                                                        </td>
-                                                        <td data-label="Actions" className="py-3.5 px-4 text-right w-[125px] min-w-[125px]">
-                                                            <div className="flex items-center justify-end gap-2.5">
-                                                                <CrudActionButton
-                                                                    action="view"
-                                                                    ariaLabel={`View purchase order ${order.po_number}`}
-                                                                    onClick={() => handleViewPurchaseOrder(order)}
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                                            {paginatedPurchaseOrders.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="text-center py-12 text-slate-400 dark:text-slate-500">
+                                                        <div className="flex flex-col items-center justify-center gap-1.5">
+                                                            <i className="fas fa-shopping-cart text-3xl mb-2 opacity-30" />
+                                                            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">No purchase orders found</span>
+                                                            <span className="text-xs text-slate-400">Orders placed will appear here automatically.</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                paginatedPurchaseOrders.map((order) => {
+                                                    const isSelected = selectedPurchaseOrders.has(order.id);
+                                                    return (
+                                                        <tr
+                                                            key={order.id}
+                                                            className={`transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${isSelected
+                                                                ? 'bg-pink-50/40 dark:bg-pink-950/20'
+                                                                : ''
+                                                                }`}
+                                                        >
+                                                            <td className="py-3.5 px-4">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={() => handleToggleSelectPO(order.id)}
+                                                                    aria-label={`Select ${order.po_number}`}
+                                                                    className="rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-pink-500 focus:ring-pink-500 dark:focus:ring-offset-slate-900 cursor-pointer"
                                                                 />
-                                                                <CrudActionButton
-                                                                    action="delete"
-                                                                    ariaLabel={`Delete purchase order ${order.po_number}`}
-                                                                    onClick={() => handleDeletePurchaseOrder(order.id, order.po_number)}
-                                                                />
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                                                            </td>
+                                                            <td data-label="Order #" className="py-3.5 px-4 font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                                                                {order.po_number}
+                                                            </td>
+                                                            <td data-label="Supplier" className="py-3.5 px-4 font-medium text-slate-800 dark:text-slate-200">
+                                                                {order.supplier_name}
+                                                            </td>
+                                                            <td data-label="Total" className="py-3.5 px-4 font-semibold text-slate-900 dark:text-slate-100 font-mono">
+                                                                {order.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                                                            </td>
+                                                            <td data-label="Date" className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px] whitespace-nowrap">
+                                                                {new Date(order.created_at).toLocaleDateString(undefined, {
+                                                                    year: 'numeric',
+                                                                    month: 'short',
+                                                                    day: 'numeric',
+                                                                })}
+                                                            </td>
+                                                            <td data-label="Status" className="py-3.5 px-4">
+                                                                {getStatusBadge(order.status)}
+                                                            </td>
+                                                            <td data-label="Payment" className="py-3.5 px-4">
+                                                                {getPaidBadge(order.paid || false)}
+                                                            </td>
+                                                            <td data-label="Actions" className="py-3.5 px-4 text-right w-[125px] min-w-[125px]">
+                                                                <div className="flex items-center justify-end gap-2.5">
+                                                                    <CrudActionButton
+                                                                        action="view"
+                                                                        ariaLabel={`View purchase order ${order.po_number}`}
+                                                                        onClick={() => handleViewPurchaseOrder(order)}
+                                                                    />
+                                                                    <CrudActionButton
+                                                                        action="delete"
+                                                                        ariaLabel={`Delete purchase order ${order.po_number}`}
+                                                                        onClick={() => handleDeletePurchaseOrder(order.id, order.po_number)}
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1 border-t border-slate-100 dark:border-slate-900">

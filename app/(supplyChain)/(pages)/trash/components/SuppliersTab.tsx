@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText } from '@/app/(supplyChain)/components/glo
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CardsSkeleton, TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -314,67 +315,71 @@ export function SuppliersTab() {
     return (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
             {/* stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Cards
-                    frontIcon="fa-solid fa-handshake"
-                    header="Total Archived"
-                    data={String(archivedSuppliers.length)}
-                    arrow="fa-solid fa-folder-open"
-                    description="Suppliers"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Archived Suppliers"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Total Archived: ${archivedSuppliers.length} supplier(s)`}
-                    tooltip="View supplier archive"
-                    frontTextColor="text-pink-500 dark:text-pink-400"
-                    descriptionTextColor="text-pink-600 dark:text-pink-400"
-                />
+            {supplierLoading && archivedSuppliers.length === 0 ? (
+                <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4" />
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Cards
+                        frontIcon="fa-solid fa-handshake"
+                        header="Total Archived"
+                        data={String(archivedSuppliers.length)}
+                        arrow="fa-solid fa-folder-open"
+                        description="Suppliers"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Archived Suppliers"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Total Archived: ${archivedSuppliers.length} supplier(s)`}
+                        tooltip="View supplier archive"
+                        frontTextColor="text-pink-500 dark:text-pink-400"
+                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-tags"
-                    header="Categories"
-                    data={String(Math.max(0, supplierCategories.length - 1))}
-                    arrow="fa-solid fa-layer-group"
-                    description="Distinct categories"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Supplier Categories"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Categories: ${supplierCategories.filter(c => c !== 'all').join(', ') || 'None'}`}
-                    tooltip="View supplier categories"
-                    frontTextColor="text-indigo-500 dark:text-indigo-400"
-                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-tags"
+                        header="Categories"
+                        data={String(Math.max(0, supplierCategories.length - 1))}
+                        arrow="fa-solid fa-layer-group"
+                        description="Distinct categories"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Supplier Categories"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Categories: ${supplierCategories.filter(c => c !== 'all').join(', ') || 'None'}`}
+                        tooltip="View supplier categories"
+                        frontTextColor="text-indigo-500 dark:text-indigo-400"
+                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-circle-exclamation"
-                    header="Status"
-                    data="Inactive"
-                    arrow="fa-solid fa-ban"
-                    description="All archived are inactive"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Status Info"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription="All archived suppliers are marked as inactive until restored."
-                    tooltip="View status explanation"
-                    frontTextColor="text-amber-500 dark:text-amber-400"
-                    descriptionTextColor="text-amber-600 dark:text-amber-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-circle-exclamation"
+                        header="Status"
+                        data="Inactive"
+                        arrow="fa-solid fa-ban"
+                        description="All archived are inactive"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Status Info"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription="All archived suppliers are marked as inactive until restored."
+                        tooltip="View status explanation"
+                        frontTextColor="text-amber-500 dark:text-amber-400"
+                        descriptionTextColor="text-amber-600 dark:text-amber-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-location-dot"
-                    header="Locations"
-                    data={String(new Set(archivedSuppliers.map(s => s.location).filter(Boolean)).size)}
-                    arrow="fa-solid fa-map-pin"
-                    description="Distinct locations"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Supplier Locations"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Locations: ${Array.from(new Set(archivedSuppliers.map(s => s.location).filter(Boolean))).join(', ') || 'None'}`}
-                    tooltip="View location details"
-                    frontTextColor="text-blue-500 dark:text-blue-400"
-                    descriptionTextColor="text-blue-600 dark:text-blue-400"
-                />
-            </div>
+                    <Cards
+                        frontIcon="fa-solid fa-location-dot"
+                        header="Locations"
+                        data={String(new Set(archivedSuppliers.map(s => s.location).filter(Boolean)).size)}
+                        arrow="fa-solid fa-map-pin"
+                        description="Distinct locations"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Supplier Locations"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Locations: ${Array.from(new Set(archivedSuppliers.map(s => s.location).filter(Boolean))).join(', ') || 'None'}`}
+                        tooltip="View location details"
+                        frontTextColor="text-blue-500 dark:text-blue-400"
+                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                    />
+                </div>
+            )}
 
             {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-3.5">
@@ -504,7 +509,23 @@ export function SuppliersTab() {
                             </tr>
                         </thead>
                         <tbody>
-                            {paginatedSuppliers.length === 0 ? (
+                            {supplierLoading ? (
+                                <TableRowsSkeleton
+                                    rows={8}
+                                    columns={[
+                                        { type: 'checkbox', width: 'w-10' },
+                                        { type: 'text', width: 'w-36' },
+                                        { type: 'badge' },
+                                        { type: 'text', width: 'w-32' },
+                                        { type: 'text', width: 'w-28' },
+                                        { type: 'text', width: 'w-40' },
+                                        { type: 'text', width: 'w-32' },
+                                        { type: 'avatar-text', subtext: false },
+                                        { type: 'date' },
+                                        { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                    ]}
+                                />
+                            ) : paginatedSuppliers.length === 0 ? (
                                 <tr>
                                     <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">

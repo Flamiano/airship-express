@@ -10,6 +10,7 @@ import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain
 import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
 import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
 import Cards from '@/app/(supplyChain)/components/global/Cards';
+import { CardsSkeleton, TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -335,67 +336,71 @@ export function PurchaseOrdersTab() {
     return (
         <div className="space-y-4 text-slate-900 dark:text-slate-100 animate-in slide-in-from-bottom-4 duration-300">
             {/* stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Cards
-                    frontIcon="fa-solid fa-file-invoice"
-                    header="Total Archived"
-                    data={String(archivedPurchaseOrders.length)}
-                    arrow="fa-solid fa-folder-open"
-                    description="POs in storage"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Archived POs"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Total Archived: ${archivedPurchaseOrders.length} PO(s)\nTotal value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}`}
-                    tooltip="View PO details"
-                    frontTextColor="text-pink-500 dark:text-pink-400"
-                    descriptionTextColor="text-pink-600 dark:text-pink-400"
-                />
+            {poLoading && archivedPurchaseOrders.length === 0 ? (
+                <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4" />
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Cards
+                        frontIcon="fa-solid fa-file-invoice"
+                        header="Total Archived"
+                        data={String(archivedPurchaseOrders.length)}
+                        arrow="fa-solid fa-folder-open"
+                        description="POs in storage"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Archived POs"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Total Archived: ${archivedPurchaseOrders.length} PO(s)\nTotal value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}`}
+                        tooltip="View PO details"
+                        frontTextColor="text-pink-500 dark:text-pink-400"
+                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-peso-sign"
-                    header="Total Value"
-                    data={formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}
-                    arrow="fa-solid fa-wallet"
-                    description="Combined value"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Value Details"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Combined Value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}\nAcross ${archivedPurchaseOrders.length} orders`}
-                    tooltip="View total amount"
-                    frontTextColor="text-emerald-500 dark:text-emerald-400"
-                    descriptionTextColor="text-emerald-600 dark:text-emerald-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-peso-sign"
+                        header="Total Value"
+                        data={formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}
+                        arrow="fa-solid fa-wallet"
+                        description="Combined value"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Value Details"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Combined Value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}\nAcross ${archivedPurchaseOrders.length} orders`}
+                        tooltip="View total amount"
+                        frontTextColor="text-emerald-500 dark:text-emerald-400"
+                        descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-handshake"
-                    header="Suppliers"
-                    data={String(new Set(archivedPurchaseOrders.map(p => p.supplier_name)).size)}
-                    arrow="fa-solid fa-building"
-                    description="Distinct suppliers"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Supplier Info"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Suppliers: ${Array.from(new Set(archivedPurchaseOrders.map(p => p.supplier_name))).join(', ') || 'None'}`}
-                    tooltip="View suppliers involved"
-                    frontTextColor="text-indigo-500 dark:text-indigo-400"
-                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
-                />
+                    <Cards
+                        frontIcon="fa-solid fa-handshake"
+                        header="Suppliers"
+                        data={String(new Set(archivedPurchaseOrders.map(p => p.supplier_name)).size)}
+                        arrow="fa-solid fa-building"
+                        description="Distinct suppliers"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Supplier Info"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Suppliers: ${Array.from(new Set(archivedPurchaseOrders.map(p => p.supplier_name))).join(', ') || 'None'}`}
+                        tooltip="View suppliers involved"
+                        frontTextColor="text-indigo-500 dark:text-indigo-400"
+                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                    />
 
-                <Cards
-                    frontIcon="fa-solid fa-clock-rotate-left"
-                    header="Avg. Value"
-                    data={formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}
-                    arrow="fa-solid fa-calculator"
-                    description="Per purchase order"
-                    backBg="bg-ink dark:bg-ink/90"
-                    backHeader="Averages"
-                    headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Average Order Value: ${formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}`}
-                    tooltip="View averages"
-                    frontTextColor="text-blue-500 dark:text-blue-400"
-                    descriptionTextColor="text-blue-600 dark:text-blue-400"
-                />
-            </div>
+                    <Cards
+                        frontIcon="fa-solid fa-clock-rotate-left"
+                        header="Avg. Value"
+                        data={formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}
+                        arrow="fa-solid fa-calculator"
+                        description="Per purchase order"
+                        backBg="bg-ink dark:bg-ink/90"
+                        backHeader="Averages"
+                        headerTextColor="text-muted dark:text-white/80"
+                        backDescription={`Average Order Value: ${formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}`}
+                        tooltip="View averages"
+                        frontTextColor="text-blue-500 dark:text-blue-400"
+                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                    />
+                </div>
+            )}
 
             {/* filter */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/40 p-3.5">
@@ -523,7 +528,21 @@ export function PurchaseOrdersTab() {
                             </tr>
                         </thead>
                         <tbody>
-                            {paginatedPurchaseOrders.length === 0 ? (
+                            {poLoading ? (
+                                <TableRowsSkeleton
+                                    rows={8}
+                                    columns={[
+                                        { type: 'checkbox', width: 'w-10' },
+                                        { type: 'text', width: 'w-32' },
+                                        { type: 'text', width: 'w-40' },
+                                        { type: 'currency' },
+                                        { type: 'badge' },
+                                        { type: 'avatar-text', subtext: false },
+                                        { type: 'date' },
+                                        { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                    ]}
+                                />
+                            ) : paginatedPurchaseOrders.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">

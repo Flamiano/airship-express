@@ -7,6 +7,7 @@ import { StatsCards } from '../common/StatsCards';
 import { LowStockAlert } from '../common/LowStockAlert';
 import { CategoryChart } from '../charts/CategoryChart';
 import { StatusChart } from '../charts/StatusChart';
+import { CardsSkeleton, ChartsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 
 interface DashboardTabProps {
     inventoryItems: InventoryItem[];
@@ -17,6 +18,7 @@ interface DashboardTabProps {
         categoryCounts: Record<string, number>;
         lowStockItems: any[];
     };
+    isLoading?: boolean;
     onStockIn: (itemName: string) => void;
     onCategoryClick: (category: string) => void;
     onStatusClick: (status: string) => void;
@@ -25,10 +27,19 @@ interface DashboardTabProps {
 export function DashboardTab({
     inventoryItems,
     stats,
+    isLoading = false,
     onStockIn,
     onCategoryClick,
     onStatusClick
 }: DashboardTabProps) {
+    if (isLoading) {
+        return (
+            <div className="space-y-6 text-slate-900 dark:text-slate-100">
+                <CardsSkeleton count={4} />
+                <ChartsSkeleton layout="dual-bar-doughnut" />
+            </div>
+        );
+    }
     const totalItems = stats?.totalItems ?? inventoryItems.length;
     const lowStockItems = stats?.lowStock ?? inventoryItems.filter(i => i.status === 'low-stock').length;
     const outOfStockItems = stats?.outOfStock ?? inventoryItems.filter(i => i.status === 'out-of-stock').length;
