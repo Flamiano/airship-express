@@ -560,10 +560,10 @@ export default function Procurement() {
     const handleApproveRequest = async (id: string) => {
         const confirmed = await confirm({
             title: "Approve Purchase Request",
-            message: "Are you sure you want to approve this request?",
-            confirmText: "Approve",
+            message: "Are you sure you want to approve this request? This will mark it ready for purchase order generation.",
+            confirmText: "Approve Request",
             cancelText: "Cancel",
-            confirmVariant: "success",
+            confirmVariant: "pink",
         });
 
         if (!confirmed) return;
@@ -1255,7 +1255,12 @@ export default function Procurement() {
                                                                 {req.supplier_name}
                                                             </td>
                                                             <td data-label="Amount" className="py-3.5 px-4 text-right font-bold text-slate-900 dark:text-white tracking-tight whitespace-nowrap">
-                                                                ₱{req.amount.toLocaleString()}
+                                                                ₱{(() => {
+                                                                    const computedAmt = Number(req.amount) > 0
+                                                                        ? Number(req.amount)
+                                                                        : (req.items?.reduce((acc: number, item: any) => acc + ((Number(item.quantity) || 1) * (Number(item.unit_price ?? item.price ?? item.purchase_price ?? 0))), 0) || 0);
+                                                                    return computedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                                                })()}
                                                             </td>
                                                             <td data-label="Priority" className="py-3.5 px-4 whitespace-nowrap">
                                                                 <StatusBadge

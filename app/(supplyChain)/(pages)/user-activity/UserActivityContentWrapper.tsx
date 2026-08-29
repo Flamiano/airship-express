@@ -219,7 +219,7 @@ export default function UserActivityContentWrapper() {
     }
 
     return (
-        <div className="p-6 space-y-6  mx-auto animate-in fade-in duration-300 bgCard">
+        <div className="p-6 space-y-6  animate-in fade-in duration-300 bgCard">
             {/* Header & Quick Stat Badges */}
             <HeaderStats
                 blockedDevices={blockedDevices}

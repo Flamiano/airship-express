@@ -96,6 +96,40 @@ export async function createScopedPurchaseRequestAction(params: CreateScopedPRPa
             return { success: false, error: error.message || 'Failed to create Purchase Request' };
         }
 
+        // Dispatch in-app notifications for Admin and Executive roles
+        try {
+            const notifTitle = `New Purchase Request: ${requestNumber}`;
+            const notifMsg = `Manual replenishment PR for ${item_name} (Qty: ${quantity}, ₱${totalAmount.toLocaleString()}) created by ${requested_by || 'Inventory Officer'}. Pending review & approval.`;
+            const notifLink = `/procurement?search=${encodeURIComponent(requestNumber)}`;
+
+            await supabase.from('notifications').insert([
+                {
+                    creator_name: requested_by || 'Inventory Officer',
+                    creator_email: 'inventory@airshipexpress.ph',
+                    title: notifTitle,
+                    message: notifMsg,
+                    type: 'purchase_request',
+                    link: notifLink,
+                    role: 'Admin',
+                    is_read: false,
+                    po_request_id: data.id || requestNumber,
+                },
+                {
+                    creator_name: requested_by || 'Inventory Officer',
+                    creator_email: 'inventory@airshipexpress.ph',
+                    title: notifTitle,
+                    message: notifMsg,
+                    type: 'purchase_request',
+                    link: notifLink,
+                    role: 'Executive',
+                    is_read: false,
+                    po_request_id: data.id || requestNumber,
+                },
+            ]);
+        } catch (notifErr) {
+            console.error('Error dispatching notifications for inventory PR:', notifErr);
+        }
+
         revalidatePath('/inventory');
         revalidatePath('/procurement');
 

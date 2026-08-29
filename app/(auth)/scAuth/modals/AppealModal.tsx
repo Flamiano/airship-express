@@ -41,48 +41,49 @@ export default function AppealModal({
     return (
         <AnimatePresence>
             {showAppealModal && (
-                <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-2.5 sm:p-4 overflow-y-auto">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-2xl dark:shadow-black/60"
+                        className="bg-white dark:bg-ink border border-line dark:border-paper/10 rounded-2xl sm:rounded-3xl max-w-lg w-full max-h-[88vh] sm:max-h-[85vh] flex flex-col shadow-2xl dark:shadow-black/60 my-auto overflow-hidden"
                     >
                         {/* modal header */}
-                        <div className="border-b border-gray-200 dark:border-slate-800 p-6 flex justify-between items-center bg-white dark:bg-slate-900 transition-colors">
+                        <div className="border-b border-line dark:border-paper/10 p-4 sm:p-6 flex justify-between items-center bg-white dark:bg-ink shrink-0 transition-colors">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-500 dark:text-blue-400 ring-1 ring-blue-500/10 dark:ring-blue-500/20">
                                     {existingAppeal ? <EyeIcon size={22} /> : <MessageSquare size={22} />}
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                                    <h3 className="text-sm sm:text-base font-bold text-ink dark:text-paper font-bricolage">
                                         {existingAppeal ? 'Review Appeal' : 'Submit Appeal'}
                                     </h3>
-                                    <p className="text-xs text-gray-500 dark:text-slate-400">
+                                    <p className="text-[11px] sm:text-xs text-muted dark:text-paper/70">
                                         {existingAppeal ? 'View and manage your appeal' : 'Request to unblock your device'}
                                     </p>
                                 </div>
                             </div>
                             <button
+                                type="button"
                                 onClick={() => {
                                     setShowAppealModal(false);
                                     setAppealMessage('');
                                     setIsEditingAppeal(false);
                                 }}
-                                className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg"
+                                className="text-muted dark:text-paper/60 hover:text-ink dark:hover:text-paper transition-colors p-2 hover:bg-paper dark:hover:bg-paper/10 rounded-lg cursor-pointer"
                             >
                                 <X size={20} />
                             </button>
                         </div>
 
                         {/* modal content */}
-                        <div className="p-6 space-y-4 bg-white dark:bg-slate-900 transition-colors">
+                        <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-ink transition-colors flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                             {existingAppeal && !isEditingAppeal ? (
                                 // view existing appeal
                                 <>
-                                    <div className="bg-gray-50 dark:bg-slate-800/60 rounded-xl p-4 border border-gray-200 dark:border-slate-700">
+                                    <div className="bg-paper dark:bg-paper/5 rounded-xl p-4 border border-line dark:border-paper/10">
                                         <div className="flex items-center justify-between mb-2">
-                                            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</span>
+                                            <span className="text-xs font-semibold text-muted dark:text-paper/70 uppercase tracking-wider">Status</span>
                                             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full 
                                 ${existingAppeal.status === 'pending'
                                                     ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800/40'
@@ -95,8 +96,8 @@ export default function AppealModal({
                                         </div>
 
                                         <div className="mt-2">
-                                            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">Your Message:</span>
-                                            <p className="text-sm text-gray-800 dark:text-slate-200 mt-1 whitespace-pre-wrap">{existingAppeal.appeal_message}</p>
+                                            <span className="text-xs font-semibold text-muted dark:text-paper/70">Your Message:</span>
+                                            <p className="text-sm text-ink dark:text-paper mt-1 whitespace-pre-wrap">{existingAppeal.appeal_message}</p>
                                         </div>
 
                                         {existingAppeal.response_message && (
@@ -107,11 +108,11 @@ export default function AppealModal({
                                                     </div>
                                                     <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">Admin Response</span>
                                                 </div>
-                                                <p className="text-sm text-gray-700 dark:text-slate-300">{existingAppeal.response_message}</p>
+                                                <p className="text-sm text-ink dark:text-paper">{existingAppeal.response_message}</p>
                                             </div>
                                         )}
 
-                                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-400 dark:text-slate-500">
+                                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted dark:text-paper/50">
                                             <span>Submitted: {new Date(existingAppeal.created_at).toLocaleString()}</span>
                                             {existingAppeal.resolved_at && (
                                                 <span>• Resolved: {new Date(existingAppeal.resolved_at).toLocaleString()}</span>
@@ -125,18 +126,20 @@ export default function AppealModal({
                                     {existingAppeal.status === 'pending' && (
                                         <div className="flex flex-wrap gap-2">
                                             <button
+                                                type="button"
                                                 onClick={() => {
                                                     setIsEditingAppeal(true);
                                                     setAppealMessage(existingAppeal.appeal_message);
                                                 }}
-                                                className="px-4 py-2 text-sm font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-all flex items-center gap-2 border border-blue-200/60 dark:border-blue-800/40 cursor-pointer"
+                                                className="px-4 py-2 text-xs sm:text-sm font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-all flex items-center gap-2 border border-blue-200/60 dark:border-blue-800/40 cursor-pointer"
                                             >
                                                 <Pencil size={15} />
                                                 Edit Appeal
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={handleDeleteAppeal}
-                                                className="px-4 py-2 text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/50 transition-all flex items-center gap-2 border border-red-200/60 dark:border-red-800/40 cursor-pointer"
+                                                className="px-4 py-2 text-xs sm:text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/50 transition-all flex items-center gap-2 border border-red-200/60 dark:border-red-800/40 cursor-pointer"
                                             >
                                                 <Trash2 size={15} />
                                                 Delete Appeal
@@ -145,8 +148,8 @@ export default function AppealModal({
                                     )}
 
                                     {existingAppeal.status !== 'pending' && (
-                                        <div className="bg-gray-50 dark:bg-slate-800/60 rounded-xl p-3 border border-gray-200 dark:border-slate-700 text-center">
-                                            <p className="text-sm text-gray-600 dark:text-slate-300">
+                                        <div className="bg-paper dark:bg-paper/5 rounded-xl p-3 border border-line dark:border-paper/10 text-center">
+                                            <p className="text-xs sm:text-sm text-muted dark:text-paper/70">
                                                 {existingAppeal.status === 'approved' ? (
                                                     <span className="text-emerald-600 dark:text-emerald-400">Your appeal has been approved!</span>
                                                 ) : (
@@ -154,7 +157,7 @@ export default function AppealModal({
                                                 )}
                                             </p>
                                             {existingAppeal.response_message && (
-                                                <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                                                <p className="text-xs text-muted dark:text-paper/50 mt-1">
                                                     See the admin response above for more details.
                                                 </p>
                                             )}
@@ -165,17 +168,17 @@ export default function AppealModal({
                                 // submit or edit appeal form
                                 <>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                        <label className="block text-xs sm:text-sm font-medium text-ink dark:text-paper mb-1">
                                             Appeal Message
                                         </label>
                                         <textarea
                                             value={appealMessage}
                                             onChange={(e) => setAppealMessage(e.target.value)}
                                             placeholder="Explain why you believe this device should be unblocked..."
-                                            className="w-full px-4 py-3 border border-gray-300 dark:border-slate-700 dark:bg-slate-800/60 rounded-xl focus:ring-2 focus:ring-accent dark:focus:ring-accent/50 focus:border-transparent outline-none transition resize-none h-32 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500"
+                                            className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 border border-line dark:border-paper/20 bg-transparent dark:bg-paper/5 rounded-xl focus:ring-2 focus:ring-accent outline-none transition resize-none h-28 sm:h-32 text-xs sm:text-sm text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40"
                                             maxLength={500}
                                         />
-                                        <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                                        <p className="text-xs text-muted dark:text-paper/50 mt-1">
                                             {appealMessage.length}/500 characters
                                         </p>
                                     </div>
@@ -190,22 +193,24 @@ export default function AppealModal({
                         </div>
 
                         {/* modal footer */}
-                        <div className="border-t border-gray-200 dark:border-slate-800 p-4 flex justify-end gap-3 bg-white dark:bg-slate-900 transition-colors">
+                        <div className="border-t border-line dark:border-paper/10 p-3.5 sm:p-4 flex justify-end gap-2.5 sm:gap-3 bg-paper dark:bg-paper/5 shrink-0 transition-colors">
                             <button
+                                type="button"
                                 onClick={() => {
                                     setShowAppealModal(false);
                                     setAppealMessage('');
                                     setIsEditingAppeal(false);
                                 }}
-                                className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                className="px-4 py-2 text-xs sm:text-sm font-semibold text-muted dark:text-paper/70 hover:text-ink dark:hover:text-paper transition-colors cursor-pointer"
                             >
                                 {existingAppeal && !isEditingAppeal ? 'Close' : 'Cancel'}
                             </button>
                             {isEditingAppeal || !existingAppeal ? (
                                 <button
+                                    type="button"
                                     onClick={existingAppeal ? handleUpdateAppeal : handleSubmitAppeal}
                                     disabled={isSubmittingAppeal || !appealMessage.trim()}
-                                    className="px-6 py-2 bg-accent dark:bg-accent text-white rounded-lg hover:bg-accent-dark dark:hover:bg-accent-dark transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                                    className="px-5 sm:px-6 py-2 bg-accent text-paper text-xs sm:text-sm rounded-lg hover:bg-accent-dark transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
                                 >
                                     {isSubmittingAppeal ? (
                                         <>

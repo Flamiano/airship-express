@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useState, createContext, useContext, ReactNode } from "react";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import Portal from "@/app/(supplyChain)/components/client/Portal";
 
 interface ConfirmOptions {
     title?: string;
     message?: string | React.ReactElement;
     confirmText?: string;
     cancelText?: string;
-    confirmVariant?: 'danger' | 'warning' | 'success' | 'info';
+    confirmVariant?: 'pink' | 'danger' | 'warning' | 'success' | 'info';
 }
 
 interface ConfirmContextType {
@@ -41,34 +42,47 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     };
 
     const variantColors = {
+        pink: {
+            button: "bg-pink-600 hover:bg-pink-700 text-white shadow-xs focus:ring-pink-500/30",
+            icon: "text-pink-600 dark:text-pink-400",
+            bg: "bg-pink-50 dark:bg-pink-950/40",
+            border: "border-pink-200 dark:border-pink-800/40",
+            glow: "ring-4 ring-pink-500/10 dark:ring-pink-500/20",
+        },
         danger: {
-            button: "bg-red-500 hover:bg-red-600 focus:ring-red-500/20 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-500/30",
+            button: "bg-red-600 hover:bg-red-700 text-white shadow-xs focus:ring-red-500/30",
             icon: "text-red-500 dark:text-red-400",
-            bg: "bg-red-50 dark:bg-red-950/30",
-            border: "border-red-200 dark:border-red-800/30",
+            bg: "bg-red-50 dark:bg-red-950/40",
+            border: "border-red-200 dark:border-red-800/40",
+            glow: "ring-4 ring-red-500/10 dark:ring-red-500/20",
         },
         warning: {
-            button: "bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-500/20 dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-yellow-500/30",
-            icon: "text-yellow-500 dark:text-yellow-400",
-            bg: "bg-yellow-50 dark:bg-yellow-950/30",
-            border: "border-yellow-200 dark:border-yellow-800/30",
+            button: "bg-amber-600 hover:bg-amber-700 text-white shadow-xs focus:ring-amber-500/30",
+            icon: "text-amber-500 dark:text-amber-400",
+            bg: "bg-amber-50 dark:bg-amber-950/40",
+            border: "border-amber-200 dark:border-amber-800/40",
+            glow: "ring-4 ring-amber-500/10 dark:ring-amber-500/20",
         },
         success: {
-            button: "bg-emerald-500 hover:bg-emerald-600 focus:ring-emerald-500/20 dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:focus:ring-emerald-500/30",
+            button: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs focus:ring-emerald-500/30",
             icon: "text-emerald-500 dark:text-emerald-400",
-            bg: "bg-emerald-50 dark:bg-emerald-950/30",
-            border: "border-emerald-200 dark:border-emerald-800/30",
+            bg: "bg-emerald-50 dark:bg-emerald-950/40",
+            border: "border-emerald-200 dark:border-emerald-800/40",
+            glow: "ring-4 ring-emerald-500/10 dark:ring-emerald-500/20",
         },
         info: {
-            button: "bg-blue-500 hover:bg-blue-600 focus:ring-blue-500/20 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-500/30",
+            button: "bg-blue-600 hover:bg-blue-700 text-white shadow-xs focus:ring-blue-500/30",
             icon: "text-blue-500 dark:text-blue-400",
-            bg: "bg-blue-50 dark:bg-blue-950/30",
-            border: "border-blue-200 dark:border-blue-800/30",
+            bg: "bg-blue-50 dark:bg-blue-950/40",
+            border: "border-blue-200 dark:border-blue-800/40",
+            glow: "ring-4 ring-blue-500/10 dark:ring-blue-500/20",
         },
     };
 
-    const colors = variantColors[options.confirmVariant || 'danger'];
+    const variantKey = options.confirmVariant || 'pink';
+    const colors = variantColors[variantKey] || variantColors.pink;
     const iconMap = {
+        pink: "fa-check-circle",
         danger: "fa-exclamation-triangle",
         warning: "fa-exclamation-circle",
         success: "fa-check-circle",
@@ -85,51 +99,57 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             {children}
 
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
-                        onClick={handleCancel}
-                    />
-
-                    <div className="relative bg-white dark:bg-ink rounded-2xl max-w-md w-full p-6 
-                                    shadow-2xl dark:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.8),0_8px_10px_-6px_rgba(0,0,0,0.5)]
-                                    border border-slate-100 dark:border-ink/20 
-                                    animate-in fade-in zoom-in duration-200">
+                <Portal>
+                    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4">
                         <div
-                            className={`w-14 h-14 rounded-2xl ${colors.bg} ${colors.border} border-2 
-                                    flex items-center justify-center mx-auto mb-4`}
-                        >
-                            <i className={`fas ${iconMap[options.confirmVariant || 'danger']} text-2xl ${colors.icon}`}></i>
-                        </div>
+                            className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+                            onClick={handleCancel}
+                        />
 
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-1.5">
-                            {modalTitle}
-                        </h3>
-
-                        <div className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
-                            {modalMessage}
-                        </div>
-
-                        <div className="flex gap-3">
-                            <AppButton
-                                variant="neutral"
-                                size="md"
-                                className="flex-1"
-                                onClick={handleCancel}
+                        {/* Raindrop Container Card */}
+                        <div className="relative bg-white/95 dark:bg-[#202128]/95 backdrop-blur-xl rounded-[28px] max-w-md w-full p-6 sm:p-7 
+                                        shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3),inset_0_1px_0_#ffffff] 
+                                        dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.08)]
+                                        border border-slate-200/80 dark:border-[#353746] 
+                                        animate-in fade-in zoom-in-95 duration-200 z-10">
+                            
+                            {/* Raindrop Icon Pill */}
+                            <div
+                                className={`w-16 h-16 rounded-[22px] ${colors.bg} ${colors.border} ${colors.glow} border 
+                                        flex items-center justify-center mx-auto mb-4.5 transition-transform`}
                             >
-                                {cancelText}
-                            </AppButton>
-                            <AppButton
-                                variant={options.confirmVariant === 'danger' ? 'danger' : options.confirmVariant === 'success' ? 'success' : 'primary'}
-                                size="md"
-                                className="flex-1"
-                                onClick={handleConfirm}
-                            >
-                                {confirmText}
-                            </AppButton>
+                                <i className={`fas ${iconMap[variantKey]} text-2xl ${colors.icon}`}></i>
+                            </div>
+
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-1.5">
+                                {modalTitle}
+                            </h3>
+
+                            <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 text-center mb-6 leading-relaxed">
+                                {modalMessage}
+                            </div>
+
+                            <div className="flex gap-3">
+                                <AppButton
+                                    variant="neutral"
+                                    size="md"
+                                    pill
+                                    className="flex-1 text-xs sm:text-sm font-semibold"
+                                    onClick={handleCancel}
+                                >
+                                    {cancelText}
+                                </AppButton>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirm}
+                                    className={`flex-1 py-2.5 px-4 rounded-full text-xs sm:text-sm font-semibold transition-all cursor-pointer ${colors.button}`}
+                                >
+                                    {confirmText}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </Portal>
             )}
         </ConfirmContext.Provider>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { toast } from "sonner";
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
@@ -78,13 +79,25 @@ const DEFAULT_USER = {
 };
 
 export default function Documents() {
+    const searchParams = useSearchParams();
+    const initialSearch = searchParams?.get('search') || "";
     const { confirm } = useConfirm();
     const [documents, setDocuments] = useState<Document[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [activities, setActivities] = useState<Activity[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
+    const [searchTerm, setSearchTerm] = useState(initialSearch);
+
+    useEffect(() => {
+        const querySearch = searchParams?.get('search');
+        if (querySearch) {
+            setSearchTerm(querySearch);
+            if (typeof window !== 'undefined') {
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        }
+    }, [searchParams]);
     const [typeFilter, setTypeFilter] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("");
     const [supplierFilter, setSupplierFilter] = useState("");

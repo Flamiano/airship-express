@@ -43,7 +43,7 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
     const someBlockedSelected = selectedDevices.size > 0 && selectedDevices.size < devices.length;
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/60 overflow-hidden">
+        <div className="bg-white dark:bg-[#1c1d25] rounded-2xl border border-slate-200/90 dark:border-[#353746] shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)] overflow-hidden">
             {/* Bulk Actions Banner */}
             {selectedDevices.size > 0 && (
                 <div className="p-3 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">

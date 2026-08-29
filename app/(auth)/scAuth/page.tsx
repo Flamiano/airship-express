@@ -869,10 +869,10 @@ export default function SupplyChainLoginPage() {
     // loading state
     if (isLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="min-h-screen flex items-center justify-center bg-paper dark:bg-ink transition-colors duration-300">
                 <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                    <p className="mt-2 text-gray-600">Checking session...</p>
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+                    <p className="mt-2 text-muted dark:text-paper/70">Checking session...</p>
                 </div>
             </div>
         );
@@ -886,13 +886,13 @@ export default function SupplyChainLoginPage() {
             blurAmount={4}
         >
             <>
-                <div className="h-dvh w-full bg-paper text-ink  font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px]">
+                <div className="h-dvh w-full bg-paper dark:bg-ink text-ink dark:text-paper font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px] transition-colors duration-300">
                     {/* left side - branding */}
-                    <div className="relative hidden lg:flex flex-col justify-between border-r border-line dark:border-slate-700 px-16 py-14 overflow-hidden">
+                    <div className="relative hidden lg:flex flex-col justify-between border-r border-line dark:border-paper/10 px-16 py-14 overflow-hidden">
                         <div className="absolute bottom-14 right-14 rotate-[-6deg] select-none">
-                            <div className="flex items-center gap-2 rounded-full border border-line dark:border-slate-700 px-4 py-2">
+                            <div className="flex items-center gap-2 rounded-full border border-line dark:border-paper/15 px-4 py-2">
                                 <span className="h-1.5 w-1.5 rounded-full bg-accent dark:bg-accent" />
-                                <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.16em] text-muted dark:text-slate-400">
+                                <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.16em] text-muted dark:text-paper/70">
                                     Supply Chain
                                 </span>
                             </div>
@@ -908,7 +908,7 @@ export default function SupplyChainLoginPage() {
                                 alt="Airship Express"
                                 width={168}
                                 height={48}
-                                className="h-10 w-auto dark:brightness-90"
+                                className="h-10 w-auto dark:brightness-0 dark:invert transition-all"
                                 priority
                             />
                         </motion.div>
@@ -919,30 +919,30 @@ export default function SupplyChainLoginPage() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.55, ease: 'easeOut', delay: 0.1 }}
                         >
-                            <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent dark:text-accent">
+                            <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
                                 Secure Access
                             </p>
-                            <h1 className="mt-5 font-bricolage text-[44px] font-medium leading-[1.05] tracking-tight text-ink dark:text-white">
+                            <h1 className="mt-5 font-bricolage text-[44px] font-medium leading-[1.05] tracking-tight text-ink dark:text-paper">
                                 Supply Chain
                                 <br />
                                 Management
                                 <br />
                                 Portal
                             </h1>
-                            <p className="mt-5 text-[15px] leading-relaxed text-muted dark:text-slate-400">
+                            <p className="mt-5 text-[15px] leading-relaxed text-muted dark:text-paper/70">
                                 Access the supply chain management system to track inventory,
                                 manage orders, and optimize logistics.
                             </p>
                         </motion.div>
 
-                        <div className="flex items-center gap-2 text-[12px] text-muted dark:text-slate-400">
-                            <span className="h-1 w-1 rounded-full bg-accent dark:bg-accent" />
+                        <div className="flex items-center gap-2 text-[12px] text-muted dark:text-paper/60">
+                            <span className="h-1 w-1 rounded-full bg-accent" />
                             Internal use only &middot; Airship Express Supply Chain
                         </div>
                     </div>
 
                     {/* right side - login form */}
-                    <div className="h-dvh overflow-y-auto flex items-center justify-center px-5 py-8 sm:px-12 sm:py-16 bg-paper">
+                    <div className="h-dvh overflow-y-auto flex items-center justify-center px-5 py-8 sm:px-12 sm:py-16 bg-paper dark:bg-ink">
                         <motion.div
                             className="w-full max-w-sm"
                             initial={{ opacity: 0, y: 10 }}
@@ -955,18 +955,18 @@ export default function SupplyChainLoginPage() {
                                     alt="Airship Express"
                                     width={144}
                                     height={40}
-                                    className="h-8 w-auto sm:h-9 dark:brightness-90"
+                                    className="h-8 w-auto sm:h-9 dark:brightness-0 dark:invert transition-all"
                                     priority
                                 />
                             </div>
 
-                            <p className="font-rethink text-[12px] sm:text-[13px] font-medium uppercase tracking-[0.2em] text-accent dark:text-accent">
+                            <p className="font-rethink text-[12px] sm:text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
                                 Welcome back
                             </p>
-                            <h2 className="mt-2 sm:mt-3 font-bricolage text-[24px] sm:text-[28px] lg:text-[30px] font-medium tracking-tight text-ink dark:text-white">
+                            <h2 className="mt-2 sm:mt-3 font-bricolage text-[24px] sm:text-[28px] lg:text-[30px] font-medium tracking-tight text-ink dark:text-paper">
                                 Sign in to Supply Chain
                             </h2>
-                            <p className="mt-2 sm:mt-2.5 text-[13.5px] sm:text-[14.5px] leading-relaxed text-muted dark:text-slate-400">
+                            <p className="mt-2 sm:mt-2.5 text-[13.5px] sm:text-[14.5px] leading-relaxed text-muted dark:text-paper/70">
                                 Use your company email and password.
                             </p>
 
@@ -978,7 +978,7 @@ export default function SupplyChainLoginPage() {
                                 <div>
                                     <label
                                         htmlFor="email"
-                                        className="block text-[11.5px] sm:text-[12.5px] font-medium uppercase tracking-[0.1em] text-muted dark:text-slate-400"
+                                        className="block text-[11.5px] sm:text-[12.5px] font-medium uppercase tracking-[0.1em] text-muted dark:text-paper/70"
                                     >
                                         Email
                                     </label>
@@ -989,7 +989,7 @@ export default function SupplyChainLoginPage() {
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         placeholder="you@company.com"
-                                        className="mt-2 block w-full border-0 border-b border-line dark:border-slate-700 bg-transparent px-0 py-2 text-[14px] sm:text-[15px] text-ink dark:text-white placeholder:text-line dark:placeholder:text-slate-600 outline-none transition focus:border-accent dark:focus:border-accent"
+                                        className="mt-2 block w-full border-0 border-b border-line dark:border-paper/20 bg-transparent px-0 py-2 text-[14px] sm:text-[15px] text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40 outline-none transition focus:border-accent dark:focus:border-accent"
                                     />
                                 </div>
 
@@ -997,7 +997,7 @@ export default function SupplyChainLoginPage() {
                                     <div className="flex items-baseline justify-between">
                                         <label
                                             htmlFor="password"
-                                            className="block text-[11.5px] sm:text-[12.5px] font-medium uppercase tracking-[0.1em] text-muted dark:text-slate-400"
+                                            className="block text-[11.5px] sm:text-[12.5px] font-medium uppercase tracking-[0.1em] text-muted dark:text-paper/70"
                                         >
                                             Password
                                         </label>
@@ -1010,12 +1010,12 @@ export default function SupplyChainLoginPage() {
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
                                             placeholder="••••••••"
-                                            className="mt-2 block w-full border-0 border-b border-line dark:border-slate-700 bg-transparent px-0 py-2 pr-12 text-[14px] sm:text-[15px] text-ink dark:text-white placeholder:text-line dark:placeholder:text-slate-600 outline-none transition focus:border-accent dark:focus:border-accent"
+                                            className="mt-2 block w-full border-0 border-b border-line dark:border-paper/20 bg-transparent px-0 py-2 pr-12 text-[14px] sm:text-[15px] text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40 outline-none transition focus:border-accent dark:focus:border-accent"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword((v) => !v)}
-                                            className="absolute bottom-1.5 right-0 text-muted dark:text-slate-400 transition-colors hover:text-ink dark:hover:text-white"
+                                            className="absolute bottom-1.5 right-0 text-muted dark:text-paper/60 transition-colors hover:text-ink dark:hover:text-paper cursor-pointer"
                                             aria-label={showPassword ? 'Hide password' : 'Show password'}
                                         >
                                             {showPassword ? (
@@ -1028,7 +1028,7 @@ export default function SupplyChainLoginPage() {
                                 </div>
 
                                 {loginError && (
-                                    <div role="alert" className="border-l-2 border-red-500 dark:border-red-400 pl-3 text-[13px] text-red-600 dark:text-red-400">
+                                    <div role="alert" className="border-l-2 border-accent pl-3 text-[13px] text-accent">
                                         {loginError}
                                     </div>
                                 )}
@@ -1036,7 +1036,7 @@ export default function SupplyChainLoginPage() {
                                 <button
                                     type="submit"
                                     disabled={isLoggingIn}
-                                    className="w-full bg-ink dark:bg-slate-900 px-4 py-3.5 text-[14px] font-medium tracking-wide text-paper dark:text-white transition-colors duration-200 hover:bg-accent dark:hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
+                                    className="w-full bg-ink dark:bg-paper px-4 py-3.5 text-[14px] font-medium tracking-wide text-paper dark:text-ink transition-colors duration-200 hover:bg-accent dark:hover:bg-accent dark:hover:text-paper disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
                                 >
                                     {isLoggingIn ? (
                                         <>
@@ -1049,12 +1049,12 @@ export default function SupplyChainLoginPage() {
                                 </button>
                             </form>
 
-                            <div className="mt-6 p-4 bg-gray-50 dark:bg-slate-800/50 rounded-lg border border-gray-200/60 dark:border-slate-700/60">
-                                <p className="mt-6 sm:mt-9 lg:mt-12 text-center text-[12px] sm:text-[12.5px] text-muted dark:text-slate-400">
+                            <div className="mt-6 p-4 bg-white dark:bg-paper/5 rounded-lg border border-line dark:border-paper/10">
+                                <p className="text-center text-[12px] sm:text-[12.5px] text-muted dark:text-paper/70">
                                     Trouble accessing your account? Contact HR at{' '}
                                     <a
                                         href="mailto:supplychainandinventory@gmail.com"
-                                        className="font-medium text-accent dark:text-accent transition-colors hover:text-accent-dark dark:hover:text-accent-dark"
+                                        className="font-medium text-accent hover:text-accent-dark transition-colors"
                                     >
                                         supplychainandinventory@gmail.com
                                     </a>

@@ -132,7 +132,8 @@ ${JSON.stringify(actionResults, null, 2)}
 
 **Interactive Actions Guidance:**
 - When 'get_pending_purchase_requests' is returned, provide an organized overview of the purchase requests awaiting purchase order creation (mentioning request numbers, supplier name, and items). The system UI will automatically render interactive selectable cards for Manager, Admin, and Executive users so they can select requests, create draft purchase orders, review them, and choose to send via Gmail.
-- Remind users that once generated, the orders are saved as Drafts in the Purchase Orders page for review and can be dispatched to supplier emails with confirmation links.
+- When 'get_low_stock' or low stock/out-of-stock items are returned, provide a concise summary of the items requiring replenishment (highlighting out-of-stock vs low-stock). Inform the user that the system UI displays interactive reordering cards below where Admin, Executive, and Manager users can select all or specific items, customize reorder quantities, and generate Purchase Requests, which will automatically send notifications to Admin and Executive dashboards for review and approval.
+- Remind users that once generated, the purchase requests are saved as Pending and can be reviewed in the Procurement module.
 
 `;
     }

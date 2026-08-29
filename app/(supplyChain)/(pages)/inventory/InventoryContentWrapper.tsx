@@ -51,6 +51,46 @@ const tabVariants: Variants = {
     })
 };
 
+// SWR Cache Manager for Inventory data
+interface CacheEntry<T> {
+    data: T;
+    timestamp: number;
+}
+
+class InventoryCacheManager {
+    private cache = new Map<string, CacheEntry<any>>();
+    private readonly maxSize = 60;
+    private readonly ttl = 5 * 60 * 1000; // 5 min TTL
+    private readonly staleTime = 30 * 1000; // 30 sec before background revalidate
+
+    get<T>(key: string): { data: T | null; isStale: boolean } {
+        const entry = this.cache.get(key);
+        if (!entry) return { data: null, isStale: true };
+
+        const age = Date.now() - entry.timestamp;
+        if (age > this.ttl) {
+            this.cache.delete(key);
+            return { data: null, isStale: true };
+        }
+
+        return { data: entry.data as T, isStale: age > this.staleTime };
+    }
+
+    set<T>(key: string, data: T): void {
+        if (this.cache.size >= this.maxSize) {
+            const oldest = this.cache.keys().next().value;
+            if (oldest) this.cache.delete(oldest);
+        }
+        this.cache.set(key, { data, timestamp: Date.now() });
+    }
+
+    invalidateAll(): void {
+        this.cache.clear();
+    }
+}
+
+export const inventoryCache = new InventoryCacheManager();
+
 export default function InventoryClient() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -117,7 +157,19 @@ export default function InventoryClient() {
         stockOut,
     } = useInventory();
 
-    const fetchDashboardData = useCallback(async () => {
+    const fetchDashboardData = useCallback(async (forceRefresh = false) => {
+        const cacheKey = 'inventory_dashboard_data';
+
+        if (!forceRefresh) {
+            const cached = inventoryCache.get<any>(cacheKey);
+            if (cached.data) {
+                setDashboardItems(cached.data.inventory?.items || []);
+                setDashboardStats(cached.data.stats || null);
+                setSuppliers(cached.data.suppliers || []);
+                if (!cached.isStale) return; // 0ms response
+            }
+        }
+
         try {
             const result = await fetchInventoryPageData({
                 inventoryPage: 1,
@@ -137,13 +189,45 @@ export default function InventoryClient() {
                 setDashboardItems(result.data.inventory?.items || []);
                 setDashboardStats(result.data.stats || null);
                 setSuppliers(result.data.suppliers || []);
+                inventoryCache.set(cacheKey, result.data);
             }
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
     }, []);
 
-    const fetchInventoryData = useCallback(async (showLoading = true) => {
+    const fetchInventoryData = useCallback(async (showLoading = true, forceRefresh = false) => {
+        const cacheKey = JSON.stringify({
+            ip: inventoryPage,
+            is: debouncedSearchTerm.trim().toLowerCase(),
+            ic: categoryFilter,
+            ist: statusFilter,
+            pp: parcelPage,
+            ps: debouncedParcelSearch.trim().toLowerCase(),
+            pst: parcelStatusFilter,
+            pdf: parcelDateFrom,
+            pdt: parcelDateTo,
+        });
+
+        if (!forceRefresh) {
+            const cached = inventoryCache.get<any>(cacheKey);
+            if (cached.data) {
+                if (cached.data.inventory) {
+                    setInventoryItems(cached.data.inventory.items || []);
+                    setTotalInventoryItems(cached.data.inventory.totalItems || 0);
+                    setInventoryTotalPages(cached.data.inventory.totalPages || 1);
+                }
+                if (cached.data.parcels) {
+                    setParcels(cached.data.parcels.parcels || []);
+                    setTotalParcels(cached.data.parcels.totalItems || 0);
+                    setParcelTotalPages(cached.data.parcels.totalPages || 1);
+                }
+                setLoadingInventory(false);
+                setLoadingParcels(false);
+                if (!cached.isStale) return; // instant 0ms cache hit
+            }
+        }
+
         if (showLoading) {
             setLoadingInventory(true);
             setLoadingParcels(true);
@@ -176,6 +260,7 @@ export default function InventoryClient() {
                     setTotalParcels(data.parcels.totalItems || 0);
                     setParcelTotalPages(data.parcels.totalPages || 1);
                 }
+                inventoryCache.set(cacheKey, data);
             } else {
                 toast.error(result.error || 'Failed to load inventory data');
             }
@@ -283,9 +368,10 @@ export default function InventoryClient() {
     const handleAddItem = async (data: any) => {
         await addItem(data);
         setShowAddModal(false);
+        inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(),
-            fetchInventoryData(true)
+            fetchDashboardData(true),
+            fetchInventoryData(true, true)
         ]);
     };
 
@@ -293,9 +379,10 @@ export default function InventoryClient() {
         await updateItem(data);
         setShowEditModal(false);
         setEditingItem(null);
+        inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(),
-            fetchInventoryData(true)
+            fetchDashboardData(true),
+            fetchInventoryData(true, true)
         ]);
     };
 
@@ -308,9 +395,10 @@ export default function InventoryClient() {
         });
         if (confirmed) {
             await deleteItem(id, name);
+            inventoryCache.invalidateAll();
             await Promise.all([
-                fetchDashboardData(),
-                fetchInventoryData(true)
+                fetchDashboardData(true),
+                fetchInventoryData(true, true)
             ]);
         }
     };
@@ -329,9 +417,10 @@ export default function InventoryClient() {
         if (confirmed) {
             await deleteMultipleItems(Array.from(selectedIds));
             setSelectedIds(new Set());
+            inventoryCache.invalidateAll();
             await Promise.all([
-                fetchDashboardData(),
-                fetchInventoryData(true)
+                fetchDashboardData(true),
+                fetchInventoryData(true, true)
             ]);
         }
     };
@@ -339,18 +428,20 @@ export default function InventoryClient() {
     const handleStockIn = async (itemName: string, quantity: number, supplier?: string, reference?: string, remarks?: string) => {
         await stockIn(itemName, quantity, supplier, reference, remarks);
         setShowStockInModal(false);
+        inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(),
-            fetchInventoryData(true)
+            fetchDashboardData(true),
+            fetchInventoryData(true, true)
         ]);
     };
 
     const handleStockOut = async (itemName: string, quantity: number, department?: string, purpose?: string, remarks?: string) => {
         await stockOut(itemName, quantity, department, purpose, remarks);
         setShowStockOutModal(false);
+        inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(),
-            fetchInventoryData(true)
+            fetchDashboardData(true),
+            fetchInventoryData(true, true)
         ]);
     };
 

@@ -37,15 +37,63 @@ interface PendingPRData {
     reason?: string;
 }
 
+export interface LowStockInteractiveItem {
+    id: number;
+    item_code: string;
+    item_name: string;
+    category: string;
+    unit: string;
+    current_stock: number;
+    minimum_stock: number;
+    storage_location?: string | null;
+    supplier?: string | null;
+    supplier_id?: string | number | null;
+    supplier_name?: string | null;
+    supplier_email?: string | null;
+    supplier_contact?: string | null;
+    purchase_price?: number;
+    suggested_quantity: number;
+    stock_type: 'out_of_stock' | 'low_stock';
+    status: string;
+}
+
+export interface AttachedFile {
+    name: string;
+    type: string;
+    size: number;
+    dataUrl: string;
+}
+
+export interface MatchedDocument {
+    id: string;
+    title: string;
+    file_name: string;
+    category: string;
+    document_type: string;
+    supplier: string;
+    po_number: string;
+    parcel_batch?: string | null;
+    uploaded_by: string;
+    created_at: string;
+    storage_path?: string;
+    is_gallery: boolean;
+    view_link: string;
+}
+
 interface Message {
     id: string;
     type: 'user' | 'assistant';
     content: string;
     timestamp: Date;
     isThinking?: boolean;
+    attachment?: AttachedFile;
+    matchedDocument?: MatchedDocument;
+    isOutOfScope?: boolean;
     suggestions?: string[];
     pendingRequests?: PendingPRData[];
     createdPOs?: any[];
+    lowStockItems?: LowStockInteractiveItem[];
+    createdPRs?: any[];
 }
 
 interface AIChatbotProps {
@@ -138,7 +186,42 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [selectedPRIds, setSelectedPRIds] = useState<Set<string>>(new Set());
     const [isCreatingPO, setIsCreatingPO] = useState(false);
+    const [selectedLowStockIds, setSelectedLowStockIds] = useState<Set<number>>(new Set());
+    const [lowStockQuantities, setLowStockQuantities] = useState<Record<number, number>>({});
+    const [lowStockFilter, setLowStockFilter] = useState<'all' | 'out_of_stock' | 'low_stock'>('all');
+    const [isCreatingPR, setIsCreatingPR] = useState(false);
     const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
+    const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 10 * 1024 * 1024) {
+            setActionFeedback("File size must be under 10MB");
+            setTimeout(() => setActionFeedback(null), 4000);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result as string;
+            setAttachedFile({
+                name: file.name,
+                type: file.type || "application/octet-stream",
+                size: file.size,
+                dataUrl,
+            });
+        };
+        reader.readAsDataURL(file);
+        e.target.value = "";
+    };
+
+    const handleRemoveAttachment = () => {
+        setAttachedFile(null);
+    };
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -147,16 +230,40 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [isAtBottom, setIsAtBottom] = useState(true);
 
-    // Save messages to localStorage on changes
+    // Save messages to localStorage on changes (sanitizing large dataUrls to stay within 5MB quota)
     useEffect(() => {
         if (typeof window !== 'undefined' && messages.length > 0) {
             try {
                 const cleanMessages = messages
                     .filter(m => !m.isThinking && !m.content.startsWith('⏳'))
-                    .slice(-40);
+                    .slice(-30)
+                    .map(m => {
+                        if (m.attachment) {
+                            return {
+                                ...m,
+                                attachment: {
+                                    name: m.attachment.name,
+                                    type: m.attachment.type,
+                                    size: m.attachment.size,
+                                    dataUrl: '', // Omit heavy base64 payload to prevent QuotaExceededError
+                                }
+                            };
+                        }
+                        return m;
+                    });
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanMessages));
             } catch (e) {
-                console.error("Failed to save chat to localStorage:", e);
+                console.warn("Storage quota exceeded, clearing older cache:", e);
+                try {
+                    // Fallback: store only the last 5 basic text messages
+                    const minimalMessages = messages
+                        .filter(m => !m.isThinking && !m.content.startsWith('⏳'))
+                        .slice(-5)
+                        .map(m => ({ id: m.id, type: m.type, content: m.content, timestamp: m.timestamp }));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalMessages));
+                } catch (fallbackErr) {
+                    // Ignore if browser storage is completely full
+                }
             }
         }
     }, [messages]);
@@ -223,7 +330,25 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
     useEffect(() => {
         if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 300);
+            // Immediate instant scroll to bottom to show the latest chat
+            if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+
+            const t1 = setTimeout(() => {
+                if (messagesContainerRef.current) {
+                    messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+                }
+                messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+            }, 60);
+
+            const t2 = setTimeout(() => {
+                if (messagesContainerRef.current) {
+                    messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+                }
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                inputRef.current?.focus();
+            }, 300);
 
             if (question && !hasProcessedQuestion && !isLoading) {
                 setHasProcessedQuestion(true);
@@ -232,28 +357,39 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     handleSendMessage(question);
                 }, 500);
             }
+
+            return () => {
+                clearTimeout(t1);
+                clearTimeout(t2);
+            };
         } else {
             setHasProcessedQuestion(false);
         }
     }, [isOpen, question]);
 
     const handleSendMessage = async (customQuestion?: string) => {
+        const currentFile = attachedFile;
+        setAttachedFile(null);
+
         const trimmed = (customQuestion || input).trim();
-        if (!trimmed || isLoading) return;
+        const userPrompt = trimmed || (currentFile ? `Analyze this file: ${currentFile.name}` : "");
+        if (!userPrompt && !currentFile) return;
+        if (isLoading) return;
 
         if (question) {
             setQuestion('');
         }
 
-        //  Set robot thinking state
+        // Set robot thinking state
         setRobotThinking(true);
         setRobotResponding(false);
 
         const userMsg: Message = {
             id: `user-${Date.now()}`,
             type: 'user',
-            content: trimmed,
+            content: userPrompt,
             timestamp: new Date(),
+            attachment: currentFile || undefined,
         };
         setMessages(prev => [...prev, userMsg]);
         setInput('');
@@ -269,6 +405,96 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             isThinking: true,
         };
         setMessages(prev => [...prev, assistantMsg]);
+
+        // If an attachment is present, route to multimodal document analysis API
+        if (currentFile) {
+            try {
+                const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'User') : 'User';
+                const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('user_name') || 'User') : 'User';
+                const currentUserEmail = typeof window !== 'undefined' ? (localStorage.getItem('user_email') || '') : '';
+
+                const docRes = await fetch('/ai/api/analyze-document', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file: {
+                            name: currentFile.name,
+                            type: currentFile.type,
+                            size: currentFile.size,
+                            base64: currentFile.dataUrl,
+                        },
+                        userPrompt: trimmed,
+                        role: currentRole,
+                        userName: currentUserName,
+                        userEmail: currentUserEmail,
+                    })
+                });
+
+                const docData = await docRes.json();
+
+                if (docRes.status === 429 || docData.rateLimited) {
+                    const retrySecs = docData.retryAfter || 60;
+                    setMessages(prev => prev.map(m => {
+                        if (m.id === assistantMsgId) {
+                            return {
+                                ...m,
+                                content: `⏳ **Rate Limit Reached**\n\nTo ensure fair usage and prevent spamming, document & picture analysis is limited to **3 requests per 5 minutes**.\n\nPlease wait **${retrySecs} seconds** before submitting another document.`,
+                                isThinking: false,
+                                suggestions: ['Show me low stock items', 'What is the current inventory status?']
+                            };
+                        }
+                        return m;
+                    }));
+                    setRobotThinking(false);
+                    setIsLoading(false);
+                    return;
+                }
+
+                if (!docRes.ok || !docData.success) {
+                    throw new Error(docData.error || 'Failed to analyze document.');
+                }
+
+                setMessages(prev => prev.map(m => {
+                    if (m.id === assistantMsgId) {
+                        return {
+                            ...m,
+                            content: docData.response || 'Document analysis completed.',
+                            isThinking: false,
+                            matchedDocument: docData.matchedDocument || undefined,
+                            isOutOfScope: docData.isOutOfScope || false,
+                            suggestions: docData.isOutOfScope
+                                ? ['Show me low stock items', 'Check current inventory status', 'View recent purchase orders']
+                                : [
+                                    docData.matchedDocument ? (docData.matchedDocument.is_gallery ? 'View in Gallery' : 'View in Documents') : 'View documents repository',
+                                    'Check low stock items',
+                                    'Create purchase request'
+                                ]
+                        };
+                    }
+                    return m;
+                }));
+
+                setRobotThinking(false);
+                setIsLoading(false);
+                return;
+
+            } catch (docErr: any) {
+                console.error("Document analysis error:", docErr);
+                setMessages(prev => prev.map(m => {
+                    if (m.id === assistantMsgId) {
+                        return {
+                            ...m,
+                            content: `❌ **Analysis Error:** ${docErr.message || 'Failed to process document.'}\n\nPlease ensure the uploaded file is a valid image or PDF document and try again.`,
+                            isThinking: false,
+                        };
+                    }
+                    return m;
+                }));
+                setRobotThinking(false);
+                setIsLoading(false);
+                return;
+            }
+        }
 
         try {
             const history = messages
@@ -372,6 +598,13 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                         prData = metaData.actionResults.get_pending_purchase_requests.requests;
                                     }
 
+                                    // Extract low stock / out of stock data if returned by action
+                                    let lowStockData: LowStockInteractiveItem[] | undefined = undefined;
+                                    const rawLowStock = metaData?.actionResults?.get_low_stock || metaData?.actionResults?.get_out_of_stock || metaData?.actionResults?.get_low_stock_items;
+                                    if (Array.isArray(rawLowStock) && rawLowStock.length > 0) {
+                                        lowStockData = rawLowStock;
+                                    }
+
                                     //  Robot done responding
                                     setRobotResponding(false);
 
@@ -385,6 +618,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                                     isThinking: false,
                                                     suggestions: metaData?.suggestions || [],
                                                     pendingRequests: prData,
+                                                    lowStockItems: lowStockData,
                                                 }
                                                 : msg
                                         )
@@ -467,6 +701,12 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 fallbackPRData = data.meta.actionResults.get_pending_purchase_requests.requests;
             }
 
+            let fallbackLowStockData: LowStockInteractiveItem[] | undefined = undefined;
+            const fallbackRawLowStock = data.meta?.actionResults?.get_low_stock || data.meta?.actionResults?.get_out_of_stock || data.meta?.actionResults?.get_low_stock_items;
+            if (Array.isArray(fallbackRawLowStock) && fallbackRawLowStock.length > 0) {
+                fallbackLowStockData = fallbackRawLowStock;
+            }
+
             //  Robot done responding
             setRobotResponding(false);
 
@@ -480,6 +720,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             isThinking: false,
                             suggestions: data.meta?.suggestions || [],
                             pendingRequests: fallbackPRData,
+                            lowStockItems: fallbackLowStockData,
                         }
                         : msg
                 )
@@ -602,11 +843,92 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         }
     };
 
+    const handleBatchCreatePRs = async (messageId: string) => {
+        if (selectedLowStockIds.size === 0) {
+            setActionFeedback("Please select at least one item to replenish.");
+            setTimeout(() => setActionFeedback(null), 3000);
+            return;
+        }
+
+        setIsCreatingPR(true);
+        setActionFeedback("Creating Purchase Requests and notifying Admin & Executive...");
+
+        try {
+            const targetMessage = messages.find(m => m.id === messageId);
+            const lowStockItems = targetMessage?.lowStockItems || [];
+            const selectedItems = lowStockItems
+                .filter(item => selectedLowStockIds.has(item.id))
+                .map(item => ({
+                    ...item,
+                    quantity: lowStockQuantities[item.id] || item.suggested_quantity || 10,
+                }));
+
+            const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'Manager') : 'Manager';
+            const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('user_name') || 'Inventory Officer') : 'Inventory Officer';
+            const currentUserEmail = typeof window !== 'undefined' ? (localStorage.getItem('user_email') || '') : '';
+
+            const res = await fetch('/ai/api/create-prs-from-low-stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: selectedItems,
+                    role: currentRole,
+                    user_name: currentUserName,
+                    user_email: currentUserEmail,
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to create Purchase Requests');
+            }
+
+            // Update message in state
+            setMessages(prev => prev.map(m => {
+                if (m.id === messageId && m.lowStockItems) {
+                    const remaining = m.lowStockItems.filter(it => !selectedLowStockIds.has(it.id));
+                    return {
+                        ...m,
+                        lowStockItems: remaining.length > 0 ? remaining : undefined,
+                        createdPRs: [...(m.createdPRs || []), ...(data.createdPRs || [])],
+                    };
+                }
+                return m;
+            }));
+
+            const prList = (data.createdPRs || []).map((pr: any) => `• **${pr.request_number}** for ${pr.supplier_name || 'Supplier'} - ${pr.description || pr.items?.[0]?.name || 'Item'} (₱${(pr.amount || 0).toLocaleString()})`).join('\n');
+            const notifSummary = '\n\n🔔 In-app notifications have been dispatched to **Admin** and **Executive** dashboards for review and approval.';
+
+            const confirmationMsg: Message = {
+                id: `assistant-${Date.now()}`,
+                type: 'assistant',
+                content: `Successfully generated ${data.createdPRs?.length || 0} Purchase Request(s):\n\n${prList}${notifSummary}`,
+                timestamp: new Date(),
+                createdPRs: data.createdPRs || [],
+                suggestions: [
+                    'Show pending purchase requests',
+                    'Check current inventory levels',
+                ]
+            };
+
+            setMessages(prev => [...prev, confirmationMsg]);
+            setSelectedLowStockIds(new Set());
+            setActionFeedback(null);
+        } catch (err: any) {
+            console.error("Error creating PRs from chat:", err);
+            setActionFeedback(`Error: ${err.message || 'Failed'}`);
+            setTimeout(() => setActionFeedback(null), 5000);
+        } finally {
+            setIsCreatingPR(false);
+        }
+    };
+
     const renderPendingRequestsWidget = (msg: Message) => {
         if (!msg.pendingRequests || msg.pendingRequests.length === 0) return null;
 
         const currentRole = (typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '').toLowerCase();
-        const canManagePOs = ['admin', 'manager', 'executive'].includes(currentRole);
+        const canManagePOs = ['admin', 'manager', 'executive', 'employee', 'user'].includes(currentRole);
 
         const allSelected = msg.pendingRequests.length > 0 && msg.pendingRequests.every(pr => selectedPRIds.has(pr.id));
 
@@ -748,6 +1070,283 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         );
     };
 
+    const renderLowStockWidget = (msg: Message) => {
+        if (!msg.lowStockItems || msg.lowStockItems.length === 0) return null;
+
+        const currentRole = (typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '').toLowerCase();
+        const canManagePRs = ['admin', 'executive', 'manager'].includes(currentRole);
+
+        const outOfStockCount = msg.lowStockItems.filter(it => it.current_stock === 0).length;
+        const lowStockCount = msg.lowStockItems.filter(it => it.current_stock > 0).length;
+
+        const filteredItems = msg.lowStockItems.filter(it => {
+            if (lowStockFilter === 'out_of_stock') return it.current_stock === 0;
+            if (lowStockFilter === 'low_stock') return it.current_stock > 0;
+            return true;
+        });
+
+        const allFilteredSelected = filteredItems.length > 0 && filteredItems.every(it => selectedLowStockIds.has(it.id));
+
+        return (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/90 dark:border-[#353746] space-y-3">
+                {/* Header & Quick Filter Pills */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                Stock Replenishment Items ({msg.lowStockItems.length})
+                            </span>
+                        </div>
+
+                        {canManagePRs && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (allFilteredSelected) {
+                                        const next = new Set(selectedLowStockIds);
+                                        filteredItems.forEach(it => next.delete(it.id));
+                                        setSelectedLowStockIds(next);
+                                    } else {
+                                        const next = new Set(selectedLowStockIds);
+                                        filteredItems.forEach(it => next.add(it.id));
+                                        setSelectedLowStockIds(next);
+                                    }
+                                }}
+                                className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 transition-colors cursor-pointer"
+                            >
+                                {allFilteredSelected ? "Deselect Filtered" : "Select All"}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Filter Pills */}
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                        <button
+                            type="button"
+                            onClick={() => setLowStockFilter('all')}
+                            className={`px-2.5 py-1 rounded-full font-semibold transition-all cursor-pointer ${lowStockFilter === 'all'
+                                ? 'bg-pink-600 text-white shadow-sm'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                }`}
+                        >
+                            All ({msg.lowStockItems.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLowStockFilter('out_of_stock')}
+                            className={`px-2.5 py-1 rounded-full font-semibold transition-all cursor-pointer ${lowStockFilter === 'out_of_stock'
+                                ? 'bg-rose-600 text-white shadow-sm'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                }`}
+                        >
+                            Out of Stock ({outOfStockCount})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLowStockFilter('low_stock')}
+                            className={`px-2.5 py-1 rounded-full font-semibold transition-all cursor-pointer ${lowStockFilter === 'low_stock'
+                                ? 'bg-amber-600 text-white shadow-sm'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                }`}
+                        >
+                            Low Stock ({lowStockCount})
+                        </button>
+                    </div>
+                </div>
+
+                {/* Items List */}
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1 scrollbar-thin">
+                    {filteredItems.map(item => {
+                        const isSelected = selectedLowStockIds.has(item.id);
+                        const currentQty = lowStockQuantities[item.id] || item.suggested_quantity || 10;
+                        const isOut = item.current_stock === 0;
+
+                        return (
+                            <div
+                                key={item.id}
+                                onClick={() => {
+                                    if (!canManagePRs) return;
+                                    const next = new Set(selectedLowStockIds);
+                                    if (next.has(item.id)) next.delete(item.id);
+                                    else next.add(item.id);
+                                    setSelectedLowStockIds(next);
+                                }}
+                                className={`p-3 rounded-2xl border transition-all ${canManagePRs ? 'cursor-pointer' : ''} ${isSelected
+                                    ? 'bg-[#ffe6f0] dark:bg-[#341427] border-pink-300 dark:border-[#67224c] shadow-[0_2px_8px_rgba(244,63,94,0.15),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                                    : 'bg-white dark:bg-slate-900/60 border-slate-200/90 dark:border-[#353746] shadow-[0_1px_3px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-pink-200 dark:hover:border-pink-500/30'
+                                    }`}
+                            >
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-start gap-2.5 min-w-0">
+                                        {canManagePRs && (
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => { }}
+                                                className="mt-0.5 rounded border-slate-300 text-pink-600 focus:ring-pink-500 shrink-0 cursor-pointer"
+                                            />
+                                        )}
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                                    {item.item_name}
+                                                </span>
+                                                <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${isOut
+                                                    ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40'
+                                                    : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40'
+                                                    }`}>
+                                                    {isOut ? 'Out of Stock' : 'Low Stock'}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
+                                                <span>Code: <strong className="text-slate-700 dark:text-slate-300 font-mono text-[10px]">{item.item_code}</strong></span>
+                                                <span>•</span>
+                                                <span>Stock: <strong className={isOut ? 'text-rose-600 font-bold' : 'text-amber-600 font-bold'}>{item.current_stock}</strong> / Min: {item.minimum_stock}</span>
+                                            </div>
+
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate flex items-center gap-1">
+                                                <span>Supplier:</span>
+                                                <strong className="text-slate-700 dark:text-slate-200">{item.supplier_name || item.supplier || 'Default Supplier'}</strong>
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Quantity Counter & Estimated Total */}
+                                    <div className="text-right shrink-0" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center gap-1 justify-end bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setLowStockQuantities(prev => ({
+                                                        ...prev,
+                                                        [item.id]: Math.max(1, currentQty - 5)
+                                                    }));
+                                                }}
+                                                className="w-5 h-5 rounded flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                                            >
+                                                -
+                                            </button>
+                                            <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 px-1 min-w-[24px] text-center">
+                                                {currentQty}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setLowStockQuantities(prev => ({
+                                                        ...prev,
+                                                        [item.id]: currentQty + 5
+                                                    }));
+                                                }}
+                                                className="w-5 h-5 rounded flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 mt-1">
+                                            Est: ₱{(currentQty * (item.purchase_price || 100)).toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* PR Action Buttons */}
+                {canManagePRs ? (
+                    <div className="space-y-2 pt-1">
+                        {actionFeedback && (
+                            <p className="text-xs text-pink-600 dark:text-pink-400 font-medium animate-pulse text-center">
+                                {actionFeedback}
+                            </p>
+                        )}
+                        <AppButton
+                            type="button"
+                            variant="pink"
+                            size="sm"
+                            pill
+                            disabled={selectedLowStockIds.size === 0 || isCreatingPR}
+                            onClick={() => handleBatchCreatePRs(msg.id)}
+                            className="w-full justify-center text-xs shadow-md"
+                        >
+                            <i className="fas fa-file-invoice text-[11px] shrink-0" />
+                            <span>Create Purchase Request ({selectedLowStockIds.size}) & Notify Admin/Executive</span>
+                        </AppButton>
+                    </div>
+                ) : (
+                    <p className="text-[11px] text-slate-400 text-center py-1">
+                        🔒 Only Admin, Executive, and Manager can create purchase requests.
+                    </p>
+                )}
+            </div>
+        );
+    };
+
+    const renderCreatedPRsWidget = (msg: Message) => {
+        if (!msg.createdPRs || msg.createdPRs.length === 0) return null;
+
+        return (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/90 dark:border-[#353746] space-y-2.5">
+                <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <i className="fas fa-check-circle text-emerald-500" />
+                        Generated Purchase Requests ({msg.createdPRs.length})
+                    </span>
+                    <Link
+                        href="/procurement"
+                        onClick={onClose}
+                        className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 flex items-center gap-1"
+                    >
+                        <span>View in Procurement</span>
+                        <i className="fas fa-external-link-alt text-[10px]" />
+                    </Link>
+                </div>
+
+                <div className="space-y-2">
+                    {msg.createdPRs.map((pr: any, idx: number) => (
+                        <div
+                            key={pr.id || idx}
+                            className="p-3 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200/90 dark:border-[#353746] shadow-[0_1px_3px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] flex items-center justify-between gap-3"
+                        >
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                        {pr.request_number}
+                                    </span>
+                                    <StatusBadge tone="neutral" size="xs">
+                                        {pr.priority || 'Normal'}
+                                    </StatusBadge>
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                    {pr.supplier_name} • ₱{(pr.amount || 0).toLocaleString()}
+                                </p>
+                            </div>
+
+                            <Link
+                                href={`/procurement?search=${encodeURIComponent(pr.request_number)}`}
+                                onClick={onClose}
+                                className="shrink-0"
+                            >
+                                <AppButton
+                                    type="button"
+                                    variant="pink"
+                                    size="xs"
+                                    pill
+                                    className="text-[11px]"
+                                >
+                                    <span>Filter PR</span>
+                                    <i className="fas fa-arrow-right text-[10px] shrink-0" />
+                                </AppButton>
+                            </Link>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     const renderCreatedPOsWidget = (msg: Message) => {
         if (!msg.createdPOs || msg.createdPOs.length === 0) return null;
 
@@ -811,12 +1410,26 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         );
     };
 
+    const formatCleanContent = (text: string) => {
+        if (!text) return '';
+        return text
+            .replace(/^#{1,6}\s+/gm, '') // Remove ###, ##, # headers
+            .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
+            .replace(/\*(.*?)\*/g, '$1') // Remove *italic*
+            .replace(/`([^`]+)`/g, '$1') // Remove inline code ticks
+            .replace(/###/g, '') // Remove any raw ###
+            .replace(/\*\*/g, '') // Remove any raw **
+            .trim();
+    };
+
     const renderMessageContent = (msg: Message) => {
         if (msg.isThinking) {
             return (
                 <div className="flex items-center gap-2">
                     <ThinkingDots />
-                    <span className="text-xs text-slate-400">Thinking...</span>
+                    <span className="text-xs text-slate-400">
+                        {msg.attachment ? "Analyzing document & checking records..." : "Thinking..."}
+                    </span>
                 </div>
             );
         }
@@ -825,16 +1438,112 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             return (
                 <div className="flex items-center gap-2">
                     <span className="animate-pulse">⏳</span>
-                    <span className="text-sm text-slate-500">{msg.content.replace('⏳', '').trim()}</span>
+                    <span className="text-sm text-slate-500">{formatCleanContent(msg.content.replace('⏳', ''))}</span>
                 </div>
             );
         }
 
         return (
             <div>
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                {/* User Attachment Preview - Rendered first in bubble */}
+                {msg.attachment && (
+                    <div className="mb-2.5">
+                        {msg.attachment.type.startsWith('image/') && msg.attachment.dataUrl ? (
+                            <div className="overflow-hidden rounded-xl border border-white/25 shadow-md bg-black/20 max-w-full">
+                                <img
+                                    src={msg.attachment.dataUrl}
+                                    alt={msg.attachment.name}
+                                    className="max-h-48 w-full object-contain mx-auto rounded-xl bg-black/10"
+                                />
+                                <div className="p-1.5 bg-black/40 backdrop-blur-xs flex items-center justify-between text-[10px] text-white/90">
+                                    <span className="truncate max-w-[200px] font-medium">{msg.attachment.name}</span>
+                                    <span className="opacity-75 font-mono">{(msg.attachment.size / 1024).toFixed(1)} KB</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white/20 dark:bg-black/40 border border-white/25 backdrop-blur-md text-xs font-semibold">
+                                <div className={`w-8 h-8 rounded-lg ${msg.attachment.type.startsWith('image/') ? 'bg-pink-500/80' : 'bg-rose-500/80'} text-white flex items-center justify-center shrink-0`}>
+                                    <i className={`fas ${msg.attachment.type.startsWith('image/') ? 'fa-image' : 'fa-file-pdf'} text-sm`} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-white text-xs font-medium">{msg.attachment.name}</p>
+                                    <p className="text-[10px] text-white/70">{(msg.attachment.size / 1024).toFixed(1)} KB • {msg.attachment.type.startsWith('image/') ? 'Image' : 'Document'}</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{formatCleanContent(msg.content)}</p>
+
+                {/* System Match Found in /documents or /gallery Card */}
+                {msg.matchedDocument && (
+                    <div className="mt-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700/60 shadow-[0_2px_12px_rgba(16,185,129,0.12)] space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-7 h-7 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs shrink-0 border border-emerald-200 dark:border-emerald-800/40">
+                                    <i className={`fas ${msg.matchedDocument.is_gallery ? 'fa-image' : 'fa-file-alt'}`} />
+                                </span>
+                                <div className="min-w-0">
+                                    <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                        {msg.matchedDocument.title || msg.matchedDocument.file_name}
+                                    </h4>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                        {msg.matchedDocument.file_name}
+                                    </p>
+                                </div>
+                            </div>
+                            <StatusBadge tone="emerald" size="xs">
+                                System Match
+                            </StatusBadge>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px] p-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                            <div>
+                                <span className="text-slate-400 block text-[10px]">Supplier / Vendor:</span>
+                                <strong className="text-slate-700 dark:text-slate-200 truncate block">
+                                    {msg.matchedDocument.supplier || '—'}
+                                </strong>
+                            </div>
+                            <div>
+                                <span className="text-slate-400 block text-[10px]">PO / Reference:</span>
+                                <strong className="text-slate-700 dark:text-slate-200 font-mono text-[10px] truncate block">
+                                    {msg.matchedDocument.po_number || '—'}
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                            <span className="text-[10px] text-slate-400">
+                                Uploaded by {msg.matchedDocument.uploaded_by}
+                            </span>
+                            <Link
+                                href={msg.matchedDocument.view_link}
+                                onClick={onClose}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-xs transition-all cursor-pointer"
+                            >
+                                <span>Open in {msg.matchedDocument.is_gallery ? 'Gallery' : 'Documents'}</span>
+                                <i className="fas fa-arrow-right text-[10px]" />
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {/* Out of Scope Card */}
+                {msg.isOutOfScope && (
+                    <div className="mt-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                        <i className="fas fa-info-circle text-amber-600 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="font-semibold">Notice: Out-of-Scope Query</p>
+                            <p className="text-[11px] opacity-90 mt-0.5">Airship Express AI focuses on Supply Chain operations, document OCR, inventory tracking, and procurement.</p>
+                        </div>
+                    </div>
+                )}
+
                 {renderPendingRequestsWidget(msg)}
                 {renderCreatedPOsWidget(msg)}
+                {renderLowStockWidget(msg)}
+                {renderCreatedPRsWidget(msg)}
             </div>
         );
     };
@@ -1115,26 +1824,84 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
                 {/* Input Area */}
                 <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-[#2a2a2e] backdrop-blur-xl shrink-0 shadow-lg transition-all">
-                    <div className="relative flex items-center">
+                    
+                    {/* Attachment Preview Chip */}
+                    {attachedFile && (
+                        <div className="mb-2 p-2 px-3 rounded-2xl bg-pink-50/90 dark:bg-[#341427]/90 border border-pink-200 dark:border-[#67224c] flex items-center justify-between gap-2 text-xs animate-in fade-in zoom-in-95 duration-150">
+                            <div className="flex items-center gap-2 min-w-0">
+                                {attachedFile.type.startsWith('image/') ? (
+                                    <img
+                                        src={attachedFile.dataUrl}
+                                        alt="Preview"
+                                        className="w-8 h-8 rounded-lg object-cover border border-pink-300 dark:border-pink-800 shrink-0"
+                                    />
+                                ) : (
+                                    <div className="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-950/80 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0">
+                                        <i className="fas fa-file-pdf text-sm" />
+                                    </div>
+                                )}
+                                <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-slate-800 dark:text-white truncate">
+                                        {attachedFile.name}
+                                    </p>
+                                    <p className="text-[10px] text-pink-600 dark:text-pink-400">
+                                        {(attachedFile.size / 1024).toFixed(1)} KB • Ready to analyze
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleRemoveAttachment}
+                                className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-full transition-colors cursor-pointer"
+                                title="Remove attachment"
+                            >
+                                <i className="fas fa-times text-xs" />
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="relative flex items-center gap-1.5">
+                        {/* Hidden file input */}
                         <input
-                            ref={inputRef}
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Ask about inventory, stock, or orders..."
-                            className="w-full bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/90 dark:border-[#353746] rounded-2xl pl-4 pr-12 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)] focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-pink-500 dark:focus:border-pink-500/80 focus:ring-2 focus:ring-pink-500/20 transition-all duration-150 backdrop-blur-sm"
-                            disabled={isLoading}
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv"
+                            onChange={handleFileSelect}
+                            className="hidden"
                         />
 
                         <button
-                            onClick={() => handleSendMessage()}
-                            disabled={!input.trim() || isLoading}
-                            aria-label="Send message"
-                            className="absolute right-2 w-8 h-8 rounded-full bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white disabled:opacity-40 disabled:hover:from-pink-600 disabled:hover:to-rose-500 disabled:cursor-not-allowed shadow-[0_2px_8px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] border border-pink-400/40 flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer"
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isLoading}
+                            className="p-2.5 rounded-xl bg-slate-100 hover:bg-pink-50 text-slate-500 hover:text-pink-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:hover:text-pink-400 transition-colors border border-slate-200/80 dark:border-slate-700/60 shrink-0 cursor-pointer disabled:opacity-50"
+                            title="Attach picture or document to analyze"
+                            aria-label="Attach picture or document"
                         >
-                            <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`} />
+                            <i className="fas fa-paperclip text-sm" />
                         </button>
+
+                        <div className="relative flex-1 flex items-center">
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={attachedFile ? "Ask something about this file (or press enter)..." : "Ask about inventory, stock, or attach docs..."}
+                                className="w-full bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/90 dark:border-[#353746] rounded-2xl pl-4 pr-12 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)] focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-pink-500 dark:focus:border-pink-500/80 focus:ring-2 focus:ring-pink-500/20 transition-all duration-150 backdrop-blur-sm"
+                                disabled={isLoading}
+                            />
+
+                            <button
+                                onClick={() => handleSendMessage()}
+                                disabled={(!input.trim() && !attachedFile) || isLoading}
+                                aria-label="Send message"
+                                className="absolute right-2 w-8 h-8 rounded-full bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white disabled:opacity-40 disabled:hover:from-pink-600 disabled:hover:to-rose-500 disabled:cursor-not-allowed shadow-[0_2px_8px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] border border-pink-400/40 flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer"
+                            >
+                                <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`} />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="mt-2.5 flex items-center justify-between px-1">

@@ -299,10 +299,22 @@ export async function POST(request: NextRequest) {
         // sanitize
         const sanitizedRequestedBy = sanitizeText(requested_by);
         const sanitizedReason = sanitizeText(reason);
-        const sanitizedItems = items.map((item: PurchaseRequestItem) => ({
-            name: sanitizeText(item.name),
-            quantity: sanitizeNumber(item.quantity),
-        }));
+        const sanitizedItems = items.map((item: any) => {
+            const name = sanitizeText(item.name);
+            const quantity = sanitizeNumber(item.quantity) || 1;
+            const unit_price = Number(item.unit_price ?? item.price ?? 0);
+            const total = quantity * unit_price;
+            return {
+                name,
+                quantity,
+                unit_price,
+                price: unit_price,
+                total,
+            };
+        });
+
+        const calculatedAmount = sanitizedItems.reduce((acc: number, item: any) => acc + item.total, 0);
+        const finalAmount = amount && Number(amount) > 0 ? Number(amount) : calculatedAmount;
 
         // generate number
         const requestNumber = generateRequestNumber();
@@ -313,12 +325,12 @@ export async function POST(request: NextRequest) {
             .insert({
                 request_number: requestNumber,
                 type: type || 'New Request',
-                description: description || sanitizedItems.map((i: any) => `${i.name} (${i.quantity})`).join(', '),
+                description: description || sanitizedItems.map((i: any) => `${i.name} (${i.quantity} @ ₱${(i.unit_price || 0).toLocaleString()})`).join(', '),
                 requested_by: sanitizedRequestedBy,
                 department: department || 'Fleet',
                 supplier_id,
                 supplier_name: supplier.name,
-                amount: amount || 0,
+                amount: finalAmount,
                 priority: priority || 'Normal',
                 status: status || 'Pending',
                 date: date || new Date().toISOString().split('T')[0],
@@ -336,6 +348,40 @@ export async function POST(request: NextRequest) {
                 { success: false, error: 'Failed to create purchase request' },
                 { status: 500 }
             );
+        }
+
+        // Dispatch in-app notifications for Admin and Executive roles
+        try {
+            const notifTitle = `New Purchase Request: ${requestNumber}`;
+            const notifMsg = `Manual PR for ${data.description || 'items'} (₱${(amount || 0).toLocaleString()}) created by ${sanitizedRequestedBy || 'Procurement Officer'}. Pending review & approval.`;
+            const notifLink = `/procurement?search=${encodeURIComponent(requestNumber)}`;
+
+            await supabase.from('notifications').insert([
+                {
+                    creator_name: sanitizedRequestedBy || 'Procurement Team',
+                    creator_email: 'procurement@airshipexpress.ph',
+                    title: notifTitle,
+                    message: notifMsg,
+                    type: 'purchase_request',
+                    link: notifLink,
+                    role: 'Admin',
+                    is_read: false,
+                    po_request_id: data.id || requestNumber,
+                },
+                {
+                    creator_name: sanitizedRequestedBy || 'Procurement Team',
+                    creator_email: 'procurement@airshipexpress.ph',
+                    title: notifTitle,
+                    message: notifMsg,
+                    type: 'purchase_request',
+                    link: notifLink,
+                    role: 'Executive',
+                    is_read: false,
+                    po_request_id: data.id || requestNumber,
+                },
+            ]);
+        } catch (notifErr) {
+            console.error('Error dispatching notifications for manual PR:', notifErr);
         }
 
         return NextResponse.json({
@@ -433,10 +479,21 @@ export async function PUT(request: NextRequest) {
                     { status: 400 }
                 );
             }
-            sanitizedUpdate.items = updateData.items.map((item: PurchaseRequestItem) => ({
-                name: sanitizeText(item.name),
-                quantity: sanitizeNumber(item.quantity),
-            }));
+            sanitizedUpdate.items = updateData.items.map((item: any) => {
+                const name = sanitizeText(item.name);
+                const quantity = sanitizeNumber(item.quantity) || 1;
+                const unit_price = Number(item.unit_price ?? item.price ?? 0);
+                return {
+                    name,
+                    quantity,
+                    unit_price,
+                    price: unit_price,
+                    total: quantity * unit_price,
+                };
+            });
+            if (!updateData.amount || Number(updateData.amount) === 0) {
+                sanitizedUpdate.amount = sanitizedUpdate.items.reduce((acc: number, i: any) => acc + (i.total || 0), 0);
+            }
         }
 
         // update

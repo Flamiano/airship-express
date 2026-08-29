@@ -376,7 +376,7 @@ export default function EmbeddedDocViewer({
             )}
 
             {/* Viewer Content Frame */}
-            <div className={`relative flex-1 w-full h-full flex items-center justify-center bg-slate-950/90 dark:bg-slate-950 overflow-hidden ${minHeight}`}>
+            <div className={`relative flex-1 w-full h-full flex items-center justify-center bg-white dark:bg-slate-950 overflow-hidden ${minHeight}`}>
                 {isLoading && (typeInfo.isPdf || typeInfo.isDoc) && (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-900/80 dark:bg-slate-950/85 backdrop-blur-xs text-slate-300 gap-3">
                         <div className="w-9 h-9 border-3 border-pink-500 border-t-transparent rounded-full animate-spin" />

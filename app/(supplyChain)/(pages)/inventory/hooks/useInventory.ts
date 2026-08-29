@@ -4,15 +4,24 @@ import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { toast } from 'sonner';
 import { InventoryItem, Supplier, AddItemFormData, EditItemFormData } from '../types';
 
+let useInventoryCache: { items: InventoryItem[]; timestamp: number } | null = null;
+const CACHE_TTL = 3 * 60 * 1000;
+
 export function useInventory() {
-    const [items, setItems] = useState<InventoryItem[]>([]);
+    const [items, setItems] = useState<InventoryItem[]>(useInventoryCache?.items || []);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!useInventoryCache?.items?.length);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
     // fetch data
-    const fetchInventory = useCallback(async () => {
+    const fetchInventory = useCallback(async (forceRefresh = false) => {
+        if (!forceRefresh && useInventoryCache && (Date.now() - useInventoryCache.timestamp < CACHE_TTL)) {
+            setItems(useInventoryCache.items);
+            setLoading(false);
+            return;
+        }
+
         try {
             setLoading(true);
             const [{ data: inventoryData, error: inventoryError }] = await Promise.all([
@@ -20,7 +29,9 @@ export function useInventory() {
             ]);
 
             if (inventoryError) throw inventoryError;
-            setItems(inventoryData || []);
+            const fetched = inventoryData || [];
+            useInventoryCache = { items: fetched, timestamp: Date.now() };
+            setItems(fetched);
         } catch (error) {
             console.error('Error fetching inventory:', error);
             toast.error('Failed to load inventory');
@@ -59,7 +70,8 @@ export function useInventory() {
 
             if (error) throw error;
             toast.success('Item added successfully!', { id: toastId });
-            await fetchInventory();
+            useInventoryCache = null;
+            await fetchInventory(true);
             return { success: true, data };
         } catch (error) {
             toast.error('Failed to add item', { id: toastId });
@@ -99,7 +111,8 @@ export function useInventory() {
 
             if (error) throw error;
             toast.success('Item updated successfully!', { id: toastId });
-            await fetchInventory();
+            useInventoryCache = null;
+            await fetchInventory(true);
             return { success: true };
         } catch (error) {
             toast.error('Failed to update item', { id: toastId });
@@ -122,7 +135,8 @@ export function useInventory() {
 
             if (error) throw error;
             toast.success(`"${itemName}" deleted successfully!`, { id: toastId });
-            await fetchInventory();
+            useInventoryCache = null;
+            await fetchInventory(true);
             return { success: true };
         } catch (error) {
             toast.error('Failed to delete item', { id: toastId });
@@ -145,7 +159,8 @@ export function useInventory() {
 
             if (error) throw error;
             toast.success(`Successfully deleted ${ids.length} items!`, { id: toastId });
-            await fetchInventory();
+            useInventoryCache = null;
+            await fetchInventory(true);
             return { success: true };
         } catch (error) {
             toast.error('Failed to delete items', { id: toastId });
@@ -176,7 +191,8 @@ export function useInventory() {
 
             if (error) throw error;
             toast.success(`Added ${quantity} ${item.unit} to ${item.item_name}`, { id: toastId });
-            await fetchInventory();
+            useInventoryCache = null;
+            await fetchInventory(true);
             return { success: true };
         } catch (error) {
             toast.error('Failed to add stock', { id: toastId });
@@ -210,7 +226,8 @@ export function useInventory() {
 
             if (error) throw error;
             toast.success(`Removed ${quantity} ${item.unit} from ${item.item_name}`, { id: toastId });
-            await fetchInventory();
+            useInventoryCache = null;
+            await fetchInventory(true);
             return { success: true };
         } catch (error) {
             toast.error('Failed to remove stock', { id: toastId });

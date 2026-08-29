@@ -176,7 +176,9 @@ export function ApprovedRequestsModal({
                                     <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
                                         <span>By: <strong className="text-slate-600 dark:text-slate-300">{req.requested_by}</strong> ({req.department})</span>
                                         <span>•</span>
-                                        <span className="font-semibold text-slate-900 dark:text-emerald-400">Est. ₱{(req.amount || 0).toLocaleString()}</span>
+                                        <span className="font-semibold text-slate-900 dark:text-emerald-400">
+                                            Est. ₱{((Number(req.amount) > 0 ? Number(req.amount) : (req.items?.reduce((s: number, i: any) => s + ((Number(i.quantity) || 1) * (Number(i.unit_price ?? i.price ?? 0))), 0))) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
                                     </div>
                                 </div>
 

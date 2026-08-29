@@ -527,10 +527,10 @@ export function NotificationBell() {
 
         const confirmed = await confirm({
             title: 'Approve Purchase Request',
-            message: `Are you sure you want to approve this purchase request?`,
-            confirmText: 'Approve',
+            message: `Are you sure you want to approve this purchase request? This will mark the request as approved and ready for purchase order creation.`,
+            confirmText: 'Approve Request',
             cancelText: 'Cancel',
-            confirmVariant: 'success',
+            confirmVariant: 'pink',
         });
 
         if (!confirmed) return;
@@ -568,8 +568,8 @@ export function NotificationBell() {
 
         const confirmed = await confirm({
             title: 'Reject Purchase Request',
-            message: `Are you sure you want to reject this purchase request?`,
-            confirmText: 'Reject',
+            message: `Are you sure you want to reject this purchase request? Reason: "${rejectReason}"`,
+            confirmText: 'Reject Request',
             cancelText: 'Cancel',
             confirmVariant: 'danger',
         });
@@ -1078,14 +1078,22 @@ export function NotificationBell() {
                                                 <p className="text-xs text-gray-400 dark:text-slate-500">Category</p>
                                             </div>
 
-                                            <div className="bg-indigo-50/50 dark:bg-indigo-950/20 rounded-xl p-3.5 
-                                                          border border-indigo-100/80 dark:border-indigo-800/30 shadow-2xs">
-                                                <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 mb-1">
+                                            <div className="bg-pink-50/50 dark:bg-pink-950/20 rounded-xl p-3.5 
+                                                          border border-pink-100/80 dark:border-pink-800/30 shadow-2xs">
+                                                <div className="flex items-center gap-1.5 text-pink-600 dark:text-pink-400 mb-1">
                                                     <DollarSign className="h-3.5 w-3.5" />
                                                     <span className="text-[11px] font-semibold uppercase tracking-wider">Total Amount</span>
                                                 </div>
-                                                <p className="text-base font-bold text-indigo-950 dark:text-indigo-200">
-                                                    ${purchaseRequest.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                                                <p className="text-base font-bold text-pink-950 dark:text-pink-200">
+                                                    ₱{(() => {
+                                                        const computedSum = purchaseRequest.items?.reduce((acc: number, item: any) => {
+                                                            const q = Number(item.quantity) || 1;
+                                                            const p = Number(item.unit_price ?? item.price ?? item.purchase_price ?? 0);
+                                                            return acc + (q * p);
+                                                        }, 0) || 0;
+                                                        const finalAmt = Number(purchaseRequest.amount || 0) > 0 ? Number(purchaseRequest.amount) : computedSum;
+                                                        return finalAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                                    })()}
                                                 </p>
                                             </div>
                                         </div>
@@ -1123,7 +1131,7 @@ export function NotificationBell() {
                                                                 border-b border-gray-200/80 dark:border-slate-700/60 
                                                                 flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
-                                                        <Package className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+                                                        <Package className="h-4 w-4 text-pink-500 dark:text-pink-400" />
                                                         <span className="text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider">Requested Line Items</span>
                                                     </div>
                                                     <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">
@@ -1145,21 +1153,28 @@ export function NotificationBell() {
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60 text-sm">
                                                             {purchaseRequest.items.map((item: any, index: number) => {
-                                                                const qty = item.quantity || 1;
-                                                                const price = item.price || 0;
+                                                                const qty = Number(item.quantity) || 1;
+                                                                const directPrice = Number(item.unit_price ?? item.price ?? item.purchase_price ?? 0);
+                                                                const totalReqAmt = Number(purchaseRequest.amount) || 0;
+                                                                const fallbackPrice = totalReqAmt > 0 && purchaseRequest.items.length
+                                                                    ? (totalReqAmt / purchaseRequest.items.length) / qty
+                                                                    : 0;
+                                                                const unitPrice = directPrice > 0 ? directPrice : fallbackPrice;
+                                                                const rowTotal = Number(item.total) > 0 ? Number(item.total) : (qty * unitPrice);
+
                                                                 return (
                                                                     <tr key={index} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-colors">
                                                                         <td className="py-3 px-4 font-medium text-gray-800 dark:text-slate-200">
-                                                                            {item.name || item.description}
+                                                                            {item.name || item.item_name || item.description || 'Inventory Item'}
                                                                         </td>
                                                                         <td className="py-3 px-4 text-center text-gray-600 dark:text-slate-400">
                                                                             {qty}
                                                                         </td>
                                                                         <td className="py-3 px-4 text-right text-gray-600 dark:text-slate-400">
-                                                                            ${price.toFixed(2)}
+                                                                            ₱{unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                         </td>
                                                                         <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
-                                                                            ${(qty * price).toFixed(2)}
+                                                                            ₱{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                         </td>
                                                                     </tr>
                                                                 );
@@ -1188,31 +1203,35 @@ export function NotificationBell() {
                             {purchaseRequest && (
                                 <div className="shrink-0 border-t border-gray-100 dark:border-slate-700/60 
                                                 p-4 bg-gray-50/80 dark:bg-slate-800/30">
-                                    {purchaseRequest.status === 'Pending' ? (
-                                        <div className="flex justify-end items-center gap-3">
+                                    {/* Action Buttons (Approve/Reject) for Pending Requests */}
+                                    {purchaseRequest.status === 'Pending' && ['admin', 'executive', 'manager'].includes((userRole || '').toLowerCase()) ? (
+                                        <div className="flex items-center justify-end gap-3 pt-2">
                                             <button
                                                 type="button"
                                                 onClick={() => setShowRejectModal(true)}
                                                 disabled={isApproving}
-                                                className="px-4 py-2 text-sm font-semibold 
-                                                          text-red-600 dark:text-red-400 
-                                                          hover:text-red-700 dark:hover:text-red-300 
-                                                          bg-white dark:bg-[#2a2a2e] 
-                                                          border border-red-200 dark:border-red-800/30 
-                                                          hover:bg-red-50 dark:hover:bg-red-950/20 
-                                                          rounded-xl transition-all shadow-2xs disabled:opacity-50"
+                                                className="px-5 py-2.5 text-xs sm:text-sm font-semibold 
+                                                          text-rose-600 dark:text-rose-400 
+                                                          hover:text-rose-700 dark:hover:text-rose-300 
+                                                          bg-white dark:bg-[#202128] 
+                                                          border border-rose-200 dark:border-rose-800/40 
+                                                          hover:bg-rose-50 dark:hover:bg-rose-950/20 
+                                                          rounded-full transition-all shadow-xs disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                                             >
-                                                Reject Request
+                                                <X className="h-4 w-4" />
+                                                <span>Reject Request</span>
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={handleApprove}
                                                 disabled={isApproving}
-                                                className="px-5 py-2 bg-indigo-600 dark:bg-indigo-500 
-                                                          hover:bg-indigo-700 dark:hover:bg-indigo-600 
-                                                          active:bg-indigo-800 dark:active:bg-indigo-700 
-                                                          text-white text-sm font-semibold rounded-xl 
-                                                          transition-all disabled:opacity-50 flex items-center gap-2 shadow-xs"
+                                                className="px-6 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 
+                                                          hover:from-pink-500 hover:to-rose-500 
+                                                          active:from-pink-700 active:to-rose-700 
+                                                          text-white text-xs sm:text-sm font-semibold rounded-full 
+                                                          transition-all disabled:opacity-50 flex items-center gap-2 
+                                                          shadow-[0_4px_16px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] 
+                                                          hover:shadow-[0_6px_20px_rgba(244,63,94,0.45)] cursor-pointer"
                                             >
                                                 {isApproving ? (
                                                     <>
@@ -1231,7 +1250,7 @@ export function NotificationBell() {
                                         <div className="flex items-center justify-center gap-2 text-xs font-medium 
                                                         text-gray-500 dark:text-slate-400 py-1">
                                             <Clock className="h-4 w-4 text-gray-400 dark:text-slate-500" />
-                                            <span>This request was {purchaseRequest.status.toLowerCase()}</span>
+                                            <span>This request is currently {purchaseRequest.status.toLowerCase()}</span>
                                         </div>
                                     )}
                                 </div>
@@ -1242,63 +1261,71 @@ export function NotificationBell() {
                 </Portal>
             )}
 
-            {/* Reject Reason Modal - Rendered via Portal */}
+            {/* Reject Reason Modal - Rendered via Portal with high z-index */}
             {showRejectModal && (
                 <Portal>
-                    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm 
-                                  flex items-center justify-center z-[9999] p-4">
-                        <div className="bg-white dark:bg-[#2a2a2e] rounded-2xl max-w-md w-full shadow-2xl">
-                            <div className="border-b border-gray-200 dark:border-slate-700/60 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Reject Purchase Request</h3>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
-                                    Please provide a reason for rejection
-                                </p>
+                    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-md 
+                                  flex items-center justify-center z-[100000] p-4 animate-in fade-in duration-200">
+                        <div className="bg-white/95 dark:bg-[#202128]/95 backdrop-blur-xl rounded-[28px] max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200/80 dark:border-[#353746] animate-in zoom-in-95 duration-200">
+                            
+                            {/* Raindrop Warning Icon */}
+                            <div className="w-14 h-14 rounded-[20px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4 shadow-[0_4px_16px_rgba(244,63,94,0.15)]">
+                                <X className="h-6 w-6" />
                             </div>
-                            <div className="p-6">
+
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center">Reject Purchase Request</h3>
+                            <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 text-center mt-1 mb-4">
+                                Please provide a reason for rejecting this purchase request.
+                            </p>
+
+                            <div className="mb-5">
                                 <textarea
                                     value={rejectReason}
                                     onChange={(e) => setRejectReason(e.target.value)}
-                                    placeholder="Enter reason for rejection..."
-                                    className="w-full px-4 py-3 border border-gray-300 dark:border-slate-700/60 
-                                              bg-white dark:bg-[#2a2a2e] 
+                                    placeholder="Enter specific reason for rejection..."
+                                    className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700/80 
+                                              bg-slate-50 dark:bg-slate-900/60 
                                               text-gray-900 dark:text-white
-                                              rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent 
-                                              outline-none transition resize-none h-24 text-sm"
+                                              rounded-2xl focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 
+                                              outline-none transition resize-none h-28 text-xs sm:text-sm"
                                     maxLength={500}
                                 />
-                                <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                                <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 text-right">
                                     {rejectReason.length}/500 characters
                                 </p>
                             </div>
-                            <div className="border-t border-gray-200 dark:border-slate-700/60 p-4 flex justify-end gap-3">
+
+                            <div className="flex gap-3">
                                 <button
+                                    type="button"
                                     onClick={() => {
                                         setShowRejectModal(false);
                                         setRejectReason('');
                                     }}
-                                    className="px-4 py-2 text-sm font-semibold 
-                                              text-gray-600 dark:text-slate-400 
-                                              hover:text-gray-800 dark:hover:text-slate-200 transition-colors"
+                                    className="flex-1 py-2.5 px-4 rounded-full text-xs sm:text-sm font-semibold 
+                                              text-gray-700 dark:text-slate-300 
+                                              bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={handleReject}
                                     disabled={isApproving || !rejectReason.trim()}
-                                    className="px-6 py-2 bg-red-600 dark:bg-red-500 
-                                              hover:bg-red-700 dark:hover:bg-red-600 
-                                              text-white text-sm font-semibold rounded-lg 
-                                              transition-all disabled:opacity-50 flex items-center gap-2"
+                                    className="flex-1 py-2.5 px-4 bg-gradient-to-r from-red-600 to-rose-600 
+                                              hover:from-red-500 hover:to-rose-500 
+                                              text-white text-xs sm:text-sm font-semibold rounded-full 
+                                              transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(239,68,68,0.35)] cursor-pointer"
                                 >
                                     {isApproving ? (
                                         <>
                                             <Loader2 className="animate-spin h-4 w-4" />
-                                            Processing...
+                                            <span>Rejecting...</span>
                                         </>
                                     ) : (
                                         <>
                                             <X className="h-4 w-4" />
-                                            Reject
+                                            <span>Confirm Reject</span>
                                         </>
                                     )}
                                 </button>

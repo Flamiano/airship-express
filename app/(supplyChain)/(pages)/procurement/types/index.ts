@@ -14,6 +14,9 @@ export interface Supplier {
 export interface PurchaseRequestItem {
     name: string;
     quantity: number;
+    unit_price?: number;
+    price?: number;
+    total?: number;
 }
 
 export interface PurchaseRequest {

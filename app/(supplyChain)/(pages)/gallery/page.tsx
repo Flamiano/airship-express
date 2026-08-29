@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     Search, Grid, List, Calendar, User, Tag, Eye, X, Download,
     Image as ImageIcon, HardDrive, Filter, XCircle, Loader2, Images,
@@ -50,7 +52,7 @@ interface CacheEntry {
 
 class LRUImageCache {
     private cache = new Map<string, CacheEntry>();
-    private readonly maxSize: number = 300;
+    private readonly maxSize: number = 500;
     private readonly cacheDuration: number = 60 * 60 * 1000;
     private readonly maxRetries: number = 3;
 
@@ -134,6 +136,66 @@ class LRUImageCache {
 
 const imageCache = new LRUImageCache();
 
+// SWR Data Cache for Gallery queries
+interface GalleryCachePayload {
+    items: MediaItem[];
+    totalCount: number;
+    totalSize: number;
+    hasMore: boolean;
+    categories: string[];
+    suppliers: string[];
+    timestamp: number;
+}
+
+class GalleryDataCache {
+    private cache = new Map<string, GalleryCachePayload>();
+    private readonly maxSize = 80;
+    private readonly ttl = 5 * 60 * 1000; // 5 minutes fresh
+    private readonly staleTime = 45 * 1000; // 45 seconds before background revalidation
+
+    get(key: string): { data: GalleryCachePayload | null; isStale: boolean } {
+        const entry = this.cache.get(key);
+        if (!entry) return { data: null, isStale: true };
+
+        const age = Date.now() - entry.timestamp;
+        if (age > this.ttl) {
+            this.cache.delete(key);
+            return { data: null, isStale: true };
+        }
+
+        // LRU bump
+        this.cache.delete(key);
+        this.cache.set(key, entry);
+
+        return { data: entry, isStale: age > this.staleTime };
+    }
+
+    set(key: string, data: Omit<GalleryCachePayload, 'timestamp'>): void {
+        if (this.cache.size >= this.maxSize) {
+            const oldest = this.cache.keys().next().value;
+            if (oldest) this.cache.delete(oldest);
+        }
+        this.cache.set(key, { ...data, timestamp: Date.now() });
+    }
+
+    invalidateAll(): void {
+        this.cache.clear();
+    }
+}
+
+const galleryDataCache = new GalleryDataCache();
+
+// Memoized Supabase Public Storage URLs
+const storageUrlCache = new Map<string, string>();
+const getCachedPublicUrl = (path: string): string => {
+    if (!path) return '';
+    const cached = storageUrlCache.get(path);
+    if (cached) return cached;
+    const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path);
+    storageUrlCache.set(path, publicUrl);
+    return publicUrl;
+};
+
 interface FilterState {
     searchTerm: string;
     searchType: 'all' | 'title' | 'uploader' | 'supplier' | 'po';
@@ -174,10 +236,10 @@ const GalleryCard = memo(function GalleryCard({
 
     return (
         <div
-            className="group bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200/90 dark:border-slate-800 hover:border-pink-300 dark:hover:border-pink-500/40 shadow-2xs hover:shadow-lg dark:hover:shadow-pink-500/10 hover:-translate-y-0.5 transition-all duration-200 flex flex-col cursor-pointer"
+            className="group bg-white dark:bg-[#1c1d25] rounded-2xl overflow-hidden border border-slate-200/90 dark:border-[#353746] hover:border-pink-400 dark:hover:border-pink-500/70 shadow-[0_4px_16px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.16)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] dark:hover:shadow-[0_8px_30px_rgba(244,63,94,0.18)] hover:-translate-y-1 transition-all duration-200 flex flex-col cursor-pointer"
             onClick={() => onPreview(item)}
         >
-            <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800/80">
+            <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-[#15161c] border-b border-slate-200/80 dark:border-[#353746]">
                 {typeInfo.isImage ? (
                     <>
                         {!loaded && !hasError && (
@@ -216,14 +278,14 @@ const GalleryCard = memo(function GalleryCard({
                         )}
                     </>
                 ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/90 dark:bg-slate-950 p-4 text-center select-none relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-[#15161c] p-4 text-center select-none relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-2 shadow-lg border ${typeInfo.colorClasses.bg} ${typeInfo.colorClasses.border}`}>
                             <i className={`${typeInfo.icon} text-2xl ${typeInfo.colorClasses.text}`} />
                         </div>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border mb-1.5 ${typeInfo.colorClasses.bg} ${typeInfo.colorClasses.text} ${typeInfo.colorClasses.border}`}>
                             {typeInfo.typeName}
                         </span>
-                        <p className="text-[11px] font-medium text-slate-300 line-clamp-2 max-w-[85%] px-1" title={item.title}>
+                        <p className="text-[11px] font-medium text-slate-700 dark:text-slate-300 line-clamp-2 max-w-[85%] px-1" title={item.title}>
                             {item.title}
                         </p>
                     </div>
@@ -278,19 +340,19 @@ const GalleryCard = memo(function GalleryCard({
 
             <div className="p-3.5 flex-1 flex flex-col justify-between gap-2.5">
                 <div>
-                    <h3
-                        className="font-semibold text-slate-900 dark:text-slate-100 text-xs sm:text-sm leading-snug group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors line-clamp-1"
-                        title={item.title}
-                    >
-                        {item.title}
-                    </h3>
-                    {item.po_number && (
-                        <div className="mt-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3
+                            className="font-semibold text-slate-900 dark:text-slate-100 text-xs sm:text-sm leading-snug group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors line-clamp-1"
+                            title={item.title}
+                        >
+                            {item.title}
+                        </h3>
+                        {item.po_number && (
                             <StatusBadge tone="pink" size="xs">
                                 <span className="font-mono">PO: {item.po_number}</span>
                             </StatusBadge>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
                 <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
@@ -336,11 +398,11 @@ const GalleryListItem = memo(function GalleryListItem({
 
     return (
         <div
-            className="p-3.5 sm:p-4 flex items-center justify-between gap-4 hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-all cursor-pointer group"
+            className="p-3.5 sm:p-4 flex items-center justify-between gap-4 hover:bg-slate-50/90 dark:hover:bg-[#23242e] transition-all cursor-pointer group"
             onClick={() => onPreview(item)}
         >
             <div className="flex items-center gap-3.5 sm:gap-4 flex-1 min-w-0">
-                <div className="relative w-16 h-12 sm:w-20 sm:h-14 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-700/80 shrink-0 overflow-hidden shadow-2xs group-hover:border-pink-300 dark:group-hover:border-pink-500/50 transition-colors">
+                <div className="relative w-16 h-12 sm:w-20 sm:h-14 rounded-xl bg-slate-100 dark:bg-[#15161c] border border-slate-200/90 dark:border-[#353746] shrink-0 overflow-hidden shadow-2xs group-hover:border-pink-400 dark:group-hover:border-pink-500/60 transition-colors">
                     {typeInfo.isImage ? (
                         !hasError ? (
                             <img
@@ -471,14 +533,33 @@ export default function MediaGallery() {
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const viewerContainerRef = useRef<HTMLDivElement>(null);
+
+    const searchParams = useSearchParams();
+    const initialSearch = searchParams?.get('search') || '';
 
     const [filterState, setFilterState] = useState<FilterState>({
-        searchTerm: '',
+        searchTerm: initialSearch,
         searchType: 'all',
         selectedCategory: 'All',
         selectedSupplier: 'All',
         dateRange: 'all'
     });
+
+    useEffect(() => {
+        const querySearch = searchParams?.get('search');
+        if (querySearch) {
+            setFilterState(prev => ({
+                ...prev,
+                searchTerm: querySearch,
+                searchType: 'all',
+            }));
+            // Clean the search param from URL address bar so future refreshes won't keep re-filtering
+            if (typeof window !== 'undefined') {
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        }
+    }, [searchParams]);
 
     const debouncedSearch = useDebounce(filterState.searchTerm, 400);
     const debouncedFilters = useDebounce(filterState, 500);
@@ -568,8 +649,8 @@ export default function MediaGallery() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isPreviewOpen, handleNextImage, handlePrevImage, handleZoomIn, handleZoomOut, resetZoomAndPan]);
 
-    // mouse zoom
-    const handleWheelZoom = useCallback((e: React.WheelEvent) => {
+    // mouse zoom — attached manually with { passive: false } so preventDefault works
+    const handleWheelZoom = useCallback((e: WheelEvent) => {
         e.preventDefault();
         if (e.deltaY < 0) {
             setZoom(prev => Math.min(prev + 0.15, 4));
@@ -581,6 +662,14 @@ export default function MediaGallery() {
             });
         }
     }, []);
+
+    // Attach non-passive wheel listener to the viewer container
+    useEffect(() => {
+        const el = viewerContainerRef.current;
+        if (!el || !selectedTypeInfo?.isImage || !isPreviewOpen) return;
+        el.addEventListener('wheel', handleWheelZoom, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheelZoom);
+    }, [handleWheelZoom, selectedTypeInfo?.isImage, isPreviewOpen]);
 
     // mouse drag
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -691,6 +780,45 @@ export default function MediaGallery() {
     }, [debouncedSearch, filterState, getDateRangeFilter, itemsPerPage]);
 
     const fetchImages = useCallback(async (pageNum: number, isLoadMore: boolean = false) => {
+        const cacheKey = JSON.stringify({
+            s: (filterState.searchTerm || '').trim().toLowerCase(),
+            st: filterState.searchType,
+            c: filterState.selectedCategory,
+            sup: filterState.selectedSupplier,
+            d: filterState.dateRange,
+            p: pageNum,
+        });
+
+        // 1. Check in-memory SWR cache for instant 0ms response
+        const cached = galleryDataCache.get(cacheKey);
+        if (cached.data) {
+            if (isLoadMore) {
+                const existingIds = new Set(mediaItems.map(item => item.id));
+                const newItems = cached.data.items.filter(item => !existingIds.has(item.id));
+                if (newItems.length > 0) {
+                    setMediaItems(prev => [...prev, ...newItems]);
+                }
+            } else {
+                setMediaItems(cached.data.items);
+                if (cached.data.categories && cached.data.categories.length > 1) {
+                    setCategories(cached.data.categories);
+                }
+                if (cached.data.suppliers && cached.data.suppliers.length > 1) {
+                    setSuppliers(cached.data.suppliers);
+                }
+            }
+            setTotalCount(cached.data.totalCount);
+            setTotalSize(cached.data.totalSize);
+            setHasMore(cached.data.hasMore);
+            setLoading(false);
+            setLoadingMore(false);
+
+            // If fresh, return immediately with zero database round-trip
+            if (!cached.isStale) {
+                return;
+            }
+        }
+
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -721,25 +849,25 @@ export default function MediaGallery() {
             setTotalCount(total);
 
             const totalLoaded = pageNum * itemsPerPage;
-            setHasMore(total > totalLoaded);
+            const hasMoreItems = total > totalLoaded;
+            setHasMore(hasMoreItems);
 
+            let computedTotalSize = 0;
             if (!isLoadMore || pageNum === 1) {
                 const sizeQuery = buildQuery(1, true);
                 const { data: sizeData, error: sizeError } = await sizeQuery.select('file_size');
 
                 if (!sizeError && sizeData) {
-                    const totalBytes = sizeData.reduce((sum, doc) => sum + (doc.file_size || 0), 0);
-                    setTotalSize(totalBytes);
+                    computedTotalSize = sizeData.reduce((sum, doc) => sum + (doc.file_size || 0), 0);
+                    setTotalSize(computedTotalSize);
                 }
             }
 
             const transformedItems: MediaItem[] = (data || []).map((doc) => {
-                const { data: { publicUrl } } = supabase.storage
-                    .from('documents')
-                    .getPublicUrl(doc.storage_path);
+                const publicUrl = getCachedPublicUrl(doc.storage_path);
 
-                const cached = imageCache.get(doc.id);
-                if (!cached) {
+                const cachedImg = imageCache.get(doc.id);
+                if (!cachedImg) {
                     imageCache.set(doc.id, publicUrl);
                 }
 
@@ -783,13 +911,28 @@ export default function MediaGallery() {
                 setMediaItems(transformedItems);
             }
 
-            if (!isLoadMore) {
-                const uniqueCategories = ['All', ...new Set((data || []).map(d => d.document_type).filter(Boolean))];
-                setCategories(uniqueCategories);
+            const uniqueCategories = !isLoadMore
+                ? ['All', ...new Set((data || []).map(d => d.document_type).filter(Boolean))]
+                : categories;
 
-                const uniqueSuppliers = ['All', ...new Set((data || []).map(d => d.supplier).filter(Boolean))];
+            const uniqueSuppliers = !isLoadMore
+                ? ['All', ...new Set((data || []).map(d => d.supplier).filter(Boolean))]
+                : suppliers;
+
+            if (!isLoadMore) {
+                setCategories(uniqueCategories);
                 setSuppliers(uniqueSuppliers);
             }
+
+            // Save fresh query results in cache
+            galleryDataCache.set(cacheKey, {
+                items: transformedItems,
+                totalCount: total,
+                totalSize: computedTotalSize,
+                hasMore: hasMoreItems,
+                categories: uniqueCategories,
+                suppliers: uniqueSuppliers,
+            });
 
         } catch (error: any) {
             if (error?.name === 'AbortError') {
@@ -941,6 +1084,9 @@ export default function MediaGallery() {
     };
 
     const clearFilters = () => {
+        if (typeof window !== 'undefined') {
+            window.history.replaceState(null, '', window.location.pathname);
+        }
         setFilterState({
             searchTerm: '',
             searchType: 'all',
@@ -956,8 +1102,8 @@ export default function MediaGallery() {
 
     return (
         <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
-            <div className="mx-auto p-6 bg-slate-50 dark:bg-ink/40 min-h-screen bgCard">
-                <div className="mb-8 space-y-4">
+            <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
+                <div className="space-y-4">
                     <div className="flex flex-col gap-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="flex items-center gap-3.5">
@@ -1043,7 +1189,7 @@ export default function MediaGallery() {
                                         }...`}
                                     value={filterState.searchTerm}
                                     onChange={handleSearchChange}
-                                    className="w-full pl-10 pr-9 py-2.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all shadow-2xs"
+                                    className="w-full pl-10 pr-9 py-2.5 bg-white dark:bg-[#1c1d25] border border-slate-200/90 dark:border-[#353746] rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.04)] focus:shadow-[0_4px_16px_rgba(244,63,94,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
                                 />
                                 {filterState.searchTerm && (
                                     <button
@@ -1066,7 +1212,7 @@ export default function MediaGallery() {
                                     handleFilterChange('searchType', e.target.value);
                                     setTimeout(() => searchInputRef.current?.focus(), 50);
                                 }}
-                                className="py-2.5 px-3.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700/80 rounded-xl text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all cursor-pointer shadow-2xs"
+                                className="py-2.5 px-3.5 bg-white dark:bg-[#1c1d25] border border-slate-200/90 dark:border-[#353746] rounded-xl text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
                             >
                                 <option value="all">All Fields</option>
                                 <option value="title">Title</option>
@@ -1078,7 +1224,7 @@ export default function MediaGallery() {
                     </div>
 
                     {showFilters && (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 p-4 shadow-2xs space-y-4 animate-in fade-in duration-200">
+                        <div className="bg-white dark:bg-[#1c1d25] rounded-2xl border border-slate-200/90 dark:border-[#353746] p-4 shadow-[0_8px_30px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.6)] space-y-4 animate-in fade-in duration-200">
                             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                                 <div className="flex items-center gap-2">
                                     <div className="w-7 h-7 rounded-lg bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-xs border border-pink-200/80 dark:border-pink-800/50">
@@ -1220,32 +1366,65 @@ export default function MediaGallery() {
                 {loading && mediaItems.length === 0 ? (
                     <GallerySkeleton count={8} />
                 ) : viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {mediaItems.map((item) => (
-                            <GalleryCard
-                                key={item.id}
-                                item={item}
-                                hasError={imageErrors.has(item.id)}
-                                onPreview={handleImageClick}
-                                onDownload={downloadImage}
-                                onRetry={handleRetry}
-                                onImageError={handleImageError}
-                            />
-                        ))}
-                    </div>
+                    <motion.div
+                        layout
+                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                    >
+                        <AnimatePresence mode="popLayout">
+                            {mediaItems.map((item, index) => (
+                                <motion.div
+                                    key={item.id}
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.94, y: 12 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.92, y: -8 }}
+                                    transition={{
+                                        duration: 0.25,
+                                        ease: [0.25, 1, 0.5, 1],
+                                        delay: Math.min(index * 0.03, 0.3)
+                                    }}
+                                >
+                                    <GalleryCard
+                                        item={item}
+                                        hasError={imageErrors.has(item.id)}
+                                        onPreview={handleImageClick}
+                                        onDownload={downloadImage}
+                                        onRetry={handleRetry}
+                                        onImageError={handleImageError}
+                                    />
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                    </motion.div>
                 ) : (
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 shadow-2xs overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-                        {mediaItems.map((item) => (
-                            <GalleryListItem
-                                key={item.id}
-                                item={item}
-                                hasError={imageErrors.has(item.id)}
-                                onPreview={handleImageClick}
-                                onDownload={downloadImage}
-                                onImageError={handleImageError}
-                            />
-                        ))}
-                    </div>
+                    <motion.div
+                        layout
+                        className="bg-white dark:bg-[#1c1d25] rounded-2xl border border-slate-200/90 dark:border-[#353746] shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] overflow-hidden divide-y divide-slate-100 dark:divide-[#2a2a2e]"
+                    >
+                        <AnimatePresence mode="popLayout">
+                            {mediaItems.map((item, index) => (
+                                <motion.div
+                                    key={item.id}
+                                    layout
+                                    initial={{ opacity: 0, y: 8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -8 }}
+                                    transition={{
+                                        duration: 0.2,
+                                        delay: Math.min(index * 0.02, 0.2)
+                                    }}
+                                >
+                                    <GalleryListItem
+                                        item={item}
+                                        hasError={imageErrors.has(item.id)}
+                                        onPreview={handleImageClick}
+                                        onDownload={downloadImage}
+                                        onImageError={handleImageError}
+                                    />
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                    </motion.div>
                 )}
 
                 {!loading && mediaItems.length > 0 && (
@@ -1315,10 +1494,10 @@ export default function MediaGallery() {
                         aria-labelledby="preview-modal-title"
                     >
                         <div
-                            className="flex flex-col w-full max-w-5xl max-h-[94vh] overflow-hidden bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-700/80 shadow-2xl transition-all"
+                            className="flex flex-col w-full max-w-5xl max-h-[94vh] overflow-hidden bg-white dark:bg-[#1c1d25] rounded-3xl border border-slate-200/90 dark:border-[#353746] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] transition-all"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <div className="sticky top-0 z-20 flex items-center justify-between gap-4 px-6 py-3.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/90 dark:border-slate-700/80">
+                            <div className="sticky top-0 z-20 flex items-center justify-between gap-4 px-6 py-3.5 bg-white/95 dark:bg-[#1c1d25]/95 backdrop-blur-xl border-b border-slate-200/90 dark:border-[#353746]">
                                 <div className="flex items-center gap-3 min-w-0">
                                     <span className="inline-flex items-center shrink-0 px-3 py-0.5 rounded-full text-xs font-semibold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs">
                                         <Tag className="w-3 h-3 mr-1 text-pink-500" />
@@ -1353,8 +1532,8 @@ export default function MediaGallery() {
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar">
                                 <div
-                                    className="relative min-h-[440px] sm:min-h-[560px] flex items-center justify-center p-2 sm:p-4 bg-slate-950 dark:bg-black overflow-hidden border-b border-slate-200/90 dark:border-slate-800"
-                                    onWheel={selectedTypeInfo?.isImage ? handleWheelZoom : undefined}
+                                    ref={viewerContainerRef}
+                                    className="relative min-h-[440px] sm:min-h-[560px] flex items-center justify-center p-2 sm:p-4 bg-slate-900 dark:bg-black overflow-hidden border-b border-slate-200/90 dark:border-slate-800"
                                     onMouseDown={selectedTypeInfo?.isImage ? handleMouseDown : undefined}
                                     onMouseMove={selectedTypeInfo?.isImage ? handleMouseMove : undefined}
                                     onMouseUp={selectedTypeInfo?.isImage ? handleMouseUp : undefined}

@@ -46,9 +46,9 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
     const someSessionsSelected = selectedSessions.size > 0 && selectedSessions.size < selectableSessions.length;
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs dark:shadow-2xl dark:shadow-black/60 overflow-hidden">
+        <div className="bg-white dark:bg-[#1c1d25] rounded-2xl border border-slate-200/90 dark:border-[#353746] shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)] overflow-hidden">
             {/* Search Header */}
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/60">
+            <div className="p-4 border-b border-slate-100 dark:border-[#353746] bg-slate-50/70 dark:bg-[#15161c]">
                 <div className="relative max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 h-4 w-4" />
                     <input
@@ -56,7 +56,7 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                         placeholder="Search sessions by user, IP, or user agent..."
                         value={searchTerm}
                         onChange={(e) => onSearchTermChange(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/70 rounded-xl text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 dark:focus:border-pink-500/80 focus:bg-white dark:focus:bg-slate-800/80 transition-all shadow-2xs"
+                        className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-[#2a2a2e] border border-slate-200/90 dark:border-[#353746] rounded-xl text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 dark:focus:border-pink-500/80 focus:bg-white dark:focus:bg-[#23242e] transition-all shadow-2xs"
                     />
                 </div>
             </div>

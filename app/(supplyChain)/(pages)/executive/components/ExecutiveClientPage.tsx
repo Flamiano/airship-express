@@ -42,8 +42,8 @@ export default function ExecutiveClientPage() {
                                     {isRefreshing
                                         ? "Syncing Live..."
                                         : isLoadedFromCache
-                                            ? "Cached (Instant)"
-                                            : loading ? "Loading DB..." : "Live Data"}
+                                            ? "Cached"
+                                            : loading ? "Loading" : "Live"}
                                 </span>
                                 {data?.lastUpdated && (
                                     <span className="text-[10px] text-slate-400 font-mono">

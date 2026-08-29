@@ -29,9 +29,11 @@ import { RobotHeader } from "../../ai/components/RobotHeader";
 import { toast } from "sonner";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { NotificationBell } from "./NotificationBell";
+import { UserProfileMenu } from "./UserProfileMenu";
 import ThemeToggle from "@/app/components/ThemeToggle";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { ChangePasswordModal } from "@/app/(supplyChain)/components/modals/ChangePasswordModal";
 
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -53,6 +55,8 @@ export function AceternityNavbar() {
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const [userRole, setUserRole] = useState<string>("User");
     const [userName, setUserName] = useState<string>("User");
+    const [userEmail, setUserEmail] = useState<string>("");
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [filteredNav, setFilteredNav] = useState<NavGroup[]>([]);
     const router = useRouter();
     const pathname = usePathname();
@@ -74,12 +78,16 @@ export function AceternityNavbar() {
         if (typeof window !== 'undefined') {
             const role = localStorage.getItem('user_role');
             const employeeName = localStorage.getItem('user_name');
+            const email = localStorage.getItem('user_email') || localStorage.getItem('logged_in_email');
             if (role) {
                 setUserRole(role);
                 filterNavigation(role);
             }
             if (employeeName) {
                 setUserName(employeeName);
+            }
+            if (email) {
+                setUserEmail(email);
             }
         }
     }, []);
@@ -252,8 +260,9 @@ export function AceternityNavbar() {
     };
 
     return (
-        <Navbar className="top-0 dark:border-slate-700/60 bg-white/10 dark:bg-[#1c1b1f]/10 backdrop-blur-sm">
-            <NavBody visible={false}>
+        <>
+            <Navbar className="top-0 dark:border-slate-700/60 bg-white/10 dark:bg-[#1c1b1f]/10 backdrop-blur-sm">
+                <NavBody visible={false}>
                 <button
                     onClick={() => router.back()}
                     className="flex items-center gap-2.5 group shrink-0 focus:outline-none"
@@ -264,7 +273,7 @@ export function AceternityNavbar() {
                         width={40}
                         height={40}
                         priority
-                        className="dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300 object-contain"
+                        className="dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300 object-contain dark:brightness-0 dark:invert"
                     />
                     <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm tracking-tight whitespace-nowrap">
                         Airship <span className="text-pink-500 dark:text-pink-400">Express</span>
@@ -360,20 +369,7 @@ export function AceternityNavbar() {
                 </div>
 
                 <div className="hidden lg:flex items-center gap-2 xl:gap-2.5 shrink-0">
-                    <div 
-                        title={`${userName} (${userRole})`}
-                        className="flex items-center gap-2 px-2.5 py-1 rounded-full 
-                            bg-white dark:bg-[#1c1d25] 
-                            border border-slate-200/90 dark:border-[#353746] 
-                            shadow-[0_2px_6px_rgba(0,0,0,0.05),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] cursor-default select-none"
-                    >
-                        <div className="flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-[11px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]">
-                            {getInitials(userName)}
-                        </div>
-                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 max-w-[80px] truncate">
-                            {userRole}
-                        </span>
-                    </div>
+                    <UserProfileMenu />
 
                     <NotificationBell />
 
@@ -415,7 +411,7 @@ export function AceternityNavbar() {
                             width={36}
                             height={36}
                             priority
-                            className="h-auto w-auto rounded-lg ring-1 ring-slate-200/60 dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300 object-contain"
+                            className="h-auto w-auto rounded-lg ring-1 ring-slate-200/60 dark:ring-slate-700/60 group-hover:ring-pink-500/30 transition-all duration-300 object-contain dark:brightness-0 dark:invert"
                         />
                         <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm tracking-tight whitespace-nowrap">
                             Airship <span className="text-pink-500 dark:text-pink-400">Express</span>
@@ -432,19 +428,30 @@ export function AceternityNavbar() {
                 <MobileNavMenu isOpen={isOpen} onClose={() => setIsOpen(false)}>
                     <div className="flex flex-col h-full bg-white dark:bg-[#181920]">
                         <div className="flex-shrink-0 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-                            <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-[#353746] shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
-                                <div className="flex items-center justify-center h-10 w-10 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-sm font-bold shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] select-none shrink-0">
-                                    {getInitials(userName)}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsOpen(false);
+                                    setIsChangePasswordOpen(true);
+                                }}
+                                title="Click to Change Password"
+                                className="w-full flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-[#353746] shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_#ffffff] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)] hover:border-pink-300 dark:hover:border-pink-500/50 hover:bg-pink-50/50 dark:hover:bg-pink-950/20 transition-all text-left cursor-pointer group"
+                            >
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="flex items-center justify-center h-10 w-10 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white text-sm font-bold shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] select-none shrink-0 group-hover:scale-105 transition-transform">
+                                        {getInitials(userName)}
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
+                                            {userName}
+                                        </span>
+                                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                            {userRole} • <span className="text-pink-500 dark:text-pink-400 font-semibold">Change Password</span>
+                                        </span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                                        {userName}
-                                    </span>
-                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        {userRole}
-                                    </span>
-                                </div>
-                            </div>
+                                <IconLock className="h-4 w-4 text-slate-400 group-hover:text-pink-500 transition-colors shrink-0" />
+                            </button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
@@ -539,7 +546,16 @@ export function AceternityNavbar() {
                 </MobileNavMenu>
             </MobileNav>
         </Navbar>
-    );
+
+        <ChangePasswordModal
+            isOpen={isChangePasswordOpen}
+            onClose={() => setIsChangePasswordOpen(false)}
+            userEmail={userEmail}
+            userName={userName}
+            userRole={userRole}
+        />
+    </>
+);
 }
 
 interface ShadUiNavProps {
