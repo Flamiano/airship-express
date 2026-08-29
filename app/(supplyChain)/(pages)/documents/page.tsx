@@ -15,6 +15,7 @@ import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionBu
 import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import EmbeddedDocViewer from "@/app/(supplyChain)/components/ui/EmbeddedDocViewer";
 
 interface Document {
     id: string;
@@ -2174,53 +2175,22 @@ export default function Documents() {
 
                                     {/* Left: Preview Area */}
                                     <div className="lg:col-span-2 flex flex-col">
-                                        <div className="bg-slate-50/70 dark:bg-slate-800/40 rounded-2xl p-4 flex items-center justify-center min-h-[420px] flex-1 border border-slate-200/80 dark:border-slate-800 relative overflow-hidden shadow-2xs">
+                                        <div className="bg-slate-50/70 dark:bg-slate-800/40 rounded-2xl flex items-center justify-center min-h-[480px] sm:min-h-[540px] flex-1 border border-slate-200/80 dark:border-slate-800 relative overflow-hidden shadow-2xs">
                                             {previewLoading ? (
                                                 <div className="text-center py-12">
                                                     <i className="fas fa-spinner fa-spin text-3xl text-pink-500 dark:text-pink-400 mb-3"></i>
                                                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Loading preview...</p>
                                                 </div>
                                             ) : previewUrl ? (
-                                                <div className="w-full h-full flex items-center justify-center">
-                                                    {selectedDoc.file_type.toLowerCase().includes('pdf') ? (
-                                                        <iframe
-                                                            src={`${previewUrl}#toolbar=1`}
-                                                            className="w-full h-[500px] rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white"
-                                                            title="PDF Preview"
-                                                        />
-                                                    ) : selectedDoc.file_type.toLowerCase().includes('jpg') ||
-                                                        selectedDoc.file_type.toLowerCase().includes('jpeg') ||
-                                                        selectedDoc.file_type.toLowerCase().includes('png') ||
-                                                        selectedDoc.file_type.toLowerCase().includes('heic') ? (
-                                                            <img
-                                                                src={previewUrl}
-                                                                alt={selectedDoc.title}
-                                                                className="max-w-full max-h-[500px] object-contain rounded-xl shadow-xs"
-                                                            />
-                                                        ) : (
-                                                            <div className="text-center py-12">
-                                                                <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3">
-                                                                    <i className={`fas ${getFileIcon(selectedDoc.file_type)} text-3xl`}></i>
-                                                                </div>
-                                                                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-xs truncate mx-auto">
-                                                                    {selectedDoc.file_name}
-                                                                </p>
-                                                                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                                                    {formatFileSize(selectedDoc.file_size)}
-                                                                </p>
-                                                                <AppButton
-                                                                    type="button"
-                                                                    variant="primary"
-                                                                    size="sm"
-                                                                    onClick={() => downloadFile(selectedDoc)}
-                                                                    className="mt-4"
-                                                                >
-                                                                    <i className="fas fa-download text-xs"></i>
-                                                                    <span>Download File</span>
-                                                                </AppButton>
-                                                            </div>
-                                                        )}
-                                                </div>
+                                                <EmbeddedDocViewer
+                                                    url={previewUrl}
+                                                    fileName={selectedDoc.file_name}
+                                                    title={selectedDoc.title}
+                                                    fileType={selectedDoc.file_type}
+                                                    storagePath={selectedDoc.storage_path}
+                                                    onDownload={() => downloadFile(selectedDoc)}
+                                                    minHeight="min-h-[480px] sm:min-h-[540px]"
+                                                />
                                             ) : (
                                                 <div className="text-center py-12 text-slate-400 dark:text-slate-500">
                                                     <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3">

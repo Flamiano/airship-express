@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import EmbeddedDocViewer from '@/app/(supplyChain)/components/ui/EmbeddedDocViewer';
 
 export interface ViewDocumentData {
     id?: string;
@@ -321,31 +322,17 @@ export default function DocumentViewerModal({ isOpen, onClose, data }: DocumentV
                     )}
 
                     {!isLoading && !hasError && resolvedUrl && (
-                        <>
-                            {isPdf ? (
-                                <iframe
-                                    src={resolvedUrl}
-                                    title={data.title || 'PDF Document'}
-                                    className="w-full h-full rounded-xl border border-slate-800 bg-white"
-                                />
-                            ) : (
-                                <div
-                                    className="transition-transform duration-150 ease-out max-w-full max-h-full flex items-center justify-center select-none"
-                                    style={{
-                                        transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                                    }}
-                                >
-                                    {/* Image rendered ONLY when viewing modal is open */}
-                                    <img
-                                        src={resolvedUrl}
-                                        alt={data.title || 'Receipt Image'}
-                                        className="max-h-[75vh] max-w-[85vw] object-contain rounded-xl shadow-2xl border border-white/10"
-                                        onLoad={() => setIsLoading(false)}
-                                        onError={() => setHasError(true)}
-                                    />
-                                </div>
-                            )}
-                        </>
+                        <EmbeddedDocViewer
+                            url={resolvedUrl}
+                            fileName={data.fileName}
+                            title={data.title}
+                            fileType={data.fileType}
+                            storagePath={data.storagePath}
+                            onDownload={handleDownload}
+                            zoom={zoom}
+                            rotation={rotation}
+                            minHeight="min-h-[460px] sm:min-h-[580px]"
+                        />
                     )}
                 </div>
 

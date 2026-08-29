@@ -14,6 +14,7 @@ import { GallerySkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoade
 import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import EmbeddedDocViewer, { getFileTypeInfo } from '@/app/(supplyChain)/components/ui/EmbeddedDocViewer';
 
 interface MediaItem {
     id: string;
@@ -169,6 +170,7 @@ const GalleryCard = memo(function GalleryCard({
 }: GalleryCardProps) {
     const cached = imageCache.get(item.id);
     const [loaded, setLoaded] = useState<boolean>(cached?.loaded ?? false);
+    const typeInfo = getFileTypeInfo(item.file_type, item.title, item.storage_path, item.imageUrl);
 
     return (
         <div
@@ -176,38 +178,54 @@ const GalleryCard = memo(function GalleryCard({
             onClick={() => onPreview(item)}
         >
             <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800/80">
-                {!loaded && !hasError && (
-                    <div className="absolute inset-0 animate-pulse bg-linear-to-r from-slate-200 dark:from-slate-800 via-slate-100 dark:via-slate-700 to-slate-200 dark:to-slate-800" />
-                )}
-
-                {!hasError ? (
-                    <img
-                        src={cached?.url || item.imageUrl}
-                        alt={item.title}
-                        className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ease-out ${loaded ? 'opacity-100' : 'opacity-0'
-                            }`}
-                        loading="lazy"
-                        onLoad={() => {
-                            setLoaded(true);
-                            imageCache.markLoaded(item.id);
-                        }}
-                        onError={() => onImageError(item.id)}
-                    />
-                ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950 text-slate-400 dark:text-slate-500 gap-2 p-4 text-center">
-                        <ImageIcon className="w-9 h-9 opacity-50 text-slate-400" />
-                        <span className="text-[11px] font-medium text-slate-400">Failed to load</span>
-                        {imageCache.canRetry(item.id) && (
-                            <AppButton
-                                type="button"
-                                variant="pink"
-                                size="xs"
-                                onClick={(e) => onRetry(item.id, item.imageUrl, e)}
-                            >
-                                <RefreshCw className="w-3 h-3" />
-                                <span>Retry</span>
-                            </AppButton>
+                {typeInfo.isImage ? (
+                    <>
+                        {!loaded && !hasError && (
+                            <div className="absolute inset-0 animate-pulse bg-linear-to-r from-slate-200 dark:from-slate-800 via-slate-100 dark:via-slate-700 to-slate-200 dark:to-slate-800" />
                         )}
+
+                        {!hasError ? (
+                            <img
+                                src={cached?.url || item.imageUrl}
+                                alt={item.title}
+                                className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ease-out ${loaded ? 'opacity-100' : 'opacity-0'
+                                    }`}
+                                loading="lazy"
+                                onLoad={() => {
+                                    setLoaded(true);
+                                    imageCache.markLoaded(item.id);
+                                }}
+                                onError={() => onImageError(item.id)}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950 text-slate-400 dark:text-slate-500 gap-2 p-4 text-center">
+                                <ImageIcon className="w-9 h-9 opacity-50 text-slate-400" />
+                                <span className="text-[11px] font-medium text-slate-400">Failed to load</span>
+                                {imageCache.canRetry(item.id) && (
+                                    <AppButton
+                                        type="button"
+                                        variant="pink"
+                                        size="xs"
+                                        onClick={(e) => onRetry(item.id, item.imageUrl, e)}
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        <span>Retry</span>
+                                    </AppButton>
+                                )}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/90 dark:bg-slate-950 p-4 text-center select-none relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-2 shadow-lg border ${typeInfo.colorClasses.bg} ${typeInfo.colorClasses.border}`}>
+                            <i className={`${typeInfo.icon} text-2xl ${typeInfo.colorClasses.text}`} />
+                        </div>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border mb-1.5 ${typeInfo.colorClasses.bg} ${typeInfo.colorClasses.text} ${typeInfo.colorClasses.border}`}>
+                            {typeInfo.typeName}
+                        </span>
+                        <p className="text-[11px] font-medium text-slate-300 line-clamp-2 max-w-[85%] px-1" title={item.title}>
+                            {item.title}
+                        </p>
                     </div>
                 )}
 
@@ -314,6 +332,7 @@ const GalleryListItem = memo(function GalleryListItem({
     onImageError
 }: GalleryListItemProps) {
     const cached = imageCache.get(item.id);
+    const typeInfo = getFileTypeInfo(item.file_type, item.title, item.storage_path, item.imageUrl);
 
     return (
         <div
@@ -322,17 +341,23 @@ const GalleryListItem = memo(function GalleryListItem({
         >
             <div className="flex items-center gap-3.5 sm:gap-4 flex-1 min-w-0">
                 <div className="relative w-16 h-12 sm:w-20 sm:h-14 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-700/80 shrink-0 overflow-hidden shadow-2xs group-hover:border-pink-300 dark:group-hover:border-pink-500/50 transition-colors">
-                    {!hasError ? (
-                        <img
-                            src={cached?.url || item.imageUrl}
-                            alt={item.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                            onError={() => onImageError(item.id)}
-                        />
+                    {typeInfo.isImage ? (
+                        !hasError ? (
+                            <img
+                                src={cached?.url || item.imageUrl}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                loading="lazy"
+                                onError={() => onImageError(item.id)}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900 text-slate-400">
+                                <ImageIcon className="w-5 h-5 text-slate-400" />
+                            </div>
+                        )
                     ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900 text-slate-400">
-                            <ImageIcon className="w-5 h-5 text-slate-400" />
+                        <div className={`w-full h-full flex items-center justify-center ${typeInfo.colorClasses.bg}`}>
+                            <i className={`${typeInfo.icon} text-lg sm:text-xl ${typeInfo.colorClasses.text}`} />
                         </div>
                     )}
                 </div>
@@ -467,6 +492,11 @@ export default function MediaGallery() {
         if (!selectedItem) return -1;
         return mediaItems.findIndex(item => item.id === selectedItem.id);
     }, [selectedItem, mediaItems]);
+
+    const selectedTypeInfo = useMemo(() => {
+        if (!selectedItem) return null;
+        return getFileTypeInfo(selectedItem.file_type, selectedItem.title, selectedItem.storage_path, selectedItem.imageUrl);
+    }, [selectedItem]);
 
     // reset view
     const resetZoomAndPan = useCallback(() => {
@@ -1323,14 +1353,14 @@ export default function MediaGallery() {
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar">
                                 <div
-                                    className="relative min-h-[380px] sm:min-h-[500px] flex items-center justify-center p-4 bg-slate-950 dark:bg-black overflow-hidden border-b border-slate-200/90 dark:border-slate-800"
-                                    onWheel={handleWheelZoom}
-                                    onMouseDown={handleMouseDown}
-                                    onMouseMove={handleMouseMove}
-                                    onMouseUp={handleMouseUp}
-                                    onMouseLeave={handleMouseUp}
-                                    onDoubleClick={handleDoubleClick}
-                                    style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+                                    className="relative min-h-[440px] sm:min-h-[560px] flex items-center justify-center p-2 sm:p-4 bg-slate-950 dark:bg-black overflow-hidden border-b border-slate-200/90 dark:border-slate-800"
+                                    onWheel={selectedTypeInfo?.isImage ? handleWheelZoom : undefined}
+                                    onMouseDown={selectedTypeInfo?.isImage ? handleMouseDown : undefined}
+                                    onMouseMove={selectedTypeInfo?.isImage ? handleMouseMove : undefined}
+                                    onMouseUp={selectedTypeInfo?.isImage ? handleMouseUp : undefined}
+                                    onMouseLeave={selectedTypeInfo?.isImage ? handleMouseUp : undefined}
+                                    onDoubleClick={selectedTypeInfo?.isImage ? handleDoubleClick : undefined}
+                                    style={{ cursor: selectedTypeInfo?.isImage && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
                                 >
                                     {selectedItemIndex > 0 && (
                                         <button
@@ -1340,7 +1370,7 @@ export default function MediaGallery() {
                                                 handlePrevImage();
                                             }}
                                             className="absolute left-3 top-1/2 -translate-y-1/2 z-30 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white border border-slate-700/80 hover:border-pink-500 shadow-xl backdrop-blur-md transition-all active:scale-90 cursor-pointer"
-                                            title="Previous Image (← Left Arrow)"
+                                            title="Previous Item (← Left Arrow)"
                                         >
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
@@ -1354,101 +1384,90 @@ export default function MediaGallery() {
                                                 handleNextImage();
                                             }}
                                             className="absolute right-3 top-1/2 -translate-y-1/2 z-30 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white border border-slate-700/80 hover:border-pink-500 shadow-xl backdrop-blur-md transition-all active:scale-90 cursor-pointer"
-                                            title="Next Image (→ Right Arrow)"
+                                            title="Next Item (→ Right Arrow)"
                                         >
                                             <ChevronRight className="w-5 h-5" />
                                         </button>
                                     )}
 
-                                    {!imageErrors.has(selectedItem.id) ? (
+                                    <EmbeddedDocViewer
+                                        url={selectedItem.imageUrl}
+                                        fileName={selectedItem.title}
+                                        title={selectedItem.title}
+                                        fileType={selectedItem.file_type}
+                                        storagePath={selectedItem.storage_path}
+                                        onDownload={() => downloadImage(selectedItem)}
+                                        zoom={zoom}
+                                        rotation={rotation}
+                                        pan={pan}
+                                        onImageError={() => setImageErrors((prev) => new Set(prev).add(selectedItem.id))}
+                                        minHeight="min-h-[440px] sm:min-h-[560px]"
+                                    />
+
+                                    {selectedTypeInfo?.isImage && !imageErrors.has(selectedItem.id) && (
                                         <div
-                                            className="transition-transform duration-100 ease-out will-change-transform"
-                                            style={{
-                                                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`
-                                            }}
+                                            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 bg-slate-900/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl text-white text-xs font-semibold"
+                                            onClick={(e) => e.stopPropagation()}
                                         >
-                                            <img
-                                                src={selectedItem.imageUrl}
-                                                alt={selectedItem.title}
-                                                className="max-w-[85vw] sm:max-w-[75vw] max-h-[56vh] object-contain rounded-xl shadow-2xl border border-slate-800/80 select-none pointer-events-none"
-                                                draggable={false}
-                                                onError={() => {
-                                                    setImageErrors((prev) => new Set(prev).add(selectedItem.id));
-                                                }}
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div className="text-center p-8">
-                                            <div className="w-16 h-16 mx-auto mb-3 flex items-center justify-center rounded-2xl bg-slate-900 border border-slate-800">
-                                                <ImageIcon className="w-8 h-8 text-slate-500" />
-                                            </div>
-                                            <p className="text-sm font-semibold text-slate-300">Image preview unavailable</p>
-                                            <p className="mt-1 text-xs text-slate-500">The file link might be broken or expired</p>
+                                            <button
+                                                type="button"
+                                                onClick={handleZoomOut}
+                                                disabled={zoom <= 0.5}
+                                                className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
+                                                title="Zoom Out (-)"
+                                            >
+                                                <ZoomOut className="w-4 h-4" />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={resetZoomAndPan}
+                                                className="px-2.5 py-1 hover:bg-slate-800 rounded-xl font-mono text-[11px] text-pink-400 transition-colors cursor-pointer"
+                                                title="Reset Zoom (0 or double click)"
+                                            >
+                                                {Math.round(zoom * 100)}%
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleZoomIn}
+                                                disabled={zoom >= 4}
+                                                className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
+                                                title="Zoom In (+)"
+                                            >
+                                                <ZoomIn className="w-4 h-4" />
+                                            </button>
+
+                                            <span className="w-px h-4 bg-slate-700 mx-1" />
+
+                                            <button
+                                                type="button"
+                                                onClick={handleRotateCcw}
+                                                className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                                                title="Rotate Counterclockwise"
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleRotateCw}
+                                                className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                                                title="Rotate Clockwise"
+                                            >
+                                                <RotateCw className="w-4 h-4" />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={resetZoomAndPan}
+                                                className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                                                title="Fit to Screen"
+                                            >
+                                                <Maximize2 className="w-4 h-4" />
+                                            </button>
                                         </div>
                                     )}
-
-                                    <div
-                                        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 bg-slate-900/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl text-white text-xs font-semibold"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={handleZoomOut}
-                                            disabled={zoom <= 0.5}
-                                            className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
-                                            title="Zoom Out (-)"
-                                        >
-                                            <ZoomOut className="w-4 h-4" />
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={resetZoomAndPan}
-                                            className="px-2.5 py-1 hover:bg-slate-800 rounded-xl font-mono text-[11px] text-pink-400 transition-colors cursor-pointer"
-                                            title="Reset Zoom (0 or double click)"
-                                        >
-                                            {Math.round(zoom * 100)}%
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={handleZoomIn}
-                                            disabled={zoom >= 4}
-                                            className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
-                                            title="Zoom In (+)"
-                                        >
-                                            <ZoomIn className="w-4 h-4" />
-                                        </button>
-
-                                        <span className="w-px h-4 bg-slate-700 mx-1" />
-
-                                        <button
-                                            type="button"
-                                            onClick={handleRotateCcw}
-                                            className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                                            title="Rotate Counterclockwise"
-                                        >
-                                            <RotateCcw className="w-4 h-4" />
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={handleRotateCw}
-                                            className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                                            title="Rotate Clockwise"
-                                        >
-                                            <RotateCw className="w-4 h-4" />
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={resetZoomAndPan}
-                                            className="p-1.5 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                                            title="Fit to Screen"
-                                        >
-                                            <Maximize2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
                                 </div>
 
                                 <div className="p-6 bg-white dark:bg-slate-900 space-y-6">
