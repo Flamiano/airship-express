@@ -85,10 +85,10 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
     }, [containerRef, cursorX, cursorY, arrowX, arrowY, pinX, pinY, connectorX, connectorY, connectorRotate, connectorLength]);
 
     return (
-        <>
+        <div aria-hidden className="cursor-layer pointer-events-none fixed inset-0 z-[2147483647] hidden lg:block">
             <motion.div
                 aria-hidden
-                className="pointer-events-none fixed left-0 top-0 z-[99999] hidden lg:block"
+                className="pointer-events-none absolute left-0 top-0 z-30"
                 style={{ x: trailX, y: trailY, translateX: "-50%", translateY: "-50%" }}
             >
                 <motion.span
@@ -107,7 +107,7 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
 
             <motion.div
                 aria-hidden
-                className="pointer-events-none fixed left-0 top-0 z-[99999] hidden lg:block"
+                className="pointer-events-none absolute left-0 top-0 z-30"
                 style={{ x: pinX, y: pinY, translateX: "-50%", translateY: "-50%" }}
             >
                 <motion.svg
@@ -135,7 +135,7 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
 
             <motion.div
                 aria-hidden
-                className="pointer-events-none fixed left-0 top-0 z-[99998] hidden lg:block"
+                className="pointer-events-none absolute left-0 top-0 z-20"
                 style={{ x: connectorX, y: connectorY, rotate: connectorRotate, translateX: "-50%", translateY: "-50%" }}
             >
                 <motion.svg
@@ -165,7 +165,7 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
 
             <motion.div
                 aria-hidden
-                className="pointer-events-none fixed left-0 top-0 z-[99999] hidden lg:block"
+                className="pointer-events-none absolute left-0 top-0 z-30"
                 style={{ x: arrowX, y: arrowY }}
             >
                 <motion.svg
@@ -189,6 +189,6 @@ export default function CustomCursor({ containerRef }: CustomCursorProps) {
                     />
                 </motion.svg>
             </motion.div>
-        </>
+        </div>
     );
 }

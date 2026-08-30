@@ -1,19 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { createPortal } from "react-dom";
 import type { DashboardTrip, DashboardVehicle, DashboardBooking } from "../page";
 import type { LeafletMarker } from "../../components/LeafletMap";
 import { useParcelStore } from "../../lib/parcelStore";
 import { getRoutePlan } from "../../lib/api";
+import { SkeletonMap } from "../../components/PageSkeleton";
 
 const LeafletMap = dynamic(() => import("../../components/LeafletMap"), {
   ssr: false,
-  loading: () => (
-    <div className="w-full h-[400px] rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-      <div className="text-xs text-slate-500 font-medium">Loading map…</div>
-    </div>
-  ),
+  loading: () => <SkeletonMap className="h-[400px] w-full" />,
 });
 
 // Default hub location (Manila)
@@ -139,6 +137,8 @@ export default function MapSection({
   const [internalFullscreen, setInternalFullscreen] = useState(false);
   const [showCoordinates, setShowCoordinates] = useState(true);
   const [showOnlyTrackingVehicles, setShowOnlyTrackingVehicles] = useState(false);
+  const [modalOffset, setModalOffset] = useState({ x: 0, y: 0 });
+  const dragState = useRef<{ pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
 
   const isFullscreen = externalFullscreen ?? internalFullscreen;
   const setIsFullscreen = () => {
@@ -149,6 +149,11 @@ export default function MapSection({
 
     setInternalFullscreen((value) => !value);
   };
+
+  useEffect(() => {
+    setModalOffset({ x: 0, y: 0 });
+    dragState.current = null;
+  }, [selectedDeliveryId]);
 
   // Fetch route plans (like mission page does)
   useEffect(() => {
@@ -406,47 +411,61 @@ export default function MapSection({
     return colors;
   }, [deliveries]);
 
-  // Parallel OSRM route path fetching (matching mission page logic)
+  const routeRequestKey = useMemo(
+    () => deliveries.map((delivery) => {
+      const stops = (delivery.stops || []).map((stop) => `${stop.lat},${stop.lng}`).join(";");
+      return `${delivery.id}:${delivery.originPos.lat},${delivery.originPos.lng}:${delivery.destPos.lat},${delivery.destPos.lng}:${stops}`;
+    }).join("|"),
+    [deliveries]
+  );
+
+  // Fetch one complete OSRM response per delivery and publish each result
+  // immediately instead of waiting for the slowest route in the batch.
   useEffect(() => {
     let cancelled = false;
-    const visibleDeliveries = deliveries.slice(0, 6);
-    const tasks: Promise<[string, LatLng[]] | null>[] = [];
+    setRoadPaths({});
+    setOsrmMetrics({});
 
-    visibleDeliveries.forEach((delivery) => {
-      const waypoints = delivery.stops && delivery.stops.length > 0
-        ? [delivery.originPos, ...delivery.stops.map((s) => ({ lat: s.lat, lng: s.lng }))]
-        : [delivery.originPos, delivery.destPos];
-
-      tasks.push((async () => {
-        const path = await fetchOsrmRoutePath(waypoints);
-        if (!path || cancelled) return null;
-        return [delivery.id, path] as const;
-      })());
-    });
-
-    Promise.all(tasks).then((results) => {
-      if (cancelled) return;
-      const next = Object.fromEntries(results.filter(Boolean) as [string, LatLng[]][]);
-      setRoadPaths(next);
-    });
-
-    const metricsPromises = visibleDeliveries.map(async (delivery) => {
+    deliveries.slice(0, 6).forEach((delivery) => {
+      if (delivery.destPos.lat === HUB_POS.lat && delivery.destPos.lng === HUB_POS.lng) return;
       const waypoints = delivery.stops && delivery.stops.length > 0
         ? [delivery.originPos, ...delivery.stops.map((s) => ({ lat: s.lat, lng: s.lng })), delivery.destPos]
         : [delivery.originPos, delivery.destPos];
+      const coordinates = waypoints.map((point) => `${point.lng},${point.lat}`).join(";");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
 
-      const metrics = await fetchOsrmMetrics(waypoints);
-      if (!metrics) return null;
-      return [delivery.id, metrics] as const;
-    });
-
-    Promise.all(metricsPromises).then((results) => {
-      if (cancelled) return;
-      setOsrmMetrics(Object.fromEntries(results.filter(Boolean) as [string, { distanceKm: number; durationMin: number }][]));
+      fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false&alternatives=false`, {
+        signal: controller.signal,
+        cache: "no-store",
+      })
+        .then((response) => response.ok ? response.json() : null)
+        .then((result) => {
+          if (cancelled || !result?.routes?.[0]) return;
+          const route = result.routes[0];
+          const geometry = route.geometry?.coordinates;
+          if (Array.isArray(geometry) && geometry.length > 1) {
+            setRoadPaths((current) => ({
+              ...current,
+              [delivery.id]: geometry.map(([lng, lat]: [number, number]) => ({ lat, lng })),
+            }));
+          }
+          setOsrmMetrics((current) => ({
+            ...current,
+            [delivery.id]: {
+              distanceKm: Number(((route.distance || 0) / 1000).toFixed(2)),
+              durationMin: Math.ceil((route.duration || 0) / 60),
+            },
+          }));
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          window.clearTimeout(timeout);
+        });
     });
 
     return () => { cancelled = true; };
-  }, [deliveries]);
+  }, [routeRequestKey]);
 
   const coloredPaths = useMemo(
     () => {
@@ -806,13 +825,53 @@ export default function MapSection({
       )}
 
       {/* Mission Info Panel */}
-      {selectedDeliveryId && (
-        <div className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+      {selectedDeliveryId && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[2147483645] bg-black/25"
+          onClick={() => setSelectedDeliveryId(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mission-details-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{ transform: `translate(calc(-50% + ${modalOffset.x}px), ${modalOffset.y}px)` }}
+            className="fixed left-1/2 top-20 z-[2147483646] flex max-h-[calc(100vh-6rem)] w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-white/55 bg-white/45 shadow-2xl backdrop-blur-xl"
+          >
             {/* Close Button */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-4 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-slate-900">Mission Details</h2>
+            <div
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                dragState.current = {
+                  pointerId: event.pointerId,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  offsetX: modalOffset.x,
+                  offsetY: modalOffset.y,
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                const drag = dragState.current;
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                setModalOffset({
+                  x: drag.offsetX + event.clientX - drag.startX,
+                  y: drag.offsetY + event.clientY - drag.startY,
+                });
+              }}
+              onPointerUp={(event) => {
+                if (dragState.current?.pointerId !== event.pointerId) return;
+                dragState.current = null;
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={() => {
+                dragState.current = null;
+              }}
+              className="sticky top-0 flex cursor-grab touch-none items-center justify-between border-b border-white/55 bg-white/55 p-4 active:cursor-grabbing backdrop-blur-xl"
+            >
+              <h2 id="mission-details-title" className="text-lg font-bold text-slate-900">Mission Details</h2>
               <button
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => setSelectedDeliveryId(null)}
                 className="text-slate-400 hover:text-slate-600 text-xl"
               >
@@ -821,7 +880,9 @@ export default function MapSection({
             </div>
 
             {/* Panel Content */}
-            <div className="p-4 space-y-4">
+            <div
+              className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+            >
               {deliveries
                 .filter((d) => d.id === selectedDeliveryId)
                 .map((delivery) => (
@@ -933,7 +994,8 @@ export default function MapSection({
                 ))}
             </div>
           </div>
-        </div>
+        </div> as any,
+        document.body
       )}
     </>
   );

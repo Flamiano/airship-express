@@ -75,6 +75,7 @@ export default function VrdsMissionsPage() {
   const [routePlans, setRoutePlans] = useState<Record<string, any>>({});
   const [roadPaths, setRoadPaths] = useState<Record<string, LatLng[]>>({});
   const [osrmMetrics, setOsrmMetrics] = useState<Record<string, { distanceKm: number; durationMin: number }>>({});
+  const [loadingRouteCount, setLoadingRouteCount] = useState(0);
 
   useEffect(() => {
     getTrips().then(setTrips).catch(() => setTrips([]));
@@ -452,6 +453,14 @@ export default function VrdsMissionsPage() {
     return validDeliveries;
   }, [bookings, parcels, routePlans, trips, timeUpdate, osrmMetrics]);
 
+  const routeRequestKey = useMemo(
+    () => DELIVERIES.map((delivery) => {
+      const stops = (delivery.stops || []).map((stop) => `${stop.lat},${stop.lng}`).join(";");
+      return `${delivery.id}:${delivery.originPos.lat},${delivery.originPos.lng}:${delivery.destPos.lat},${delivery.destPos.lng}:${stops}`;
+    }).join("|"),
+    [DELIVERIES]
+  );
+
   // Update ETA and progress every minute as time passes
   useEffect(() => {
     const interval = setInterval(() => {
@@ -462,61 +471,63 @@ export default function VrdsMissionsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const tasks: Promise<[string, LatLng[]] | [string, null] | null>[] = [];
-    
+    setRoadPaths({});
+    setOsrmMetrics({});
+    const routesToFetch = DELIVERIES.filter(
+      (delivery) => delivery.destPos.lat !== HUB_POS.lat || delivery.destPos.lng !== HUB_POS.lng
+    );
+    setLoadingRouteCount(routesToFetch.length);
+
+    // Fetch one complete OSRM response per delivery and publish each result
+    // immediately, rather than waiting for the slowest route in the batch.
     DELIVERIES.forEach((delivery) => {
       if (delivery.destPos.lat === HUB_POS.lat && delivery.destPos.lng === HUB_POS.lng) {
-        tasks.push(Promise.resolve(null));
-      } else {
-        // Route through every intermediate warehouse stop (in OR-Tools
-        // visiting order), not just a straight origin->destination leg, so
-        // the drawn path matches the multi-stop route the driver is on.
-        const waypoints = delivery.stops && delivery.stops.length > 0
-          ? [delivery.originPos, ...delivery.stops.map((s) => ({ lat: s.lat, lng: s.lng }))]
-          : [delivery.originPos, delivery.destPos];
-        
-        tasks.push((async () => {
-          const coordinates = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
-          try {
-            const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`);
-            const result = await response.json();
-            const geometry = result?.routes?.[0]?.geometry?.coordinates;
-            if (!Array.isArray(geometry)) return null;
-            return [delivery.id, geometry.map(([lng, lat]: [number, number]) => ({ lat, lng }))] as [string, LatLng[]];
-          } catch {
-            return null;
-          }
-        })());
-      }
-    });
-
-    Promise.all(tasks).then((results) => {
-      if (cancelled) return;
-      setRoadPaths(Object.fromEntries(results.filter(Boolean) as [string, LatLng[]][]));
-    });
-
-    // Also fetch OSRM metrics (distance and duration) for ETA calculation
-    const metricsPromises = DELIVERIES.map(async (delivery) => {
-      if (delivery.destPos.lat === HUB_POS.lat && delivery.destPos.lng === HUB_POS.lng) {
-        return null;
+        return;
       }
 
       const waypoints = delivery.stops && delivery.stops.length > 0
         ? [delivery.originPos, ...delivery.stops.map((s) => ({ lat: s.lat, lng: s.lng })), delivery.destPos]
         : [delivery.originPos, delivery.destPos];
 
-      const metrics = await fetchOsrmRouteMetrics(waypoints);
-      if (!metrics) return null;
-      return [delivery.id, metrics] as const;
+      const coordinates = waypoints.map((point) => `${point.lng},${point.lat}`).join(";");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
+
+      fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false&alternatives=false`, {
+        signal: controller.signal,
+        cache: "no-store",
+      })
+        .then((response) => response.ok ? response.json() : null)
+        .then((result) => {
+          if (cancelled || !result?.routes?.[0]) return;
+          const route = result.routes[0];
+          const geometry = route.geometry?.coordinates;
+          if (Array.isArray(geometry)) {
+            setRoadPaths((current) => ({
+              ...current,
+              [delivery.id]: geometry.map(([lng, lat]: [number, number]) => ({ lat, lng })),
+            }));
+          }
+          setOsrmMetrics((current) => ({
+            ...current,
+            [delivery.id]: {
+              distanceKm: Number(((route.distance || 0) / 1000).toFixed(2)),
+              durationMin: Math.ceil((route.duration || 0) / 60),
+            },
+          }));
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          window.clearTimeout(timeout);
+          if (!cancelled) setLoadingRouteCount((count) => Math.max(0, count - 1));
+        });
     });
 
-    Promise.all(metricsPromises).then((results) => {
-      if (cancelled) return;
-      setOsrmMetrics(Object.fromEntries(results.filter(Boolean) as [string, { distanceKm: number; durationMin: number }][]));
-    });
-
-    return () => { cancelled = true; };
-  }, [DELIVERIES]);
+    return () => {
+      cancelled = true;
+      setLoadingRouteCount(0);
+    };
+  }, [routeRequestKey]);
 
   const critical = DELIVERIES.find((m) => m.status === "critical");
   const others = DELIVERIES.filter((m) => m.id !== critical?.id);
@@ -650,9 +661,6 @@ export default function VrdsMissionsPage() {
     }),
   ];
 
-  const isSamePoint = (a: LatLng, b: LatLng) => Math.abs(a.lat - b.lat) < 0.00001 && Math.abs(a.lng - b.lng) < 0.00001;
-  const fallbackEndpoint = (point: LatLng) => ({ lat: point.lat + 0.0025, lng: point.lng + 0.0035 });
-
   const coloredPaths = useMemo(() => {
     return DELIVERIES
       .map((m) => {
@@ -671,20 +679,10 @@ export default function VrdsMissionsPage() {
             label: m.courier || "LBC",
           };
         }
-        
-        const lines = [] as LatLng[][];
-        if (m.originPos && m.currentPos && !isSamePoint(m.originPos, m.currentPos)) {
-          lines.push([m.originPos, m.currentPos]);
-        }
-        if (m.currentPos && m.destPos && !isSamePoint(m.currentPos, m.destPos)) {
-          lines.push([m.currentPos, m.destPos]);
-        }
-        if (lines.length === 0 && m.originPos) {
-          const fallback = fallbackEndpoint(m.originPos);
-          lines.push([m.originPos, fallback]);
-        }
-        
-        return lines.length > 0 ? { points: lines[0], color, label: m.courier || "LBC" } : null;
+
+        // Do not draw a straight-line approximation. It looks like a valid
+        // road route and is misleading while OSRM is still loading or fails.
+        return null;
       })
       .filter(Boolean) as Array<{ points: LatLng[]; color: string; label: string }>;
   }, [DELIVERIES, roadPaths, selectedDeliveryId, courierColors]);
@@ -791,18 +789,26 @@ export default function VrdsMissionsPage() {
                   <p className="text-sm text-slate-600">Track current delivery positions and fleet spread.</p>
                 </div>
                 <div className="h-[540px] w-full">
-                  <LeafletMap 
-                    center={HUB_POS} 
-                    zoom={12} 
-                    markers={markers} 
-                    coloredPaths={showRouteLines || selectedDeliveryId ? coloredPaths : []} 
-                    routeColor="#ec4899" 
-                    onMarkerClick={(marker) => {
-                      setActiveMarker(marker);
-                      const deliveryId = marker.id.split('-')[0];
-                      setSelectedDeliveryId(deliveryId);
-                    }}
-                  />
+                  <div className="relative h-full w-full">
+                    <LeafletMap
+                      center={HUB_POS}
+                      zoom={12}
+                      markers={markers}
+                      coloredPaths={showRouteLines || selectedDeliveryId ? coloredPaths : []}
+                      routeColor="#ec4899"
+                      onMarkerClick={(marker) => {
+                        setActiveMarker(marker);
+                        const deliveryId = marker.id.split('-')[0];
+                        setSelectedDeliveryId(deliveryId);
+                      }}
+                    />
+                    {loadingRouteCount > 0 && (
+                      <div className="pointer-events-none absolute left-3 top-3 z-[400] inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/95 px-3 py-2 text-xs font-semibold text-pink-700 shadow-sm">
+                        <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
+                        Loading {loadingRouteCount} OSRM {loadingRouteCount === 1 ? "route" : "routes"}...
+                      </div>
+                    )}
+                  </div>
                 </div>
               </aside>
             </div>

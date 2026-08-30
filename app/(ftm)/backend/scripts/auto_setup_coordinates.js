@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
 const { Pool } = require('pg');
 
 const SUPABASE_URL = process.env.PARCELS_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -142,7 +142,7 @@ async function setupAndGeocodeAllParcels() {
   } catch (error) {
     console.error('❌ Error:', error.message);
     console.error('\nTroubleshooting:');
-    console.error('1. Make sure your SUPABASE_URL and credentials are correct in backend/.env');
+    console.error('1. Make sure your SUPABASE_URL and credentials are correct in ../../.env');
     console.error('2. Make sure you have PostgreSQL client installed (or use this script with pg package)');
     process.exit(1);
   } finally {

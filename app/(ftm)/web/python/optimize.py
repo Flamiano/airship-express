@@ -64,6 +64,7 @@ def solve(payload):
     destination = payload["destination"]
     stops = payload.get("stops", [])
     available_vehicles = payload.get("availableVehicles") or []
+    optimization_mode = payload.get("optimizationMode", "balanced")
     vehicle_count = max(1, payload.get("vehicleCount") or len(available_vehicles) or min(3, max(1, len(stops))))
 
     if not stops:
@@ -113,7 +114,7 @@ def solve(payload):
         if not route_stops:
             continue
         ordered = route_stops[:]
-        if len(ordered) > 1:
+        if len(ordered) > 1 and optimization_mode in {"fastest", "shortest", "fuel", "balanced"}:
             ordered = sorted(ordered, key=lambda s: haversine_miles(origin, s))
         ordered_ids = [stop["id"] for stop in ordered]
         flattened.extend(ordered_ids)

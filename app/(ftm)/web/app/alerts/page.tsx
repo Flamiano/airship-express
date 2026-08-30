@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import GlobalNavbar from "../components/GlobalNavbar";
+import { SkeletonBlock } from "../components/PageSkeleton";
 import { getIncidentReports, getNotifications, getTrackingEvents } from "../lib/api";
 
 // Types & Data Definitions
@@ -312,7 +313,7 @@ function ActiveAlerts() {
             <span className="text-slate-500 font-medium">Updated {lastUpdated}</span>
           )}
           {isLoading && (
-            <span className="text-slate-500 font-medium">Loading live alerts…</span>
+            <SkeletonBlock className="h-5 w-40" />
           )}
         </div>
       </div>

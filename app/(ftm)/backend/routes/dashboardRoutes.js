@@ -180,17 +180,27 @@ router.get('/', async (req, res) => {
 
   try {
     const [vehiclesResult, tripsResult, bookingsResult, parcelsResult, routePlansResult, routePlanBookingsResult, drivers] = await Promise.all([
-      supabase.from('vehicles').select('*').order('created_at', { ascending: false }),
+      supabase.from('vehicles').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('trips')
-        .select(`*, bookings(pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight)`)
-        .order('created_at', { ascending: false }),
-      supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+        .select(`
+          id, booking_id, vehicle_id, driver_id, status, progress,
+          estimated_departure, estimated_arrival, actual_departure, actual_arrival,
+          delay_reason, created_at, updated_at, route_plan_id,
+          bookings(pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(200),
       // Parcels can be stored in a separate Supabase project. Query that
       // connection so a missing `parcels` table in the fleet project does
       // not prevent the whole dashboard (including fleet analytics) loading.
-      parcelsSupabase.from('parcels').select('*').order('created_at', { ascending: false }),
-      supabase.from('route_plans').select('*').order('created_at', { ascending: false }).limit(200),
-      supabase.from('route_plan_bookings').select('*').limit(200),
+      parcelsSupabase.from('parcels').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase
+        .from('route_plans')
+        .select('id,trip_id,pickup_location,pickup_latitude,pickup_longitude,status,created_at,updated_at')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      Promise.resolve({ data: [], error: null }),
       fetchDrivers(supabase),
     ]);
 
@@ -309,7 +319,7 @@ router.get('/', async (req, res) => {
 
     const normalizeCoordinate = (value) => Number(value ?? 0);
 
-    const deployments = trips.map((trip, idx) => {
+    const deployments = trips.map((trip) => {
       const booking = Array.isArray(trip.bookings) ? trip.bookings[0] : trip.bookings;
       const routePlan = trip.route_plan_id ? routePlans.find((row) => row.id === trip.route_plan_id) : null;
       const routeStops = Array.isArray(routePlan?.delivery_destinations)
@@ -327,28 +337,23 @@ router.get('/', async (req, res) => {
         ? `${Math.max(0, Math.ceil((etaValue.getTime() - Date.now()) / 60000))} min`
         : (trip.duration_minutes ? `${trip.duration_minutes} min` : '--:--');
 
-      // Use scatter of coordinates around Manila hub as fallback if no destination found
-      const fallbackCoords = [
-        { lat: 14.5995 + (Math.random() * 0.5 - 0.25), lng: 120.9842 + (Math.random() * 0.5 - 0.25) },
-        { lat: 14.7135, lng: 121.0049 },
-        { lat: 14.4534, lng: 120.9933 },
-        { lat: 14.3667, lng: 121.0333 },
-      ][idx % 4];
-
       const finalLat = normalizeCoordinate(lat);
       const finalLng = normalizeCoordinate(lng);
       const hasValidCoords = Number.isFinite(finalLat) && Number.isFinite(finalLng) && (finalLat !== 0 || finalLng !== 0);
+      // A map must never fabricate a trip location. Routes without stored
+      // coordinates are omitted until their actual destination is available.
+      if (!hasValidCoords) return null;
 
       return {
-        vesselId: trip.id || `trip-${Math.random().toString(36).slice(2, 8)}`,
+        vesselId: trip.id || null,
         destination: getTripDestination(trip, booking, routePlan),
         status: rawStatus,
         flightTimeLeft,
         cargoWeight: trip.load_kg || booking?.cargo_weight || routePlan?.cargo_weight || '—',
-        lat: hasValidCoords ? finalLat : fallbackCoords.lat,
-        lng: hasValidCoords ? finalLng : fallbackCoords.lng,
+        lat: finalLat,
+        lng: finalLng,
       };
-    });
+    }).filter(Boolean);
 
     const hubs = routePlans
       .map((routePlan) => {

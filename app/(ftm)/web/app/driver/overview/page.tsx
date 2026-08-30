@@ -4,7 +4,8 @@ import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
 import { useState, useMemo, useEffect } from "react";
-import { getAlertsSnapshot, getDashboardSnapshot } from "../../lib/api";
+import { useRouter } from "next/navigation";
+import { getAlertsSnapshot, getDrivers, getTrips } from "../../lib/api";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,37 +14,117 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
-const DRIVER_AVATAR =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuBrNiOJSbTNAaZuGuGh0lCnCHhmRrqnONBy6LeY68hsxPaIsW4Ed4mGPtmFo4AZBi-kCP8Mk_UZCfO4aDMbXRAGgbZFz6xAs6PDOpSCLUqRVgyfulPPwXQ_0vpHeGNBsI6dMpr9UMUphgaHST-xHDFPHwudCggRdXfo40Mw0uXKHm7hH0chn1W1_svnt-hf47kSe7bbF8AnDOKCs36ZfvOafSCxq0JesRL2XsZdIGxeepfjOaCmv2E1Xw";
+type TripRecord = { id?: string; driver_id?: string; driverId?: string; status?: string; created_at?: string; createdAt?: string };
 
-// start with empty alerts; will be populated from Supabase
+function isCompletedTrip(trip: TripRecord) {
+  return /completed|delivered/i.test(trip.status ?? "");
+}
 
-function generateOverviewTrend(metric: "Efficiency" | "Volume", range: string) {
-  const points = range === "Last 7 Days" ? 7 : range === "Last 30 Days" ? 8 : 6;
-  const data: { period: string; value: number }[] = [];
-  const now = new Date();
-  for (let i = points - 1; i >= 0; i--) {
-    const d = new Date(
-      now.getTime() - i * 24 * 60 * 60 * 1000 * (range === "Last 7 Days" ? 1 : 7)
-    );
-    const label =
-      range === "Last 7 Days"
-        ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-        : `Wk ${points - i}`;
-    const base = metric === "Efficiency" ? 7.0 : 90;
-    const variance = metric === "Efficiency" ? 0.6 : 25;
-    const value =
-      Math.round(
-        (base + (Math.cos(i) * variance) / 10 + Math.random() * (variance / 4)) * 10
-      ) / 10;
-    data.push({ period: label, value });
+function isLateTrip(trip: TripRecord) {
+  return /delayed|late|exception/i.test(trip.status ?? "");
+}
+
+function buildTripStatusData(trips: TripRecord[]) {
+  const statuses = [
+    { name: "Completed", value: 0, color: "#b80049" },
+    { name: "In Transit", value: 0, color: "#4f8dff" },
+    { name: "Delayed", value: 0, color: "#f59e0b" },
+    { name: "Pending", value: 0, color: "#94a3b8" },
+  ];
+
+  for (const trip of trips) {
+    const status = trip.status ?? "";
+    if (isCompletedTrip(trip)) statuses[0].value += 1;
+    else if (isLateTrip(trip)) statuses[2].value += 1;
+    else if (/transit|assigned|dispatch|picked|out for delivery/i.test(status)) statuses[1].value += 1;
+    else statuses[3].value += 1;
   }
-  return data;
+
+  return statuses.filter((status) => status.value > 0);
+}
+
+function buildDriverWorkloadData(drivers: any[], trips: TripRecord[]) {
+  const tripsByDriver = new Map<string, { total: number; completed: number }>();
+  for (const trip of trips) {
+    const driverId = trip.driver_id ?? trip.driverId;
+    if (!driverId) continue;
+    const current = tripsByDriver.get(String(driverId)) ?? { total: 0, completed: 0 };
+    current.total += 1;
+    if (isCompletedTrip(trip)) current.completed += 1;
+    tripsByDriver.set(String(driverId), current);
+  }
+
+  return drivers
+    .map((driver) => {
+      const stats = tripsByDriver.get(String(driver.id)) ?? { total: 0, completed: 0 };
+      return {
+        name: String(driver.full_name ?? driver.fullName ?? driver.name ?? "Driver").split(" ")[0],
+        assigned: stats.total,
+        completed: stats.completed,
+      };
+    })
+    .filter((driver) => driver.assigned > 0)
+    .sort((left, right) => right.assigned - left.assigned)
+    .slice(0, 6);
+}
+
+function buildOverviewTrend(trips: TripRecord[], metric: "Efficiency" | "Volume", range: string) {
+  const now = new Date();
+  const days = range === "Last 7 Days" ? 7 : range === "Last 30 Days" ? 30 : now.getDate();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - Math.max(0, days - 1));
+  const bucketDays = range === "Last 7 Days" ? 1 : 7;
+  const buckets = Array.from({ length: Math.ceil(days / bucketDays) }, (_, index) => {
+    const bucketStart = new Date(start);
+    bucketStart.setDate(start.getDate() + index * bucketDays);
+    const bucketEnd = new Date(bucketStart);
+    bucketEnd.setDate(bucketStart.getDate() + bucketDays);
+    return { bucketStart, bucketEnd, trips: [] as TripRecord[] };
+  });
+
+  for (const trip of trips) {
+    const createdAt = new Date(trip.created_at ?? trip.createdAt ?? "");
+    const bucket = buckets.find(({ bucketStart, bucketEnd }) => createdAt >= bucketStart && createdAt < bucketEnd);
+    if (bucket) bucket.trips.push(trip);
+  }
+
+  return buckets.map(({ bucketStart, trips: bucketTrips }) => {
+    const completed = bucketTrips.filter(isCompletedTrip).length;
+    return {
+      period: bucketStart.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      value: metric === "Volume" ? bucketTrips.length : bucketTrips.length ? Math.round((completed / bucketTrips.length) * 100) / 10 : 0,
+    };
+  });
+}
+
+function buildOverviewMetrics(drivers: any[], trips: TripRecord[], incidents: any[]) {
+  const totalTrips = trips.length;
+  const completedTrips = trips.filter(isCompletedTrip).length;
+  const lateTrips = trips.filter(isLateTrip).length;
+  const activeDrivers = new Set(trips.map((trip) => trip.driver_id ?? trip.driverId).filter(Boolean)).size;
+  const safety = drivers.length ? Math.max(0, Math.round((1 - incidents.length / drivers.length) * 100)) : null;
+  const efficiency = totalTrips ? Math.round((completedTrips / totalTrips) * 100) / 10 : null;
+  const onTime = totalTrips ? Math.max(0, Math.round(((totalTrips - lateTrips) / totalTrips) * 100)) : null;
+  const tripsByDriver = new Map<string, number>();
+  for (const trip of trips) {
+    const driverId = trip.driver_id ?? trip.driverId;
+    if (driverId) tripsByDriver.set(driverId, (tripsByDriver.get(driverId) ?? 0) + 1);
+  }
+  const top = [...drivers].sort((left, right) => (tripsByDriver.get(right.id) ?? 0) - (tripsByDriver.get(left.id) ?? 0))[0] ?? null;
+  return { metrics: { safety, efficiency, onTime, activeDrivers }, top: top ? { name: top.full_name ?? top.name ?? "Driver", deliveries: tripsByDriver.get(top.id) ?? 0, onTime: onTime === null ? "—" : `${onTime}%` } : null };
 }
 
 export default function DriverOverviewPage() {
+  const overviewKpiIds = ["safety", "efficiency", "on-time", "total-trips", "completed", "exceptions"];
   const [selectedRange, setSelectedRange] = useState<
     "Last 7 Days" | "Last 30 Days" | "This Month"
   >("Last 30 Days");
@@ -51,17 +132,38 @@ export default function DriverOverviewPage() {
   const [selectedChart, setSelectedChart] = useState<"Efficiency" | "Volume">(
     "Efficiency"
   );
-  const [activeTab, setActiveTab] = useState("Overview");
-
   const [alerts, setAlerts] = useState<any[]>([]);
   const [overviewMetrics, setOverviewMetrics] = useState<{safety:number|null, efficiency:number|null, onTime:number|null, activeDrivers:number}>({ safety: null, efficiency: null, onTime: null, activeDrivers: 0 });
   const [topPerformer, setTopPerformer] = useState<any>(null);
+  const [driverRecords, setDriverRecords] = useState<any[]>([]);
   const [hasData, setHasData] = useState<boolean | null>(null);
+  const [trips, setTrips] = useState<TripRecord[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hiddenKpis, setHiddenKpis] = useState<Set<string>>(new Set(overviewKpiIds));
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleVisibilityShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+      if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        setHiddenKpis(new Set());
+      } else if (event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        setHiddenKpis(new Set(overviewKpiIds));
+      }
+    };
+
+    window.addEventListener("keydown", handleVisibilityShortcut);
+    return () => window.removeEventListener("keydown", handleVisibilityShortcut);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
     async function loadAlerts() {
       try {
+        if (mounted) setLoadError(null);
         const snap = await getAlertsSnapshot();
         const items: any[] = [];
         (snap.incidents || []).forEach((inc: any) => {
@@ -75,28 +177,26 @@ export default function DriverOverviewPage() {
         });
         if (mounted) setAlerts(items.slice(0, 10));
 
-        // also fetch dashboard snapshot to compute KPIs
+        // Fetch the page-specific records used to compute its KPIs.
         try {
-          const dash = await getDashboardSnapshot();
-          const incidentsCount = (snap.incidents || []).length || 0;
-          const driversCount = dash.counts?.drivers || (dash.drivers || []).length || 0;
-          const tripsCount = dash.counts?.trips || (dash.trips || []).length || 0;
-          const safety = driversCount || incidentsCount ? Math.max(60, 100 - incidentsCount * 3) : null;
-          const efficiency = driversCount ? Math.round((7 + Math.min(3, tripsCount / Math.max(1, driversCount * 10))) * 10) / 10 : null;
-          const onTime = driversCount ? Math.max(85, Math.round(95 - incidentsCount / Math.max(1, driversCount) * 2)) : null;
+          const [drivers, trips] = await Promise.all([getDrivers(), getTrips({ light: true })]);
+          const overview = buildOverviewMetrics(drivers, trips, snap.incidents || []);
           if (mounted) {
-            setOverviewMetrics({ safety, efficiency, onTime, activeDrivers: driversCount });
-            const top = (dash.drivers || [])[0] ?? null;
-            setTopPerformer(top ? { name: top.full_name ?? 'Driver', deliveries: Math.max(0, Math.floor(tripsCount / Math.max(1, driversCount || 1))), onTime: `${onTime ?? '—'}%` } : null);
+            setTrips(trips);
+            setDriverRecords(drivers);
+            setOverviewMetrics(overview.metrics);
+            setTopPerformer(overview.top);
             // determine if there's any real data to show
-            const has = Boolean((dash.counts?.drivers || 0) + (dash.counts?.trips || 0) + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
+            const has = Boolean(drivers.length + trips.length + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
             setHasData(has);
           }
         } catch (e) {
-          console.warn('Failed to load dashboard snapshot', e);
+          console.warn('Failed to load driver overview records', e);
+          if (mounted) setLoadError("Unable to load driver and trip records. Please try again.");
         }
       } catch (e) {
         console.warn('Failed to load alerts', e);
+        if (mounted) setLoadError("Unable to load the operational alerts. Please try again.");
       }
     }
     loadAlerts();
@@ -105,28 +205,32 @@ export default function DriverOverviewPage() {
 
   const refresh = () => {
     setHasData(null);
+    setLoadError(null);
+    setIsRefreshing(true);
     setOverviewMetrics({ safety: null, efficiency: null, onTime: null, activeDrivers: 0 });
     setTopPerformer(null);
-    // re-run effect by calling loader: simple approach - call getAlertsSnapshot/getDashboardSnapshot directly
+    // Use the lightweight driver and trip endpoints: the aggregate dashboard endpoint
+    // can wait on optional data sources that are unrelated to this page.
     (async () => {
       try {
         const snap = await getAlertsSnapshot();
-        const dash = await getDashboardSnapshot();
-        const incidentsCount = (snap.incidents || []).length || 0;
-        const driversCount = dash.counts?.drivers || (dash.drivers || []).length || 0;
-        const tripsCount = dash.counts?.trips || (dash.trips || []).length || 0;
-        const safety = driversCount || incidentsCount ? Math.max(60, 100 - incidentsCount * 3) : null;
-        const efficiency = driversCount ? Math.round((7 + Math.min(3, tripsCount / Math.max(1, driversCount * 10))) * 10) / 10 : null;
-        const onTime = driversCount ? Math.max(85, Math.round(95 - incidentsCount / Math.max(1, driversCount) * 2)) : null;
-        setOverviewMetrics({ safety, efficiency, onTime, activeDrivers: driversCount });
-        const has = Boolean((dash.counts?.drivers || 0) + (dash.counts?.trips || 0) + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
+        const [drivers, trips] = await Promise.all([getDrivers(), getTrips({ light: true })]);
+        const overview = buildOverviewMetrics(drivers, trips, snap.incidents || []);
+        setTrips(trips);
+        setDriverRecords(drivers);
+        setOverviewMetrics(overview.metrics);
+        const has = Boolean(drivers.length + trips.length + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
         setHasData(has);
+        setTopPerformer(overview.top);
         const items: any[] = [];
         (snap.incidents || []).forEach((inc: any) => items.push({ id: `inc-${inc.id}`, title: inc.incidentType || 'Incident', meta: inc.reportedAt || inc.reported_at || '', icon: 'warning', severity: 'high' }));
         (snap.notifications || []).forEach((n: any) => items.push({ id: `not-${n.id}`, title: n.title || 'Notification', meta: n.createdAt || n.created_at || '', icon: 'notifications', severity: 'low' }));
         setAlerts(items.slice(0,10));
       } catch (e) {
         console.warn('refresh failed', e);
+        setLoadError("Unable to refresh the driver overview. Please try again.");
+      } finally {
+        setIsRefreshing(false);
       }
     })();
   };
@@ -140,16 +244,49 @@ export default function DriverOverviewPage() {
   };
 
   const chartData = useMemo(
-    () => generateOverviewTrend(selectedChart, selectedRange),
-    [selectedChart, selectedRange]
+    () => buildOverviewTrend(trips, selectedChart, selectedRange),
+    [trips, selectedChart, selectedRange]
   );
-
-  const TABS = [
-    { label: "Overview", icon: "dashboard" },
-    { label: "Driver Performance", icon: "monitoring" },
-    { label: "Safety Scores", icon: "security" },
-    { label: "Leaderboard", icon: "leaderboard" },
+  const tripStatusData = useMemo(() => buildTripStatusData(trips), [trips]);
+  const driverWorkloadData = useMemo(() => buildDriverWorkloadData(driverRecords, trips), [driverRecords, trips]);
+  const completedTrips = trips.filter(isCompletedTrip).length;
+  const exceptionTrips = trips.filter(isLateTrip).length;
+  const toggleKpiVisibility = (id: string) => {
+    setHiddenKpis((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const renderKpiValue = (id: string, value: string | number) => hiddenKpis.has(id) ? "***" : value;
+  const kpiCards = [
+    { id: "safety", label: "Safety Score", icon: "health_and_safety", badge: "Live", badgeClass: "bg-pink-50 text-pink-700", value: overviewMetrics.safety ?? "—", suffix: "/100" },
+    { id: "efficiency", label: "Route Efficiency", icon: "speed", badge: "Active", badgeClass: "bg-emerald-50 text-emerald-700", value: overviewMetrics.efficiency ?? "—", suffix: "/10" },
+    { id: "on-time", label: "On-Time Rate", icon: "schedule", badge: "KPI", badgeClass: "bg-pink-50 text-pink-700", value: overviewMetrics.onTime ?? "—", suffix: "%" },
+    { id: "total-trips", label: "Total Trips", icon: "local_shipping", badge: "Count", badgeClass: "bg-blue-50 text-blue-700", value: trips.length || "—", suffix: "" },
+    { id: "completed", label: "Completed Trips", icon: "task_alt", badge: "Done", badgeClass: "bg-emerald-50 text-emerald-700", value: completedTrips, suffix: "", trend: `→ ${trips.length ? ((completedTrips / trips.length) * 100).toFixed(1) : "0.0"}%` },
+    { id: "exceptions", label: "Exceptions", icon: "warning", badge: "Alert", badgeClass: "bg-amber-50 text-amber-700", value: exceptionTrips || "—", suffix: "" },
   ];
+
+  const exportReport = () => {
+    const headers = ["Trip ID", "Driver ID", "Status", "Created At"];
+    const rows = trips.map((trip) => [trip.id ?? "", trip.driver_id ?? trip.driverId ?? "", trip.status ?? "", trip.created_at ?? trip.createdAt ?? ""]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `driver-overview-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setShowExportNotice(true);
+    window.setTimeout(() => setShowExportNotice(false), 2500);
+  };
 
   return (
     <div className="bg-transparent text-inherit min-h-screen flex flex-col font-sans antialiased">
@@ -227,95 +364,34 @@ export default function DriverOverviewPage() {
           </div>
         )}
 
-        {/* Top KPI Bento Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          {/* Card 1: Safety Score */}
-          <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm hover:shadow-md hover:border-pink-300 transition-all relative overflow-hidden group">
-            <div className="absolute -right-8 -top-8 w-28 h-28 bg-pink-50 rounded-full group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
-            <div className="flex justify-between items-center mb-4 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-pink-100/70 flex items-center justify-center text-[#b80049]">
-                  <span className="material-symbols-outlined">
-                    health_and_safety
-                  </span>
-                </div>
-                <h3 className="text-sm font-semibold text-slate-600">
-                  Safety Score
-                </h3>
+        {/* Compact KPI Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          {kpiCards.map((card) => (
+            <div
+              key={card.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleKpiVisibility(card.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") toggleKpiVisibility(card.id);
+              }}
+              className="flex min-h-[130px] cursor-pointer flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100 transition-colors hover:border-pink-300"
+              aria-label={`${card.label}: click to ${hiddenKpis.has(card.id) ? "show" : "hide"} value`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="material-symbols-outlined text-[21px] text-[#b80049]">{card.icon}</span>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${card.badgeClass}`}>{card.badge}</span>
               </div>
-              <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">
-                  trending_up
-                </span>
-                +2.4%
-              </span>
-            </div>
-            <div className="relative z-10 flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold text-slate-900">{overviewMetrics.safety ?? '—'}</span>
-              <span className="text-sm font-semibold text-slate-400">/100</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Excellent standing across active delivery units and courier routes.
-            </p>
-          </div>
-
-          {/* Card 2: Fuel Efficiency */}
-          <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm hover:shadow-md hover:border-pink-300 transition-all relative overflow-hidden group">
-            <div className="absolute -right-8 -top-8 w-28 h-28 bg-pink-50 rounded-full group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
-            <div className="flex justify-between items-center mb-4 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-pink-100/70 flex items-center justify-center text-[#b80049]">
-                  <span className="material-symbols-outlined">speed</span>
+              <div>
+                <div className="flex items-center gap-1 text-xl font-black tracking-tight text-slate-900">
+                  <span>{renderKpiValue(card.id, card.value)}</span>
+                  <span className="text-[11px] font-bold text-slate-500">{hiddenKpis.has(card.id) ? "" : card.suffix}</span>
+                  {card.trend && !hiddenKpis.has(card.id) && <span className="ml-1 text-[10px] font-bold text-slate-400">{card.trend}</span>}
                 </div>
-                <h3 className="text-sm font-semibold text-slate-600">
-                  Route Efficiency
-                </h3>
+                <div className="mt-1 text-[11px] font-medium leading-tight text-slate-500">{card.label}</div>
               </div>
-              <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">
-                  trending_up
-                </span>
-                +1.1%
-              </span>
             </div>
-            <div className="relative z-10 flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold text-slate-900">{overviewMetrics.efficiency ?? '—'}</span>
-              <span className="text-sm font-semibold text-slate-400">/10</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Average route efficiency rate for this delivery cycle.
-            </p>
-          </div>
-
-          {/* Card 3: On-Time Delivery Rate */}
-          <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm hover:shadow-md hover:border-pink-300 transition-all relative overflow-hidden group">
-            <div className="absolute -right-8 -top-8 w-28 h-28 bg-pink-50 rounded-full group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
-            <div className="flex justify-between items-center mb-4 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-pink-100/70 flex items-center justify-center text-[#b80049]">
-                  <span className="material-symbols-outlined">schedule</span>
-                </div>
-                <h3 className="text-sm font-semibold text-slate-600">
-                  On-Time Rate
-                </h3>
-              </div>
-              <span className="bg-rose-50 text-rose-600 border border-rose-100 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">
-                  trending_down
-                </span>
-                -0.5%
-              </span>
-            </div>
-            <div className="relative z-10 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold text-slate-900">{overviewMetrics.onTime ?? '—'}</span>
-              <span className="text-sm font-semibold text-slate-400">%</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Deliveries completed within designated SLA window.
-            </p>
-          </div>
-
+          ))}
         </div>
 
         {/* Main Section: Chart + Secondary Sidebar */}
@@ -423,26 +499,14 @@ export default function DriverOverviewPage() {
               </div>
 
               <div className="flex items-center gap-4">
-                <img
-                  alt="Top Driver"
-                  className="w-16 h-16 rounded-2xl object-cover ring-2 ring-pink-300 p-0.5 bg-white shadow-xs"
-                  src={DRIVER_AVATAR}
-                />
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-100 text-xl font-bold text-[#b80049] ring-2 ring-pink-300">
+                  {(topPerformer?.name ?? "—").slice(0, 1).toUpperCase()}
+                </div>
                 <div>
                   <div className="text-base font-bold text-slate-900">
                     {topPerformer?.name ?? (hasData === false ? "—" : "—")}
                   </div>
-                  <div className="text-xs text-slate-500 font-medium">
-                    Route 4B • Metro Area
-                  </div>
-                  <div className="flex items-center gap-1 mt-1.5 text-[#b80049]">
-                    <span className="material-symbols-outlined text-[16px] text-amber-500 fill-amber-500">
-                      star
-                    </span>
-                    <span className="text-xs font-bold text-slate-800">
-                      4.98 <span className="text-slate-400 font-normal">(120 reviews)</span>
-                    </span>
-                  </div>
+                  <div className="text-xs text-slate-500 font-medium">Most trips in the selected records</div>
                 </div>
               </div>
 
@@ -469,7 +533,11 @@ export default function DriverOverviewPage() {
                   <h3 className="text-base font-bold text-slate-900">
                     Recent Alerts
                   </h3>
-                  <button className="text-[#b80049] hover:underline text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/alerts")}
+                    className="text-[#b80049] hover:underline text-xs font-bold"
+                  >
                     View All
                   </button>
                 </div>
@@ -508,7 +576,11 @@ export default function DriverOverviewPage() {
                 </div>
               </div>
 
-              <button className="mt-4 w-full py-2.5 rounded-xl bg-pink-50 text-[#b80049] border border-pink-200 hover:bg-pink-100 transition-all text-xs font-bold flex items-center justify-center gap-1">
+              <button
+                type="button"
+                onClick={() => router.push("/driver/safety")}
+                className="mt-4 w-full py-2.5 rounded-xl bg-pink-50 text-[#b80049] border border-pink-200 hover:bg-pink-100 transition-all text-xs font-bold flex items-center justify-center gap-1"
+              >
                 <span>Open Security Center</span>
                 <span className="material-symbols-outlined text-[16px]">
                   chevron_right
@@ -518,6 +590,56 @@ export default function DriverOverviewPage() {
 
           </div>
 
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <section className="lg:col-span-2 bg-white p-6 rounded-2xl border border-pink-100 shadow-sm">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Trip Status Mix</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Current distribution across loaded trips.</p>
+              </div>
+              <span className="material-symbols-outlined text-[#b80049]">donut_large</span>
+            </div>
+            {tripStatusData.length ? (
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={tripStatusData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={88} paddingAngle={3}>
+                      {tripStatusData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderColor: "#fbcfe8", borderRadius: "12px", fontSize: "12px" }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <div className="h-[250px] flex items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">No trip status data</div>}
+          </section>
+
+          <section className="lg:col-span-3 bg-white p-6 rounded-2xl border border-pink-100 shadow-sm">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Driver Workload</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Assigned versus completed trips by active driver.</p>
+              </div>
+              <span className="material-symbols-outlined text-[#b80049]">bar_chart</span>
+            </div>
+            {driverWorkloadData.length ? (
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={driverWorkloadData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ borderColor: "#fbcfe8", borderRadius: "12px", fontSize: "12px" }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
+                    <Bar dataKey="assigned" name="Assigned" fill="#f9a8d4" radius={[5, 5, 0, 0]} />
+                    <Bar dataKey="completed" name="Completed" fill="#b80049" radius={[5, 5, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <div className="h-[250px] flex items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">No driver workload data</div>}
+          </section>
         </div>
 
       </main>

@@ -1,8 +1,8 @@
 const path = require('path');
 const dotenv = require('dotenv');
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 const env = process.env;
-const keys = ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY', 'PARCELS_SUPABASE_ANON_KEY'];
+const keys = ['FTM_SUPABASE_SERVICE_ROLE_KEY', 'FTM_SUPABASE_ANON_KEY', 'FTM_PARCELS_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY', 'PARCELS_SUPABASE_ANON_KEY'];
 for (const key of keys) {
   const value = env[key];
   console.log('---', key, '---');

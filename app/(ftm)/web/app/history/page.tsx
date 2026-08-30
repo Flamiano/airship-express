@@ -5,6 +5,7 @@ import { optimizeRoute, SAMPLE_OPTIMIZATION_PAYLOAD } from "../lib/optimize";
 import { getTrips } from "../lib/api";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
+import { SkeletonBlock } from "../components/PageSkeleton";
 
 export default function VrdsHistoryPage() {
   const [dateSortDirection, setDateSortDirection] = useState<"asc" | "desc">("desc");
@@ -322,9 +323,7 @@ export default function VrdsHistoryPage() {
                     <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                       {loading ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
-                            Loading delivery history…
-                          </td>
+                          <td colSpan={6} className="px-4 py-6"><div className="space-y-3">{Array.from({ length: 4 }, (_, index) => <SkeletonBlock key={index} className="h-8 w-full" />)}</div></td>
                         </tr>
                       ) : sortedHistory.length === 0 ? (
                         <tr>

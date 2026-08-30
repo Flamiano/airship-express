@@ -1,6 +1,6 @@
 /*
   Sync driver profiles from Supabase Auth to public.users
-  - Uses SUPABASE_SERVICE_ROLE_KEY from backend/.env
+  - Uses SUPABASE_SERVICE_ROLE_KEY from ../../.env
   - Creates missing rows in public.users for auth users with user_metadata.role === 'driver'
   Run: node backend/scripts/sync_driver_profiles.js
 */
@@ -9,13 +9,13 @@ const path = require('path');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in backend/.env');
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in ../../.env');
   process.exit(1);
 }
 

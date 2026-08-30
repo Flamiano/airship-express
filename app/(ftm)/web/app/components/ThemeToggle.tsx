@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
@@ -19,7 +20,7 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
         className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-paper dark:bg-accent"
       >
-        {dark ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+        {dark ? React.createElement(Moon as any, { className: "h-3.5 w-3.5" }) : React.createElement(Sun as any, { className: "h-3.5 w-3.5" })}
       </motion.span>
     </button>
   );

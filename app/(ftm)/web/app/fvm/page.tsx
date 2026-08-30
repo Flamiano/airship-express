@@ -3,6 +3,7 @@
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
 import RoleRestricted from "../components/RoleRestricted";
+import { SkeletonBlock } from "../components/PageSkeleton";
 
 import { useEffect, useMemo, useState } from "react";
 import { createVehicle, getDashboardSnapshot } from "../lib/api";
@@ -34,7 +35,8 @@ type DashboardSnapshot = {
     drivers?: number;
   };
   vehicles?: Array<{ id?: string; status?: string; plate_number?: string; fuel_level?: number; driver?: string; location?: string }>;
-  trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; destination?: string }>;
+  trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; driver_id?: string; destination?: string }>;
+  drivers?: Array<{ id?: string; full_name?: string | null; name?: string | null }>;
 };
 
 type ActivityItem = {
@@ -49,6 +51,27 @@ type ActivityItem = {
 
 function isInTransitStatus(status?: string) {
   return /transit|assigned|scheduled|dispatch|delay|late/i.test(status || "");
+}
+
+type FleetStatus = "On Route" | "Assigned" | "Maintenance" | "Available" | "Idle" | "Unknown";
+
+function getFleetStatus(
+  vehicle: { id?: string; status?: string; driver?: string },
+  trips: Array<{ status?: string; vehicle_id?: string; driver_id?: string }>
+): FleetStatus {
+  const rawStatus = String(vehicle.status || "").trim().toLowerCase();
+  const hasActiveTrip = trips.some(
+    (trip) => Boolean(trip.vehicle_id && trip.driver_id) &&
+      String(trip.vehicle_id) === String(vehicle.id || "") &&
+      isInTransitStatus(trip.status)
+  );
+
+  if (hasActiveTrip || /in transit|transit|dispatch|scheduled|moving|en route|delayed|late/i.test(rawStatus)) return "On Route";
+  if (/maintenance|service|repair|out of service|offline|unavailable/i.test(rawStatus)) return "Maintenance";
+  if (/assigned|reserved|allocated/i.test(rawStatus)) return "Assigned";
+  if (/available|ready|free|standby|open/i.test(rawStatus)) return "Available";
+  if (/idle/i.test(rawStatus) || !rawStatus) return "Idle";
+  return "Unknown";
 }
 
 function buildFleetActivityTrend(trips: Array<{ status?: string; updated_at?: string }>, vehicles: Array<{ status?: string }>) {
@@ -105,16 +128,21 @@ function buildFleetPerformanceRadar(trips: Array<{ status?: string }>, vehicles:
   ];
 }
 
+function getTimeframeStart(timeframe: "Today" | "This Week" | "This Month") {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (timeframe === "This Week") start.setDate(start.getDate() - 6);
+  if (timeframe === "This Month") start.setDate(start.getDate() - 29);
+  return start;
+}
+
 export default function FvmOverviewPage() {
   const [selectedTimeframe, setSelectedTimeframe] = useState<"Today" | "This Week" | "This Month">("Today");
-  const [selectedRegion, setSelectedRegion] = useState("Philippines");
   const [showExportNotice, setShowExportNotice] = useState(false);
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   // New Interactive Feature States
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "maintenance" | "idle">("all");
   const [quickAlertDismissed, setQuickAlertDismissed] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
@@ -135,6 +163,29 @@ export default function FvmOverviewPage() {
   const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
 
   const handleExportReport = () => {
+    const rows = [
+      ["Vehicle ID", "Plate", "Status", "Trip Status", "Driver ID", "Updated At"],
+      ...vehicles.map((vehicle) => {
+        const activeTrip = trips.find((trip) => String(trip.vehicle_id || "") === String(vehicle.id || ""));
+        return [
+          vehicle.id || "",
+          vehicle.plate_number || "",
+          getFleetStatus(vehicle, trips),
+          activeTrip?.status || "",
+          activeTrip?.driver_id || "",
+          activeTrip?.updated_at || "",
+        ];
+      }),
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fleet-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
     setShowExportNotice(true);
     window.setTimeout(() => setShowExportNotice(false), 2500);
   };
@@ -158,9 +209,21 @@ export default function FvmOverviewPage() {
   const vehicles = snapshot?.vehicles ?? [];
   const trips = snapshot?.trips ?? [];
   const totalVehicles = snapshot?.counts?.vehicles ?? (vehicles.length > 0 ? vehicles.length : 0);
-  const activeRoutes = trips.filter((trip) => isInTransitStatus(trip.status)).length;
-  const maintenanceCount = vehicles.filter((vehicle) => /maintenance|service|repair/i.test(vehicle.status || "")).length;
-  const idleCount = Math.max(0, totalVehicles - activeRoutes - maintenanceCount);
+  const fleetStatuses = useMemo(
+    () => vehicles.map((vehicle) => ({ vehicle, status: getFleetStatus(vehicle, trips) })),
+    [vehicles, trips]
+  );
+  const activeRoutes = fleetStatuses.filter(({ status }) => status === "On Route").length;
+  const maintenanceCount = fleetStatuses.filter(({ status }) => status === "Maintenance").length;
+  const availableCount = fleetStatuses.filter(({ status }) => status === "Available" || status === "Idle").length;
+  const idleCount = availableCount;
+  const timeframeTrips = useMemo(() => {
+    const start = getTimeframeStart(selectedTimeframe).getTime();
+    return trips.filter((trip) => {
+      const timestamp = trip.updated_at ? new Date(trip.updated_at).getTime() : NaN;
+      return Number.isFinite(timestamp) && timestamp >= start;
+    });
+  }, [selectedTimeframe, trips]);
 
   const nextVehicleId = () => {
     const highestNumber = vehicles.reduce((highest, vehicle) => {
@@ -204,21 +267,8 @@ export default function FvmOverviewPage() {
     }
   };
   
-  const fleetActivityTrend = useMemo(() => buildFleetActivityTrend(trips, vehicles), [trips, vehicles]);
-  const fleetPerformanceRadar = useMemo(() => buildFleetPerformanceRadar(trips, vehicles), [trips, vehicles]);
-
-  // Filtered vehicles for new feature list view
-  const filteredVehicles = useMemo(() => {
-    return vehicles.filter((v) => {
-      const matchesSearch = (v.id || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            (v.plate_number || "").toLowerCase().includes(searchQuery.toLowerCase());
-      if (!matchesSearch) return false;
-      if (filterStatus === "active") return /transit|assigned|scheduled|dispatch|active/i.test(v.status || "");
-      if (filterStatus === "maintenance") return /maintenance|service|repair/i.test(v.status || "");
-      if (filterStatus === "idle") return !/transit|assigned|scheduled|dispatch|active|maintenance|service|repair/i.test(v.status || "");
-      return true;
-    });
-  }, [vehicles, searchQuery, filterStatus]);
+  const fleetActivityTrend = useMemo(() => buildFleetActivityTrend(timeframeTrips, vehicles), [timeframeTrips, vehicles]);
+  const fleetPerformanceRadar = useMemo(() => buildFleetPerformanceRadar(timeframeTrips, vehicles), [timeframeTrips, vehicles]);
 
   const kpiCards = [
     { label: "Total Fleet Units", value: String(totalVehicles), icon: "directions_car", iconColor: "text-pink-600", footIcon: "storage", footText: "Active network size", footColor: "text-pink-700" },
@@ -251,6 +301,7 @@ export default function FvmOverviewPage() {
   })) : [];
 
   return (
+    // @ts-ignore - RoleRestricted's React node type conflicts with the installed React typings.
     <RoleRestricted allowedRoles={["fleet_manager", "admin"]} hideWhenRestricted>
       <div className="flex flex-col min-h-screen bg-gradient-to-br from-pink-50/60 via-white to-pink-100/40 text-slate-800 selection:bg-pink-600 selection:text-white">
         <GlobalNavbar />
@@ -274,6 +325,8 @@ export default function FvmOverviewPage() {
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Quick Maintenance Toggle Feature */}
             <button
+              type="button"
+              aria-pressed={maintenanceMode}
               onClick={() => setMaintenanceMode(!maintenanceMode)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                 maintenanceMode 
@@ -332,27 +385,9 @@ export default function FvmOverviewPage() {
         {showExportNotice && (
           <div className="rounded-xl border border-pink-300 bg-pink-100/90 text-pink-800 px-4 py-3 text-xs font-bold flex items-center gap-2 shadow-sm">
             <span className="material-symbols-outlined text-base">task_alt</span>
-            Export request queued successfully. Comprehensive CSV report download starting shortly.
+            Fleet CSV report downloaded successfully.
           </div>
         )}
-
-        {/* Region Selector Pills */}
-        <div className="flex flex-wrap items-center gap-2 bg-white/80 p-2 rounded-xl border border-pink-200/60 shadow-sm w-fit">
-          <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider px-2">Active Region:</span>
-          {(["Philippines", "Metro Manila", "Cebu Hub", "Davao Logistics"] as const).map((region) => (
-            <button
-              key={region}
-              onClick={() => setSelectedRegion(region)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                selectedRegion === region
-                  ? "bg-pink-600 text-white shadow-xs"
-                  : "bg-pink-50/50 border border-pink-200/60 text-slate-600 hover:border-pink-400 hover:text-slate-900"
-              }`}
-            >
-              {region}
-            </button>
-          ))}
-        </div>
 
         {/* Compact KPI Bento Grid (Smaller size cards) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -380,50 +415,30 @@ export default function FvmOverviewPage() {
           {/* Left Column (7 Columns on XL) */}
           <div className="xl:col-span-7 flex flex-col gap-5">
             
-            {/* Map & Hub Command Center Card */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 shadow-sm overflow-hidden flex flex-col h-[380px]">
-              <div className="px-4 py-3 border-b border-pink-100 flex justify-between items-center bg-pink-50/40">
+            {/* Fleet Status Distribution Chart */}
+            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col min-h-[380px]">
+              <div className="flex items-center justify-between border-b border-pink-100 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
-                    <span className="material-symbols-outlined text-base">hub</span>
-                  </span>
+                  <span className="p-2 rounded-xl bg-pink-100 text-pink-600"><span className="material-symbols-outlined text-base">bar_chart</span></span>
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900">Regional Hub Command Network</h3>
-                    <p className="text-[10px] text-slate-500">Active command nodes &amp; transit corridors</p>
+                    <h3 className="text-xs font-bold text-slate-900">Fleet Status Distribution</h3>
+                    <p className="text-[10px] text-slate-500">Current vehicle state by live records</p>
                   </div>
                 </div>
-                <span className="px-3 py-1 bg-pink-600 text-white rounded-full text-[11px] font-bold shadow-xs">
-                  {selectedRegion}
-                </span>
+                <span className="text-[10px] font-bold text-slate-400">{totalVehicles} units</span>
               </div>
-              
-              <div className="flex-1 relative bg-slate-950 bg-[radial-gradient(circle_at_30%_30%,rgba(219,39,119,0.35),transparent_70%)] flex items-center justify-center overflow-hidden">
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:30px_30px]" />
-                
-                {/* Manila HQ Pin */}
-                <div className="absolute top-[34%] left-[38%] flex flex-col items-center group cursor-pointer">
-                  <div className="w-6 h-6 bg-pink-600 rounded-full border-2 border-white shadow-lg animate-pulse flex items-center justify-center">
-                    <div className="w-2.5 h-2.5 bg-white rounded-full" />
-                  </div>
-                </div>
-
-                {/* Cebu Hub Pin */}
-                <div className="absolute bottom-[35%] right-[32%] flex flex-col items-center group cursor-pointer">
-                  <div className="w-5 h-5 bg-rose-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-                    <div className="w-2 h-2 bg-white rounded-full" />
-                  </div>
-                </div>
-
-                {/* Davao Node Pin */}
-                <div className="absolute bottom-[22%] left-[26%] flex flex-col items-center group cursor-pointer">
-                  <div className="w-4 h-4 bg-pink-400 rounded-full border-2 border-white shadow-lg" />
-                </div>
-
-                <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur-md border border-pink-500/30 px-3 py-2 rounded-xl text-white text-[11px] flex items-center gap-3 shadow-md">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-pink-600"></span> HQ Active</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Regional</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-pink-400"></span> Maintenance</span>
-                </div>
+              <div className="flex-1 min-h-[260px] pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={fleetStatusPieData} margin={{ top: 8, right: 8, left: -20, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#fce7f3" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fill: "#94a3b8", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid rgba(219,39,119,0.3)", fontSize: 11 }} />
+                    <Bar dataKey="value" name="Vehicles" radius={[8, 8, 0, 0]}>
+                      {fleetStatusPieData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
@@ -498,6 +513,7 @@ export default function FvmOverviewPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="75%" data={fleetPerformanceRadar}>
                       <PolarGrid stroke="#fbcfe8" />
+                      {/* @ts-ignore - Recharts component type conflicts with the installed React typings. */}
                       <PolarAngleAxis dataKey="subject" tick={{ fill: "#64748b", fontSize: 8, fontWeight: 600 }} />
                       <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
                       <Radar name="Fleet Performance" dataKey="A" stroke="#db2777" fill="#db2777" fillOpacity={0.4} />
@@ -513,65 +529,33 @@ export default function FvmOverviewPage() {
 
             </div>
 
-            {/* NEW FEATURE: Quick Fleet Vehicle Search & Status Filter Directory */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col gap-3">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
-                    <span className="material-symbols-outlined text-base">directions_car</span>
-                  </span>
+            {/* Fleet Activity Trend Chart */}
+            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col min-h-[380px]">
+              <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-rose-100 text-rose-600"><span className="material-symbols-outlined text-base">monitoring</span></span>
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900">Fleet Unit Directory &amp; Quick Search</h3>
-                    <p className="text-[10px] text-slate-500">Filter and audit specific transport units instantly</p>
+                    <h3 className="text-xs font-bold text-slate-900">Fleet Activity Trend</h3>
+                    <p className="text-[10px] text-slate-500">Trip activity and service load by time window</p>
                   </div>
                 </div>
-
-                {/* Filter Pills */}
-                <div className="flex items-center gap-1 bg-pink-50 p-1 rounded-xl border border-pink-200 text-[11px]">
-                  {(["all", "active", "maintenance", "idle"] as const).map((st) => (
-                    <button
-                      key={st}
-                      onClick={() => setFilterStatus(st)}
-                      className={`px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer ${
-                        filterStatus === st ? "bg-pink-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-[10px] font-bold text-slate-400">{timeframeTrips.length} trips tracked</span>
               </div>
-
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                  <span className="material-symbols-outlined text-sm">search</span>
-                </span>
-                <input
-                  type="text"
-                  placeholder="Search by Vehicle ID or Plate Number..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-pink-50/40 border border-pink-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-600"
-                />
-              </div>
-
-              <div className="max-h-[140px] overflow-y-auto flex flex-col gap-1.5 pr-1">
-                {filteredVehicles.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-slate-500 font-medium">No matching fleet units found.</div>
-                ) : (
-                  filteredVehicles.slice(0, 6).map((vh, idx) => (
-                    <div key={idx} className="flex items-center justify-between px-3 py-2 bg-pink-50/30 hover:bg-pink-50 rounded-xl border border-pink-100 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-pink-600"></span>
-                        <span className="font-bold text-slate-800">Unit ID: {vh.id || `V-${idx + 101}`}</span>
-                        <span className="text-slate-400 text-[10px]">({vh.plate_number || "XYZ-9988"})</span>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 uppercase">
-                        {vh.status || "Active Service"}
-                      </span>
-                    </div>
-                  ))
-                )}
+              <div className="flex-1 min-h-[260px] pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={fleetActivityTrend} margin={{ top: 8, right: 8, left: -20, bottom: 4 }}>
+                    <defs>
+                      <linearGradient id="activeFleetFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#db2777" stopOpacity={0.35} /><stop offset="95%" stopColor="#db2777" stopOpacity={0} /></linearGradient>
+                      <linearGradient id="maintenanceFleetFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={0} /></linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#fce7f3" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fill: "#94a3b8", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid rgba(219,39,119,0.3)", fontSize: 11 }} />
+                    <Area type="monotone" dataKey="active" name="Active trips" stroke="#db2777" fill="url(#activeFleetFill)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="maintenance" name="Maintenance load" stroke="#f59e0b" fill="url(#maintenanceFleetFill)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
@@ -661,7 +645,7 @@ export default function FvmOverviewPage() {
 
               <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5">
                 {loading ? (
-                  <div className="p-4 text-center text-slate-500 text-xs font-semibold">Loading live vehicle activity logs...</div>
+                  <div className="space-y-3 p-4">{Array.from({ length: 4 }, (_, index) => <SkeletonBlock key={index} className="h-12 w-full" />)}</div>
                 ) : activity.length === 0 ? (
                   <div className="p-4 text-center text-slate-500 text-xs font-semibold">No live vehicle activity currently recorded.</div>
                 ) : (

@@ -13,6 +13,7 @@ export default function DriverSafetyPage() {
   const [safetyScore, setSafetyScore] = useState<number | null>(null);
   const [riskDistributionState, setRiskDistributionState] = useState<any[]>([]);
   const [incidentsState, setIncidentsState] = useState<any[]>([]);
+  const [driverSafetyState, setDriverSafetyState] = useState<any[]>([]);
   const [activeUnits, setActiveUnits] = useState<number>(0);
   const [hasData, setHasData] = useState<boolean | null>(null);
 
@@ -32,7 +33,11 @@ export default function DriverSafetyPage() {
     let mounted = true;
     (async () => {
       try {
-        const [snap, dash] = await Promise.all([getAlertsSnapshot(), getDashboardSnapshot()]);
+        const [snap, dash, driverRecords] = await Promise.all([
+          getAlertsSnapshot(),
+          getDashboardSnapshot(),
+          import("../../lib/api").then(({ getDrivers }) => getDrivers()),
+        ]);
         const incidents = (snap.incidents || []).map((r: any) => ({
           title: r.incidentType || r.incident_type || 'Incident',
           severity: 'N/A',
@@ -44,6 +49,18 @@ export default function DriverSafetyPage() {
         const drivers = dash.counts?.drivers || (dash.drivers || []).length || 0;
         const incidentsCount = (snap.incidents || []).length || 0;
         const safety = drivers || incidentsCount ? Math.round(Math.max(60, 100 - incidentsCount * 3) * 10) / 10 : null;
+        const driverSafety = (driverRecords || []).map((driver: any, index: number) => {
+          const id = String(driver.id ?? driver.driver_id ?? `driver-${index}`);
+          const driverIncidents = (snap.incidents || []).filter(
+            (incident: any) => String(incident.driverId ?? incident.driver_id ?? "") === id
+          ).length;
+          return {
+            id,
+            name: driver.full_name ?? driver.fullName ?? driver.name ?? driver.email ?? "Driver",
+            incidents: driverIncidents,
+            score: Math.max(0, 100 - driverIncidents * 8),
+          };
+        });
         // simple distribution if we have drivers
         const distribution = drivers ? [
           { label: 'Low Risk', value: Math.max(0, Math.round((drivers - incidentsCount) / Math.max(1, drivers) * 100)), color: 'bg-emerald-500' },
@@ -54,6 +71,7 @@ export default function DriverSafetyPage() {
           setSafetyScore(safety);
           setRiskDistributionState(distribution);
           setIncidentsState(incidents);
+          setDriverSafetyState(driverSafety);
           setActiveUnits(drivers);
           setHasData(Boolean(drivers + incidentsCount));
         }
@@ -247,6 +265,54 @@ export default function DriverSafetyPage() {
                   <span className="text-base font-bold text-[#b80049]">{riskDistributionState.length ? riskDistributionState[2]?.value ?? '—' : '—'} Delivery Units</span>
                 </div>
               </div>
+            </div>
+
+            {/* Driver Safety Roster */}
+            <div className="lg:col-span-12 overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm shadow-pink-900/5">
+              <div className="border-b border-pink-100 px-6 py-5 sm:px-8">
+                <h2 className="text-lg font-bold text-slate-900">Driver Safety Roster</h2>
+                <p className="text-xs text-slate-500">Individual safety scores calculated from reported incidents</p>
+              </div>
+              {driverSafetyState.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-pink-100 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <th className="px-6 py-3.5">Driver</th>
+                        <th className="px-6 py-3.5">Safety Score</th>
+                        <th className="px-6 py-3.5">Reported Incidents</th>
+                        <th className="px-6 py-3.5">Risk Level</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs font-medium">
+                      {driverSafetyState.map((driver) => (
+                        <tr key={driver.id} className="hover:bg-pink-50/30">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-900">{driver.name}</div>
+                            <div className="font-mono text-[11px] text-pink-600">{driver.id}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <span className="w-8 font-bold text-slate-900">{driver.score}%</span>
+                              <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-100">
+                                <div className="h-full rounded-full bg-pink-600" style={{ width: `${driver.score}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-700">{driver.incidents}</td>
+                          <td className="px-6 py-4">
+                            <span className={`rounded-md px-2 py-1 text-[11px] font-bold ${driver.score >= 90 ? "bg-emerald-50 text-emerald-700" : driver.score >= 70 ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>
+                              {driver.score >= 90 ? "Low Risk" : driver.score >= 70 ? "Monitor" : "High Risk"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="px-6 py-8 text-sm text-slate-500 sm:px-8">No driver safety data available.</p>
+              )}
             </div>
 
             {/* Incident Logs Table / Cards */}

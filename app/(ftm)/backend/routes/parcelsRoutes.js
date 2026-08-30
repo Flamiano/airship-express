@@ -5,13 +5,25 @@ const { createClient } = require('@supabase/supabase-js');
 
 function localParcelsClient() {
   const parcelsUrl =
+    process.env.FTM_PARCELS_SUPABASE_URL ||
     process.env.PARCELS_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_PARCEL_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_FTM_SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.FTM_SUPABASE_URL ||
     process.env.SUPABASE_URL;
   const parcelsKey =
+    process.env.FTM_PARCELS_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.FTM_PARCELS_SUPABASE_ANON_KEY ||
     process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY ||
     process.env.PARCELS_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_PARCEL_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_FTM_SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.FTM_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.FTM_SUPABASE_ANON_KEY ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_ANON_KEY;
 
@@ -112,6 +124,7 @@ router.get('/', async (req, res) => {
             const aliasedData = responseData.map((parcel) => ({
               ...parcel,
               courier: normalizeCourierName(parcel.courier),
+              bulk_qr_code: parcel.bulk_qr_code ?? parcel.qr_code ?? parcel.bulk_qr ?? parcel.bulkQrCode ?? parcel.qrCode ?? null,
               dropoff_location:
                 parcel.dropoff_location ?? parcel.destination ?? parcel.dropoffLocation ?? parcel.delivery_address ?? parcel.deliveryAddress ?? parcel.address ?? parcel.pickup_location ?? parcel.pickupLocation ?? '',
               dest_lat:
@@ -133,6 +146,7 @@ router.get('/', async (req, res) => {
     const aliasedData = availableData.map((parcel) => ({
       ...parcel,
       courier: normalizeCourierName(parcel.courier),
+      bulk_qr_code: parcel.bulk_qr_code ?? parcel.qr_code ?? parcel.bulk_qr ?? parcel.bulkQrCode ?? parcel.qrCode ?? null,
       dropoff_location:
         parcel.dropoff_location ?? parcel.destination ?? parcel.dropoffLocation ?? parcel.delivery_address ?? parcel.deliveryAddress ?? parcel.address ?? parcel.pickup_location ?? parcel.pickupLocation ?? '',
       dest_lat:

@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+.hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 :root {
   --background: #fcfbf9;
   --foreground: #1c1b1f;
@@ -367,7 +372,7 @@ body {
   margin-left: -14px;
   margin-top: -24px;
   pointer-events: none;
-  z-index: 99999 !important;
+  z-index: 2147483647 !important;
   opacity: 0;
   will-change: opacity;
   transition: opacity 200ms ease;
@@ -448,6 +453,7 @@ body {
   .custom-cursor-hidden textarea {
     cursor: auto !important;
   }
+
 }
 
 @media (pointer: coarse), (prefers-reduced-motion: reduce) {
@@ -459,6 +465,7 @@ body {
 .glass-card,
 .glass-panel {
   background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(228, 189, 194, 0.3);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
@@ -614,5 +621,6 @@ body {
   border-radius: 12px !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
   border: 1px solid rgba(226, 232, 240, 0.8);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }

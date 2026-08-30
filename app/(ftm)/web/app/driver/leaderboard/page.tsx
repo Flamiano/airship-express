@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getDashboardSnapshot, getAlertsSnapshot } from "../../lib/api";
-import html2canvas from "html2canvas";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
@@ -18,7 +17,9 @@ export default function DriverLeaderboardPage() {
   const [showExportNotice, setShowExportNotice] = useState(false);
   const [selectedRange, setSelectedRange] = useState<"Last 7 Days" | "Last 30 Days" | "This Month">("Last 30 Days");
   const [selectedRegion, setSelectedRegion] = useState("All Regions");
+  const [currentPage, setCurrentPage] = useState(1);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const pageSize = 10;
 
   const toggleFilterPanel = () => {
     setIsFilterOpen((prev) => !prev);
@@ -75,7 +76,7 @@ export default function DriverLeaderboardPage() {
         const topScore = mapped[0]?.score ?? (drv[0]?.score ?? drv[0]?.safety_score ?? null);
 
         if (mounted) {
-          setRunners(mapped.slice(0, 50));
+          setRunners(mapped);
           setSummary({
             topPerformerName: topName,
             topPerformerScore: topScore,
@@ -92,6 +93,42 @@ export default function DriverLeaderboardPage() {
     })();
     return () => { mounted = false; };
   }, [selectedRange, selectedRegion]);
+
+  const filteredRunners = useMemo(
+    () =>
+      selectedRegion === "All Regions"
+        ? runners
+        : runners.filter((driver) => driver.division === selectedRegion),
+    [runners, selectedRegion]
+  );
+
+  const pageCount = Math.max(1, Math.ceil(filteredRunners.length / pageSize));
+  const visibleRunners = filteredRunners.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  const regions = useMemo(
+    () => [
+      "All Regions",
+      ...Array.from(
+        new Set(
+          runners
+            .map((driver) => driver.division)
+            .filter((division) => division && division !== "-")
+        )
+      ),
+    ],
+    [runners]
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedRegion]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, pageCount));
+  }, [pageCount]);
 
   const handleExport = () => {
     const rows = [
@@ -117,6 +154,7 @@ export default function DriverLeaderboardPage() {
 
   const handleExportPng = async () => {
     try {
+      const { default: html2canvas } = await import("html2canvas");
       const exportTarget = document.getElementById("leaderboard-podium-export-root");
       if (!exportTarget) return setNoticeMessage("Leaderboard export target not found");
       
@@ -307,7 +345,7 @@ export default function DriverLeaderboardPage() {
 
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-2">Region:</span>
-                {["All Regions", "Central Div.", "West Coast", "East Coast"].map((region) => (
+                {regions.map((region) => (
                   <button
                     key={region}
                     type="button"
@@ -484,7 +522,7 @@ export default function DriverLeaderboardPage() {
                 <p className="text-xs text-slate-500">Comprehensive driver performance and safety index rankings</p>
               </div>
               <span className="text-xs font-bold text-slate-500 bg-pink-50 px-3 py-1.5 rounded-lg border border-pink-100">
-                Showing Top 10 Drivers
+                Showing {filteredRunners.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, filteredRunners.length)} of {filteredRunners.length} Drivers
               </span>
             </div>
 
@@ -503,7 +541,7 @@ export default function DriverLeaderboardPage() {
                 </thead>
                 <tbody className="divide-y divide-pink-50 text-sm">
                   {/* Top 3 Rows Highlighted */}
-                  {runners.slice(0, 10).map((driver) => (
+                  {visibleRunners.map((driver) => (
                     <tr key={driver.id || driver.rank} className="hover:bg-pink-50/30 transition-colors font-medium">
                       <td className="py-4 px-4 font-black text-[#b80049]">#{driver.rank}</td>
                       <td className="py-4 px-4">
@@ -542,6 +580,32 @@ export default function DriverLeaderboardPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-pink-100 bg-slate-50/40 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs font-medium text-slate-500">
+                Page {currentPage} of {pageCount}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-all hover:border-pink-300 hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
+                  disabled={currentPage === pageCount}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-all hover:border-pink-300 hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                  <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                </button>
+              </div>
             </div>
             </div>
           ) : (

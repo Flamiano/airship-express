@@ -16,7 +16,7 @@ if [ ! -f "$SQL_FILE" ]; then
 fi
 
 # Load .env if present
-ENV_FILE="$(dirname "$0")/../.env"
+ENV_FILE="$(dirname "$0")/../../.env"
 if [ -f "$ENV_FILE" ]; then
   # shellcheck disable=SC1090
   set -a
@@ -25,7 +25,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 if [ -z "${DATABASE_URL-}" ]; then
-  echo "DATABASE_URL is not set. Export it or add it to backend/.env" >&2
+  echo "DATABASE_URL is not set. Export it or add it to ../../.env" >&2
   exit 2
 fi
 

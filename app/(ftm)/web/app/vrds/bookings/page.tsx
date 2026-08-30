@@ -4,10 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
+import { SkeletonTable } from "../../components/PageSkeleton";
 import {
   useParcelStore,
   assignDriver,
   assignVehicle,
+  assignDriverAndVehicle,
   confirmDispatch,
 } from "../../lib/parcelStore";
 import { Booking, BOOKING_STATUS_LABEL } from "../../lib/parcelTypes";
@@ -95,6 +97,22 @@ function IconSend({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
+function TruckLoadingAnimation({ size = "w-8 h-8" }: { size?: string }) {
+  return (
+    <svg className={`${size} animate-pulse`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      {/* Truck body */}
+      <rect x="2" y="7" width="12" height="8" rx="1" />
+      {/* Cab */}
+      <rect x="14" y="9" width="4" height="6" rx="0.5" />
+      {/* Back wheels */}
+      <circle cx="5" cy="15" r="1.5" />
+      <circle cx="11" cy="15" r="1.5" />
+      {/* Front wheel */}
+      <circle cx="17" cy="15" r="1.5" />
+    </svg>
+  );
+}
+
 function HeaderMetricCard({
   title,
   value,
@@ -146,7 +164,8 @@ export default function VrdsBookingsPage() {
   );
 
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [loadingBookingId, setLoadingBookingId] = useState<string | null>(null);
   const [assignmentStep, setAssignmentStep] = useState<"driver" | "vehicle">("driver");
   const [toast, setToast] = useState<string | null>(null);
   const [errorFor, setErrorFor] = useState<{ id: string; message: string } | null>(null);
@@ -236,11 +255,17 @@ export default function VrdsBookingsPage() {
       return;
     }
 
-    assignDriver(booking.id, driver.id);
-    assignVehicle(booking.id, vehicle.id);
-    setErrorFor(null);
-    setAssignmentStep("vehicle");
-    showToast(`Suggested ${driver.name} with ${vehicle.plateNumber}. Review and dispatch when ready.`);
+    // Start loading animation
+    setLoadingBookingId(booking.id);
+
+    // Simulate processing time for animation
+    setTimeout(() => {
+      assignDriverAndVehicle(booking.id, driver.id, vehicle.id);
+      setErrorFor(null);
+      setAssignmentStep("vehicle");
+      setLoadingBookingId(null);
+      showToast(`Suggested ${driver.name} with ${vehicle.plateNumber}. Review and dispatch when ready.`);
+    }, 1200);
   };
 
   const handleConfirm = async (booking: Booking) => {
@@ -464,9 +489,7 @@ export default function VrdsBookingsPage() {
 
             {/* Booking Queue Cards */}
             {!ready ? (
-              <div className="bg-white border border-rose-100 rounded-2xl p-12 text-center text-rose-500 text-sm font-semibold">
-                <span className="inline-block animate-spin mr-2">🌸</span> Loading active dispatch queue...
-              </div>
+              <SkeletonTable rows={5} />
             ) : filteredBookings.length === 0 ? (
               <div className="bg-white border border-dashed border-rose-200 rounded-2xl p-12 text-center space-y-2">
                 <IconPackage className="w-10 h-10 text-rose-300 mx-auto" />
@@ -486,104 +509,140 @@ export default function VrdsBookingsPage() {
                   return (
                     <div
                       key={booking.id}
-                      onClick={() => {
-                        setSelectedBookingId(booking.id);
-                        setAssignmentStep("driver");
-                        setIsInspectorOpen(true);
-                      }}
-                      className={`group relative cursor-pointer bg-white rounded-2xl border p-5 transition-all duration-200 shadow-xs hover:shadow-md ${
+                      className={`group relative overflow-hidden cursor-pointer bg-white rounded-2xl border p-5 transition-all duration-200 shadow-xs hover:shadow-md ${
                         isSelected
                           ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10"
                           : "border-slate-200 hover:border-rose-300"
                       }`}
                     >
-                      {/* Top Meta */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-black text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
-                            #{booking.id}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
-                            <IconClock className="w-3.5 h-3.5 text-slate-400" />
-                            {new Date(booking.createdAt).toLocaleString("en-PH", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                      <div className="absolute inset-0 rounded-2xl backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all duration-200" />
+
+                      <div className="relative z-10 opacity-100 group-hover:opacity-0 transition-all duration-200">
+                        {/* Top Meta */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-black text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
+                              #{booking.id}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
+                              <IconClock className="w-3.5 h-3.5 text-slate-400" />
+                              {new Date(booking.createdAt).toLocaleString("en-PH", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                              booking.status === "DRIVER_VEHICLE_ASSIGNED"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-amber-50 text-amber-700 border border-amber-200"
+                            }`}
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                booking.status === "DRIVER_VEHICLE_ASSIGNED" ? "bg-emerald-500" : "bg-amber-500"
+                              }`}
+                            />
+                            {BOOKING_STATUS_LABEL[booking.status]}
                           </span>
                         </div>
 
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                            booking.status === "DRIVER_VEHICLE_ASSIGNED"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-amber-50 text-amber-700 border border-amber-200"
+                        {/* Route Header */}
+                        <div className="my-3">
+                          <div className="flex items-start gap-2">
+                            <IconPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                            <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors line-clamp-2">
+                              {getBookingRouteLabel(booking, parcels)}
+                            </h3>
+                          </div>
+                        </div>
+
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                          <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Parcels
+                            </span>
+                            <span className="text-xs font-bold text-slate-800">{parcelCount} Items</span>
+                          </div>
+
+                          <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Total Weight
+                            </span>
+                            <span className={`text-xs font-bold ${isOverCapacity ? "text-rose-600" : "text-slate-800"}`}>
+                              {booking.totalWeightKg} kg
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Driver
+                            </span>
+                            <span className="text-xs font-bold text-slate-800 truncate block">
+                              {booking.driverName || <span className="text-slate-400 italic font-normal">Unassigned</span>}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Vehicle Plate
+                            </span>
+                            <span className="text-xs font-bold text-slate-800 truncate block">
+                              {booking.vehiclePlate || <span className="text-slate-400 italic font-normal">Unassigned</span>}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Over Capacity Warning */}
+                        {isOverCapacity && (
+                          <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl">
+                            <IconAlert className="w-4 h-4 shrink-0 text-rose-600" />
+                            <span>Weight ({booking.totalWeightKg}kg) exceeds vehicle max payload ({vehicle?.capacityKg}kg)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleGenerateAssignment(booking);
+                          }}
+                          disabled={loadingBookingId === booking.id}
+                          className={`pointer-events-auto rounded-xl px-4 py-2.5 text-xs font-bold text-white shadow-lg transition flex items-center gap-2 ${
+                            loadingBookingId === booking.id
+                              ? "bg-rose-500 shadow-rose-500/20"
+                              : "bg-rose-600 shadow-rose-600/20 hover:bg-rose-700"
                           }`}
                         >
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              booking.status === "DRIVER_VEHICLE_ASSIGNED" ? "bg-emerald-500" : "bg-amber-500"
-                            }`}
-                          />
-                          {BOOKING_STATUS_LABEL[booking.status]}
-                        </span>
+                          {loadingBookingId === booking.id ? (
+                            <>
+                              <TruckLoadingAnimation size="w-4 h-4" />
+                              <span>Generating...</span>
+                            </>
+                          ) : (
+                            "Generate Assignment"
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedBookingId(booking.id);
+                            setAssignmentStep("driver");
+                            setIsDetailsModalOpen(true);
+                          }}
+                          className="pointer-events-auto rounded-xl border border-white/80 bg-white/80 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-lg backdrop-blur-sm transition hover:bg-white"
+                        >
+                          View Details
+                        </button>
                       </div>
-
-                      {/* Route Header */}
-                      <div className="my-3">
-                        <div className="flex items-start gap-2">
-                          <IconPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors line-clamp-2">
-                            {getBookingRouteLabel(booking, parcels)}
-                          </h3>
-                        </div>
-                      </div>
-
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-2 gap-2 pt-2">
-                        <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                            Parcels
-                          </span>
-                          <span className="text-xs font-bold text-slate-800">{parcelCount} Items</span>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                            Total Weight
-                          </span>
-                          <span className={`text-xs font-bold ${isOverCapacity ? "text-rose-600" : "text-slate-800"}`}>
-                            {booking.totalWeightKg} kg
-                          </span>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                            Driver
-                          </span>
-                          <span className="text-xs font-bold text-slate-800 truncate block">
-                            {booking.driverName || <span className="text-slate-400 italic font-normal">Unassigned</span>}
-                          </span>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                            Vehicle Plate
-                          </span>
-                          <span className="text-xs font-bold text-slate-800 truncate block">
-                            {booking.vehiclePlate || <span className="text-slate-400 italic font-normal">Unassigned</span>}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Over Capacity Warning */}
-                      {isOverCapacity && (
-                        <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl">
-                          <IconAlert className="w-4 h-4 shrink-0 text-rose-600" />
-                          <span>Weight ({booking.totalWeightKg}kg) exceeds vehicle max payload ({vehicle?.capacityKg}kg)</span>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -591,48 +650,208 @@ export default function VrdsBookingsPage() {
             )}
           </section>
 
-          {/* Booking Dispatch Inspector Modal */}
-          {isInspectorOpen && selectedBooking && (
+          {/* Booking Details Modal */}
+          {isDetailsModalOpen && selectedBooking && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 sm:p-6"
-              onMouseDown={() => setIsInspectorOpen(false)}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 sm:p-6"
+              onMouseDown={() => setIsDetailsModalOpen(false)}
             >
               <aside
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="dispatch-inspector-title"
-                className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto"
+                className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto"
                 onMouseDown={(event) => event.stopPropagation()}
               >
-            <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-xs space-y-6">
-              
-              {/* Header */}
-              <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 block">
-                    Assignment · {assignmentStep === "driver" ? "Step 1 of 2" : "Step 2 of 2"}
-                  </span>
-                  <h2 id="dispatch-inspector-title" className="text-lg font-extrabold text-slate-900">
-                    {selectedBooking ? `Assign booking #${selectedBooking.id}` : "Select a Booking"}
-                  </h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
-                    {displayParcels.length} Parcels
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsInspectorOpen(false)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-lg leading-none text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
-                    aria-label="Close dispatch inspector"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
+                <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-lg space-y-6">
+                  <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 block">
+                        Assignment · {assignmentStep === "driver" ? "Step 1 of 2" : "Step 2 of 2"}
+                      </span>
+                      <h2 id="dispatch-inspector-title" className="text-lg font-extrabold text-slate-900">
+                        {selectedBooking ? `Assign booking #${selectedBooking.id}` : "Select a Booking"}
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
+                        {displayParcels.length} Parcels
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsDetailsModalOpen(false)}
+                        className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-lg leading-none text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                        aria-label="Close details modal"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
 
               {selectedBooking ? (
                 <>
+                  {/* BOOKING DETAILS OVERVIEW */}
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-4">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Booking Information</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Booking ID */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Booking ID</span>
+                        <span className="font-mono text-xs font-black text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-lg block truncate">
+                          #{selectedBooking.id}
+                        </span>
+                      </div>
+
+                      {/* Status */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Status</span>
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${
+                            selectedBooking.status === "DRIVER_VEHICLE_ASSIGNED"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : selectedBooking.status === "DISPATCHED"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              selectedBooking.status === "DRIVER_VEHICLE_ASSIGNED"
+                                ? "bg-emerald-500"
+                                : selectedBooking.status === "DISPATCHED"
+                                ? "bg-blue-500"
+                                : "bg-amber-500"
+                            }`}
+                          />
+                          {BOOKING_STATUS_LABEL[selectedBooking.status]}
+                        </span>
+                      </div>
+
+                      {/* Created Date */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Created Date</span>
+                        <span className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                          <IconClock className="w-3.5 h-3.5 text-slate-400" />
+                          {new Date(selectedBooking.createdAt).toLocaleString("en-PH", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </span>
+                      </div>
+
+                      {/* Route Plan ID */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Route Plan ID</span>
+                        <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1.5 rounded-lg block truncate">
+                          {selectedBooking.routePlanId || "N/A"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Route Information */}
+                    <div className="pt-2 border-t border-slate-200">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Route</span>
+                      <div className="flex items-start gap-2">
+                        <IconPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-700 leading-relaxed">{getBookingRouteLabel(selectedBooking, parcels)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ASSIGNMENT DETAILS */}
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-4">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Assignment Details</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Driver */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Driver</span>
+                        <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${
+                          selectedBooking.driverId
+                            ? "bg-emerald-50 border-emerald-200"
+                            : "bg-slate-100 border-slate-200"
+                        }`}>
+                          <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-[10px] shrink-0">
+                            {selectedBooking.driverName?.slice(0, 2).toUpperCase() || "UN"}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-800 truncate">
+                            {selectedBooking.driverName || "Unassigned"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Vehicle */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Vehicle</span>
+                        <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${
+                          selectedBooking.vehicleId
+                            ? "bg-emerald-50 border-emerald-200"
+                            : "bg-slate-100 border-slate-200"
+                        }`}>
+                          <IconTruck className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="text-xs font-semibold text-slate-800 truncate">
+                            {selectedBooking.vehiclePlate || "Unassigned"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Total Weight */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Total Weight</span>
+                        <span className="text-xs font-bold text-slate-800 px-3 py-2 bg-slate-100 rounded-lg block">
+                          {selectedBooking.totalWeightKg} kg
+                        </span>
+                      </div>
+
+                      {/* Parcel Count */}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Parcels</span>
+                        <div className="flex items-center gap-2.5 px-3 py-2 bg-slate-100 rounded-lg">
+                          <IconPackage className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="text-xs font-bold text-slate-800">
+                            {displayParcels.length} Items
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vehicle Capacity Meter */}
+                    {selectedBooking.vehicleId && (
+                      <div className="pt-2 border-t border-slate-200">
+                        {(() => {
+                          const veh = vehicles.find((v) => v.id === selectedBooking.vehicleId);
+                          const cap = veh?.capacityKg || 1;
+                          const ratio = Math.min(Math.round((selectedBooking.totalWeightKg / cap) * 100), 100);
+                          const isOver = selectedBooking.totalWeightKg > cap;
+
+                          return (
+                            <div>
+                              <div className="flex justify-between text-xs font-bold mb-2">
+                                <span className="text-slate-600">Payload vs Vehicle Capacity</span>
+                                <span className={isOver ? "text-rose-600 font-black" : "text-slate-800"}>
+                                  {selectedBooking.totalWeightKg} / {cap} kg ({ratio}%)
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    isOver ? "bg-rose-600" : ratio > 85 ? "bg-amber-500" : "bg-emerald-500"
+                                  }`}
+                                  style={{ width: `${ratio}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Error Alert */}
                   {errorFor && errorFor.id === selectedBooking.id && (
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-start gap-2">
@@ -644,10 +863,24 @@ export default function VrdsBookingsPage() {
                   <button
                     type="button"
                     onClick={() => handleGenerateAssignment(selectedBooking)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+                    disabled={loadingBookingId === selectedBooking.id}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition ${
+                      loadingBookingId === selectedBooking.id
+                        ? "border border-rose-200 bg-rose-50 text-rose-600 opacity-75"
+                        : "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
+                    }`}
                   >
-                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                    Generate Assignment
+                    {loadingBookingId === selectedBooking.id ? (
+                      <>
+                        <TruckLoadingAnimation size="w-5 h-5" />
+                        <span>Generating Assignment...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                        Generate Assignment
+                      </>
+                    )}
                   </button>
 
                   {/* Vehicle Capacity Meter */}
@@ -880,7 +1113,7 @@ export default function VrdsBookingsPage() {
                   </div>
 
                   {/* SECTION 4: PARCELS MANIFEST INSPECTOR */}
-                  <div className="hidden space-y-2.5 pt-2 border-t border-slate-100">
+                  <div className="space-y-2.5 pt-2 border-t border-slate-100">
                     <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                       <IconPackage className="w-3.5 h-3.5 text-rose-500" />
                       Payload Manifest ({displayParcels.length})
@@ -935,12 +1168,12 @@ export default function VrdsBookingsPage() {
                     )}
                   </div>
                 </>
-              ) : (
-                <div className="py-12 text-center text-slate-400 text-xs italic">
-                  Select a booking from the list to manage assignments and review payload.
+                ) : (
+                  <div className="py-12 text-center text-slate-400 text-xs italic">
+                    Select a booking from the list to manage assignments and review payload.
+                  </div>
+                )}
                 </div>
-              )}
-            </div>
               </aside>
             </div>
           )}

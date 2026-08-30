@@ -1,10 +1,10 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
+const serviceRoleKey = process.env.FTM_SUPABASE_SERVICE_ROLE_KEY || process.env.FTM_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
+  throw new Error('FTM_SUPABASE_URL and FTM_SUPABASE_SERVICE_ROLE_KEY are required.');
 }
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -28,11 +28,11 @@ async function run() {
 
 run();const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
+const SERVICE_KEY = process.env.FTM_SUPABASE_SERVICE_ROLE_KEY || process.env.FTM_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
+  throw new Error('FTM_SUPABASE_URL and FTM_SUPABASE_SERVICE_ROLE_KEY are required.');
 }
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
