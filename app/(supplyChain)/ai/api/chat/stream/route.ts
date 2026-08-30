@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { buildSystemPrompt } from "../../../lib/orchestrator";
 import { GoogleGenAI } from "@google/genai";
+import { checkModeration } from "../../../lib/moderation";
 
 const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
 const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-3.5-flash-lite";
@@ -10,18 +11,97 @@ const STREAM_CONFIG = {
     CHARS_PER_CHUNK: 3,
 };
 
-// ... existing imports and config ...
-
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { question, history, role } = body;
+        const { question, history, role, userId, userEmail, userName } = body;
 
         if (!question || typeof question !== 'string') {
             return new Response(
                 JSON.stringify({ error: "Question is required" }),
                 { status: 400, headers: { 'Content-Type': 'application/json' } }
             );
+        }
+
+        const forwardedFor = request.headers.get("x-forwarded-for");
+        const ipAddress = forwardedFor ? forwardedFor.split(",")[0].trim() : request.headers.get("x-real-ip") || "127.0.0.1";
+        const userAgent = request.headers.get("user-agent") || "unknown-agent";
+
+        const moderation = await checkModeration(question, {
+            userId,
+            userEmail,
+            userName,
+            ipAddress,
+            userAgent,
+        });
+
+        if (!moderation.isAllowed) {
+            const text = moderation.message || "Your query has been restricted by content moderation policies.";
+            const stream = new ReadableStream({
+                start(controller) {
+                    const chars = text.split('');
+                    let index = 0;
+                    let isClosed = false;
+
+                    const interval = setInterval(() => {
+                        if (isClosed) {
+                            clearInterval(interval);
+                            return;
+                        }
+
+                        try {
+                            if (index < chars.length) {
+                                const chunk = chars.slice(index, index + STREAM_CONFIG.CHARS_PER_CHUNK).join('');
+                                const full = text.substring(0, index + STREAM_CONFIG.CHARS_PER_CHUNK);
+
+                                controller.enqueue(`data: ${JSON.stringify({
+                                    type: 'chunk',
+                                    content: chunk,
+                                    full: full,
+                                })}\n\n`);
+                                index += STREAM_CONFIG.CHARS_PER_CHUNK;
+                            } else {
+                                clearInterval(interval);
+                                isClosed = true;
+                                controller.enqueue(`data: ${JSON.stringify({
+                                    type: 'done',
+                                    content: text,
+                                    moderation: {
+                                        isViolation: true,
+                                        violationType: moderation.violationType,
+                                        strikeCount: moderation.strikeCount,
+                                        maxStrikes: moderation.maxStrikes,
+                                        isLockedOut: moderation.isLockedOut,
+                                        lockoutRemainingSeconds: moderation.lockoutRemainingSeconds,
+                                    },
+                                    meta: {
+                                        suggestions: ['Ask about parcel tracking', 'Ask about inventory stock'],
+                                        classification: { is_related: false, reason: 'Moderation policy triggered' },
+                                    }
+                                })}\n\n`);
+                                controller.close();
+                            }
+                        } catch (error) {
+                            clearInterval(interval);
+                            isClosed = true;
+                            try {
+                                controller.close();
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                    }, STREAM_CONFIG.MIN_CHUNK_DELAY);
+                }
+            });
+
+            return new Response(stream, {
+                headers: {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no',
+                },
+            });
         }
 
         const result = await buildSystemPrompt(question, history, role);

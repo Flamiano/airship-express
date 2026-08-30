@@ -30,7 +30,8 @@ export const AppealsTab: React.FC<AppealsTabProps> = ({ appeals, isLoading, sele
     const someAppealsSelected = selectedAppeals.size > 0 && selectedAppeals.size < appeals.length;
     const areAllSelectedPending = selectedAppeals.size > 0 &&
         Array.from(selectedAppeals).every(id => appeals.find(a => a.id === id)?.status === 'pending');
-    return (<div className="bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-200/40 dark:shadow-2xl dark:shadow-black/60 overflow-hidden transition-all duration-300">
+    return (
+        <div className="bg-white dark:bg-[#1c1d25] rounded-2xl border border-slate-200/90 dark:border-[#353746] shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)] overflow-hidden">
             {/* Contextual Bulk Action Bar */}
             {selectedAppeals.size > 0 && (<div className="p-3.5 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white flex items-center justify-between flex-wrap gap-3 animate-in fade-in slide-in-from-top-2 duration-200 border-b border-slate-800">
                     <div className="flex items-center gap-3">

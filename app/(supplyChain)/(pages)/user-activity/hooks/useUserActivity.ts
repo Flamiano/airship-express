@@ -8,7 +8,7 @@ import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { Session, BlockedDevice, Appeal, UserActivity } from '../types';
 import { isRateLimited, sanitizeText } from '../utils/formatters';
 
-const ITEMS_PER_PAGE = 50;
+const ITEMS_PER_PAGE = 30;
 
 export function useUserActivity() {
     const { confirm } = useConfirm();
@@ -40,7 +40,7 @@ export function useUserActivity() {
     const [appealTotalPages, setAppealTotalPages] = useState(1);
     const [activityTotalPages, setActivityTotalPages] = useState(1);
 
-    const fetchSessions = async () => {
+    const fetchSessions = useCallback(async (isSilent = false) => {
         try {
             const [blockedResult, sessionsResult] = await Promise.all([
                 supabase
@@ -66,6 +66,22 @@ export function useUserActivity() {
             const blockedData = blockedResult.data || [];
             const sessionsData = sessionsResult.data || [];
 
+            // Fetch AI Chatbot Moderation strike and lockout states
+            const moderationMap = new Map();
+            try {
+                const modRes = await fetch('/ai/api/moderation-status?all=true');
+                if (modRes.ok) {
+                    const modData = await modRes.json();
+                    if (modData.success && modData.states) {
+                        Object.entries(modData.states).forEach(([key, state]: [string, any]) => {
+                            moderationMap.set(key, state);
+                        });
+                    }
+                }
+            } catch (e) {
+                // non-critical
+            }
+
             const blockedMap = new Map();
             blockedData.forEach(d => {
                 const key = `${d.user_agent}_${d.ip_address || 'unknown'}_${d.email || ''}`;
@@ -76,11 +92,15 @@ export function useUserActivity() {
                 const sessionEmail = session.email || session.users?.email || '';
                 const key = `${session.user_agent}_${session.ip_address || 'unknown'}_${sessionEmail}`;
                 const blockedDeviceId = blockedMap.get(key);
+                const modState = moderationMap.get(session.user_id) || moderationMap.get(sessionEmail) || moderationMap.get(session.ip_address);
 
                 return {
                     ...session,
                     is_blocked: !!blockedDeviceId,
-                    blocked_device_id: blockedDeviceId || undefined
+                    blocked_device_id: blockedDeviceId || undefined,
+                    strikes: modState?.strikes || 0,
+                    is_locked_out: modState?.isLockedOut || false,
+                    lockout_remaining_seconds: modState?.lockoutRemainingSeconds || 0,
                 };
             });
 
@@ -89,11 +109,11 @@ export function useUserActivity() {
             setSessionTotalPages(Math.max(1, Math.ceil(sessionsWithBlockStatus.length / ITEMS_PER_PAGE)));
         } catch (error) {
             console.error('Error fetching sessions:', error);
-            toast.error('Failed to fetch sessions');
+            if (!isSilent) toast.error('Failed to fetch sessions');
         }
-    };
+    }, []);
 
-    const fetchBlockedDevices = async () => {
+    const fetchBlockedDevices = useCallback(async (isSilent = false) => {
         try {
             const { data: devices, error: devicesError } = await supabase
                 .from('blocked_devices')
@@ -123,11 +143,11 @@ export function useUserActivity() {
             setBlockedTotalPages(Math.max(1, Math.ceil(devicesWithCount.length / ITEMS_PER_PAGE)));
         } catch (error) {
             console.error('Error fetching blocked devices:', error);
-            toast.error('Failed to fetch blocked devices');
+            if (!isSilent) toast.error('Failed to fetch blocked devices');
         }
-    };
+    }, []);
 
-    const fetchActivities = async () => {
+    const fetchActivities = useCallback(async (isSilent = false) => {
         try {
             const { data, error } = await supabase
                 .from('user_activity')
@@ -141,11 +161,11 @@ export function useUserActivity() {
             setActivityTotalPages(Math.max(1, Math.ceil((data || []).length / ITEMS_PER_PAGE)));
         } catch (error) {
             console.error('Error fetching activities:', error);
-            toast.error('Failed to fetch activities');
+            if (!isSilent) toast.error('Failed to fetch activities');
         }
-    };
+    }, []);
 
-    const fetchAppeals = async () => {
+    const fetchAppeals = useCallback(async (isSilent = false) => {
         try {
             const { data, error } = await supabase
                 .from('appeals')
@@ -157,9 +177,9 @@ export function useUserActivity() {
             setAppealTotalPages(Math.max(1, Math.ceil((data || []).length / ITEMS_PER_PAGE)));
         } catch (error) {
             console.error('Error fetching appeals:', error);
-            toast.error('Failed to fetch appeals');
+            if (!isSilent) toast.error('Failed to fetch appeals');
         }
-    };
+    }, []);
 
     const fetchAllData = useCallback(async () => {
         setIsLoading(true);
@@ -175,7 +195,7 @@ export function useUserActivity() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [fetchSessions, fetchBlockedDevices, fetchActivities, fetchAppeals]);
 
     useEffect(() => {
         const role = user.getRole();
@@ -183,7 +203,67 @@ export function useUserActivity() {
         setUserRole(role);
         setCurrentUserId(userData?.email || '');
         fetchAllData();
-    }, [fetchAllData]);
+
+        // Optimized Realtime Postgres Subscriptions with Debouncing
+        let timer: NodeJS.Timeout | null = null;
+        const debouncedFetch = (callback: () => void) => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(callback, 300);
+        };
+
+        const channelId = `user_activity_live_${Math.random().toString(36).substring(2, 9)}`;
+        const channel = supabase
+            .channel(channelId)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'user_activity' },
+                () => {
+                    debouncedFetch(() => fetchActivities(true));
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'sessions' },
+                () => {
+                    debouncedFetch(() => fetchSessions(true));
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'blocked_devices' },
+                () => {
+                    debouncedFetch(() => {
+                        fetchBlockedDevices(true);
+                        fetchSessions(true);
+                    });
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'appeals' },
+                () => {
+                    debouncedFetch(() => fetchAppeals(true));
+                }
+            )
+            .subscribe();
+
+        // Optimized interval: updates active countdowns dynamically when any strike exists
+        const pollInterval = setInterval(() => {
+            setSessions(prev => {
+                const hasStrikes = prev.some(s => (s.strikes || 0) > 0 || s.is_locked_out);
+                if (hasStrikes) {
+                    fetchSessions(true);
+                }
+                return prev;
+            });
+        }, 10000);
+
+        return () => {
+            if (timer) clearTimeout(timer);
+            clearInterval(pollInterval);
+            supabase.removeChannel(channel);
+        };
+    }, [fetchAllData, fetchActivities, fetchSessions, fetchBlockedDevices, fetchAppeals]);
 
     const isTargetUserAdmin = async (userId: string): Promise<boolean> => {
         try {
@@ -323,6 +403,22 @@ export function useUserActivity() {
         } catch (error: any) {
             console.error('Error blocking device:', error);
             toast.error(`Failed to block device: ${error?.message || 'Unknown error'}`);
+        }
+    };
+
+    const handleResetStrikes = async (identifier: string) => {
+        try {
+            const res = await fetch('/ai/api/moderation-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'reset', identifier }),
+            });
+            if (res.ok) {
+                toast.success('Moderation strikes reset successfully');
+                await fetchSessions();
+            }
+        } catch (e) {
+            toast.error('Failed to reset strikes');
         }
     };
 
@@ -930,6 +1026,9 @@ export function useUserActivity() {
         filterSessions,
         filterActivities,
         fetchAllData,
+
+        // Moderation
+        handleResetStrikes,
 
         // Operations
         handleBlockDevice,

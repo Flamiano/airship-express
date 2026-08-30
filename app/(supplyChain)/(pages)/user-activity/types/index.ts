@@ -18,6 +18,9 @@ export interface Session {
     };
     is_blocked?: boolean;
     blocked_device_id?: string;
+    strikes?: number;
+    is_locked_out?: boolean;
+    lockout_remaining_seconds?: number;
 }
 
 export interface BlockedDevice {

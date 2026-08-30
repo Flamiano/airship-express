@@ -7,6 +7,8 @@ import { useAI } from "./AIContext";
 import { RobotAvatar, RobotHeader } from "../components";
 import AppButton from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { ShieldAlert, Clock, AlertTriangle } from "lucide-react";
 interface PendingRequestItem {
     name: string;
     quantity: number;
@@ -195,6 +197,43 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const [hasProcessedQuestion, setHasProcessedQuestion] = useState(false);
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [isAtBottom, setIsAtBottom] = useState(true);
+
+    // Moderation lockout state
+    const [isLockedOut, setIsLockedOut] = useState(false);
+    const [lockoutSeconds, setLockoutSeconds] = useState(0);
+
+    // Check moderation status on open
+    useEffect(() => {
+        if (!isOpen) return;
+        const currentUser = user.getUser();
+        const identifier = currentUser.email || currentUser.userId;
+        if (!identifier) return;
+
+        fetch(`/ai/api/moderation-status?identifier=${encodeURIComponent(identifier)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.isLockedOut && data.lockoutRemainingSeconds > 0) {
+                    setIsLockedOut(true);
+                    setLockoutSeconds(data.lockoutRemainingSeconds);
+                }
+            })
+            .catch(() => {});
+    }, [isOpen]);
+
+    // Countdown interval for lockout
+    useEffect(() => {
+        if (!isLockedOut || lockoutSeconds <= 0) return;
+        const interval = setInterval(() => {
+            setLockoutSeconds(prev => {
+                if (prev <= 1) {
+                    setIsLockedOut(false);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [isLockedOut, lockoutSeconds]);
     // Save messages to localStorage on changes (sanitizing large dataUrls to stay within 5MB quota)
     useEffect(() => {
         if (typeof window !== 'undefined' && messages.length > 0) {
@@ -449,9 +488,14 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 role: msg.type === 'user' ? 'user' : 'assistant',
                 content: msg.content
             }));
+            const currentUser = user.getUser();
+            const currentRole = currentUser.role || 'User';
+            const currentUserId = user.getUserId();
+            const currentUserEmail = currentUser.email;
+            const currentUserName = user.getName();
+
             try {
                 setIsStreaming(true);
-                const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'User') : 'User';
                 const response = await fetch('/ai/api/chat/stream', {
                     method: 'POST',
                     headers: {
@@ -461,6 +505,9 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         question: trimmed,
                         history: history,
                         role: currentRole,
+                        userId: currentUserId,
+                        userEmail: currentUserEmail,
+                        userName: currentUserName,
                     }),
                 });
                 if (!response.ok) {
@@ -514,6 +561,10 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                         : msg));
                                 }
                                 else if (data.type === 'done') {
+                                    if (data.moderation?.isLockedOut || (data.moderation?.lockoutRemainingSeconds && data.moderation.lockoutRemainingSeconds > 0)) {
+                                        setIsLockedOut(true);
+                                        setLockoutSeconds(data.moderation.lockoutRemainingSeconds);
+                                    }
                                     metaData = data.meta || null;
                                     if (metaData?.suggestions) {
                                         setSuggestions(metaData.suggestions);
@@ -550,7 +601,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     setMessages(prev => prev.map(msg => msg.id === assistantMsgId
                                         ? {
                                             ...msg,
-                                            content: `⏳ ${data.content}`,
+                                            content: `${data.content}`,
                                             isThinking: true,
                                         }
                                         : msg));
@@ -570,7 +621,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 }
             }
             catch (streamError) {
-                console.log('⚠️ Streaming failed:', streamError);
+                console.log('Streaming failed:', streamError);
                 setIsStreaming(false);
                 setRobotResponding(false);
             }
@@ -578,7 +629,6 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             setMessages(prev => prev.map(msg => msg.id === assistantMsgId
                 ? { ...msg, isThinking: false }
                 : msg));
-            const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'User') : 'User';
             const response = await fetch('/ai/api/chat', {
                 method: 'POST',
                 headers: {
@@ -588,6 +638,9 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     question: trimmed,
                     history: history,
                     role: currentRole,
+                    userId: currentUserId,
+                    userEmail: currentUserEmail,
+                    userName: currentUserName,
                 }),
             });
             if (!response.ok) {
@@ -597,6 +650,10 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             const data = await response.json();
             if (data.error) {
                 throw new Error(data.error);
+            }
+            if (data.moderation?.isLockedOut || (data.moderation?.lockoutRemainingSeconds && data.moderation.lockoutRemainingSeconds > 0)) {
+                setIsLockedOut(true);
+                setLockoutSeconds(data.moderation.lockoutRemainingSeconds);
             }
             if (data.meta?.suggestions) {
                 setSuggestions(data.meta.suggestions);
@@ -634,7 +691,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             setMessages(prev => prev.map(msg => msg.id === assistantMsgId
                 ? {
                     ...msg,
-                    content: `❌ ${errorMessage}`,
+                    content: errorMessage,
                     timestamp: new Date(),
                     isThinking: false,
                 }
@@ -1411,7 +1468,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
 
                         {/* Prompt Buttons Container */}
                         <div className="flex flex-wrap gap-1.5">
-                            {SUGGESTED_QUESTIONS.map((q) => (<button key={q} onClick={() => handleSuggested(q)} disabled={isLoading} className="text-xs font-semibold bg-slate-100 hover:bg-[#ffe6f0] text-slate-700 hover:text-pink-700 border border-slate-200/90 hover:border-pink-300 shadow-[0_2px_6px_rgba(0,0,0,0.06),inset_0_1px_0_#ffffff] dark:bg-slate-800 dark:hover:bg-[#341427] dark:text-slate-200 dark:hover:text-pink-200 dark:border-slate-700 dark:hover:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] px-3.5 py-1.5 rounded-full transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 cursor-pointer">
+                            {SUGGESTED_QUESTIONS.map((q) => (<button key={q} onClick={() => handleSuggested(q)} disabled={isLoading || (isLockedOut && lockoutSeconds > 0)} className="text-xs font-semibold bg-slate-100 hover:bg-[#ffe6f0] text-slate-700 hover:text-pink-700 border border-slate-200/90 hover:border-pink-300 shadow-[0_2px_6px_rgba(0,0,0,0.06),inset_0_1px_0_#ffffff] dark:bg-slate-800 dark:hover:bg-[#341427] dark:text-slate-200 dark:hover:text-pink-200 dark:border-slate-700 dark:hover:border-[#67224c] dark:shadow-[0_3px_8px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.1)] px-3.5 py-1.5 rounded-full transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 cursor-pointer">
                                     {q}
                                 </button>))}
                         </div>
@@ -1420,6 +1477,24 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 {/* Input Area */}
                 <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-[#2a2a2e] backdrop-blur-xl shrink-0 shadow-lg transition-all">
                     
+                    {/* Moderation Lockout Banner */}
+                    {isLockedOut && lockoutSeconds > 0 && (
+                        <div className="mb-2.5 p-3 rounded-2xl bg-rose-50 dark:bg-[#2b1419] border border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-2.5 text-xs text-rose-700 dark:text-rose-300 animate-in fade-in duration-200 shadow-2xs">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                                <span className="font-medium truncate">
+                                    AI Chatbot queries locked for policy violations
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 font-bold bg-rose-100 dark:bg-rose-950/80 px-2.5 py-1 rounded-full text-rose-800 dark:text-rose-200 text-[11px] border border-rose-200/80 dark:border-rose-800">
+                                <Clock className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                                <span>
+                                    {Math.floor(lockoutSeconds / 60)}m {String(lockoutSeconds % 60).padStart(2, '0')}s
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Attachment Preview Chip */}
                     {attachedFile && (<div className="mb-2 p-2 px-3 rounded-2xl bg-pink-50/90 dark:bg-[#341427]/90 border border-pink-200 dark:border-[#67224c] flex items-center justify-between gap-2 text-xs animate-in fade-in zoom-in-95 duration-150">
                             <div className="flex items-center gap-2 min-w-0">
@@ -1444,14 +1519,14 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         {/* Hidden file input */}
                         <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv" onChange={handleFileSelect} className="hidden"/>
 
-                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="p-2.5 rounded-xl bg-slate-100 hover:bg-pink-50 text-slate-500 hover:text-pink-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:hover:text-pink-400 transition-colors border border-slate-200/80 dark:border-slate-700/60 shrink-0 cursor-pointer disabled:opacity-50" title="Attach picture or document to analyze" aria-label="Attach picture or document">
+                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || (isLockedOut && lockoutSeconds > 0)} className="p-2.5 rounded-xl bg-slate-100 hover:bg-pink-50 text-slate-500 hover:text-pink-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:hover:text-pink-400 transition-colors border border-slate-200/80 dark:border-slate-700/60 shrink-0 cursor-pointer disabled:opacity-50" title="Attach picture or document to analyze" aria-label="Attach picture or document">
                             <i className="fas fa-paperclip text-sm"/>
                         </button>
 
                         <div className="relative flex-1 flex items-center">
-                            <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={attachedFile ? "Ask something about this file (or press enter)..." : "Ask about inventory, stock, or attach docs..."} className="w-full bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/90 dark:border-[#353746] rounded-2xl pl-4 pr-12 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)] focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-pink-500 dark:focus:border-pink-500/80 focus:ring-2 focus:ring-pink-500/20 transition-all duration-150 backdrop-blur-sm" disabled={isLoading}/>
+                            <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={isLockedOut && lockoutSeconds > 0 ? "Queries temporarily locked (cooling down...)" : attachedFile ? "Ask something about this file (or press enter)..." : "Ask about inventory, stock, or attach docs..."} className="w-full bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/90 dark:border-[#353746] rounded-2xl pl-4 pr-12 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)] focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:border-pink-500 dark:focus:border-pink-500/80 focus:ring-2 focus:ring-pink-500/20 transition-all duration-150 backdrop-blur-sm disabled:opacity-60 disabled:cursor-not-allowed" disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}/>
 
-                            <button onClick={() => handleSendMessage()} disabled={(!input.trim() && !attachedFile) || isLoading} aria-label="Send message" className="absolute right-2 w-8 h-8 rounded-full bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white disabled:opacity-40 disabled:hover:from-pink-600 disabled:hover:to-rose-500 disabled:cursor-not-allowed shadow-[0_2px_8px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] border border-pink-400/40 flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer">
+                            <button onClick={() => handleSendMessage()} disabled={(!input.trim() && !attachedFile) || isLoading || (isLockedOut && lockoutSeconds > 0)} aria-label="Send message" className="absolute right-2 w-8 h-8 rounded-full bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white disabled:opacity-40 disabled:hover:from-pink-600 disabled:hover:to-rose-500 disabled:cursor-not-allowed shadow-[0_2px_8px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] border border-pink-400/40 flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer">
                                 <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`}/>
                             </button>
                         </div>
@@ -1462,7 +1537,12 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             {isLoading ? (<>
                                     <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-ping"/>
                                     <span>Processing request...</span>
-                                </>) : (<span>Press <kbd className="px-1.5 py-0.5 rounded text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 font-mono">Enter</kbd> to send</span>)}
+                                </>) : isLockedOut && lockoutSeconds > 0 ? (
+                                <span className="text-rose-500 font-semibold flex items-center gap-1">
+                                    <ShieldAlert className="w-3 h-3" />
+                                    <span>Account cooling down ({lockoutSeconds}s)</span>
+                                </span>
+                            ) : (<span>Press <kbd className="px-1.5 py-0.5 rounded text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 font-mono">Enter</kbd> to send</span>)}
                         </span>
 
                         <span className="text-[10px] font-bold text-pink-500/90 dark:text-pink-400/90 uppercase tracking-wider flex items-center gap-1">

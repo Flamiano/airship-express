@@ -71,6 +71,7 @@ export default function UserActivityContentWrapper() {
         filterActivities,
 
         handleBlockDevice,
+        handleResetStrikes,
         handleUnblockDevice,
         handleDeleteDevice,
         handleApproveAppeal,
@@ -248,6 +249,7 @@ export default function UserActivityContentWrapper() {
                     onToggleSelectSession={handleToggleSelectSession}
                     onSelectAllSessions={handleSelectAllSessions}
                     onBlockDevice={handleBlockDevice}
+                    onResetStrikes={handleResetStrikes}
                     onBulkBlock={handleBulkBlock}
                     onBulkDelete={handleBulkDeleteSessions}
                     currentPage={sessionPage}

@@ -2,9 +2,13 @@ import { classifyIntent } from './classifier';
 import { searchKnowledge, getKnowledge, getKnowledgeSummaries } from './knowledge-registry';
 import { registerAllActions, executeAction, executeMatchingActions, getRegisteredActions } from './action-registry';
 import { GoogleGenAI } from '@google/genai';
+import { checkModeration, ModerationContext } from './moderation';
+
 const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
 const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || 'gemini-3.5-flash-lite';
+
 registerAllActions();
+
 export interface OrchestratorResult {
     success: boolean;
     response: string;
@@ -15,6 +19,14 @@ export interface OrchestratorResult {
     error?: string;
     thinking?: string;
     suggestions?: string[];
+    moderation?: {
+        isViolation: boolean;
+        violationType?: 'inappropriate' | 'gibberish';
+        strikeCount: number;
+        maxStrikes: number;
+        isLockedOut: boolean;
+        lockoutRemainingSeconds: number;
+    };
 }
 export interface QueryAnalysis {
     type: 'data' | 'process' | 'analysis' | 'comparison' | 'summary' | 'general';
@@ -325,11 +337,11 @@ function handleSystemQuestion(query: string): string | null {
 - Google Gemini AI
 
 **Key Features:**
-1. 📦 **Parcel Management** - Track, receive, sort, and dispatch parcels
-2. 📊 **Inventory Management** - Monitor stock levels, low stock alerts
-3. 🚚 **Courier Performance** - Track on-time delivery and metrics
-4. 📋 **Warehouse Operations** - Manage daily processes and procedures
-5. 🛒 **Procurement** - Supplier management and purchase orders
+1. **Parcel Management** - Track, receive, sort, and dispatch parcels
+2. **Inventory Management** - Monitor stock levels, low stock alerts
+3. **Courier Performance** - Track on-time delivery and metrics
+4. **Warehouse Operations** - Manage daily processes and procedures
+5. **Procurement** - Supplier management and purchase orders
 
 **Available Tools:**
 ${actions.map(a => `- ${a}`).join('\n')}
@@ -430,10 +442,37 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
     };
 }
 /**
- * Main orchestrator
+ * Main orchestrator with Moderation, Strike Tracking & 5-minute lockout
  */
-export async function orchestrator(query: string, history: any[] = [], userRole: string = "User"): Promise<OrchestratorResult> {
+export async function orchestrator(
+    query: string, 
+    history: any[] = [], 
+    userRole: string = "User",
+    context: ModerationContext = {}
+): Promise<OrchestratorResult> {
     try {
+        // 1. Content Moderation & 5-minute Lockout Pre-check
+        const moderation = await checkModeration(query, context);
+        if (!moderation.isAllowed) {
+            return {
+                success: true,
+                response: moderation.message || "Your query has been restricted by content moderation policies.",
+                classification: { is_related: false, reason: 'Moderation policy triggered' },
+                resourcesUsed: [],
+                actionResults: null,
+                knowledgeUsed: [],
+                thinking: `Moderation triggered (Strike ${moderation.strikeCount}/${moderation.maxStrikes}, LockedOut: ${moderation.isLockedOut})`,
+                suggestions: ['Ask about parcel tracking', 'Ask about inventory stock', 'Ask about procurement procedures'],
+                moderation: {
+                    isViolation: true,
+                    violationType: moderation.violationType,
+                    strikeCount: moderation.strikeCount,
+                    maxStrikes: moderation.maxStrikes,
+                    isLockedOut: moderation.isLockedOut,
+                    lockoutRemainingSeconds: moderation.lockoutRemainingSeconds,
+                }
+            };
+        }
         const lowerQuery = query.toLowerCase().trim();
         const shortFollowUps = ['yes', 'no', 'ok', 'sure', 'maybe', 'tell me more', 'continue', 'go on', 'and?', 'next?', 'yeah', 'yep', 'nope'];
         const isFollowUp = history.length > 0 &&
