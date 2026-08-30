@@ -1,13 +1,9 @@
-'use client'
-
-import React from 'react'
+'use client';
 import { useAI } from '../../ai/services/AIContext';
-
 interface Question {
     question: string;
     color?: string;
 }
-
 interface AiQuestionsProps {
     questions?: Question[];
     title?: string;
@@ -16,7 +12,6 @@ interface AiQuestionsProps {
     gridCols?: string;
     onQuestionClick?: (question: string) => void;
 }
-
 const defaultQuestions: Question[] = [
     {
         question: "How many parcels today?",
@@ -35,44 +30,27 @@ const defaultQuestions: Question[] = [
         color: "bg-pink-200"
     }
 ];
-
-const AiQuestions = ({
-    questions = defaultQuestions,
-    title = "AI Suggested Questions",
-    subtitle = "Click to ask",
-    className = "",
-    gridCols = "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4",
-    onQuestionClick
-}: AiQuestionsProps) => {
+const AiQuestions = ({ questions = defaultQuestions, title = "AI Suggested Questions", subtitle = "Click to ask", className = "", gridCols = "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4", onQuestionClick }: AiQuestionsProps) => {
     const { openChat } = useAI();
-
-    const QuestionButton = ({ question, color = "bg-pink-500" }: Question) => (
-        <button
-            type="button"
-            className="group flex items-center gap-2.5 px-3.5 py-3 rounded-2xl 
+    const QuestionButton = ({ question, color = "bg-pink-500" }: Question) => (<button type="button" className="group flex items-center gap-2.5 px-3.5 py-3 rounded-2xl 
             bg-slate-50/90 hover:bg-[#ffe6f0] dark:bg-slate-900/70 dark:hover:bg-[#341427]
             border border-slate-200/90 dark:border-[#353746] 
             hover:border-pink-300 dark:hover:border-[#67224c] 
             shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.04)] 
             dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_1px_3px_rgba(0,0,0,0.3)]
             active:scale-[0.98] 
-            transition-all duration-200 text-left w-full cursor-pointer"
-            onClick={() => {
-                if (onQuestionClick) {
-                    onQuestionClick(question);
-                }
-                openChat(question);
-            }}
-        >
+            transition-all duration-200 text-left w-full cursor-pointer" onClick={() => {
+            if (onQuestionClick) {
+                onQuestionClick(question);
+            }
+            openChat(question);
+        }}>
             <span className={`w-2 h-2 rounded-full ${color} shrink-0 shadow-xs group-hover:scale-110 transition-transform`}></span>
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors line-clamp-2">
                 {question}
             </span>
-        </button>
-    )
-
-    return (
-        <div className={`p-4 sm:p-5 
+        </button>);
+    return (<div className={`p-4 sm:p-5 
                 bg-white dark:bg-slate-900
                 border border-slate-200/90 dark:border-slate-800 
                 rounded-3xl shadow-xs dark:shadow-xl 
@@ -89,12 +67,8 @@ const AiQuestions = ({
                 </span>
             </div>
             <div className={`grid ${gridCols} gap-2.5`}>
-                {questions.map((q, i) => (
-                    <QuestionButton key={i} {...q} />
-                ))}
+                {questions.map((q, i) => (<QuestionButton key={i} {...q}/>))}
             </div>
-        </div>
-    )
-}
-
-export default AiQuestions
+        </div>);
+};
+export default AiQuestions;

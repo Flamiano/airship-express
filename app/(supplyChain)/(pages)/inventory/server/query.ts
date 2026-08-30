@@ -1,11 +1,8 @@
 'use server';
-
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { isRateLimited } from '@/app/(supplyChain)/components/global/rateLimit';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
-
 export interface LatestPOInfo {
     poi_id?: string;
     purchase_order_id?: string;
@@ -22,7 +19,6 @@ export interface LatestPOInfo {
     request_number?: string;
     request_id?: string;
 }
-
 // types
 export interface InventoryItem {
     id: string;
@@ -45,7 +41,6 @@ export interface InventoryItem {
     force_updated_at?: string | null;
     force_reason?: string | null;
 }
-
 export interface Parcel {
     id: number;
     barcode: string;
@@ -62,7 +57,6 @@ export interface Parcel {
     created_at: string;
     updated_at: string;
 }
-
 export interface Supplier {
     id: number;
     name: string;
@@ -73,15 +67,13 @@ export interface Supplier {
     location: string;
     is_active: boolean;
 }
-
 /**
  * Attaches the latest PO / PO item or pending PR info to each inventory item
  */
 async function attachLatestPOToItems(items: any[]) {
-    if (!items || items.length === 0) return items;
-
+    if (!items || items.length === 0)
+        return items;
     const itemIds = items.map(item => item.id).filter(Boolean);
-
     try {
         // 1. Fetch latest POIs for these items
         const { data: poiData } = await supabase
@@ -108,10 +100,8 @@ async function attachLatestPOToItems(items: any[]) {
             `)
             .in('inventory_item_id', itemIds)
             .order('created_at', { ascending: false });
-
         // Map PO by item id (first occurrence is latest due to ordering)
         const latestPoMap = new Map<string, LatestPOInfo>();
-
         if (poiData) {
             for (const poi of poiData) {
                 const key = String(poi.inventory_item_id);
@@ -134,30 +124,24 @@ async function attachLatestPOToItems(items: any[]) {
                 }
             }
         }
-
         // 2. For items with no PO yet, check pending purchase_requests
         const itemsWithoutPo = items.filter(item => !latestPoMap.has(String(item.id)));
-
         if (itemsWithoutPo.length > 0) {
             const { data: prData } = await supabase
                 .from('purchase_requests')
                 .select('id, request_number, status, supplier_name, items, created_at')
                 .in('status', ['Pending', 'Approved'])
                 .order('created_at', { ascending: false });
-
             if (prData && prData.length > 0) {
                 for (const item of itemsWithoutPo) {
                     const key = String(item.id);
-                    if (latestPoMap.has(key)) continue;
-
+                    if (latestPoMap.has(key))
+                        continue;
                     for (const pr of prData) {
                         const prItems = Array.isArray(pr.items) ? pr.items : [];
-                        const matchingItem = prItems.find((pi: any) =>
-                            String(pi.inventory_item_id) === String(item.id) ||
+                        const matchingItem = prItems.find((pi: any) => String(pi.inventory_item_id) === String(item.id) ||
                             (pi.name && pi.name.toLowerCase() === item.item_name?.toLowerCase()) ||
-                            (pi.item_name && pi.item_name.toLowerCase() === item.item_name?.toLowerCase())
-                        );
-
+                            (pi.item_name && pi.item_name.toLowerCase() === item.item_name?.toLowerCase()));
                         if (matchingItem) {
                             latestPoMap.set(key, {
                                 is_request: true,
@@ -175,52 +159,48 @@ async function attachLatestPOToItems(items: any[]) {
                 }
             }
         }
-
         return items.map(item => ({
             ...item,
             latest_po: latestPoMap.get(String(item.id)) || null,
         }));
-    } catch (err) {
+    }
+    catch (err) {
         console.warn('Error attaching latest PO to items:', err);
         return items;
     }
 }
-
 /**
  * Attaches the display name/email of the user who performed a force update
  */
 async function attachForceUpdateDetails(items: any[]) {
-    if (!items || items.length === 0) return items;
-
+    if (!items || items.length === 0)
+        return items;
     const userIds = items
         .map(i => i.force_updated_by)
         .filter((id): id is string => Boolean(id) && typeof id === 'string');
-
-    if (userIds.length === 0) return items;
-
+    if (userIds.length === 0)
+        return items;
     try {
         const { data: usersData } = await supabase
             .from('users')
             .select('id, display_name, email, role')
             .in('id', userIds);
-
         const userMap = new Map<string, string>();
         if (usersData) {
             for (const u of usersData) {
                 userMap.set(u.id, u.display_name || u.email || 'Admin');
             }
         }
-
         return items.map(item => ({
             ...item,
             force_updated_by_name: item.force_updated_by ? (userMap.get(item.force_updated_by) || 'Admin') : null,
         }));
-    } catch (err) {
+    }
+    catch (err) {
         console.warn('Error attaching force update details:', err);
         return items;
     }
 }
-
 // get inventory items with pagination and filters
 export async function fetchInventoryItems(params: {
     page?: number;
@@ -232,7 +212,6 @@ export async function fetchInventoryItems(params: {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
         if (isRateLimited(`${ip}:inventory_fetch`)) {
             return {
                 success: false,
@@ -240,44 +219,34 @@ export async function fetchInventoryItems(params: {
                 status: 429,
             };
         }
-
         const { page = 1, limit = 30, search = '', category = 'all', status = 'all' } = params;
         const from = (page - 1) * limit;
         const to = from + limit - 1;
-
         let query = supabase
             .from('inventory_items')
             .select('*', { count: 'exact' });
-
         if (search) {
             const sanitizedSearch = sanitizeSearch(search);
-            query = query.or(
-                `item_name.ilike.%${sanitizedSearch}%,` +
-                `item_code.ilike.%${sanitizedSearch}%`
-            );
+            query = query.or(`item_name.ilike.%${sanitizedSearch}%,` +
+                `item_code.ilike.%${sanitizedSearch}%`);
         }
-
         if (category !== 'all') {
             query = query.eq('category', category);
         }
-
         if (status !== 'all') {
             query = query.eq('status', status);
         }
-
         const { count: totalCount, error: countError } = await query;
-        if (countError) throw countError;
-
+        if (countError)
+            throw countError;
         const { data, error } = await query
             .order('item_name')
             .range(from, to);
-
-        if (error) throw error;
-
+        if (error)
+            throw error;
         // Enrich items with latest PO / POI and PR tracking
         const itemsWithPo = await attachLatestPOToItems(data || []);
         const enrichedItems = await attachForceUpdateDetails(itemsWithPo);
-
         return {
             success: true,
             data: {
@@ -289,7 +258,8 @@ export async function fetchInventoryItems(params: {
             },
             status: 200,
         };
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching inventory items:', error);
         return {
             success: false,
@@ -298,7 +268,6 @@ export async function fetchInventoryItems(params: {
         };
     }
 }
-
 // get parcels with pagination and filters
 export async function fetchParcels(params: {
     page?: number;
@@ -311,7 +280,6 @@ export async function fetchParcels(params: {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
         if (isRateLimited(`${ip}:parcels_fetch`)) {
             return {
                 success: false,
@@ -319,44 +287,35 @@ export async function fetchParcels(params: {
                 status: 429,
             };
         }
-
         const { page = 1, limit = 15, search = '', status = '', dateFrom = '', dateTo = '' } = params;
         const from = (page - 1) * limit;
         const to = from + limit - 1;
-
         let query = supabase
             .from('parcels')
             .select('*', { count: 'exact' });
-
         if (search) {
             const sanitizedSearch = sanitizeSearch(search);
-            query = query.or(
-                `barcode.ilike.%${sanitizedSearch}%,` +
+            query = query.or(`barcode.ilike.%${sanitizedSearch}%,` +
                 `tracking_number.ilike.%${sanitizedSearch}%,` +
-                `sender_name.ilike.%${sanitizedSearch}%`
-            );
+                `sender_name.ilike.%${sanitizedSearch}%`);
         }
-
         if (status) {
             query = query.eq('status', status);
         }
-
         if (dateFrom) {
             query = query.gte('created_at', dateFrom);
         }
         if (dateTo) {
             query = query.lte('created_at', dateTo + 'T23:59:59');
         }
-
         const { count: totalCount, error: countError } = await query;
-        if (countError) throw countError;
-
+        if (countError)
+            throw countError;
         const { data, error } = await query
             .order('created_at', { ascending: false })
             .range(from, to);
-
-        if (error) throw error;
-
+        if (error)
+            throw error;
         return {
             success: true,
             data: {
@@ -368,7 +327,8 @@ export async function fetchParcels(params: {
             },
             status: 200,
         };
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching parcels:', error);
         return {
             success: false,
@@ -377,13 +337,11 @@ export async function fetchParcels(params: {
         };
     }
 }
-
 // get all active suppliers
 export async function fetchSuppliers() {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
         if (isRateLimited(`${ip}:suppliers_fetch`)) {
             return {
                 success: false,
@@ -391,21 +349,20 @@ export async function fetchSuppliers() {
                 status: 429,
             };
         }
-
         const { data, error } = await supabase
             .from('suppliers')
             .select('*')
             .eq('is_active', true)
             .order('name');
-
-        if (error) throw error;
-
+        if (error)
+            throw error;
         return {
             success: true,
             data: data || [],
             status: 200,
         };
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching suppliers:', error);
         return {
             success: false,
@@ -414,13 +371,11 @@ export async function fetchSuppliers() {
         };
     }
 }
-
 // get dashboard statistics
 export async function fetchDashboardStats() {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
         if (isRateLimited(`${ip}:dashboard_stats`)) {
             return {
                 success: false,
@@ -428,47 +383,40 @@ export async function fetchDashboardStats() {
                 status: 429,
             };
         }
-
         const { count: totalItems, error: totalError } = await supabase
             .from('inventory_items')
             .select('*', { count: 'exact', head: true });
-
-        if (totalError) throw totalError;
-
+        if (totalError)
+            throw totalError;
         const { count: lowStock, error: lowError } = await supabase
             .from('inventory_items')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'low-stock');
-
-        if (lowError) throw lowError;
-
+        if (lowError)
+            throw lowError;
         const { count: outOfStock, error: outError } = await supabase
             .from('inventory_items')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'out-of-stock');
-
-        if (outError) throw outError;
-
+        if (outError)
+            throw outError;
         const { data: categoryData, error: categoryError } = await supabase
             .from('inventory_items')
             .select('category', { count: 'exact' });
-
-        if (categoryError) throw categoryError;
-
+        if (categoryError)
+            throw categoryError;
         const categoryCounts: Record<string, number> = {};
         categoryData?.forEach(item => {
             categoryCounts[item.category] = (categoryCounts[item.category] || 0) + 1;
         });
-
         const { data: lowStockItems, error: lowItemsError } = await supabase
             .from('inventory_items')
             .select('id, item_name, current_stock, minimum_stock, unit, status')
             .in('status', ['low-stock', 'out-of-stock'])
             .order('current_stock', { ascending: true })
             .limit(6);
-
-        if (lowItemsError) throw lowItemsError;
-
+        if (lowItemsError)
+            throw lowItemsError;
         return {
             success: true,
             data: {
@@ -480,7 +428,8 @@ export async function fetchDashboardStats() {
             },
             status: 200,
         };
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching dashboard stats:', error);
         return {
             success: false,
@@ -489,7 +438,6 @@ export async function fetchDashboardStats() {
         };
     }
 }
-
 // fetch all the data needed for the inventory page in one go, running everything simultaneously so it's faster
 export async function fetchInventoryPageData(params: {
     inventoryPage?: number;
@@ -507,7 +455,6 @@ export async function fetchInventoryPageData(params: {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
         if (isRateLimited(`${ip}:inventory_page`)) {
             return {
                 success: false,
@@ -515,14 +462,8 @@ export async function fetchInventoryPageData(params: {
                 status: 429,
             };
         }
-
         // run all queries at the same time so it don't wait for each one to finish before starting the next
-        const [
-            inventoryResult,
-            parcelsResult,
-            suppliersResult,
-            statsResult,
-        ] = await Promise.all([
+        const [inventoryResult, parcelsResult, suppliersResult, statsResult,] = await Promise.all([
             fetchInventoryItems({
                 page: params.inventoryPage || 1,
                 limit: params.inventoryLimit || 15,
@@ -541,7 +482,6 @@ export async function fetchInventoryPageData(params: {
             fetchSuppliers(),
             fetchDashboardStats(),
         ]);
-
         return {
             success: true,
             data: {
@@ -552,7 +492,8 @@ export async function fetchInventoryPageData(params: {
             },
             status: 200,
         };
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching inventory page data:', error);
         return {
             success: false,

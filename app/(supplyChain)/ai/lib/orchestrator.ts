@@ -1,26 +1,10 @@
-
 import { classifyIntent } from './classifier';
-import {
-    loadAllKnowledge,
-    searchKnowledge,
-    getKnowledge,
-    getAllKnowledge,
-    getKnowledgeSummaries
-} from './knowledge-registry';
-import {
-    registerAllActions,
-    executeAction,
-    executeMatchingActions,
-    getRegisteredActions,
-    detectActions
-} from './action-registry';
+import { searchKnowledge, getKnowledge, getKnowledgeSummaries } from './knowledge-registry';
+import { registerAllActions, executeAction, executeMatchingActions, getRegisteredActions } from './action-registry';
 import { GoogleGenAI } from '@google/genai';
-
 const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
 const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || 'gemini-3.5-flash-lite';
-
 registerAllActions();
-
 export interface OrchestratorResult {
     success: boolean;
     response: string;
@@ -32,7 +16,6 @@ export interface OrchestratorResult {
     thinking?: string;
     suggestions?: string[];
 }
-
 export interface QueryAnalysis {
     type: 'data' | 'process' | 'analysis' | 'comparison' | 'summary' | 'general';
     complexity: 'simple' | 'moderate' | 'complex';
@@ -40,34 +23,35 @@ export interface QueryAnalysis {
     needsCalculation: boolean;
     needsComparison: boolean;
 }
-
 /**
  * Analyze the query to determine approach
  */
 function analyzeQuery(query: string): QueryAnalysis {
     const lower = query.toLowerCase();
-
     let type: QueryAnalysis['type'] = 'general';
     if (lower.includes('how many') || lower.includes('count') || lower.includes('list') || lower.includes('show')) {
         type = 'data';
-    } else if (lower.includes('how') || lower.includes('why') || lower.includes('explain') || lower.includes('describe')) {
+    }
+    else if (lower.includes('how') || lower.includes('why') || lower.includes('explain') || lower.includes('describe')) {
         type = 'process';
-    } else if (lower.includes('compare') || lower.includes('versus') || lower.includes('vs')) {
+    }
+    else if (lower.includes('compare') || lower.includes('versus') || lower.includes('vs')) {
         type = 'comparison';
-    } else if (lower.includes('analyze') || lower.includes('insight') || lower.includes('trend')) {
+    }
+    else if (lower.includes('analyze') || lower.includes('insight') || lower.includes('trend')) {
         type = 'analysis';
-    } else if (lower.includes('summary') || lower.includes('overview') || lower.includes('recap')) {
+    }
+    else if (lower.includes('summary') || lower.includes('overview') || lower.includes('recap')) {
         type = 'summary';
     }
-
     let complexity: QueryAnalysis['complexity'] = 'simple';
     const complexityWords = ['analyze', 'compare', 'trend', 'pattern', 'relationship', 'optimize', 'improve', 'suggest', 'recommend'];
     if (complexityWords.some(word => lower.includes(word))) {
         complexity = 'complex';
-    } else if (lower.split(' ').length > 10) {
+    }
+    else if (lower.split(' ').length > 10) {
         complexity = 'moderate';
     }
-
     return {
         type,
         complexity,
@@ -76,19 +60,10 @@ function analyzeQuery(query: string): QueryAnalysis {
         needsComparison: lower.includes('compare') || lower.includes('versus') || lower.includes('vs'),
     };
 }
-
 /**
  * Build a flexible prompt based on query analysis and user role access
  */
-function buildFlexiblePrompt(
-    query: string,
-    analysis: QueryAnalysis,
-    knowledgeContext: string,
-    actionResults: any,
-    historyContext: string,
-    resourcesUsed: any[],
-    userRole: string = "User"
-): string {
+function buildFlexiblePrompt(query: string, analysis: QueryAnalysis, knowledgeContext: string, actionResults: any, historyContext: string, resourcesUsed: any[], userRole: string = "User"): string {
     let systemPrompt = `You are an AI assistant for the Airship Express Supply Chain Management system.
 
 **Role-Based Access Control Rules:**
@@ -118,14 +93,12 @@ Each functional module and page has strict access permissions:
 - Needs Calculation: ${analysis.needsCalculation ? 'Yes' : 'No'}
 
 `;
-
     if (knowledgeContext) {
         systemPrompt += `**Knowledge Base:**
 ${knowledgeContext}
 
 `;
     }
-
     if (actionResults && Object.keys(actionResults).length > 0) {
         systemPrompt += `**Live Data from Database:**
 ${JSON.stringify(actionResults, null, 2)}
@@ -137,7 +110,6 @@ ${JSON.stringify(actionResults, null, 2)}
 
 `;
     }
-
     if (historyContext) {
         systemPrompt += `**Previous Conversation:**
 ${historyContext}
@@ -147,7 +119,6 @@ ${historyContext}
 
 `;
     }
-
     switch (analysis.type) {
         case 'data':
             systemPrompt += `**Instructions for Data Query:**
@@ -159,7 +130,6 @@ ${historyContext}
 
 `;
             break;
-
         case 'process':
             systemPrompt += `**Instructions for Process Query:**
 1. Explain the process step by step
@@ -170,7 +140,6 @@ ${historyContext}
 
 `;
             break;
-
         case 'analysis':
             systemPrompt += `**Instructions for Analysis Query:**
 1. Analyze the data deeply
@@ -182,7 +151,6 @@ ${historyContext}
 
 `;
             break;
-
         case 'comparison':
             systemPrompt += `**Instructions for Comparison Query:**
 1. Compare items clearly (side-by-side if possible)
@@ -193,7 +161,6 @@ ${historyContext}
 
 `;
             break;
-
         case 'summary':
             systemPrompt += `**Instructions for Summary Query:**
 1. Provide a clear, concise overview
@@ -204,7 +171,6 @@ ${historyContext}
 
 `;
             break;
-
         default:
             systemPrompt += `**Instructions for General Query:**
 1. Be helpful and thorough
@@ -215,7 +181,6 @@ ${historyContext}
 
 `;
     }
-
     if (analysis.complexity === 'complex') {
         systemPrompt += `**Complex Query Handling:**
 1. Take a moment to think through the problem
@@ -225,7 +190,8 @@ ${historyContext}
 5. If data is insufficient, suggest what would help
 
 `;
-    } else if (analysis.complexity === 'moderate') {
+    }
+    else if (analysis.complexity === 'moderate') {
         systemPrompt += `**Moderate Query Handling:**
 1. Provide a balanced response
 2. Include both overview and details
@@ -234,7 +200,6 @@ ${historyContext}
 
 `;
     }
-
     systemPrompt += `**Final Instructions:**
 1. Use plain text (no Markdown: no *, #, **, etc.)
 2. Be professional but conversational
@@ -246,17 +211,14 @@ ${historyContext}
 **User Question:** ${query}
 
 **Answer:`;
-
     return systemPrompt;
 }
-
 /**
  * Generate follow-up suggestions
  */
 function generateSuggestions(query: string, analysis: QueryAnalysis, hasData: boolean): string[] {
     const suggestions: string[] = [];
     const lower = query.toLowerCase();
-
     switch (analysis.type) {
         case 'data':
             if (lower.includes('parcel') || lower.includes('shipment')) {
@@ -270,42 +232,34 @@ function generateSuggestions(query: string, analysis: QueryAnalysis, hasData: bo
                 suggestions.push('Which items move fastest?');
             }
             break;
-
         case 'process':
             suggestions.push('Show me a step-by-step guide');
             suggestions.push('What are the best practices?');
             suggestions.push('How can I improve this process?');
             break;
-
         case 'analysis':
             suggestions.push('What are the key trends?');
             suggestions.push('Can you provide more detailed data?');
             suggestions.push('How does this compare to benchmarks?');
             break;
-
         case 'summary':
             suggestions.push('Can you provide more details on specific areas?');
             suggestions.push('What are the most important takeaways?');
             suggestions.push('Show me the data behind this summary');
             break;
     }
-
     if (hasData) {
         suggestions.push('Show me the raw data');
         suggestions.push('Export this data');
     }
-
     suggestions.push('Tell me more');
-
     return suggestions.slice(0, 4);
 }
-
 /**
  * Handle system-related questions
  */
 function handleSystemQuestion(query: string): string | null {
     const lower = query.toLowerCase().trim();
-
     const mathPatterns = [
         /[0-9]\s*[\+\-\*\/]\s*[0-9]/,
         /[0-9]\s*plus\s*[0-9]/,
@@ -314,7 +268,6 @@ function handleSystemQuestion(query: string): string | null {
     if (mathPatterns.some(pattern => pattern.test(lower))) {
         return null;
     }
-
     const systemPatterns = [
         'what is this system',
         'what system is this',
@@ -343,7 +296,6 @@ function handleSystemQuestion(query: string): string | null {
         'how can you help',
         'what can you help with',
     ];
-
     const dataPatterns = [
         'parcel', 'parcels', 'shipment', 'shipments', 'delivery',
         'stock', 'inventory', 'courier', 'performance',
@@ -353,20 +305,16 @@ function handleSystemQuestion(query: string): string | null {
         'find', 'search', 'lookup', 'display',
         'today', 'yesterday', 'this week', 'this month'
     ];
-
     const isDataQuery = dataPatterns.some(pattern => lower.includes(pattern));
     if (isDataQuery) {
         return null;
     }
-
     const isSystemQuestion = systemPatterns.some(pattern => lower.includes(pattern));
     if (!isSystemQuestion) {
         return null;
     }
-
     const knowledgeSummaries = getKnowledgeSummaries();
     const actions = getRegisteredActions();
-
     return `This is a **Warehouse Management System** built with:
 
 **Technology Stack:**
@@ -397,7 +345,6 @@ ${knowledgeSummaries || 'No knowledge files loaded'}
 
 **How can I help you today?**`;
 }
-
 /**
  * Build the system prompt (EXPORTED for streaming)
  */
@@ -415,11 +362,8 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             suggestions: ['What features interest you most?', 'How can I help you today?'],
         };
     }
-
     const analysis = analyzeQuery(query);
-
     const classification = await classifyIntent(query);
-
     if (!classification.is_related) {
         return {
             classification,
@@ -437,9 +381,7 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             resourcesUsed: [],
         };
     }
-
     const actionResults = await executeMatchingActions(query);
-
     // Also execute any specific tools directly identified by classification
     const toolResources = classification.resources?.filter(r => r.type === 'tool') || [];
     for (const tool of toolResources) {
@@ -447,31 +389,27 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             try {
                 const res = await executeAction(tool.name, query);
                 actionResults[tool.name] = res;
-            } catch (e: any) {
+            }
+            catch (e: any) {
                 console.error(`Error executing tool ${tool.name}:`, e);
             }
         }
     }
-
     let knowledgeResults: any[] = [];
     const knowledgeResources = classification.resources?.filter(r => r.type === 'knowledge') || [];
-
     for (const knowledge of knowledgeResources) {
         const content = getKnowledge(knowledge.name.replace('.md', ''));
         if (content) {
             knowledgeResults.push(content);
         }
     }
-
     if (knowledgeResults.length === 0) {
         const searchResults = searchKnowledge(query);
         if (searchResults.length > 0) {
             knowledgeResults = searchResults.slice(0, 5);
         }
     }
-
     const knowledgeContext = knowledgeResults.map(k => k.content).join('\n\n---\n\n');
-
     let historyContext = '';
     if (history && history.length > 0) {
         const recentHistory = history.slice(-5);
@@ -479,17 +417,7 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             .map((msg: any) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
             .join('\n');
     }
-
-    const systemPrompt = buildFlexiblePrompt(
-        query,
-        analysis,
-        knowledgeContext,
-        actionResults,
-        historyContext,
-        classification.resources || [],
-        userRole
-    );
-
+    const systemPrompt = buildFlexiblePrompt(query, analysis, knowledgeContext, actionResults, historyContext, classification.resources || [], userRole);
     return {
         classification,
         prompt: systemPrompt,
@@ -501,22 +429,17 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
         suggestions: generateSuggestions(query, analysis, Object.keys(actionResults).length > 0),
     };
 }
-
 /**
  * Main orchestrator
  */
 export async function orchestrator(query: string, history: any[] = [], userRole: string = "User"): Promise<OrchestratorResult> {
-
     try {
         const lowerQuery = query.toLowerCase().trim();
         const shortFollowUps = ['yes', 'no', 'ok', 'sure', 'maybe', 'tell me more', 'continue', 'go on', 'and?', 'next?', 'yeah', 'yep', 'nope'];
         const isFollowUp = history.length > 0 &&
             (shortFollowUps.includes(lowerQuery) ||
                 lowerQuery.length < 10 && !lowerQuery.includes('parcel') && !lowerQuery.includes('inventory'));
-
         if (isFollowUp) {
-
-
             const lastMessages = history.slice(-5);
             const context = lastMessages
                 .map((msg: any) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
@@ -539,14 +462,11 @@ Instructions:
 6. Do NOT mention roles or permission level names in the answer
 
 Response:`;
-
             const response = await genAI.interactions.create({
                 model: MODEL_NAME,
                 input: contextualPrompt,
             });
-
             const answer = response.output_text || '';
-
             return {
                 success: true,
                 response: answer,
@@ -558,10 +478,7 @@ Response:`;
                 suggestions: ['Tell me more', 'What else?', 'Explain that further'],
             };
         }
-
-
         const result = await buildSystemPrompt(query, history, userRole);
-
         if (!result.isRelated) {
             return {
                 success: true,
@@ -574,7 +491,6 @@ Response:`;
                 suggestions: ['Try asking about parcels', 'Try asking about inventory'],
             };
         }
-
         if (result.response && !result.prompt) {
             return {
                 success: true,
@@ -587,7 +503,6 @@ Response:`;
                 suggestions: result.suggestions || ['What features interest you most?', 'How can I help you today?'],
             };
         }
-
         if (!result.prompt) {
             return {
                 success: false,
@@ -600,16 +515,12 @@ Response:`;
                 suggestions: ['Try rephrasing your question'],
             };
         }
-
-
         const genAI = new GoogleGenAI({ apiKey });
         const response = await genAI.interactions.create({
             model: MODEL_NAME,
             input: result.prompt,
         });
-
         const answer = response.output_text || '';
-
         return {
             success: true,
             response: answer,
@@ -620,8 +531,8 @@ Response:`;
             thinking: `Query type: ${result.analysis?.type || 'general'}, Complexity: ${result.analysis?.complexity || 'simple'}`,
             suggestions: result.suggestions || ['Tell me more', 'What else would you like to know?'],
         };
-
-    } catch (error) {
+    }
+    catch (error) {
         return {
             success: false,
             response: 'Sorry, I encountered an error processing your request. Please try again.',

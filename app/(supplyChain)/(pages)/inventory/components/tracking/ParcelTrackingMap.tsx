@@ -1,13 +1,10 @@
 // app/(supplyChain)/(pages)/inventory/components/tracking/ParcelTrackingMap.tsx
-
 'use client';
-
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, ZoomControl, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { GeoCoordinate } from '../../utils/geo-locations';
-
 export interface ParcelTrackingMapProps {
     trackingNumber: string;
     barcode?: string;
@@ -16,12 +13,20 @@ export interface ParcelTrackingMapProps {
     origin: GeoCoordinate;
     destination: GeoCoordinate;
     currentLocation: GeoCoordinate;
-    currentCoord: [number, number];
+    currentCoord: [
+        number,
+        number
+    ];
     expectedDelivery: string;
-    completedRoute: [number, number][];
-    remainingRoute: [number, number][];
+    completedRoute: [
+        number,
+        number
+    ][];
+    remainingRoute: [
+        number,
+        number
+    ][];
 }
-
 /**
  * Custom Origin Marker DivIcon (HQ - Binondo, Manila)
  */
@@ -41,7 +46,6 @@ function createOriginIcon() {
         popupAnchor: [0, -36],
     });
 }
-
 /**
  * Custom Destination Marker DivIcon
  */
@@ -61,7 +65,6 @@ function createDestinationIcon() {
         popupAnchor: [0, -36],
     });
 }
-
 /**
  * Custom Parcel Box Marker DivIcon (Animated current location)
  */
@@ -85,31 +88,35 @@ function createParcelIcon() {
         popupAnchor: [0, -20],
     });
 }
-
 /**
  * Auto-fits map view bounds to include origin, parcel, and destination
  */
-function MapBoundsManager({
-    originCoord,
-    destCoord,
-    currentCoord,
-    route,
-}: {
-    originCoord: [number, number];
-    destCoord: [number, number];
-    currentCoord: [number, number];
-    route: [number, number][];
+function MapBoundsManager({ originCoord, destCoord, currentCoord, route, }: {
+    originCoord: [
+        number,
+        number
+    ];
+    destCoord: [
+        number,
+        number
+    ];
+    currentCoord: [
+        number,
+        number
+    ];
+    route: [
+        number,
+        number
+    ][];
 }) {
     const map = useMap();
-
     useEffect(() => {
-        if (!map) return;
-
+        if (!map)
+            return;
         const bounds = L.latLngBounds([originCoord, destCoord, currentCoord]);
         if (route && route.length > 0) {
             route.forEach((pt) => bounds.extend(pt));
         }
-
         if (bounds.isValid()) {
             map.fitBounds(bounds, {
                 padding: [45, 45],
@@ -119,36 +126,24 @@ function MapBoundsManager({
             });
         }
     }, [map, originCoord, destCoord, currentCoord, route]);
-
     return null;
 }
-
-export default function ParcelTrackingMap({
-    trackingNumber,
-    barcode,
-    status,
-    courier = 'Airship Express',
-    origin,
-    destination,
-    currentLocation,
-    currentCoord,
-    expectedDelivery,
-    completedRoute,
-    remainingRoute,
-}: ParcelTrackingMapProps) {
+export default function ParcelTrackingMap({ trackingNumber, barcode, status, courier = 'Airship Express', origin, destination, currentLocation, currentCoord, expectedDelivery, completedRoute, remainingRoute, }: ParcelTrackingMapProps) {
     const originIcon = useMemo(() => createOriginIcon(), []);
     const destIcon = useMemo(() => createDestinationIcon(), []);
     const parcelIcon = useMemo(() => createParcelIcon(), []);
-
-    const originLatLng: [number, number] = [origin.latitude, origin.longitude];
-    const destLatLng: [number, number] = [destination.latitude, destination.longitude];
-
+    const originLatLng: [
+        number,
+        number
+    ] = [origin.latitude, origin.longitude];
+    const destLatLng: [
+        number,
+        number
+    ] = [destination.latitude, destination.longitude];
     const allRoutePoints = useMemo(() => {
         return [...completedRoute, ...remainingRoute];
     }, [completedRoute, remainingRoute]);
-
     const parcelMarkerRef = useRef<L.Marker>(null);
-
     // auto open popup
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -158,60 +153,34 @@ export default function ParcelTrackingMap({
         }, 500);
         return () => clearTimeout(timer);
     }, [trackingNumber]);
-
-    return (
-        <div className="w-full h-full min-h-[300px] relative rounded-xl overflow-hidden shadow-inner border border-slate-200/80 dark:border-slate-800">
-            <MapContainer
-                center={currentCoord}
-                zoom={12}
-                scrollWheelZoom={true}
-                zoomControl={false}
-                className="w-full h-full min-h-[300px] z-0"
-            >
+    return (<div className="w-full h-full min-h-[300px] relative rounded-xl overflow-hidden shadow-inner border border-slate-200/80 dark:border-slate-800">
+            <MapContainer center={currentCoord} zoom={12} scrollWheelZoom={true} zoomControl={false} className="w-full h-full min-h-[300px] z-0">
                 {/* tile layer */}
-                <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                />
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'/>
 
-                <ZoomControl position="bottomright" />
+                <ZoomControl position="bottomright"/>
 
                 {/* bounds manager */}
-                <MapBoundsManager
-                    originCoord={originLatLng}
-                    destCoord={destLatLng}
-                    currentCoord={currentCoord}
-                    route={allRoutePoints}
-                />
+                <MapBoundsManager originCoord={originLatLng} destCoord={destLatLng} currentCoord={currentCoord} route={allRoutePoints}/>
 
                 {/* completed route */}
-                {completedRoute.length > 1 && (
-                    <Polyline
-                        positions={completedRoute}
-                        pathOptions={{
-                            color: '#EC4899',
-                            weight: 5,
-                            opacity: 0.95,
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                        }}
-                    />
-                )}
+                {completedRoute.length > 1 && (<Polyline positions={completedRoute} pathOptions={{
+                color: '#EC4899',
+                weight: 5,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round',
+            }}/>)}
 
                 {/* remaining route */}
-                {remainingRoute.length > 1 && (
-                    <Polyline
-                        positions={remainingRoute}
-                        pathOptions={{
-                            color: '#64748B',
-                            weight: 3.5,
-                            dashArray: '6, 8',
-                            opacity: 0.7,
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                        }}
-                    />
-                )}
+                {remainingRoute.length > 1 && (<Polyline positions={remainingRoute} pathOptions={{
+                color: '#64748B',
+                weight: 3.5,
+                dashArray: '6, 8',
+                opacity: 0.7,
+                lineCap: 'round',
+                lineJoin: 'round',
+            }}/>)}
 
                 {/* origin marker */}
                 <Marker position={originLatLng} icon={originIcon}>
@@ -289,6 +258,5 @@ export default function ParcelTrackingMap({
                     </Popup>
                 </Marker>
             </MapContainer>
-        </div>
-    );
+        </div>);
 }

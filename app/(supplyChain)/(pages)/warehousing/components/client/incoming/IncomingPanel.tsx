@@ -1,7 +1,6 @@
 "use client";
-
 import { useEffect, useState, useCallback, useRef } from "react";
-import { toast, Toaster } from "sonner";
+import { toast } from "sonner";
 import { fetchParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/incomingPanel";
 import IncomingHeader from "./IncomingHeader";
 import ScanPanel from "./ScanPanel";
@@ -9,7 +8,6 @@ import TableFilters from "./TableFilters";
 import { IncomingTable } from "./ParcelTable";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { TableSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-
 interface Parcel {
     id: number;
     barcode: string;
@@ -24,7 +22,6 @@ interface Parcel {
     scanned_at: string;
     status: 'pending' | 'verified' | 'rejected';
 }
-
 export default function IncomingPanel() {
     const [parcels, setParcels] = useState<Parcel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -42,22 +39,20 @@ export default function IncomingPanel() {
     const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const subscriptionRef = useRef<any>(null);
     const isInitialLoad = useRef(true);
-
     const fetchParcelsData = useCallback(async (showLoading = true) => {
         try {
             if (showLoading) {
                 setLoading(true);
-            } else {
+            }
+            else {
                 setIsRefreshing(true);
             }
-
             const result = await fetchParcels({
                 filter: filter || undefined,
                 search: search || undefined,
                 page,
                 limit,
             });
-
             if (!result.success) {
                 if (showLoading) {
                     toast.error(result.error || 'Failed to load parcels', {
@@ -66,12 +61,12 @@ export default function IncomingPanel() {
                 }
                 if (showLoading) {
                     setLoading(false);
-                } else {
+                }
+                else {
                     setIsRefreshing(false);
                 }
                 return;
             }
-
             if (isMounted.current) {
                 setParcels(result.data);
                 setTotalItems(result.pagination.total);
@@ -79,7 +74,8 @@ export default function IncomingPanel() {
                 setStats(result.stats);
                 setLastUpdate(new Date());
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Error fetching parcels:', error);
             if (showLoading) {
                 toast.error('Failed to load parcels', {
@@ -87,15 +83,16 @@ export default function IncomingPanel() {
                     duration: 5000,
                 });
             }
-        } finally {
+        }
+        finally {
             if (showLoading) {
                 setLoading(false);
-            } else {
+            }
+            else {
                 setIsRefreshing(false);
             }
         }
     }, [filter, search, page, limit]);
-
     const updateStatsOnly = useCallback(async () => {
         try {
             const result = await fetchParcels({
@@ -104,22 +101,21 @@ export default function IncomingPanel() {
                 page: 1,
                 limit: 1,
             });
-
             if (result.success && isMounted.current) {
                 setStats(result.stats);
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Error updating stats:', error);
         }
     }, [filter, search]);
-
     const handleRealtimeUpdate = useCallback(() => {
-        if (!isMounted.current) return;
+        if (!isMounted.current)
+            return;
         requestAnimationFrame(() => {
             fetchParcelsData(false);
         });
     }, [fetchParcelsData]);
-
     const handleScan = useCallback(() => {
         setStats(prev => ({
             ...prev,
@@ -129,7 +125,6 @@ export default function IncomingPanel() {
             handleRealtimeUpdate();
         }, 500);
     }, [handleRealtimeUpdate]);
-
     const handleAddManual = useCallback(() => {
         setStats(prev => ({
             ...prev,
@@ -139,7 +134,6 @@ export default function IncomingPanel() {
             handleRealtimeUpdate();
         }, 500);
     }, [handleRealtimeUpdate]);
-
     const handleDelete = useCallback((parcelId: number) => {
         setParcels(prev => prev.filter(p => p.id !== parcelId));
         setStats(prev => ({
@@ -151,7 +145,6 @@ export default function IncomingPanel() {
             handleRealtimeUpdate();
         }, 500);
     }, [handleRealtimeUpdate]);
-
     const handleBatchDelete = useCallback((deletedIds: number[]) => {
         setParcels(prev => prev.filter(p => !deletedIds.includes(p.id)));
         setStats(prev => ({
@@ -163,38 +156,30 @@ export default function IncomingPanel() {
             handleRealtimeUpdate();
         }, 500);
     }, [handleRealtimeUpdate]);
-
     useEffect(() => {
         console.log('Setting up real-time subscription...');
-
         const subscription = supabase
             .channel('incoming_panel_updates')
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'receiving_queue',
-                },
-                (payload) => {
-                    console.log('Real-time update received:', payload.eventType);
-                    if (refreshTimeoutRef.current) {
-                        clearTimeout(refreshTimeoutRef.current);
-                    }
-                    refreshTimeoutRef.current = setTimeout(() => {
-                        handleRealtimeUpdate();
-                    }, 300);
-                }
-            )
+            .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'receiving_queue',
+        }, (payload) => {
+            console.log('Real-time update received:', payload.eventType);
+            if (refreshTimeoutRef.current) {
+                clearTimeout(refreshTimeoutRef.current);
+            }
+            refreshTimeoutRef.current = setTimeout(() => {
+                handleRealtimeUpdate();
+            }, 300);
+        })
             .subscribe((status) => {
-                console.log('Subscription status:', status);
-                if (status === 'SUBSCRIBED') {
-                    console.log(' Real-time subscription active');
-                }
-            });
-
+            console.log('Subscription status:', status);
+            if (status === 'SUBSCRIBED') {
+                console.log(' Real-time subscription active');
+            }
+        });
         subscriptionRef.current = subscription;
-
         return () => {
             console.log('Cleaning up real-time subscription...');
             if (subscriptionRef.current) {
@@ -205,30 +190,25 @@ export default function IncomingPanel() {
             }
         };
     }, [handleRealtimeUpdate]);
-
     useEffect(() => {
         setMounted(true);
     }, []);
-
     // page change
     const handlePageChange = useCallback((newPage: number) => {
         if (newPage >= 1 && newPage <= totalPages) {
             setPage(newPage);
         }
     }, [totalPages]);
-
     // filter change
     const handleFilterChange = useCallback((courier: string) => {
         setFilter(courier);
         setPage(1);
     }, []);
-
     // search
     const handleSearch = useCallback((searchTerm: string) => {
         setSearch(searchTerm);
         setPage(1);
     }, []);
-
     // initial load
     useEffect(() => {
         isMounted.current = true;
@@ -240,56 +220,35 @@ export default function IncomingPanel() {
             }
         };
     }, [filter, search, page]);
-
     const formatTime = (date: Date | null) => {
-        if (!date) return '';
+        if (!date)
+            return '';
         return date.toLocaleTimeString();
     };
-
     const hasNoData = !loading && parcels.length === 0;
-
-    return (
-        <>
-            <div
-                data-panel="incoming"
-                className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 mx-auto min-h-screen bg-slate-50/50 card"
-            >
+    return (<>
+            <div data-panel="incoming" className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 mx-auto min-h-screen bg-slate-50/50 card">
                 <section className="space-y-5">
-                    <IncomingHeader onReceiveAll={() => fetchParcelsData(true)} />
-                    <ScanPanel
-                        scanned={stats.scanned}
-                        topCourier={stats.topCourier}
-                        onScan={handleScan}
-                    />
+                    <IncomingHeader onReceiveAll={() => fetchParcelsData(true)}/>
+                    <ScanPanel scanned={stats.scanned} topCourier={stats.topCourier} onScan={handleScan}/>
                 </section>
 
                 <section className="space-y-4 ">
-                    <TableFilters
-                        onFilterChange={handleFilterChange}
-                        onSearch={handleSearch}
-                        onAddManual={handleAddManual}
-                    />
+                    <TableFilters onFilterChange={handleFilterChange} onSearch={handleSearch} onAddManual={handleAddManual}/>
 
                     <div className="flex items-center justify-between">
-                        {isRefreshing && !loading && (
-                            <div className="flex items-center gap-2 px-1 text-xs font-medium text-slate-500 animate-pulse">
+                        {isRefreshing && !loading && (<div className="flex items-center gap-2 px-1 text-xs font-medium text-slate-500 animate-pulse">
                                 <i className="fas fa-arrows-rotate fa-spin text-pink-500 text-[11px]"></i>
                                 <span>Syncing...</span>
-                            </div>
-                        )}
+                            </div>)}
                         <div className="flex-1"></div>
-                        {mounted && lastUpdate && (
-                            <span className="text-[10px] text-slate-400">
+                        {mounted && lastUpdate && (<span className="text-[10px] text-slate-400">
                                 <i className="far fa-clock mr-1"></i>
                                 Updated: {formatTime(lastUpdate)}
-                            </span>
-                        )}
+                            </span>)}
                     </div>
 
-                    {loading ? (
-                        <TableSkeleton rows={8} />
-                    ) : hasNoData ? (
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center dark:bg-slate-900">
+                    {loading ? (<TableSkeleton rows={8}/>) : hasNoData ? (<div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center dark:bg-slate-900">
                             <i className="fas fa-box-open text-4xl text-slate-300 mb-4"></i>
                             <h3 className="text-lg font-semibold text-slate-700">No pending parcels</h3>
                             <p className="text-sm text-slate-500 mt-1">
@@ -297,29 +256,12 @@ export default function IncomingPanel() {
                                 <br />
                                 Scan a barcode or add manually to get started.
                             </p>
-                            <button
-                                onClick={() => fetchParcelsData(true)}
-                                className="mt-4 px-4 py-2 text-sm font-medium text-pink-600 hover:text-pink-700 transition-colors"
-                            >
+                            <button onClick={() => fetchParcelsData(true)} className="mt-4 px-4 py-2 text-sm font-medium text-pink-600 hover:text-pink-700 transition-colors">
                                 <i className="fas fa-sync-alt mr-2"></i>
                                 Refresh
                             </button>
-                        </div>
-                    ) : (
-                        <IncomingTable
-                            initialParcels={parcels}
-                            onDelete={handleDelete}
-                            onBatchDelete={handleBatchDelete}
-                            page={page}
-                            totalPages={totalPages}
-                            totalItems={totalItems}
-                            onPageChange={handlePageChange}
-                            onRefresh={() => fetchParcelsData(true)}
-                            isLoading={isRefreshing}
-                        />
-                    )}
+                        </div>) : (<IncomingTable initialParcels={parcels} onDelete={handleDelete} onBatchDelete={handleBatchDelete} page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={handlePageChange} onRefresh={() => fetchParcelsData(true)} isLoading={isRefreshing}/>)}
                 </section>
             </div>
-        </>
-    );
+        </>);
 }

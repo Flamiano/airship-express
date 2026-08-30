@@ -127,8 +127,8 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
         const rawBaseName = fileName.replace(/\.[^/.]+$/, "").trim();
         const nameTokens = rawBaseName
             .split(/[-_\s.,+]+/)
-            .map(t => t.trim())
-            .filter(t => t.length >= 2);
+            .map((t: string) => t.trim())
+            .filter((t: string) => t.length >= 2);
 
         const searchTerms = [
             fileName,

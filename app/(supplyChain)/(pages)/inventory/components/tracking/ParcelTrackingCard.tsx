@@ -1,37 +1,20 @@
 // app/(supplyChain)/(pages)/inventory/components/tracking/ParcelTrackingCard.tsx
-
 'use client';
-
-import React, { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import {
-    AIRSHIP_HQ,
-    resolveDestinationCoords,
-    getStatusProgress,
-    fetchOSRMRoute,
-    getLocalityFromProgress,
-    splitRouteByProgress,
-    GeoCoordinate,
-} from '../../utils/geo-locations';
-import { getStatusBadge, getStatusLabel, getStatusTone } from '../../utils/helpers';
+import { AIRSHIP_HQ, resolveDestinationCoords, getStatusProgress, fetchOSRMRoute, getLocalityFromProgress, splitRouteByProgress, GeoCoordinate } from '../../utils/geo-locations';
+import { getStatusLabel, getStatusTone } from '../../utils/helpers';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-
 // import map component without ssr
-const DynamicParcelTrackingMap = dynamic(
-    () => import('./ParcelTrackingMap'),
-    {
-        ssr: false,
-        loading: () => (
-            <div className="w-full h-[280px] bg-slate-100 dark:bg-slate-800/60 rounded-xl flex flex-col items-center justify-center gap-3 animate-pulse border border-slate-200/80 dark:border-slate-800">
+const DynamicParcelTrackingMap = dynamic(() => import('./ParcelTrackingMap'), {
+    ssr: false,
+    loading: () => (<div className="w-full h-[280px] bg-slate-100 dark:bg-slate-800/60 rounded-xl flex flex-col items-center justify-center gap-3 animate-pulse border border-slate-200/80 dark:border-slate-800">
                 <div className="w-10 h-10 rounded-full bg-pink-100 dark:bg-pink-950/40 text-pink-500 flex items-center justify-center">
                     <i className="fas fa-map-marked-alt text-lg animate-bounce"></i>
                 </div>
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading delivery route map...</span>
-            </div>
-        ),
-    }
-);
-
+            </div>),
+});
 export interface ParcelTrackingCardProps {
     parcel: {
         id: number;
@@ -47,24 +30,16 @@ export interface ParcelTrackingCardProps {
         updated_at: string;
     };
 }
-
 export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
-    const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+    const [routeCoordinates, setRouteCoordinates] = useState<[
+        number,
+        number
+    ][]>([]);
     const [isLoadingRoute, setIsLoadingRoute] = useState<boolean>(true);
-
     const origin: GeoCoordinate = AIRSHIP_HQ;
-    const destination: GeoCoordinate = useMemo(
-        () => resolveDestinationCoords(parcel.destination),
-        [parcel.destination]
-    );
-
-    const progressPercentage = useMemo(
-        () => getStatusProgress(parcel.status),
-        [parcel.status]
-    );
-
+    const destination: GeoCoordinate = useMemo(() => resolveDestinationCoords(parcel.destination), [parcel.destination]);
+    const progressPercentage = useMemo(() => getStatusProgress(parcel.status), [parcel.status]);
     const courierName = parcel.courier || 'Airship Express';
-
     // calculate expected delivery date
     const expectedDelivery = useMemo(() => {
         const base = new Date(parcel.created_at || Date.now());
@@ -75,49 +50,40 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
             year: 'numeric',
         });
     }, [parcel.created_at]);
-
     // fetch route geometry
     useEffect(() => {
         let isMounted = true;
         setIsLoadingRoute(true);
-
         fetchOSRMRoute(origin, destination)
             .then((coords) => {
-                if (isMounted) {
-                    setRouteCoordinates(coords);
-                    setIsLoadingRoute(false);
-                }
-            })
+            if (isMounted) {
+                setRouteCoordinates(coords);
+                setIsLoadingRoute(false);
+            }
+        })
             .catch(() => {
-                if (isMounted) {
-                    setIsLoadingRoute(false);
-                }
-            });
-
+            if (isMounted) {
+                setIsLoadingRoute(false);
+            }
+        });
         return () => {
             isMounted = false;
         };
     }, [origin, destination]);
-
     // split route lines
     const { completed, remaining, currentCoord } = useMemo(() => {
         return splitRouteByProgress(routeCoordinates, progressPercentage);
     }, [routeCoordinates, progressPercentage]);
-
     const currentLocationName = useMemo(() => {
         return getLocalityFromProgress(progressPercentage, origin.name, destination.name, parcel.status);
     }, [progressPercentage, origin.name, destination.name, parcel.status]);
-
     const currentLocation: GeoCoordinate = {
         name: currentLocationName,
         latitude: currentCoord[0],
         longitude: currentCoord[1],
     };
-
     const isDelivered = parcel.status === 'delivered';
-
-    return (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-5 space-y-4 transition-all">
+    return (<div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-5 space-y-4 transition-all">
             {/* header */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="space-y-0.5">
@@ -140,11 +106,7 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                     </span>
 
                     {/* status badge */}
-                    <StatusBadge
-                        tone={getStatusTone(parcel.status)}
-                        size="xs"
-                        dot
-                    >
+                    <StatusBadge tone={getStatusTone(parcel.status)} size="xs" dot>
                         {getStatusLabel(parcel.status)}
                     </StatusBadge>
                 </div>
@@ -152,25 +114,11 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
 
             {/* map container */}
             <div className="h-[280px] sm:h-[320px] w-full rounded-xl overflow-hidden relative">
-                {isLoadingRoute && (
-                    <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xs z-10 flex items-center justify-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                {isLoadingRoute && (<div className="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xs z-10 flex items-center justify-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
                         <i className="fas fa-circle-notch fa-spin text-pink-500"></i>
                         <span>Calculating road route...</span>
-                    </div>
-                )}
-                <DynamicParcelTrackingMap
-                    trackingNumber={parcel.tracking_number}
-                    barcode={parcel.barcode}
-                    status={parcel.status}
-                    courier={courierName}
-                    origin={origin}
-                    destination={destination}
-                    currentLocation={currentLocation}
-                    currentCoord={currentCoord}
-                    expectedDelivery={expectedDelivery}
-                    completedRoute={completed}
-                    remainingRoute={remaining}
-                />
+                    </div>)}
+                <DynamicParcelTrackingMap trackingNumber={parcel.tracking_number} barcode={parcel.barcode} status={parcel.status} courier={courierName} origin={origin} destination={destination} currentLocation={currentLocation} currentCoord={currentCoord} expectedDelivery={expectedDelivery} completedRoute={completed} remainingRoute={remaining}/>
             </div>
 
             {/* progress indicator */}
@@ -184,17 +132,9 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                     {/* mid visual */}
                     <div className="flex-1 mx-3 flex items-center justify-center relative">
                         <div className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-full relative overflow-hidden">
-                            <div
-                                className={`h-full transition-all duration-700 ease-out ${
-                                    isDelivered ? 'bg-emerald-500' : 'bg-pink-500'
-                                }`}
-                                style={{ width: `${progressPercentage}%` }}
-                            />
+                            <div className={`h-full transition-all duration-700 ease-out ${isDelivered ? 'bg-emerald-500' : 'bg-pink-500'}`} style={{ width: `${progressPercentage}%` }}/>
                         </div>
-                        <div
-                            className="absolute -top-2 transition-all duration-700 ease-out"
-                            style={{ left: `calc(${progressPercentage}% - 8px)` }}
-                        >
+                        <div className="absolute -top-2 transition-all duration-700 ease-out" style={{ left: `calc(${progressPercentage}% - 8px)` }}>
                             <span className="w-4 h-4 rounded-full bg-pink-600 text-white flex items-center justify-center text-[8px] shadow-sm ring-2 ring-white dark:ring-slate-900">
                                 <i className="fas fa-box"></i>
                             </span>
@@ -226,6 +166,5 @@ export function ParcelTrackingCard({ parcel }: ParcelTrackingCardProps) {
                     </div>
                 </div>
             </div>
-        </div>
-    );
+        </div>);
 }

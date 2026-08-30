@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { loadAllKnowledge, searchKnowledge } from "../../lib/knowledge";
-
+import { loadAllKnowledge } from "../../lib/knowledge";
 export async function GET() {
     try {
         const knowledge = loadAllKnowledge();
         const allFiles = Array.from(knowledge.values());
-
         return NextResponse.json({
             success: true,
             totalFiles: knowledge.size,
@@ -16,7 +14,8 @@ export async function GET() {
                 category: k.category
             }))
         });
-    } catch (error) {
+    }
+    catch (error) {
         return NextResponse.json({
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'

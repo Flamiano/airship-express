@@ -1,13 +1,10 @@
 'use client';
-
 import { toast } from "sonner";
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
 import { useInventory } from '@/app/(supplyChain)/(pages)/inventory/hooks/useInventory';
-import { useParcels } from '@/app/(supplyChain)/(pages)/inventory/hooks/useParcels';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-
 import { DashboardTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/DashboardTab';
 import { InventoryTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/InventoryTab';
 import { ParcelsTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/ParcelsTab';
@@ -16,15 +13,10 @@ import { EditItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/
 import { StockInModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockInModal';
 import { StockOutModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockOutModal';
 import { ScopedPORequestModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/ScopedPORequestModal';
-
 import { GroupedParcels, InventoryItem } from '@/app/(supplyChain)/(pages)/inventory/types';
-import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { sanitizeText } from "@/app/(supplyChain)/components/global/sanitize";
 import { fetchInventoryPageData, type Parcel } from '@/app/(supplyChain)/(pages)/inventory/server/query';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-
 const tabVariants: Variants = {
     enter: (direction: number) => ({
         x: direction > 0 ? 30 : -30,
@@ -50,70 +42,60 @@ const tabVariants: Variants = {
         }
     })
 };
-
 // SWR Cache Manager for Inventory data
 interface CacheEntry<T> {
     data: T;
     timestamp: number;
 }
-
 class InventoryCacheManager {
     private cache = new Map<string, CacheEntry<any>>();
     private readonly maxSize = 60;
     private readonly ttl = 5 * 60 * 1000; // 5 min TTL
     private readonly staleTime = 30 * 1000; // 30 sec before background revalidate
-
-    get<T>(key: string): { data: T | null; isStale: boolean } {
+    get<T>(key: string): {
+        data: T | null;
+        isStale: boolean;
+    } {
         const entry = this.cache.get(key);
-        if (!entry) return { data: null, isStale: true };
-
+        if (!entry)
+            return { data: null, isStale: true };
         const age = Date.now() - entry.timestamp;
         if (age > this.ttl) {
             this.cache.delete(key);
             return { data: null, isStale: true };
         }
-
         return { data: entry.data as T, isStale: age > this.staleTime };
     }
-
     set<T>(key: string, data: T): void {
         if (this.cache.size >= this.maxSize) {
             const oldest = this.cache.keys().next().value;
-            if (oldest) this.cache.delete(oldest);
+            if (oldest)
+                this.cache.delete(oldest);
         }
         this.cache.set(key, { data, timestamp: Date.now() });
     }
-
     invalidateAll(): void {
         this.cache.clear();
     }
 }
-
 export const inventoryCache = new InventoryCacheManager();
-
 export default function InventoryClient() {
     const router = useRouter();
     const searchParams = useSearchParams();
-
     const initialTab = searchParams.get('tab') || 'dashboard';
     const [activeTab, setActiveTab] = useState<string>(initialTab);
     const [direction, setDirection] = useState(0);
-
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
-
     const [parcelSearchTerm, setParcelSearchTerm] = useState('');
     const [parcelStatusFilter, setParcelStatusFilter] = useState('');
     const [parcelDateFrom, setParcelDateFrom] = useState('');
     const [parcelDateTo, setParcelDateTo] = useState('');
-
     const [inventoryPage, setInventoryPage] = useState(1);
     const [parcelPage, setParcelPage] = useState(1);
     const itemsPerPage = 30;
-
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showStockInModal, setShowStockInModal] = useState(false);
@@ -123,53 +105,35 @@ export default function InventoryClient() {
     const [selectedItemForStock, setSelectedItemForStock] = useState<string>('');
     const [selectedItemObjectForStock, setSelectedItemObjectForStock] = useState<InventoryItem | null>(null);
     const [selectedItemForPO, setSelectedItemForPO] = useState<InventoryItem | null>(null);
-
     const [loading, setLoading] = useState(true);
     const [loadingInventory, setLoadingInventory] = useState(false);
     const [loadingParcels, setLoadingParcels] = useState(false);
-
     const [dashboardItems, setDashboardItems] = useState<InventoryItem[]>([]);
     const [dashboardStats, setDashboardStats] = useState<any>(null);
-
     const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
     const [totalInventoryItems, setTotalInventoryItems] = useState(0);
     const [inventoryTotalPages, setInventoryTotalPages] = useState(1);
-
     const [parcels, setParcels] = useState<Parcel[]>([]);
     const [totalParcels, setTotalParcels] = useState(0);
     const [parcelTotalPages, setParcelTotalPages] = useState(1);
     const [suppliers, setSuppliers] = useState<any[]>([]);
-
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const debouncedParcelSearch = useDebounce(parcelSearchTerm, 300);
-
     const isInitialLoad = useRef(true);
-
     const { confirm } = useConfirm();
-    const {
-        saving,
-        deleting,
-        addItem,
-        updateItem,
-        deleteItem,
-        deleteMultipleItems,
-        stockIn,
-        stockOut,
-    } = useInventory();
-
+    const { saving, deleting, addItem, updateItem, deleteItem, deleteMultipleItems, stockIn, stockOut, } = useInventory();
     const fetchDashboardData = useCallback(async (forceRefresh = false) => {
         const cacheKey = 'inventory_dashboard_data';
-
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
             if (cached.data) {
                 setDashboardItems(cached.data.inventory?.items || []);
                 setDashboardStats(cached.data.stats || null);
                 setSuppliers(cached.data.suppliers || []);
-                if (!cached.isStale) return; // 0ms response
+                if (!cached.isStale)
+                    return; // 0ms response
             }
         }
-
         try {
             const result = await fetchInventoryPageData({
                 inventoryPage: 1,
@@ -184,18 +148,17 @@ export default function InventoryClient() {
                 parcelDateFrom: '',
                 parcelDateTo: '',
             });
-
             if (result.success && result.data) {
                 setDashboardItems(result.data.inventory?.items || []);
                 setDashboardStats(result.data.stats || null);
                 setSuppliers(result.data.suppliers || []);
                 inventoryCache.set(cacheKey, result.data);
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
     }, []);
-
     const fetchInventoryData = useCallback(async (showLoading = true, forceRefresh = false) => {
         const cacheKey = JSON.stringify({
             ip: inventoryPage,
@@ -208,7 +171,6 @@ export default function InventoryClient() {
             pdf: parcelDateFrom,
             pdt: parcelDateTo,
         });
-
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
             if (cached.data) {
@@ -224,15 +186,14 @@ export default function InventoryClient() {
                 }
                 setLoadingInventory(false);
                 setLoadingParcels(false);
-                if (!cached.isStale) return; // instant 0ms cache hit
+                if (!cached.isStale)
+                    return; // instant 0ms cache hit
             }
         }
-
         if (showLoading) {
             setLoadingInventory(true);
             setLoadingParcels(true);
         }
-
         try {
             const result = await fetchInventoryPageData({
                 inventoryPage: inventoryPage,
@@ -247,7 +208,6 @@ export default function InventoryClient() {
                 parcelDateFrom: parcelDateFrom,
                 parcelDateTo: parcelDateTo,
             });
-
             if (result.success && result.data) {
                 const { data } = result;
                 if (data?.inventory) {
@@ -261,13 +221,16 @@ export default function InventoryClient() {
                     setParcelTotalPages(data.parcels.totalPages || 1);
                 }
                 inventoryCache.set(cacheKey, data);
-            } else {
+            }
+            else {
                 toast.error(result.error || 'Failed to load inventory data');
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Error fetching inventory data:', error);
             toast.error('Failed to load inventory data');
-        } finally {
+        }
+        finally {
             if (showLoading) {
                 setLoadingInventory(false);
                 setLoadingParcels(false);
@@ -285,8 +248,6 @@ export default function InventoryClient() {
         parcelDateFrom,
         parcelDateTo,
     ]);
-
-
     useEffect(() => {
         const loadInitialData = async () => {
             setLoading(true);
@@ -297,19 +258,15 @@ export default function InventoryClient() {
             setLoading(false);
             isInitialLoad.current = false;
         };
-
         loadInitialData();
     }, []);
-
     useEffect(() => {
-        if (isInitialLoad.current) return;
-
+        if (isInitialLoad.current)
+            return;
         setInventoryPage(1);
-
         const timeoutId = setTimeout(() => {
             fetchInventoryData(true);
         }, 300);
-
         return () => clearTimeout(timeoutId);
     }, [
         debouncedSearchTerm,
@@ -320,51 +277,44 @@ export default function InventoryClient() {
         parcelDateFrom,
         parcelDateTo,
     ]);
-
     useEffect(() => {
-        if (isInitialLoad.current) return;
+        if (isInitialLoad.current)
+            return;
         fetchInventoryData(true);
     }, [inventoryPage, parcelPage]);
-
     const handleTabChange = (tab: string) => {
         const tabIndex = ['dashboard', 'inventory', 'parcels'].indexOf(tab);
         const currentIndex = ['dashboard', 'inventory', 'parcels'].indexOf(activeTab);
         setDirection(tabIndex > currentIndex ? 1 : -1);
-
         setActiveTab(tab);
         localStorage.setItem('inventoryActiveTab', tab);
-
         const params = new URLSearchParams(searchParams.toString());
         params.set('tab', tab);
         router.replace(`/inventory?${params.toString()}`, { scroll: false });
     };
-
     useEffect(() => {
         const savedTab = localStorage.getItem('inventoryActiveTab');
         const urlTab = searchParams.get('tab');
-
         if (urlTab && ['dashboard', 'inventory', 'parcels'].includes(urlTab)) {
             setActiveTab(urlTab);
-        } else if (savedTab && !urlTab) {
+        }
+        else if (savedTab && !urlTab) {
             setActiveTab(savedTab);
             const params = new URLSearchParams(searchParams.toString());
             params.set('tab', savedTab);
             router.replace(`/inventory?${params.toString()}`, { scroll: false });
         }
     }, []);
-
     const handleInventoryPageChange = (page: number) => {
         if (page >= 1 && page <= inventoryTotalPages && page !== inventoryPage) {
             setInventoryPage(page);
         }
     };
-
     const handleParcelPageChange = (page: number) => {
         if (page >= 1 && page <= parcelTotalPages && page !== parcelPage) {
             setParcelPage(page);
         }
     };
-
     const handleAddItem = async (data: any) => {
         await addItem(data);
         setShowAddModal(false);
@@ -374,7 +324,6 @@ export default function InventoryClient() {
             fetchInventoryData(true, true)
         ]);
     };
-
     const handleUpdateItem = async (data: any) => {
         await updateItem(data);
         setShowEditModal(false);
@@ -385,7 +334,6 @@ export default function InventoryClient() {
             fetchInventoryData(true, true)
         ]);
     };
-
     const handleDeleteItem = async (id: string, name: string) => {
         const confirmed = await confirm({
             title: 'Delete Item',
@@ -402,7 +350,6 @@ export default function InventoryClient() {
             ]);
         }
     };
-
     const handleDeleteMultiple = async () => {
         if (selectedIds.size === 0) {
             toast.warning('Please select at least one item');
@@ -424,7 +371,6 @@ export default function InventoryClient() {
             ]);
         }
     };
-
     const handleStockIn = async (itemName: string, quantity: number, supplier?: string, reference?: string, remarks?: string) => {
         await stockIn(itemName, quantity, supplier, reference, remarks);
         setShowStockInModal(false);
@@ -434,7 +380,6 @@ export default function InventoryClient() {
             fetchInventoryData(true, true)
         ]);
     };
-
     const handleStockOut = async (itemName: string, quantity: number, department?: string, purpose?: string, remarks?: string) => {
         await stockOut(itemName, quantity, department, purpose, remarks);
         setShowStockOutModal(false);
@@ -444,23 +389,19 @@ export default function InventoryClient() {
             fetchInventoryData(true, true)
         ]);
     };
-
     const openEditModal = (item: InventoryItem) => {
         setEditingItem(item);
         setShowEditModal(true);
     };
-
     const openStockInModal = (itemName: string, itemObj?: InventoryItem) => {
         setSelectedItemForStock(itemName);
         setSelectedItemObjectForStock(itemObj || inventoryItems.find(i => i.item_name === itemName) || null);
         setShowStockInModal(true);
     };
-
     const openScopedPOModal = (item: InventoryItem) => {
         setSelectedItemForPO(item);
         setShowScopedPOModal(true);
     };
-
     const handleCategoryClick = (category: string) => {
         handleTabChange('inventory');
         setCategoryFilter(category);
@@ -469,7 +410,6 @@ export default function InventoryClient() {
         setSelectedIds(new Set());
         setInventoryPage(1);
     };
-
     const handleStatusClick = (status: string) => {
         handleTabChange('inventory');
         const statusMap: Record<string, string> = {
@@ -483,7 +423,6 @@ export default function InventoryClient() {
         setSelectedIds(new Set());
         setInventoryPage(1);
     };
-
     const filteredGroupedParcels = parcels.reduce((acc: GroupedParcels[], parcel) => {
         const date = new Date(parcel.created_at).toLocaleDateString('en-US', {
             year: 'numeric', month: 'long', day: 'numeric'
@@ -491,109 +430,53 @@ export default function InventoryClient() {
         const existingGroup = acc.find(g => g.date === date);
         if (existingGroup) {
             existingGroup.parcels.push(parcel);
-        } else {
+        }
+        else {
             acc.push({ date, parcels: [parcel] });
         }
         return acc;
     }, []);
-
     const tabComponents = {
-        dashboard: (
-            <DashboardTab
-                key="dashboard"
-                inventoryItems={dashboardItems}
-                stats={dashboardStats}
-                isLoading={loading}
-                onStockIn={openStockInModal}
-                onCategoryClick={handleCategoryClick}
-                onStatusClick={handleStatusClick}
-            />
-        ),
-        inventory: (
-            <InventoryTab
-                key="inventory"
-                items={inventoryItems}
-                totalItems={totalInventoryItems}
-                currentPage={inventoryPage}
-                totalPages={inventoryTotalPages}
-                searchTerm={searchTerm}
-                categoryFilter={categoryFilter}
-                statusFilter={statusFilter}
-                selectedIds={selectedIds}
-                itemsPerPage={itemsPerPage}
-                onSearchChange={setSearchTerm}
-                onCategoryChange={(val) => {
-                    setCategoryFilter(val);
-                    setInventoryPage(1);
-                }}
-                onStatusChange={(val) => {
-                    setStatusFilter(val);
-                    setInventoryPage(1);
-                }}
-                onPageChange={handleInventoryPageChange}
-                onSelectAll={() => {
-                    if (selectedIds.size === inventoryItems.length) {
-                        setSelectedIds(new Set());
-                    } else {
-                        setSelectedIds(new Set(inventoryItems.map(item => item.id)));
-                    }
-                }}
-                onSelect={(id) => {
-                    const newSelected = new Set(selectedIds);
-                    if (newSelected.has(id)) newSelected.delete(id);
-                    else newSelected.add(id);
-                    setSelectedIds(newSelected);
-                }}
-                onClearFilters={() => {
-                    setSearchTerm('');
-                    setCategoryFilter('all');
-                    setStatusFilter('all');
+        dashboard: (<DashboardTab key="dashboard" inventoryItems={dashboardItems} stats={dashboardStats} isLoading={loading} onStockIn={openStockInModal} onCategoryClick={handleCategoryClick} onStatusClick={handleStatusClick}/>),
+        inventory: (<InventoryTab key="inventory" items={inventoryItems} totalItems={totalInventoryItems} currentPage={inventoryPage} totalPages={inventoryTotalPages} searchTerm={searchTerm} categoryFilter={categoryFilter} statusFilter={statusFilter} selectedIds={selectedIds} itemsPerPage={itemsPerPage} onSearchChange={setSearchTerm} onCategoryChange={(val) => {
+                setCategoryFilter(val);
+                setInventoryPage(1);
+            }} onStatusChange={(val) => {
+                setStatusFilter(val);
+                setInventoryPage(1);
+            }} onPageChange={handleInventoryPageChange} onSelectAll={() => {
+                if (selectedIds.size === inventoryItems.length) {
                     setSelectedIds(new Set());
-                    setInventoryPage(1);
-                }}
-                onEdit={openEditModal}
-                onDelete={handleDeleteItem}
-                onStockIn={openStockInModal}
-                onOrderPO={openScopedPOModal}
-                onStockOut={(itemName) => {
-                    setSelectedItemForStock(itemName);
-                    setShowStockOutModal(true);
-                }}
-                onAddItem={() => setShowAddModal(true)}
-                isLoading={loading || loadingInventory}
-            />
-        ),
-        parcels: (
-            <ParcelsTab
-                key="parcels"
-                parcels={parcels}
-                groupedParcels={filteredGroupedParcels}
-                searchTerm={parcelSearchTerm}
-                statusFilter={parcelStatusFilter}
-                dateFrom={parcelDateFrom}
-                dateTo={parcelDateTo}
-                currentPage={parcelPage}
-                totalPages={parcelTotalPages}
-                totalItems={totalParcels}
-                isLoading={loading || loadingParcels}
-                onSearchChange={setParcelSearchTerm}
-                onStatusChange={setParcelStatusFilter}
-                onDateFromChange={setParcelDateFrom}
-                onDateToChange={setParcelDateTo}
-                onClearFilters={() => {
-                    setParcelSearchTerm('');
-                    setParcelStatusFilter('');
-                    setParcelDateFrom('');
-                    setParcelDateTo('');
-                    setParcelPage(1);
-                }}
-                onPageChange={handleParcelPageChange}
-            />
-        )
+                }
+                else {
+                    setSelectedIds(new Set(inventoryItems.map(item => item.id)));
+                }
+            }} onSelect={(id) => {
+                const newSelected = new Set(selectedIds);
+                if (newSelected.has(id))
+                    newSelected.delete(id);
+                else
+                    newSelected.add(id);
+                setSelectedIds(newSelected);
+            }} onClearFilters={() => {
+                setSearchTerm('');
+                setCategoryFilter('all');
+                setStatusFilter('all');
+                setSelectedIds(new Set());
+                setInventoryPage(1);
+            }} onEdit={openEditModal} onDelete={handleDeleteItem} onStockIn={openStockInModal} onOrderPO={openScopedPOModal} onStockOut={(itemName) => {
+                setSelectedItemForStock(itemName);
+                setShowStockOutModal(true);
+            }} onAddItem={() => setShowAddModal(true)} isLoading={loading || loadingInventory}/>),
+        parcels: (<ParcelsTab key="parcels" parcels={parcels} groupedParcels={filteredGroupedParcels} searchTerm={parcelSearchTerm} statusFilter={parcelStatusFilter} dateFrom={parcelDateFrom} dateTo={parcelDateTo} currentPage={parcelPage} totalPages={parcelTotalPages} totalItems={totalParcels} isLoading={loading || loadingParcels} onSearchChange={setParcelSearchTerm} onStatusChange={setParcelStatusFilter} onDateFromChange={setParcelDateFrom} onDateToChange={setParcelDateTo} onClearFilters={() => {
+                setParcelSearchTerm('');
+                setParcelStatusFilter('');
+                setParcelDateFrom('');
+                setParcelDateTo('');
+                setParcelPage(1);
+            }} onPageChange={handleParcelPageChange}/>)
     };
-
-    return (
-        <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
+    return (<div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
 
             <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -612,26 +495,13 @@ export default function InventoryClient() {
                     </div>
 
                     <div className="flex items-center gap-2.5 flex-wrap">
-                        {selectedIds.size > 0 && (
-                            <AppButton
-                                type="button"
-                                variant="danger"
-                                size="md"
-                                onClick={handleDeleteMultiple}
-                                disabled={deleting}
-                            >
-                                <i className="fas fa-trash-can text-xs" />
+                        {selectedIds.size > 0 && (<AppButton type="button" variant="danger" size="md" onClick={handleDeleteMultiple} disabled={deleting}>
+                                <i className="fas fa-trash-can text-xs"/>
                                 <span>Delete ({selectedIds.size})</span>
-                            </AppButton>
-                        )}
+                            </AppButton>)}
 
-                        <AppButton
-                            type="button"
-                            variant="primary"
-                            size="md"
-                            onClick={() => setShowAddModal(true)}
-                        >
-                            <i className="fas fa-plus text-xs" />
+                        <AppButton type="button" variant="primary" size="md" onClick={() => setShowAddModal(true)}>
+                            <i className="fas fa-plus text-xs"/>
                             <span>Add Item</span>
                         </AppButton>
                     </div>
@@ -639,112 +509,57 @@ export default function InventoryClient() {
 
                 <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900 p-1 rounded-full border border-slate-200/90 dark:border-slate-800 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)] max-w-fit">
                     {[
-                        { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
-                        { id: 'inventory', label: 'Inventory', icon: 'fa-boxes-stacked' },
-                        { id: 'parcels', label: 'Parcels', icon: 'fa-box-archive' },
-                    ].map((tab) => {
-                        const isActive = activeTab === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                onClick={() => handleTabChange(tab.id)}
-                                className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 relative cursor-pointer active:scale-95 ${isActive
-                                    ? 'bg-pink-500 text-white shadow-sm'
-                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                                    }`}
-                            >
-                                <i
-                                    className={`fas ${tab.icon} text-xs transition-colors ${isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`}
-                                />
+            { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
+            { id: 'inventory', label: 'Inventory', icon: 'fa-boxes-stacked' },
+            { id: 'parcels', label: 'Parcels', icon: 'fa-box-archive' },
+        ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (<button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 relative cursor-pointer active:scale-95 ${isActive
+                    ? 'bg-pink-500 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                                <i className={`fas ${tab.icon} text-xs transition-colors ${isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`}/>
                                 <span>{tab.label}</span>
-                            </button>
-                        );
-                    })}
+                            </button>);
+        })}
                 </div>
             </div>
 
             {/* Animated Tab Content */}
             <div className="relative overflow-hidden">
                 <AnimatePresence mode="wait" custom={direction}>
-                    <motion.div
-                        key={activeTab}
-                        custom={direction}
-                        variants={tabVariants}
-                        initial="enter"
-                        animate="center"
-                        exit="exit"
-                        className="min-h-[400px]"
-                    >
+                    <motion.div key={activeTab} custom={direction} variants={tabVariants} initial="enter" animate="center" exit="exit" className="min-h-[400px]">
                         {tabComponents[activeTab as keyof typeof tabComponents]}
                     </motion.div>
                 </AnimatePresence>
             </div>
 
-            <AddItemModal
-                isOpen={showAddModal}
-                onClose={() => setShowAddModal(false)}
-                onSave={handleAddItem}
-                suppliers={suppliers}
-                loading={saving}
-            />
+            <AddItemModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onSave={handleAddItem} suppliers={suppliers} loading={saving}/>
 
-            {editingItem && (
-                <EditItemModal
-                    isOpen={showEditModal}
-                    onClose={() => {
-                        setShowEditModal(false);
-                        setEditingItem(null);
-                    }}
-                    onSave={handleUpdateItem}
-                    item={editingItem}
-                    suppliers={suppliers}
-                    loading={saving}
-                />
-            )}
+            {editingItem && (<EditItemModal isOpen={showEditModal} onClose={() => {
+                setShowEditModal(false);
+                setEditingItem(null);
+            }} onSave={handleUpdateItem} item={editingItem} suppliers={suppliers} loading={saving}/>)}
 
-            <StockInModal
-                isOpen={showStockInModal}
-                onClose={() => {
-                    setShowStockInModal(false);
-                    setSelectedItemForStock('');
-                    setSelectedItemObjectForStock(null);
-                }}
-                onStockIn={handleStockIn}
-                onSuccess={() => {
-                    fetchDashboardData();
-                    fetchInventoryData(false);
-                }}
-                inventoryItems={inventoryItems}
-                preSelectedItem={selectedItemForStock}
-                targetItem={selectedItemObjectForStock}
-                loading={saving}
-            />
+            <StockInModal isOpen={showStockInModal} onClose={() => {
+            setShowStockInModal(false);
+            setSelectedItemForStock('');
+            setSelectedItemObjectForStock(null);
+        }} onStockIn={handleStockIn} onSuccess={() => {
+            fetchDashboardData();
+            fetchInventoryData(false);
+        }} inventoryItems={inventoryItems} preSelectedItem={selectedItemForStock} targetItem={selectedItemObjectForStock} loading={saving}/>
 
-            <ScopedPORequestModal
-                isOpen={showScopedPOModal}
-                onClose={() => {
-                    setShowScopedPOModal(false);
-                    setSelectedItemForPO(null);
-                }}
-                item={selectedItemForPO}
-                suppliers={suppliers}
-                onSuccess={() => {
-                    fetchDashboardData();
-                    fetchInventoryData(false);
-                }}
-            />
+            <ScopedPORequestModal isOpen={showScopedPOModal} onClose={() => {
+            setShowScopedPOModal(false);
+            setSelectedItemForPO(null);
+        }} item={selectedItemForPO} suppliers={suppliers} onSuccess={() => {
+            fetchDashboardData();
+            fetchInventoryData(false);
+        }}/>
 
-            <StockOutModal
-                isOpen={showStockOutModal}
-                onClose={() => {
-                    setShowStockOutModal(false);
-                    setSelectedItemForStock('');
-                }}
-                onStockOut={handleStockOut}
-                inventoryItems={inventoryItems}
-                preSelectedItem={selectedItemForStock}
-                loading={saving}
-            />
-        </div>
-    );
+            <StockOutModal isOpen={showStockOutModal} onClose={() => {
+            setShowStockOutModal(false);
+            setSelectedItemForStock('');
+        }} onStockOut={handleStockOut} inventoryItems={inventoryItems} preSelectedItem={selectedItemForStock} loading={saving}/>
+        </div>);
 }
