@@ -9,7 +9,7 @@ function localParcelsClient() {
     process.env.PARCELS_SUPABASE_URL ||
     process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_URL ||
     process.env.NEXT_PUBLIC_PARCEL_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_FTM_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC__FTM_SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.FTM_SUPABASE_URL ||
     process.env.SUPABASE_URL;

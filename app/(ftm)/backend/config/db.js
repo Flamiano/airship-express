@@ -41,7 +41,7 @@ const getServiceSupabase = () => serviceSupabase || supabase;
 // to return a parcels-specific client when PARCELS_SUPABASE_* env vars are
 // present; otherwise fall back to the main supabase client.
 const getParcelsSupabase = () => {
-  const parcelsUrl = process.env.FTM_PARCELS_SUPABASE_URL || process.env.PARCELS_SUPABASE_URL || process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC_FTM_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
+  const parcelsUrl = process.env.FTM_PARCELS_SUPABASE_URL || process.env.PARCELS_SUPABASE_URL || process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC__FTM_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
   const parcelsKey = process.env.FTM_PARCELS_SUPABASE_SERVICE_ROLE_KEY || process.env.FTM_PARCELS_SUPABASE_ANON_KEY || process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY || process.env.PARCELS_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_ANON_KEY || process.env.FTM_SUPABASE_SERVICE_ROLE_KEY || process.env.FTM_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (parcelsUrl && parcelsKey) {
     try {
