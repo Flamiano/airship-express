@@ -107,7 +107,7 @@ export default function CustomerManagement({
           <button
             type="button"
             onClick={() => setWizardOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/80 hover:bg-accent-dark/80 text-white text-sm transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary hover:bg-foreground/90 text-primary-foreground text-sm transition-colors cursor-pointer"
           >
             <Plus size={15} />
             Add Customer

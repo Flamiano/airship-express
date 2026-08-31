@@ -33,3 +33,62 @@ create table public.customers (
     )
   )
 ) TABLESPACE pg_default;
+
+alter table public.customers enable row level security;
+
+-- STAFF
+create policy "Staff can read customers"
+on public.customers
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+  )
+);
+
+create policy "Staff can create customers"
+on public.customers
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+  )
+);
+
+create policy "Staff can update customers"
+on public.customers
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+  )
+);
+
+-- CUSTOMER
+create policy "Customers can read own customer record"
+on public.customers
+for select
+to authenticated
+using (
+  id = auth.uid()
+);
+
+create policy "Customers can create own customer record"
+on public.customers
+for insert
+to authenticated
+with check (
+  id = auth.uid()
+);

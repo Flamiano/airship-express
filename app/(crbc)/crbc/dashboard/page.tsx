@@ -1,6 +1,7 @@
 import { getDashboardMetrics, getCustomers, getAllShipments } from "../../services/crm.service"
 import { getPendingDocumentsCount } from "../../services/document.service"
-import { Users, Package, Truck, CheckCircle2, Clock, AlertTriangle, UserPlus, Bell } from "lucide-react"
+import { Users, Package, Truck, CheckCircle2, Clock, AlertTriangle, UserPlus } from "lucide-react"
+import ThemeToggle from "@/app/components/ThemeToggle"
 
 const statusStyle: Record<string, string> = {
   Booked: "bg-amber-50 text-amber-600",
@@ -19,13 +20,12 @@ const statusDot: Record<string, string> = {
 }
 
 export default async function CrmDashboard() {
-  const [metrics, pendingDocs, customers, allShipments] = await Promise.all([
+  const [metrics, pendingDocs, allShipments] = await Promise.all([
     getDashboardMetrics(),
     getPendingDocumentsCount(),
-    getCustomers(),
     getAllShipments(),
   ])
-  
+
   const shipmentStatusCounts = allShipments.reduce<Record<string, number>>((acc, s) => {
     acc[s.status] = (acc[s.status] ?? 0) + 1
     return acc
@@ -50,12 +50,15 @@ export default async function CrmDashboard() {
   const activity = [
     { label: "New Customers", value: metrics.newCustomersThisMonth ?? 0, icon: UserPlus, color: "text-indigo-500" },
   ]
-   
+
   return (
     <div className="w-full py-4 space-y-6">
-      <div>
-        <h1 className="text-foreground text-xl font-semibold">Customer Relationship Dashboard</h1>
-        <p className="text-muted text-sm mt-0.5">Overview of customers, shipments, and activity</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-foreground text-xl font-semibold">Customer Relationship Dashboard</h1>
+          <p className="text-muted text-sm mt-0.5">Overview of customers, shipments, and activity</p>
+        </div>
+        <ThemeToggle />
       </div>
 
       {/* KPI Cards */}

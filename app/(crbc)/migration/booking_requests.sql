@@ -29,21 +29,37 @@ create table public.booking_requests (
   updated_at timestamp with time zone not null default now(),
   constraint booking_requests_pkey primary key (id),
   constraint booking_requests_request_id_key unique (request_id),
-  constraint booking_requests_customer_id_fkey foreign key (customer_id)
-    references customers (id),
+  constraint booking_requests_customer_id_fkey foreign KEY (customer_id) references customers (id),
   constraint booking_requests_channel_check check (
-    request_channel = any (
-      array['WALK_IN'::text, 'PHONE_CALL'::text, 'PORTAL'::text]
+    (
+      request_channel = any (
+        array[
+          'WALK_IN'::text,
+          'PHONE_CALL'::text,
+          'PORTAL'::text
+        ]
+      )
     )
   ),
   constraint booking_requests_package_type_check check (
-    package_type = any (
-      array['box'::text, 'parcel'::text, 'document'::text]
+    (
+      package_type = any (
+        array['box'::text, 'parcel'::text, 'document'::text]
+      )
     )
   ),
   constraint booking_requests_status_check check (
-    status = any (
-      array['DRAFT'::text, 'SUBMITTED'::text, 'PENDING'::text, 'ACCEPTED'::text, 'REJECTED'::text, 'CANCELLED'::text]
+    (
+      status = any (
+        array[
+          'DRAFT'::text,
+          'SUBMITTED'::text,
+          'PENDING'::text,
+          'ACCEPTED'::text,
+          'REJECTED'::text,
+          'CANCELLED'::text
+        ]
+      )
     )
   )
 ) TABLESPACE pg_default;
@@ -53,14 +69,65 @@ create index if not exists booking_requests_customer_id_idx
 
 alter table public.booking_requests enable row level security;
 
-create policy "Staff can read booking requests"
+-- Staff policies: staff users can read all booking requests
+create policy "Staff can read all booking requests"
   on public.booking_requests for select
-  using (true);
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+    )
+  );
 
+-- Staff can create booking requests for any customer
 create policy "Staff can create booking requests"
   on public.booking_requests for insert
-  with check (true);
+  with check (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+    )
+  );
 
+-- Staff can update any booking request
 create policy "Staff can update booking requests"
   on public.booking_requests for update
-  using (true);
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+    )
+  );
+
+-- Customer policies: customers can only read their own booking requests
+create policy "Customers can read own booking requests"
+  on public.booking_requests for select
+  using (
+    customer_id in (
+      select id from customers
+      where customers.auth_user_id = auth.uid()
+    )
+  );
+
+-- Customers can only create booking requests for themselves
+create policy "Customers can create own booking requests"
+  on public.booking_requests for insert
+  with check (
+    customer_id in (
+      select id from customers
+      where customers.auth_user_id = auth.uid()
+    )
+  );
+
+-- Customers can only update their own booking requests
+create policy "Customers can update own booking requests"
+  on public.booking_requests for update
+  using (
+    customer_id in (
+      select id from customers
+      where customers.auth_user_id = auth.uid()
+    )
+  );
