@@ -841,7 +841,17 @@ export default function Procurement() {
                                 </div>
                             </div>
                             <div className="w-full h-[200px] mt-3">
-                                <canvas ref={expenseChartCanvasRef} className="w-full h-full"/>
+                                {purchaseOrders.some(o => (o.status === 'Delivered' || o.status === 'Confirmed') && o.paid === true && (o.total_amount || 0) > 0) ? (
+                                    <canvas ref={expenseChartCanvasRef} className="w-full h-full"/>
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 mb-2.5">
+                                            <i className="fas fa-chart-line text-base"/>
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Spending Trend Data</span>
+                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5">Completed and paid purchase order expenditures will appear here</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 transition-all">
@@ -849,7 +859,17 @@ export default function Procurement() {
                                 <i className="fas fa-chart-pie mr-2 text-pink-500 dark:text-pink-400"/> Request Priority Distribution
                             </div>
                             <div className="w-full h-[200px] mt-3">
-                                <canvas ref={priorityChartCanvasRef} className="w-full h-full"/>
+                                {requests.length > 0 ? (
+                                    <canvas ref={priorityChartCanvasRef} className="w-full h-full"/>
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 mb-2.5">
+                                            <i className="fas fa-chart-pie text-base"/>
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Priority Data</span>
+                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5">Priority breakdown will display once requests are submitted</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>)}

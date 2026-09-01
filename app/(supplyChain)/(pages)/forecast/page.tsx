@@ -26,6 +26,17 @@ interface ForecastData {
         engine?: string;
         explanation?: string;
         dates: string[];
+        previous_week_evaluation?: {
+            has_evaluation: boolean;
+            date_range: string;
+            actual_volume: number;
+            predicted_volume: number;
+            met_percentage: number;
+            accuracy_percentage: number;
+            status: string;
+            status_tone: 'emerald' | 'pink' | 'amber' | 'neutral';
+            summary: string;
+        };
         historical: {
             dates: string[];
             counts: number[];
@@ -75,6 +86,7 @@ export default function Forecast() {
     const [aiSummary, setAiSummary] = useState<string | null>(null);
     const [summarizing, setSummarizing] = useState(false);
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+    const [isAiMinimized, setIsAiMinimized] = useState(false);
     // modal state
     const [activeChartModal, setActiveChartModal] = useState<{
         isOpen: boolean;
@@ -108,6 +120,7 @@ export default function Forecast() {
             const data = await res.json();
             if (data.success && data.summary) {
                 setAiSummary(data.summary);
+                setIsAiMinimized(false);
             }
             else {
                 throw new Error(data.error || "Failed to generate AI summary");
@@ -443,7 +456,7 @@ export default function Forecast() {
         const a = document.createElement("a");
         a.href = url;
         a.download = `operational-forecast-${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
+document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
@@ -451,6 +464,7 @@ export default function Forecast() {
     };
     const totalDbParcels = forecastData?.raw_db_stats?.total_parcels_in_db || 0;
     const weeklyTotal = forecastData?.parcel_7_day?.total_next_week || 0;
+    const prevEval = forecastData?.parcel_7_day?.previous_week_evaluation;
     const expensePrediction = forecastData?.expense_next_month?.prediction || 0;
     const expenseLower = forecastData?.expense_next_month?.confidence_interval?.lower || 0;
     const expenseUpper = forecastData?.expense_next_month?.confidence_interval?.upper || 0;
@@ -478,14 +492,18 @@ export default function Forecast() {
                                     <i className="fas fa-microchip text-pink-500 text-[10px]"/>
                                     <span>Airship Express</span>
                                     <span className="text-slate-300 dark:text-slate-600">•</span>
-                                    <span className="text-slate-500 dark:text-slate-400">Predictive WASM Engine</span>
+                                    <span className="text-pink-600 dark:text-pink-400">Holt-Winters & AutoTheta WASM</span>
+                                </div>
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold border border-emerald-200/60 dark:border-emerald-800/60">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>
+                                    <span>Database Synced</span>
                                 </div>
                             </div>
                             <h1 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
-                                Predictive Analytics &amp; Forecasting
+                                Demand & Operational Forecasting Engine
                             </h1>
-                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                                6-month historical trends with adaptive {aggregationType.toLowerCase()} aggregation and 7-day WASM volume projections.
+                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                                Automated time-series forecasting powered by high-performance in-memory WebAssembly. Analyzes 6 months of historical Supabase parcel traffic and procurement spending to predict future intake cycles.
                             </p>
                         </div>
                     </div>
@@ -508,36 +526,84 @@ export default function Forecast() {
                     </div>
                 </div>
 
-                {/* ai summary */}
-                {aiSummary && (<div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900 border border-slate-200/80 dark:border-ink/30 shadow-2xs">
-                        <div className="flex items-center justify-between gap-4 mb-3 border-b border-slate-200/70 dark:border-ink/20 pb-3">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-lg bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-800/40 flex items-center justify-center text-pink-600 dark:text-pink-400 text-sm shadow-2xs">
-                                    <i className="fas fa-brain"></i>
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">AI Executive Forecast Interpretation</h3>
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Grounded strictly in active Supabase records and time-series models</p>
-                                </div>
+                {/* ai insights banner - compact preview & minimized state */}
+                {aiSummary && isAiMinimized && (
+                    <div className="p-2.5 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/30 shadow-2xs flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setIsAiMinimized(false)}>
+                            <div className="w-6 h-6 rounded-lg bg-pink-500 text-white flex items-center justify-center text-[10px] shadow-2xs">
+                                <i className="fa-solid fa-wand-magic-sparkles"></i>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button className="text-xs text-pink-600 dark:text-pink-400 hover:underline font-semibold flex items-center gap-1.5 cursor-pointer" onClick={() => setIsAiModalOpen(true)}>
-                                    <i className="fas fa-expand text-[11px]"></i>
-                                    <span>Expand</span>
-                                </button>
-                                <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 cursor-pointer" onClick={() => setAiSummary(null)} title="Close summary">
+                            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                AI Operational Insights (Minimized)
+                            </span>
+                            <StatusBadge tone="pink" size="xs">
+                                Gemini Analyzed
+                            </StatusBadge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <AppButton type="button" variant="neutral" size="xs" onClick={() => setIsAiMinimized(false)}>
+                                <i className="fas fa-chevron-down text-[10px]"></i>
+                                <span>Restore Summary</span>
+                            </AppButton>
+                            <AppButton type="button" variant="pink" size="xs" onClick={() => setIsAiModalOpen(true)}>
+                                <i className="fas fa-expand text-[10px]"></i>
+                                <span>Pop-out Modal</span>
+                            </AppButton>
+                            <button
+                                type="button"
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 cursor-pointer"
+                                onClick={() => setAiSummary(null)}
+                                title="Dismiss"
+                            >
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {aiSummary && !isAiMinimized && (
+                    <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-ink/30 shadow-xs relative overflow-hidden">
+                        <div className="flex items-center justify-between gap-3 mb-3 border-b border-slate-100 dark:border-ink/20 pb-2.5">
+                            <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-pink-500 text-white flex items-center justify-center text-xs shadow-xs">
+                                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                                </div>
+                                <h3 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                                    Airship AI Operational Insights
+                                </h3>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <StatusBadge tone="pink" size="xs">
+                                    Gemini Analyzed
+                                </StatusBadge>
+                                <AppButton type="button" variant="neutral" size="xs" onClick={() => setIsAiMinimized(true)} title="Minimize to top bar">
+                                    <i className="fas fa-minus text-[10px]"></i>
+                                    <span>Minimize</span>
+                                </AppButton>
+                                <AppButton type="button" variant="pink" size="xs" onClick={() => setIsAiModalOpen(true)} title="Expand into full-screen dialog">
+                                    <i className="fas fa-expand text-[10px]"></i>
+                                    <span>Pop-out Modal</span>
+                                </AppButton>
+                                <button
+                                    type="button"
+                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 cursor-pointer"
+                                    onClick={() => setAiSummary(null)}
+                                    title="Dismiss AI Insights"
+                                >
                                     <i className="fas fa-times"></i>
                                 </button>
                             </div>
                         </div>
-                        <div className="space-y-3 max-h-56 overflow-y-auto pr-2 overscroll-contain" data-lenis-prevent>
-                            {(aiSummary || '').split('\n\n').map((section, idx) => {
-                const lines = section.trim().split('\n');
-                const title = lines[0];
-                const content = lines.slice(1).join('\n');
-                const isHeader = /^[A-Z\s&/–-]+$/.test(title) && title.length < 50;
-                if (isHeader) {
-                    return (<div key={idx} className="p-3.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-ink/30 text-xs shadow-2xs">
+
+                        {/* Full structured AI summary content */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-2">
+                            {aiSummary.split('\n\n').filter(Boolean).map((section, idx) => {
+                                const titleMatch = section.match(/^(\*\*.*?\*\*|\w+:)/);
+                                if (titleMatch) {
+                                    const title = titleMatch[0].replace(/\*\*/g, '').replace(':', '');
+                                    const content = section.replace(titleMatch[0], '').trim();
+                                    return (
+                                        <div key={idx} className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-200/70 dark:border-ink/30 text-xs shadow-2xs">
                                             <div className="font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 text-[11px]">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
                                                 {title}
@@ -545,19 +611,23 @@ export default function Forecast() {
                                             <div className="text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed pl-3 border-l-2 border-pink-500/40">
                                                 {content}
                                             </div>
-                                        </div>);
-                }
-                return (<div key={idx} className="whitespace-pre-line text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div key={idx} className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-200/70 dark:border-ink/30 whitespace-pre-line text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                                         {section}
-                                    </div>);
-            })}
+                                    </div>
+                                );
+                            })}
                         </div>
-                    </div>)}
+                    </div>
+                )}
 
                 {loading && !forecastData ? (<CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4"/>) : (<div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <Cards frontIcon="fa-solid fa-boxes-stacked" header="Actual Parcels in DB" data={String(totalDbParcels)} arrow="fa-solid fa-database" description="Max 6-month window" backBg="bg-ink dark:bg-slate-900" backHeader="Parcels Breakdown" headerTextColor="text-muted dark:text-white/80" backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nAggregation View: ${aggregationType}`} tooltip="View parcel records in Supabase" tooltipLink="/parcels" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-blue-600 dark:text-blue-400"/>
 
-                        <Cards frontIcon="fa-solid fa-chart-line-up" header="7-Day Predicted Volume" data={String(weeklyTotal)} arrow="fa-solid fa-arrow-trend-up" description={`${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`} backBg="bg-ink dark:bg-slate-900" backHeader="Forecast Algorithm" headerTextColor="text-muted dark:text-white/80" backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units`} tooltip="Holt-Winters 7-day seasonality model" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-emerald-600 dark:text-emerald-400"/>
+                        <Cards frontIcon="fa-solid fa-chart-line-up" header="7-Day Predicted Volume" data={String(weeklyTotal)} arrow="fa-solid fa-arrow-trend-up" description={prevEval?.has_evaluation ? `${prevEval.met_percentage}% Target Met (Prev Wk) · ${forecastData?.parcel_7_day?.confidence || "0%"} CI` : `${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`} backBg="bg-ink dark:bg-slate-900" backHeader="Forecast Algorithm" headerTextColor="text-muted dark:text-white/80" backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units\n${prevEval?.summary ? `\n${prevEval.summary}` : ""}`} tooltip="Holt-Winters 7-day seasonality model" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-emerald-600 dark:text-emerald-400"/>
 
                         <Cards frontIcon="fa-solid fa-money-bill-wave" header="Next Month PO Expense" data={`₱${expensePrediction.toLocaleString()}`} arrow="fa-solid fa-receipt" description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}` : "No qualifying paid POs"} backBg="bg-ink dark:bg-slate-900" backHeader="Expense Projections" headerTextColor="text-muted dark:text-white/80" backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}\nCalculated from Confirmed/Delivered paid purchase orders`} tooltip="View purchase orders" tooltipLink="/procurement?tab=all" frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-blue-600 dark:text-blue-400"/>
 
@@ -568,45 +638,45 @@ export default function Forecast() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                     <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                         <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
-                            <i className="fas fa-calendar-star"></i>
+                            <i className="fa-solid fa-calendar-days"></i>
                         </div>
                         <div className="min-w-0">
                             <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
                             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                {loading ? "..." : (peakInsights?.busiestMonth.month || "N/A")}
+                                {loading ? "..." : (peakInsights?.busiestMonth?.month || "N/A")}
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {loading ? "" : `${peakInsights?.busiestMonth.count || 0} parcels recorded`}
+                                {loading ? "" : `${peakInsights?.busiestMonth?.count || 0} parcels recorded`}
                             </div>
                         </div>
                     </div>
 
                     <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                         <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
-                            <i className="fas fa-calendar-day"></i>
+                            <i className="fa-solid fa-calendar-day"></i>
                         </div>
                         <div className="min-w-0">
                             <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
                             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                {loading ? "..." : (peakInsights?.busiestDay.day || "N/A")}
+                                {loading ? "..." : (peakInsights?.busiestDay?.day || "N/A")}
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {loading ? "" : `${peakInsights?.busiestDay.count || 0} parcels peak`}
+                                {loading ? "" : `${peakInsights?.busiestDay?.count || 0} parcels peak`}
                             </div>
                         </div>
                     </div>
 
                     <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-3.5 shadow-[inset_0_1px_0_#ffffff,0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_3px_rgba(0,0,0,0.4)]">
                         <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0 shadow-2xs">
-                            <i className="fas fa-clock"></i>
+                            <i className="fa-solid fa-clock"></i>
                         </div>
                         <div className="min-w-0">
                             <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Time Window</div>
                             <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                {loading ? "..." : (peakInsights?.busiestHour.timeRange || "N/A")}
+                                {loading ? "..." : (peakInsights?.busiestHour?.timeRange || "N/A")}
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {loading ? "" : `${peakInsights?.busiestHour.count || 0} parcels incoming`}
+                                {loading ? "" : `${peakInsights?.busiestHour?.count || 0} parcels incoming`}
                             </div>
                         </div>
                     </div>
@@ -626,7 +696,12 @@ export default function Forecast() {
                                 {totalDbParcels} actual parcels recorded (Max 6 Months) · {forecastData?.parcel_7_day?.model_used || "Holt-Winters Seasonal"} WASM with {forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {prevEval?.has_evaluation && (
+                                <StatusBadge tone={prevEval.status_tone || 'emerald'} icon="fas fa-bullseye" size="xs">
+                                    Prev Week: {prevEval.met_percentage}% Met ({prevEval.actual_volume}/{prevEval.predicted_volume})
+                                </StatusBadge>
+                            )}
                             <StatusBadge tone={(forecastData?.parcel_7_day?.confidence && forecastData.parcel_7_day.confidence !== '0%')
             ? 'pink'
             : 'neutral'} icon="fas fa-shield-halved" size="xs">
@@ -784,29 +859,53 @@ export default function Forecast() {
                                 <div className="flex items-center gap-3">
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg text-white shadow-sm ${activeChartModal.type === 'expense' ? 'bg-emerald-600' : 'bg-pink-600'}`}>
                                         <i className={`fas ${activeChartModal.type === 'parcels' ? 'fa-boxes-stacked' :
-                activeChartModal.type === 'expense' ? 'fa-money-bill-wave' : 'fa-chart-pie'}`}></i>
+                                                            activeChartModal.type === 'expense' ? 'fa-money-bill-wave' : 'fa-chart-pie'}`}></i>
                                     </div>
                                     <div>
                                         <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeChartModal.title}</h2>
                                         <p className="text-xs text-slate-500 dark:text-slate-400">Statistical breakdown, algorithmic explanation, and underlying database metrics</p>
                                     </div>
                                 </div>
-                                <AppButton type="button" variant="neutral" size="icon-sm" onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))} aria-label="Close modal">
-                                    <i className="fas fa-times text-xs"></i>
-                                </AppButton>
+                                <div className="flex items-center gap-1.5">
+                                    <AppButton
+                                        type="button"
+                                        variant="neutral"
+                                        size="xs"
+                                        onClick={() => {
+                                            setActiveChartModal(prev => ({ ...prev, isOpen: false }));
+                                            setIsAiMinimized(true);
+                                        }}
+                                        title="Minimize to compact bar"
+                                    >
+                                        <i className="fas fa-minus text-[10px]"></i>
+                                        <span>Minimize</span>
+                                    </AppButton>
+                                    <AppButton type="button" variant="neutral" size="icon-sm" onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))} aria-label="Close modal">
+                                        <i className="fas fa-times text-xs"></i>
+                                    </AppButton>
+                                </div>
                             </div>
 
                             {/* body */}
                             <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain" data-lenis-prevent>
                                 {activeChartModal.type === 'parcels' && (<>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                             <div className="p-3.5 rounded-2xl bg-pink-50/50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900/30">
                                                 <div className="text-[11px] font-semibold text-pink-600 dark:text-pink-400 uppercase tracking-wider">7-Day Projected Total</div>
                                                 <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                                                     {forecastData.parcel_7_day.total_next_week.toLocaleString()} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">parcels</span>
                                                 </div>
                                                 <div className="text-xs text-pink-600 dark:text-pink-400 mt-1">
-                                                    95% Statistical Confidence
+                                                    {forecastData.parcel_7_day.confidence || "95%"} Confidence
+                                                </div>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Prev Week Target Met</div>
+                                                <div className="text-2xl font-bold text-pink-600 dark:text-pink-400 mt-1">
+                                                    {prevEval?.has_evaluation ? `${prevEval.met_percentage}%` : 'N/A'}
+                                                </div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate" title={prevEval?.summary || ''}>
+                                                    {prevEval?.has_evaluation ? `${prevEval.actual_volume} actual / ${prevEval.predicted_volume} pred` : 'No prior window'}
                                                 </div>
                                             </div>
                                             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
@@ -1059,9 +1158,24 @@ export default function Forecast() {
                                         <p className="text-xs text-slate-500 dark:text-slate-400">Deep analysis of parcel volume trajectories, confidence envelopes, and expense projections</p>
                                     </div>
                                 </div>
-                                <AppButton type="button" variant="neutral" size="icon-sm" onClick={() => setIsAiModalOpen(false)} aria-label="Close modal">
-                                    <i className="fas fa-times text-xs"></i>
-                                </AppButton>
+                                <div className="flex items-center gap-1.5">
+                                    <AppButton
+                                        type="button"
+                                        variant="neutral"
+                                        size="xs"
+                                        onClick={() => {
+                                            setIsAiModalOpen(false);
+                                            setIsAiMinimized(true);
+                                        }}
+                                        title="Minimize to compact bar"
+                                    >
+                                        <i className="fas fa-minus text-[10px]"></i>
+                                        <span>Minimize</span>
+                                    </AppButton>
+                                    <AppButton type="button" variant="neutral" size="icon-sm" onClick={() => setIsAiModalOpen(false)} aria-label="Close modal">
+                                        <i className="fas fa-times text-xs"></i>
+                                    </AppButton>
+                                </div>
                             </div>
 
                             {/* body */}

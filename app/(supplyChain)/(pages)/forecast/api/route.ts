@@ -67,13 +67,18 @@ function processDailyParcelData(parcels: any[]) {
     });
 
     // busiest month
+    const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
     let busiestMonth = { month: 'N/A', count: 0 };
     monthMap.forEach((cnt, mo) => {
-        if (cnt > busiestMonth.count) {
+        if (cnt > busiestMonth.count || (busiestMonth.month === 'N/A' && cnt > 0)) {
             const [y, m] = mo.split('-');
-            const dateObj = new Date(parseInt(y), parseInt(m) - 1, 1);
+            const monthIdx = parseInt(m) - 1;
+            const monthName = (monthIdx >= 0 && monthIdx < 12) ? monthNames[monthIdx] : `Month ${m}`;
             busiestMonth = {
-                month: `${dateObj.toLocaleString('default', { month: 'long' })} ${y}`,
+                month: `${monthName} ${y}`,
                 count: cnt
             };
         }
@@ -104,21 +109,34 @@ function processDailyParcelData(parcels: any[]) {
         }
     });
 
-    // daily timeline
+    // daily timeline: ensure timeline spans from the earliest parcel date all the way through TODAY
     let sortedDates: string[] = [];
     let dailyCounts: number[] = [];
 
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const todayDate = new Date(todayStr + 'T00:00:00Z');
+
     if (dailyMap.size > 0) {
         const rawDateKeys = Array.from(dailyMap.keys()).sort();
-        const firstDate = new Date(rawDateKeys[0]);
-        const lastDate = new Date(rawDateKeys[rawDateKeys.length - 1]);
+        const firstDate = new Date(rawDateKeys[0] + 'T00:00:00Z');
+        const dbLastDate = new Date(rawDateKeys[rawDateKeys.length - 1] + 'T00:00:00Z');
+        const lastDate = dbLastDate > todayDate ? dbLastDate : todayDate;
         
         let cur = new Date(firstDate);
         while (cur <= lastDate) {
             const dStr = cur.toISOString().split('T')[0];
             sortedDates.push(dStr);
             dailyCounts.push(dailyMap.get(dStr) || 0);
-            cur.setDate(cur.getDate() + 1);
+            cur.setUTCDate(cur.getUTCDate() + 1);
+        }
+    } else {
+        let cur = new Date(todayDate.getTime() - 13 * 24 * 60 * 60 * 1000);
+        while (cur <= todayDate) {
+            const dStr = cur.toISOString().split('T')[0];
+            sortedDates.push(dStr);
+            dailyCounts.push(0);
+            cur.setUTCDate(cur.getUTCDate() + 1);
         }
     }
 
@@ -253,7 +271,7 @@ export async function GET() {
 
         // load forecast
         const anofox = await getAnofox();
-        const { TimeSeries, HoltWintersForecaster, AutoThetaForecaster, NaiveForecaster, SESForecaster } = anofox;
+        const { TimeSeries, HoltWintersForecaster, AutoThetaForecaster, NaiveForecaster } = anofox;
 
         // forecast parcels
         let parcelPredictions: number[] = [];
@@ -296,16 +314,123 @@ export async function GET() {
             }
         }
 
-        // future dates
+        // future dates starting from tomorrow (next 7 days)
         const lastDateStr = parcelAgg.dates[parcelAgg.dates.length - 1] || new Date().toISOString().split('T')[0];
         const next7Days: string[] = [];
-        const baseDate = new Date(lastDateStr);
+        const baseDate = new Date(lastDateStr + 'T00:00:00Z');
         for (let i = 1; i <= 7; i++) {
             const nextD = new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000);
             next7Days.push(nextD.toISOString().split('T')[0]);
         }
 
         const totalNextWeek = parcelPredictions.reduce((a: number, b: number) => a + b, 0);
+
+        // Evaluate previous week forecast attainment (comparison of last week's actual vs forecasted volume)
+        let prevWeekEvaluation = {
+            has_evaluation: false,
+            date_range: 'Previous 7 Days',
+            actual_volume: 0,
+            predicted_volume: 0,
+            met_percentage: 0,
+            accuracy_percentage: 0,
+            status: 'No Prior Data' as 'Exceeded' | 'Met' | 'Near Target' | 'Under Target' | 'No Prior Data',
+            status_tone: 'neutral' as 'emerald' | 'pink' | 'amber' | 'neutral',
+            summary: 'Insufficient historical data to evaluate prior week forecast accuracy.'
+        };
+
+        if (parcelAgg.counts.length >= 7) {
+            const targetDays = 7;
+            const endIdx = parcelAgg.counts.length;
+            const startIdx = Math.max(0, endIdx - targetDays);
+            
+            const prevDates = parcelAgg.dates.slice(startIdx, endIdx);
+            const prevCounts = parcelAgg.counts.slice(startIdx, endIdx);
+            const prevActual = prevCounts.reduce((a, b) => a + b, 0);
+
+            // Compute predicted volume for that window via backtest or baseline
+            let prevPredicted = 0;
+            if (startIdx >= 7) {
+                try {
+                    const trainData = parcelAgg.counts.slice(0, startIdx);
+                    const tsTrain = new TimeSeries(new Float64Array(trainData));
+                    let fcTrain;
+                    try {
+                        const modelBack = HoltWintersForecaster.auto(7, 'additive');
+                        modelBack.fit(tsTrain);
+                        fcTrain = modelBack.predict(targetDays);
+                    } catch {
+                        const modelBack = new AutoThetaForecaster();
+                        modelBack.fit(tsTrain);
+                        fcTrain = modelBack.predict(targetDays);
+                    }
+                    const predVals = Array.from(fcTrain.values as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
+                    prevPredicted = predVals.reduce((a: number, b: number) => a + b, 0);
+                } catch {
+                    prevPredicted = 0;
+                }
+            }
+
+            if (prevPredicted === 0) {
+                const priorSlice = parcelAgg.counts.slice(0, startIdx);
+                if (priorSlice.length > 0) {
+                    const avg = (priorSlice.reduce((a, b) => a + b, 0) / priorSlice.length) * targetDays;
+                    prevPredicted = Math.max(1, Math.round(avg));
+                } else {
+                    prevPredicted = Math.max(1, prevActual);
+                }
+            }
+
+            const metPct = prevPredicted > 0 
+                ? Math.round((prevActual / prevPredicted) * 100) 
+                : (prevActual > 0 ? 100 : 0);
+            
+            const error = Math.abs(prevActual - prevPredicted);
+            const maxDenom = Math.max(prevActual, prevPredicted, 1);
+            const accPct = Math.max(0, Math.round((1 - error / maxDenom) * 100));
+
+            let status: 'Exceeded' | 'Met' | 'Near Target' | 'Under Target' = 'Met';
+            let statusTone: 'emerald' | 'pink' | 'amber' = 'emerald';
+
+            if (metPct >= 100) {
+                status = 'Exceeded';
+                statusTone = 'emerald';
+            } else if (metPct >= 90) {
+                status = 'Met';
+                statusTone = 'emerald';
+            } else if (metPct >= 75) {
+                status = 'Near Target';
+                statusTone = 'pink';
+            } else {
+                status = 'Under Target';
+                statusTone = 'amber';
+            }
+
+            const formatReadable = (isoStr: string) => {
+                const parts = isoStr.split('-');
+                if (parts.length === 3) {
+                    const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const m = mNames[parseInt(parts[1], 10) - 1] || parts[1];
+                    return `${m} ${parseInt(parts[2], 10)}`;
+                }
+                return isoStr;
+            };
+
+            const rangeStr = prevDates.length > 0 
+                ? `${formatReadable(prevDates[0])} - ${formatReadable(prevDates[prevDates.length - 1])}, ${prevDates[0].split('-')[0]}`
+                : 'Previous 7 Days';
+
+            prevWeekEvaluation = {
+                has_evaluation: true,
+                date_range: rangeStr,
+                actual_volume: prevActual,
+                predicted_volume: prevPredicted,
+                met_percentage: metPct,
+                accuracy_percentage: accPct,
+                status,
+                status_tone: statusTone,
+                summary: `Previous week (${rangeStr}) achieved ${metPct}% of forecasted volume (${prevActual} actual vs ${prevPredicted} predicted parcels).`
+            };
+        }
 
         // forecast expense
         let expensePrediction = 0;
@@ -395,6 +520,7 @@ export async function GET() {
                 engine: "@sipemu/anofox-forecast (Rust/WASM)",
                 explanation: parcelExplanation,
                 dates: next7Days,
+                previous_week_evaluation: prevWeekEvaluation,
                 historical: {
                     dates: parcelAgg.dates,
                     counts: parcelAgg.counts,

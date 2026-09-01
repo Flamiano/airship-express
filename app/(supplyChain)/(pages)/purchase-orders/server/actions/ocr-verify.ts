@@ -725,6 +725,21 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             console.warn('Could not insert notification:', notifErr);
         }
 
+        // Log administrative force insert to user_activity
+        if (validUserUUID) {
+            try {
+                await supabase.from('user_activity').insert({
+                    user_id: validUserUUID,
+                    action: 'FORCE_INSERT_RECEIPT',
+                    module: 'Procurement',
+                    description: `Administrative force insert and receipt override performed for PO #${po.po_number || po.id}. Verification ID: ${dv.id}. Justification: ${reason}`,
+                    created_at: new Date().toISOString(),
+                });
+            } catch (uaErr) {
+                console.warn('Could not log user_activity for force insert:', uaErr);
+            }
+        }
+
         return {
             success: true,
             documentId: newDocId,

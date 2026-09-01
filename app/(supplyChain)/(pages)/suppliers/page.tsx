@@ -726,7 +726,9 @@ export default function Suppliers() {
             }
         };
     }, []);
-    return (<SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
+
+    return (
+        <SessionGuard requiredRole={['Admin', 'Employee', 'Executive']}>
             <main className="main-shell bgCard">
                 <div className="p-6 space-y-6 fade-in">
                     {/* header */}
@@ -762,10 +764,12 @@ export default function Suppliers() {
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0 mt-2 sm:mt-0">
-                            {selectedSuppliers.size > 0 && (<AppButton type="button" variant="danger" size="md" onClick={handleBulkDelete}>
+                            {selectedSuppliers.size > 0 && (
+                                <AppButton type="button" variant="danger" size="md" onClick={handleBulkDelete}>
                                     <i className="fas fa-trash-alt text-xs"/>
                                     <span>Delete Selected ({selectedSuppliers.size})</span>
-                                </AppButton>)}
+                                </AppButton>
+                            )}
                             <AppButton type="button" variant="primary" size="md" onClick={() => setShowNewSupplierModal(true)}>
                                 <i className="fas fa-plus text-xs"/>
                                 <span>New Supplier</span>
@@ -774,15 +778,22 @@ export default function Suppliers() {
                     </div>
 
                     {/* stats cards */}
-                    {isLoading ? (<CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 xl:grid-cols-4"/>) : (<div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {isLoading ? (
+                        <CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 xl:grid-cols-4"/>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                             <Cards frontIcon="fas fa-building mr-1" header="Active Suppliers" data={activeSuppliers.toString()} arrow="fas fa-arrow-up mr-1" description="Total active suppliers" backHeader="Supplier Stats" headerTextColor="text-slate-400" backDescription={`Total suppliers: ${suppliers.length}, Active: ${activeSuppliers}`} tooltip="View all suppliers" tooltipLink="#supplierTableId" badge={`${activeSuppliers} Active`}/>
                             <Cards frontIcon="fas fa-shopping-cart mr-1" header="Total Purchases" data={supplierStats.totalOrders.toString()} arrow="fas fa-arrow-up mr-1" description="Orders placed" backHeader="Order Stats" headerTextColor="text-slate-400" backDescription="Total purchase orders placed across all suppliers" tooltip="View all purchase orders" tooltipLink="/purchase-order" badge={`${supplierStats.totalOrders} Total`}/>
                             <Cards frontIcon="fas fa-trophy mr-1" header="Top Supplier" data={supplierStats.topSupplierName} arrow="fas fa-arrow-up mr-1" description={`${supplierStats.topSupplierOrders} orders`} backHeader="Top Supplier Details" headerTextColor="text-slate-200" backDescription={topSupplier ? `${topSupplier.category} - ${topSupplier.location}` : "No suppliers yet"} tooltip="View supplier details" tooltipLink={topSupplier ? `/supplier/${topSupplier.id}` : "#"} badge={topSupplier ? "Top" : "No Data"}/>
                             <Cards frontIcon="fas fa-tags mr-1" header="Top Category" data={topCategory} arrow="fas fa-arrow-up mr-1" description="Most common supplier type" backHeader="Category Breakdown" headerTextColor="text-slate-200" backDescription={`${topCategory} is the most common supplier category`} tooltip="View category details" tooltipLink="#" badge={topCategory || "N/A"}/>
-                        </div>)}
+                        </div>
+                    )}
 
                     {/* charts */}
-                    {isLoading ? (<SupplierChartsSkeleton />) : (<div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                    {isLoading ? (
+                        <SupplierChartsSkeleton />
+                    ) : (
+                        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
                             {/* purchase activity card */}
                             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs xl:col-span-3 flex flex-col justify-between transition-all">
                                 <div className="flex items-center justify-between mb-4">
@@ -795,19 +806,25 @@ export default function Suppliers() {
                                     </div>
                                 </div>
                                 <div className="h-60 relative w-full flex items-center justify-center">
-                                    {suppliers.length === 0 ? (<div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
+                                    {suppliers.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
                                             <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
                                                 <i className="fas fa-building text-base"></i>
                                             </div>
                                             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No suppliers registered yet</span>
                                             <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Add a supplier to start tracking purchases</span>
-                                        </div>) : purchaseOrders.length === 0 ? (<div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
+                                        </div>
+                                    ) : purchaseOrders.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
                                             <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
                                                 <i className="fas fa-shopping-cart text-base"></i>
                                             </div>
                                             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No purchase orders yet</span>
                                             <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Create a purchase order to see activity data</span>
-                                        </div>) : (<canvas ref={activityChartRef} className="w-full h-full max-h-60"></canvas>)}
+                                        </div>
+                                    ) : (
+                                        <canvas ref={activityChartRef} className="w-full h-full max-h-60"></canvas>
+                                    )}
                                 </div>
                             </div>
 
@@ -823,16 +840,21 @@ export default function Suppliers() {
                                     </div>
                                 </div>
                                 <div className="h-60 relative w-full flex items-center justify-center">
-                                    {suppliers.length === 0 ? (<div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
-                                            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 border border-slate-200/60 dark:border-slate-700/50">
+                                    {suppliers.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                                            <div className="w-12 h-12 rounded-2xl bg-pink-50 dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 mb-2.5">
                                                 <i className="fas fa-chart-pie text-base"></i>
                                             </div>
-                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No data available</span>
-                                            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Category metrics will display once added</span>
-                                        </div>) : (<canvas ref={categoryChartRef} className="w-full h-full max-h-60"></canvas>)}
+                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Supplier Categories</span>
+                                            <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5 leading-tight">Category breakdown will display once suppliers are registered</span>
+                                        </div>
+                                    ) : (
+                                        <canvas ref={categoryChartRef} className="w-full h-full max-h-60"></canvas>
+                                    )}
                                 </div>
                             </div>
-                        </div>)}
+                        </div>
+                    )}
 
                     {/* supplier directory table */}
                     <div className="card flex flex-col">
@@ -854,25 +876,34 @@ export default function Suppliers() {
                                 <div className="relative max-w-[180px] w-full sm:w-auto">
                                     <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by category" className="w-full py-1.5 pl-3 pr-8 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-pink-500/40 focus:border-pink-500 dark:focus:border-pink-500/80 transition-all cursor-pointer appearance-none">
                                         <option value="">All categories</option>
-                                        {categories.map((cat) => (<option key={cat} value={cat} className="dark:bg-slate-900 dark:text-slate-200">
-                                                 {cat}
-                                             </option>))}
+                                        {categories.map((cat) => (
+                                            <option key={cat} value={cat} className="dark:bg-slate-900 dark:text-slate-200">
+                                                {cat}
+                                            </option>
+                                        ))}
                                     </select>
                                     <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none"/>
                                 </div>
                             </div>
 
-                            {selectedSuppliers.size > 0 && (<button onClick={handleBulkDelete} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/40 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors cursor-pointer">
+                            {selectedSuppliers.size > 0 && (
+                                <button onClick={handleBulkDelete} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/40 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors cursor-pointer">
                                     <i className="fas fa-trash-alt text-[10px]"/>
                                     <span>Delete Selected ({selectedSuppliers.size})</span>
-                                </button>)}
+                                </button>
+                            )}
                         </div>
 
                         {/* scrollable table */}
                         <div className="flex-1 overflow-y-auto max-h-[500px] relative">
-                            {isLoading ? (<SupplierDirectorySkeleton rows={ITEMS_PER_PAGE}/>) : filteredSuppliers.length === 0 ? (<div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                            {isLoading ? (
+                                <SupplierDirectorySkeleton rows={ITEMS_PER_PAGE}/>
+                            ) : filteredSuppliers.length === 0 ? (
+                                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                                     No suppliers found
-                                </div>) : (<div className="overflow-x-auto">
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
                                     <table className="table-pro w-full text-left text-xs border-collapse p-1" id="supplierTableId">
                                         <thead className="bg-slate-50/75 dark:bg-slate-900/50 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
                                             <tr>

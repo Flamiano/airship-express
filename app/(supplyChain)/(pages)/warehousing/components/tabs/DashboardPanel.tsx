@@ -37,6 +37,17 @@ interface DashboardStats {
     }[];
     forecastModel?: string;
     forecastConfidence?: string;
+    previousWeekEvaluation?: {
+        has_evaluation: boolean;
+        date_range: string;
+        actual_volume: number;
+        predicted_volume: number;
+        met_percentage: number;
+        accuracy_percentage: number;
+        status: string;
+        status_tone: 'emerald' | 'pink' | 'amber' | 'neutral';
+        summary: string;
+    };
 }
 
 interface ChartDataset {
@@ -318,6 +329,7 @@ export default function DashboardPanel() {
             }[] = [];
             let forecastModel = '7-Day Model Projection';
             let forecastConfidence = 'Model Powered';
+            let previousWeekEvaluation: any = null;
 
             try {
                 const forecastRes = await fetch('/forecast/api', { cache: 'no-store' });
@@ -325,6 +337,9 @@ export default function DashboardPanel() {
 
                 if (forecastJson.success && forecastJson.parcel_7_day?.predictions?.length > 0) {
                     const p7 = forecastJson.parcel_7_day;
+                    if (p7.previous_week_evaluation) {
+                        previousWeekEvaluation = p7.previous_week_evaluation;
+                    }
                     const predictions: number[] = p7.predictions;
                     const lowerBounds: number[] = p7.confidence_interval?.lower || [];
                     const upperBounds: number[] = p7.confidence_interval?.upper || [];
@@ -433,6 +448,7 @@ export default function DashboardPanel() {
                     forecast,
                     forecastModel,
                     forecastConfidence,
+                    previousWeekEvaluation,
                 });
 
                 setLastUpdated(new Date());
@@ -839,7 +855,17 @@ export default function DashboardPanel() {
                         </div>
 
                         <div className="mt-4 relative min-h-[250px] sm:min-h-[200px]">
-                            <canvas ref={chartRef}></canvas>
+                            {stats.courierData.length > 0 && stats.courierData.some(c => c.data && c.data.some(v => v > 0)) ? (
+                                <canvas ref={chartRef}></canvas>
+                            ) : (
+                                <div className="h-[250px] sm:h-[200px] flex flex-col items-center justify-center text-center p-6">
+                                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-2.5">
+                                        <i className="fas fa-truck text-base"></i>
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Courier Volume Data</span>
+                                    <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5 leading-tight">No parcel volume logged for active couriers in this timeframe</span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -954,9 +980,16 @@ export default function DashboardPanel() {
                                             </p>
                                         </div>
                                     </div>
-                                    <StatusBadge tone="indigo" size="xs">
-                                        {stats.forecastConfidence || '95% Confidence'}
-                                    </StatusBadge>
+                                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                        {stats.previousWeekEvaluation?.has_evaluation && (
+                                            <StatusBadge tone={stats.previousWeekEvaluation.status_tone || 'emerald'} icon="fas fa-bullseye" size="xs">
+                                                Prev Week: {stats.previousWeekEvaluation.met_percentage}% Met
+                                            </StatusBadge>
+                                        )}
+                                        <StatusBadge tone="indigo" size="xs">
+                                            {stats.forecastConfidence || '95% Confidence'}
+                                        </StatusBadge>
+                                    </div>
                                 </div>
 
                                 <div className="mt-4 space-y-3">

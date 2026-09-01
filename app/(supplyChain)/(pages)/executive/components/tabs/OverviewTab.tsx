@@ -273,7 +273,17 @@ export default function OverviewTab({ data, onOpenModal }: OverviewTabProps) {
                         </button>
                     </div>
                     <div className="h-56 relative">
-                        <canvas ref={procurementCanvasRef} />
+                        {Object.values(data.procurementStatusBreakdown).some(v => v > 0) ? (
+                            <canvas ref={procurementCanvasRef} />
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-2.5">
+                                    <i className="fas fa-shopping-bag text-base"></i>
+                                </div>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Procurement Requests</span>
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No purchase requisitions found in the current pipeline</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

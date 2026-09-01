@@ -262,6 +262,21 @@ export async function stockInItemAction(params: StockInParams): Promise<StockInR
             return { success: false, error: `Failed to update inventory stock level: ${updateInvError.message}`, status: 500 };
         }
 
+        // Log administrative override to user_activity
+        if (force && validUserUUID) {
+            try {
+                await supabase.from('user_activity').insert({
+                    user_id: validUserUUID,
+                    action: 'INVENTORY_STOCK_OVERRIDE',
+                    module: 'Inventory',
+                    description: `Manual administrative override during stock-in for item "${item.item_name}" (SKU: ${item.sku || item.item_code || 'N/A'}). Quantity added: +${quantity} (New stock: ${newStock}). Reason: ${force_reason || 'Manual override'}`,
+                    created_at: new Date().toISOString(),
+                });
+            } catch (uaErr) {
+                console.warn('Could not log user_activity for inventory override:', uaErr);
+            }
+        }
+
         // 5. Update purchase_order_items & stock_in_logs if PO item exists
         if (poi) {
             const newQtyReceived = (poi.quantity_received || 0) + quantity;

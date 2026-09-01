@@ -124,6 +124,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
     const nextWeekTotal = p7?.total_next_week ?? 0;
     const confidenceLevel = p7?.confidence ?? "N/A";
     const modelUsed = p7?.model_used ?? "Time Series Statistical Model";
+    const prevEval = p7?.previous_week_evaluation;
 
     return (
         <div className="space-y-6">
@@ -131,8 +132,8 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                 onClick={() => onOpenModal('forecast', forecastApiData)}
                 className="card p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs hover:border-pink-300 dark:hover:border-pink-800 transition-all cursor-pointer group"
             >
-                <div className="flex items-center justify-between mb-4">
-                    <div className="font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <div className="font-semibold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2 flex-wrap">
                         <i className="fas fa-chart-line text-pink-500"></i>
                         <span>Parcel Volume: Actual Supabase Data → 7-Day WASM Prediction</span>
                         {/* Hover info badge ! with details about chart */}
@@ -149,6 +150,16 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                                 <p className="text-slate-200 dark:text-slate-300 mt-1">Executes Holt-Winters additive time-series forecasting via @sipemu/anofox-forecast Rust/WASM engine over real historical parcel dates.</p>
                             </div>
                         </div>
+                        {prevEval?.has_evaluation && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                prevEval.met_percentage >= 90
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/40'
+                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/40'
+                            }`}>
+                                <i className="fas fa-bullseye text-[9px]"></i>
+                                <span>Prev Week: {prevEval.met_percentage}% Met</span>
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         {loadingForecast && (
@@ -168,27 +179,36 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Next 7 Days Volume</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Next 7 Days</p>
                     <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-                        {nextWeekTotal.toLocaleString()} parcels
+                        {nextWeekTotal.toLocaleString()} <span className="text-xs font-normal text-slate-400">units</span>
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">Sum of predicted daily intake</p>
                 </div>
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Statistical Confidence Level</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prev Week Target Met</p>
+                    <p className="text-xl font-bold text-pink-600 dark:text-pink-400 mt-1">
+                        {prevEval?.has_evaluation ? `${prevEval.met_percentage}%` : 'N/A'}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 truncate" title={prevEval?.summary || 'Attainment vs Forecast'}>
+                        {prevEval?.has_evaluation ? `${prevEval.actual_volume} actual / ${prevEval.predicted_volume} pred` : 'No prior week data'}
+                    </p>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Confidence Level</p>
                     <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                         {confidenceLevel}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">Engine: @sipemu/anofox-forecast</p>
                 </div>
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Forecasting Model Applied</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Forecasting Model</p>
                     <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1 line-clamp-1">
                         {modelUsed}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Calculated from historical parcels table</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Historical database series</p>
                 </div>
             </div>
         </div>

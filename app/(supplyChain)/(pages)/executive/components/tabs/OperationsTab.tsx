@@ -206,7 +206,17 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                         </button>
                     </div>
                     <div className="h-60 relative">
-                        <canvas ref={courierCanvasRef} />
+                        {Object.values(data.courierBreakdown).some(v => (typeof v === 'number' && v > 0)) ? (
+                            <canvas ref={courierCanvasRef} />
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-2.5">
+                                    <i className="fas fa-truck text-base"></i>
+                                </div>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Courier Volume Data</span>
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No parcel volume logged for active couriers</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -317,7 +327,17 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                         </button>
                     </div>
                     <div className="h-60 relative">
-                        <canvas ref={supplierCanvasRef} />
+                        {Object.values(data.supplierCategoryBreakdown).some(v => v > 0) ? (
+                            <canvas ref={supplierCanvasRef} />
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                                <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-800/50 flex items-center justify-center text-purple-500 dark:text-purple-400 mb-2.5">
+                                    <i className="fas fa-building text-base"></i>
+                                </div>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Supplier Categories</span>
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No active suppliers categorized in the registry</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

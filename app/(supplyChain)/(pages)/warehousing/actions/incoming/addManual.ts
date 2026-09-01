@@ -186,7 +186,7 @@ export async function addManualParcel(data: {
                 error: 'Duplicate barcode detected - already in queue',
                 status: 409,
             };
-        } // get courier
+        }
 
         let courierName = null;
         if (data.courier_id) {
@@ -199,7 +199,7 @@ export async function addManualParcel(data: {
             if (!courierError && courier) {
                 courierName = courier.name;
             }
-        } // prep data
+        }
 
         const insertData = {
             barcode: trimmedBarcode,
