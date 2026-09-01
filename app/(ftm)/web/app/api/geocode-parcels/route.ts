@@ -48,9 +48,15 @@ export async function POST(req: NextRequest) {
 
     if (action === "geocode-all") {
       // Get all parcels and geocode their destinations
-      const supabaseUrl = process.env.PARCELS_SUPABASE_URL || process.env.SUPABASE_URL;
-      const supabaseKey = process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY || 
-                          process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const supabaseUrl = process.env.FTM_PARCELS_SUPABASE_URL || process.env.PARCELS_SUPABASE_URL || process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
+      const supabaseKey = process.env.FTM_PARCELS_SUPABASE_SERVICE_ROLE_KEY ||
+                          process.env.FTM_PARCELS_SUPABASE_ANON_KEY ||
+                          process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY ||
+                          process.env.PARCELS_SUPABASE_ANON_KEY ||
+                          process.env.FTM_SUPABASE_SERVICE_ROLE_KEY ||
+                          process.env.FTM_SUPABASE_ANON_KEY ||
+                          process.env.SUPABASE_SERVICE_ROLE_KEY ||
+                          process.env.SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseKey) {
         return NextResponse.json(

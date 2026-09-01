@@ -98,6 +98,7 @@ function runOrTools(payload: OptimizeRequest): Promise<{
         stops: payload.stops,
         cargoWeightKg: payload.cargoWeightKg,
         prioritizeFuelEfficiency: payload.prioritizeFuelEfficiency,
+        optimizationMode: payload.optimizationMode,
       })
     );
     proc.stdin.end();

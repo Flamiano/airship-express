@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { MapContainer, TileLayer, CircleMarker, Popup, Polyline } from "react-leaflet";

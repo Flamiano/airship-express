@@ -3,7 +3,7 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 import CursorHost from "./components/CursorHost";
 import { ThemeProvider } from "./components/ThemeProvider";
-import PageLoadingOverlay from "./components/PageLoadingOverlay";
+import FtmLoadingProvider from "./components/FtmLoadingProvider";
 
 export const metadata: Metadata = {
   title: "Airship Express - Fleet & Transport Suite",
@@ -27,9 +27,10 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased min-h-screen flex flex-col">
         <ThemeProvider>
-          <CursorHost />
-          <PageLoadingOverlay />
-          {children}
+          <FtmLoadingProvider>
+            <CursorHost />
+            {children}
+          </FtmLoadingProvider>
         </ThemeProvider>
       </body>
     </html>

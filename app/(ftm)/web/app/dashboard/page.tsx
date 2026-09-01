@@ -326,6 +326,8 @@ const KPI_IDS = [
   "total-parcels",
   "total-fuel",
   "operating-cost",
+  "driver-allowance",
+  "mobile-data",
 ] as const;
 
 export default function Home() {
@@ -484,20 +486,6 @@ export default function Home() {
             Reconnect Stream
           </button>
         </div>
-      </div>
-    );
-  }
-
-  if (isLoading && !snapshot.trips.length && !snapshot.vehicles.length && !snapshot.bookings.length) {
-    return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-pink-50/60 via-white to-rose-50/40 text-slate-800 font-sans w-full">
-        <GlobalNavbar />
-        <main className="flex flex-1 items-center justify-center px-4 py-6 sm:px-6">
-          <div className="flex items-center gap-3 rounded-xl border border-pink-100 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
-            <span className="material-symbols-outlined animate-spin text-pink-600">progress_activity</span>
-            Loading dashboard…
-          </div>
-        </main>
       </div>
     );
   }
@@ -844,7 +832,7 @@ export default function Home() {
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Driver</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('driver-allowance', `₱${driverAllowanceCost.toFixed(2)}`)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('driver-allowance', `₱${driverAllowanceCost.toFixed(2)}`)}{renderKPITrend('driver-allowance')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Driver Allowance</div>
             </div>
           </div>
@@ -855,7 +843,7 @@ export default function Home() {
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">Data</span>
             </div>
             <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('mobile-data', `₱${mobileDataCost.toFixed(2)}`)}</div>
+              <div className="text-lg font-black text-slate-900">{renderKPIValue('mobile-data', `₱${mobileDataCost.toFixed(2)}`)}{renderKPITrend('mobile-data')}</div>
               <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Data &amp; Internet</div>
             </div>
           </div>

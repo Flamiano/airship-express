@@ -95,7 +95,6 @@ export const signUp = async (formData: FormData) => {
                 email: email,
                 full_name: name,
                 role: "customer",
-                source: "online"
             });
 
         if (profileError) {

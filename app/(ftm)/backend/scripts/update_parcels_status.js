@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.PARCELS_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY || process.env.PARCELS_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('Missing PARCELS_SUPABASE_URL or SUPABASE_URL in backend/.env');
+  console.error('Missing PARCELS_SUPABASE_URL or SUPABASE_URL in ../../.env');
   process.exit(1);
 }
 

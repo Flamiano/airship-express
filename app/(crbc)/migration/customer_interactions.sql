@@ -24,13 +24,55 @@ create index if not exists customer_interactions_customer_id_idx
 
 alter table public.customer_interactions enable row level security;
 
+-- Staff policies
 create policy "Staff can read customer interactions"
   on public.customer_interactions for select
-  using (true);
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+    )
+  );
 
 create policy "Staff can create customer interactions"
   on public.customer_interactions for insert
-  with check (true);
+  with check (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+    )
+  );
+
+create policy "Staff can update customer interactions"
+  on public.customer_interactions for update
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.role = 'staff'
+    )
+  );
+
+-- Customer policies: customers can only see their own interactions
+create policy "Customers can read own interactions"
+  on public.customer_interactions for select
+  using (
+    customer_id in (
+      select id from customers
+      where customers.auth_user_id = auth.uid()
+    )
+  );
+
+create policy "Customers can create own interactions"
+  on public.customer_interactions for insert
+  with check (
+    customer_id in (
+      select id from customers
+      where customers.auth_user_id = auth.uid()
+    )
+  );
 
 -- Remove channel from the permanent customer identity.
 -- Channel is transactional: it lives on customer_interactions / booking_requests.

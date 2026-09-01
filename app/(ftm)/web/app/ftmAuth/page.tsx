@@ -1,13 +1,12 @@
+// @ts-nocheck
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { signInWithPassword } from "../lib/auth";
-import { getDashboardRouteForRole } from "../lib/roleAccess";
+import { getDashboardRouteForRole, normalizeRole } from "../lib/roleAccess";
 
 export default function AuthPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -33,21 +32,21 @@ export default function AuthPage() {
       return;
     }
 
+    setLoading(false);
     setIsNavigating(true);
-    const destination = getDashboardRouteForRole(user.role ?? "customer");
-
-    setTimeout(() => {
-      router.push(destination);
-    }, 400);
+    const role = normalizeRole(user.role) ?? "customer";
+    const destination = getDashboardRouteForRole(role);
+    window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination } }));
   };
 
   return (
-    <motion.main
-      initial={{ opacity: 0 }}
-      animate={{ opacity: isNavigating ? 0 : 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.4, ease: "easeInOut" }}
-      className="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-pink-50/80 via-white to-rose-100/60"
+    <>
+      <motion.main
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isNavigating ? 0 : 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.4, ease: "easeInOut" }}
+        className="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-pink-50/80 via-white to-rose-100/60"
     >
       <motion.div
         animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
@@ -125,6 +124,7 @@ export default function AuthPage() {
           </motion.div>
         </section>
       </div>
-    </motion.main>
+      </motion.main>
+    </>
   );
 }

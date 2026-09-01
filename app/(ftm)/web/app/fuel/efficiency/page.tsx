@@ -7,8 +7,85 @@ import { useState, useEffect } from "react";
 import { getDashboardSnapshot } from "../../lib/api";
 import { usePathname } from "next/navigation";
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from "recharts";
+const MS_DAY = 24 * 60 * 60 * 1000;
 
-// Efficiency and hourly-load arrays are computed from the live snapshot when available.
+type FuelLog = {
+  id?: string;
+  vehicleId?: string | null;
+  tripId?: string | null;
+  liters?: number | null;
+  cost?: number | null;
+  odometerReading?: number | null;
+  loggedAt?: string | null;
+  distanceKm?: number;
+  recovered?: number;
+};
+
+function getLogDate(log: FuelLog) {
+  return new Date(log.loggedAt || 0);
+}
+
+function buildFuelLogs(snapshot: any): FuelLog[] {
+  const rawLogs: FuelLog[] = Array.isArray(snapshot?.fuelLogs) ? snapshot.fuelLogs : [];
+  const trips = Array.isArray(snapshot?.trips) ? snapshot.trips : [];
+  const sorted = rawLogs
+    .map((log: any) => ({
+      ...log,
+      vehicleId: log.vehicleId ?? log.vehicle_id ?? null,
+      tripId: log.tripId ?? log.trip_id ?? null,
+      liters: Number(log.liters ?? 0),
+      cost: Number(log.cost ?? 0),
+      odometerReading: log.odometerReading ?? log.odometer_reading,
+      loggedAt: log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? null,
+      recovered: Number(log.regen ?? log.recovered ?? 0),
+    }))
+    .filter((log) => Number.isFinite(log.liters) && log.liters > 0 && getLogDate(log).getTime() > 0)
+    .sort((a, b) => getLogDate(a).getTime() - getLogDate(b).getTime());
+
+  const previousOdometer = new Map<string, number>();
+  return sorted.map((log) => {
+    const odometer = Number(log.odometerReading);
+    const vehicleId = String(log.vehicleId || "unknown");
+    const previous = previousOdometer.get(vehicleId);
+    const trip = trips.find((item: any) => String(item.id || item.trip_id || "") === String(log.tripId || ""));
+    const tripDistance = Number(trip?.distance_km ?? trip?.distanceKm ?? 0);
+    const distanceKm = Number.isFinite(odometer) && previous != null && odometer >= previous
+      ? odometer - previous
+      : tripDistance;
+    if (Number.isFinite(odometer)) previousOdometer.set(vehicleId, odometer);
+    return { ...log, distanceKm: Number.isFinite(distanceKm) ? distanceKm : 0 };
+  });
+}
+
+function getRangeStart(range: "Last 7 Days" | "Last 30 Days" | "This Month") {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (range === "Last 7 Days") start.setDate(start.getDate() - 6);
+  else if (range === "Last 30 Days") start.setDate(start.getDate() - 29);
+  else start.setDate(1);
+  return start.getTime();
+}
+
+function getVehicleClass(vehicle: any) {
+  const type = String(vehicle?.vehicleType || vehicle?.vehicle_type || vehicle?.type || "").toLowerCase();
+  if (/semi|hauler|rig|heavy/.test(type)) return "Heavy Hauler Semi";
+  if (/box|truck/.test(type)) return "Class 5 Box Trucks";
+  if (/van|pickup|sedan|car/.test(type)) return "Class 3 Delivery Vans";
+  return "Unknown Class";
+}
+
+function getRouteText(record: any) {
+  return [
+    record?.route,
+    record?.routeLabel,
+    record?.pickup_location,
+    record?.dropoff_location,
+    record?.pickupLocation,
+    record?.dropoffLocation,
+    record?.destination,
+    record?.destination_zone,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
 
 export default function FuelEfficiencyPage() {
   const [selectedMode, setSelectedMode] = useState<"Daily" | "Weekly">("Daily");
@@ -17,6 +94,8 @@ export default function FuelEfficiencyPage() {
   const [smartRoutingApplied, setSmartRoutingApplied] = useState(false);
   const [leaderboardView, setLeaderboardView] = useState<"Drivers" | "Vehicles">("Drivers");
   const [selectedVehicleClass, setSelectedVehicleClass] = useState<string>("All Classes");
+  const [selectedRegion, setSelectedRegion] = useState("All Regions");
+  const [selectedRouteStatus, setSelectedRouteStatus] = useState("All States");
 
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [snapshot, setSnapshot] = useState<any | null>(null);
@@ -39,36 +118,67 @@ export default function FuelEfficiencyPage() {
     return () => { mounted = false; };
   }, []);
 
-  // Keep rendering the page structure even if no live fuel logs; UI shows placeholders.
+  const fuelLogs = buildFuelLogs(snapshot);
+  const rangeStart = getRangeStart(selectedRange);
+  const vehiclesById = new Map((snapshot?.vehicles || []).map((vehicle: any) => [String(vehicle.id), vehicle]));
+  const tripsById = new Map((snapshot?.trips || []).map((trip: any) => [String(trip.id || trip.trip_id), trip]));
+  const rangeLogs = fuelLogs.filter((log) => {
+    if (getLogDate(log).getTime() < rangeStart) return false;
+    const vehicle = vehiclesById.get(String(log.vehicleId || ""));
+    const trip = tripsById.get(String(log.tripId || ""));
+    if (selectedVehicleClass !== "All Classes" && getVehicleClass(vehicle) !== selectedVehicleClass) return false;
+    if (selectedRouteStatus !== "All States") {
+      const status = String(trip?.status || "").toLowerCase();
+      const matchesStatus = selectedRouteStatus === "Active / En Route (>20% SOC)"
+        ? /active|transit|dispatch|assigned|scheduled|moving|en route|delayed|late/.test(status)
+        : selectedRouteStatus === "Charging Hub"
+          ? /charg|fuel|refuel/.test(status) || /charg|fuel|refuel/.test(getRouteText(trip))
+          : selectedRouteStatus === "Low Battery Flagged"
+            ? Number(vehicle?.fuel_level ?? vehicle?.fuelLevel ?? 100) <= 20
+            : true;
+      if (!matchesStatus) return false;
+    }
+    if (selectedRegion !== "All Regions") {
+      const routeText = getRouteText({ ...trip, ...vehicle });
+      const regionText = selectedRegion === "Zone A - Urban Core" ? "manila makati pasig taguig quezon" : selectedRegion === "Zone B - West Suburbs" ? "cavite las pinas paranaque muntinlupa" : "caloocan valenzuela bulacan north";
+      if (!regionText.split(" ").some((region) => routeText.includes(region))) return false;
+    }
+    return true;
+  });
 
   const efficiencyTrendDataView = (() => {
-    const days = 10;
+    const days = selectedMode === "Daily" ? (selectedRange === "Last 7 Days" ? 7 : 10) : 5;
     const results: { date: string; efficiency: number; regen: number }[] = [];
     const now = new Date();
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      const label = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      results.push({ date: label, efficiency: 0, regen: 0 });
+      if (selectedMode === "Daily") d.setDate(now.getDate() - i);
+      else d.setDate(now.getDate() - i * 7);
+      results.push({ date: d.toISOString().slice(0, 10), efficiency: 0, regen: 0 });
     }
-    if (!hasData || !snapshot) return results;
-    const logs = snapshot.fuelLogs || [];
+    if (!rangeLogs.length) return results.map((item) => ({ ...item, date: new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) }));
     for (const r of results) {
-      const dayLogs = logs.filter((l: any) => new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at).toLocaleDateString() === new Date(r.date).toLocaleDateString());
-      const totalLiters = dayLogs.reduce((s: number, l: any) => s + Number(l.liters ?? l.amount ?? 0), 0);
-      r.efficiency = totalLiters > 0 ? Math.max(0, Number((1000 / totalLiters).toFixed(2))) : 0;
+      const bucketDate = new Date(r.date);
+      const bucketLogs = rangeLogs.filter((log) => {
+        const date = getLogDate(log);
+        return selectedMode === "Daily"
+          ? date.toDateString() === bucketDate.toDateString()
+          : Math.floor((bucketDate.getTime() - date.getTime()) / (7 * MS_DAY)) === 0;
+      });
+      const liters = bucketLogs.reduce((sum, log) => sum + Number(log.liters || 0), 0);
+      const distance = bucketLogs.reduce((sum, log) => sum + Number(log.distanceKm || 0), 0);
+      r.efficiency = liters > 0 && distance > 0 ? Number((distance / liters).toFixed(2)) : 0;
     }
-    return results;
+    return results.map((item) => ({ ...item, date: new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) }));
   })();
 
   const hourlyLoadDataView = (() => {
     const slots = ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00"];
     const result = slots.map((s) => ({ hour: s, load: 0 }));
-    if (!hasData || !snapshot) return result;
-    const logs = snapshot.fuelLogs || [];
-    const totalVehicles = Math.max(1, (snapshot.vehicles || []).length);
-    for (const l of logs) {
-      const h = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at).getHours();
+    if (!rangeLogs.length) return result;
+    const totalVehicles = Math.max(1, (snapshot?.vehicles || []).length);
+    for (const l of rangeLogs) {
+      const h = getLogDate(l).getHours();
       const idx = Math.floor((h - 6) / 3);
       const place = Math.max(0, Math.min(result.length - 1, idx));
       result[place].load += 1;
@@ -85,40 +195,35 @@ export default function FuelEfficiencyPage() {
 
   // KPI: average efficiency (distance / liters)
   const avgEfficiency = (() => {
-    if (!hasData || !snapshot) return "—";
-    const logs = snapshot.fuelLogs || [];
-    const totalLiters = logs.reduce((s: number, l: any) => s + Number(l.liters ?? l.amount ?? 0), 0);
-    const totalDistance = logs.reduce((s: number, l: any) => s + Number(l.distance ?? 0), 0);
-    if (totalLiters <= 0) return "—";
+    const totalLiters = rangeLogs.reduce((s, l) => s + Number(l.liters || 0), 0);
+    const totalDistance = rangeLogs.reduce((s, l) => s + Number(l.distanceKm || 0), 0);
+    if (totalLiters <= 0 || totalDistance <= 0) return "—";
     return (totalDistance / totalLiters).toFixed(2);
   })();
 
   // Compute 30-day change vs previous 30-day window
   const now = Date.now();
-  const MS_DAY = 24 * 60 * 60 * 1000;
   const windowDays = 30;
   const periodEnd = now;
   const periodStart = now - windowDays * MS_DAY;
   const prevPeriodStart = periodStart - windowDays * MS_DAY;
   const prevPeriodEnd = periodStart - 1;
 
-  function sumRange(startMs: number, endMs: number, field = "liters") {
-    if (!snapshot) return 0;
-    const logs = snapshot.fuelLogs || [];
-    return logs.reduce((s: number, l: any) => {
-      const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
-      if (ts >= startMs && ts <= endMs) return s + Number(l[field] ?? l.amount ?? 0);
+  function sumRange(startMs: number, endMs: number, field: "liters" | "distanceKm") {
+    return fuelLogs.reduce((s, log) => {
+      const ts = getLogDate(log).getTime();
+      if (ts >= startMs && ts <= endMs) return s + Number(log[field] || 0);
       return s;
     }, 0);
   }
 
-  const currentLiters = hasData && snapshot ? sumRange(periodStart, periodEnd) : 0;
-  const previousLiters = hasData && snapshot ? sumRange(prevPeriodStart, prevPeriodEnd) : 0;
+  const currentLiters = hasData && snapshot ? sumRange(periodStart, periodEnd, "liters") : 0;
+  const previousLiters = hasData && snapshot ? sumRange(prevPeriodStart, prevPeriodEnd, "liters") : 0;
   const efficiencyChange = (() => {
     if (!hasData || !snapshot) return "—";
     // compute efficiency as distance/liters for windows
-    const currDist = sumRange(periodStart, periodEnd, "distance");
-    const prevDist = sumRange(prevPeriodStart, prevPeriodEnd, "distance");
+    const currDist = sumRange(periodStart, periodEnd, "distanceKm");
+    const prevDist = sumRange(prevPeriodStart, prevPeriodEnd, "distanceKm");
     const currEff = currentLiters > 0 ? currDist / currentLiters : 0;
     const prevEff = previousLiters > 0 ? prevDist / previousLiters : 0;
     return prevEff > 0 ? percentChange(currEff, prevEff) : "—";
@@ -128,15 +233,15 @@ export default function FuelEfficiencyPage() {
   const totalFuelYTD = (() => {
     if (!hasData || !snapshot) return "—";
     const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime();
-    const total = sumRange(yearStart, Date.now());
-    return `${Math.round(total).toLocaleString()} kWh`;
+    const total = sumRange(yearStart, Date.now(), "liters");
+    return `${Math.round(total).toLocaleString()} L`;
   })();
 
   // Regen groups (group by vehicle type share of total fuel)
   const regenRoutesView = (() => {
-    if (!hasData || !snapshot) return [] as any[];
+    if (!rangeLogs.length) return [] as any[];
     const vehicles = snapshot.vehicles || [];
-    const logs = snapshot.fuelLogs || [];
+    const logs = rangeLogs;
     const totalsByType: Record<string, number> = {};
     for (const l of logs) {
       const v = vehicles.find((vv: any) => vv.id === (l.vehicleId ?? l.vehicle_id));
@@ -152,31 +257,35 @@ export default function FuelEfficiencyPage() {
 
   // Route recovery percent (uses `regen` / `recovered` fields if present)
   const routeRecoveryPct = (() => {
-    if (!hasData || !snapshot) return null as number | null;
-    const logs = snapshot.fuelLogs || [];
-    const recovered = logs.reduce((s: number, l: any) => s + Number(l.regen ?? l.recovered ?? 0), 0);
-    const total = logs.reduce((s: number, l: any) => s + Number(l.liters ?? l.amount ?? 0), 0) || 1;
+    const logs = rangeLogs;
+    const recovered = logs.reduce((s, l) => s + Number(l.recovered || 0), 0);
+    if (!logs.some((log) => log.recovered > 0)) return null;
+    const total = logs.reduce((s, l) => s + Number(l.liters || 0), 0) || 1;
     const pct = Math.round((recovered / total) * 100);
     return Math.min(100, Math.max(0, pct));
   })();
 
   const numRoutes = (() => {
-    if (!hasData || !snapshot) return "—";
-    const trips = snapshot.trips || [];
+    if (!snapshot) return "—";
+    const trips = (snapshot.trips || []).filter((trip: any) => {
+      const timestamp = new Date(trip.updated_at || trip.created_at || 0).getTime();
+      return timestamp >= rangeStart;
+    });
     return (trips.length || 0) as number | string;
   })();
 
   // Leaderboard by vehicle (efficiency = distance / liters)
   const leaderboardItems = (() => {
-    if (!hasData || !snapshot) return [] as any[];
-    const logs = snapshot.fuelLogs || [];
+    if (!rangeLogs.length) return [] as any[];
+    const logs = rangeLogs;
     const vehicles = snapshot.vehicles || [];
     const byVehicle: Record<string, { id: string; name: string; liters: number; distance: number }> = {};
     for (const l of logs) {
       const vid = l.vehicleId ?? l.vehicle_id ?? "unknown";
-      byVehicle[vid] = byVehicle[vid] || { id: vid, name: `Unit ${vid}`, liters: 0, distance: 0 };
+      const vehicle = vehicles.find((item: any) => String(item.id) === String(vid));
+      byVehicle[vid] = byVehicle[vid] || { id: vid, name: vehicle?.plate_number || vehicle?.plate || `Unit ${vid}`, liters: 0, distance: 0 };
       byVehicle[vid].liters += Number(l.liters ?? l.amount ?? 0);
-      byVehicle[vid].distance += Number(l.distance ?? 0);
+      byVehicle[vid].distance += Number(l.distanceKm || 0);
     }
     const arr = Object.values(byVehicle).map((v) => ({ ...v, efficiency: v.liters > 0 ? Number((v.distance / v.liters).toFixed(2)) : 0 }));
     arr.sort((a, b) => (b.efficiency || 0) - (a.efficiency || 0));
@@ -205,14 +314,16 @@ export default function FuelEfficiencyPage() {
           
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <div className="relative">
-              <button
-                onClick={() => setSelectedRange("Last 30 Days")}
-                className="flex items-center gap-2 bg-white border border-[#ec2188]/20 px-4 py-2.5 rounded-xl text-sm font-medium text-[#141d23] hover:border-[#b80049] hover:bg-[#fff7fc] transition-all shadow-xs"
+              <select
+                value={selectedRange}
+                onChange={(event) => setSelectedRange(event.target.value as typeof selectedRange)}
+                aria-label="Fuel analysis date range"
+                className="flex appearance-none items-center gap-2 bg-white border border-[#ec2188]/20 px-4 py-2.5 pr-10 rounded-xl text-sm font-medium text-[#141d23] hover:border-[#b80049] hover:bg-[#fff7fc] transition-all shadow-xs"
               >
-                <Icon name="calendar_month" className="text-[#b80049] text-[18px]" />
-                {selectedRange}
-                <Icon name="expand_more" className="text-[#5b6b79] text-[18px]" />
-              </button>
+                <option>Last 7 Days</option>
+                <option>Last 30 Days</option>
+                <option>This Month</option>
+              </select>
             </div>
 
             <button
@@ -259,8 +370,8 @@ export default function FuelEfficiencyPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#5b6b79] mb-1.5">Service Region</label>
-                <select className="w-full bg-[#fff7fc] border border-[#ec2188]/20 rounded-xl px-3.5 py-2 text-sm text-[#141d23] focus:outline-none focus:ring-2 focus:ring-[#b80049]/30">
-                  <option>All Regions (Metro & Suburban)</option>
+                <select value={selectedRegion} onChange={(event) => setSelectedRegion(event.target.value)} className="w-full bg-[#fff7fc] border border-[#ec2188]/20 rounded-xl px-3.5 py-2 text-sm text-[#141d23] focus:outline-none focus:ring-2 focus:ring-[#b80049]/30">
+                  <option value="All Regions">All Regions (Metro & Suburban)</option>
                   <option>Zone A - Urban Core</option>
                   <option>Zone B - West Suburbs</option>
                   <option>Zone C - Northern Corridor</option>
@@ -268,8 +379,8 @@ export default function FuelEfficiencyPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#5b6b79] mb-1.5">Route Status</label>
-                <select className="w-full bg-[#fff7fc] border border-[#ec2188]/20 rounded-xl px-3.5 py-2 text-sm text-[#141d23] focus:outline-none focus:ring-2 focus:ring-[#b80049]/30">
-                  <option>All States</option>
+                <select value={selectedRouteStatus} onChange={(event) => setSelectedRouteStatus(event.target.value)} className="w-full bg-[#fff7fc] border border-[#ec2188]/20 rounded-xl px-3.5 py-2 text-sm text-[#141d23] focus:outline-none focus:ring-2 focus:ring-[#b80049]/30">
+                  <option value="All States">All States</option>
                   <option>Active / En Route (&gt;20% SOC)</option>
                   <option>Charging Hub</option>
                   <option>Low Battery Flagged</option>
@@ -297,7 +408,9 @@ export default function FuelEfficiencyPage() {
                 </div>
                 <div className="flex items-baseline gap-3 mt-4">
                   <span className="text-4xl font-extrabold text-[#141d23]">{avgEfficiency !== "—" ? avgEfficiency : "—"}</span>
-                  <span className="text-sm font-medium text-[#5b6b79]">Avg. mi/kWh</span>
+                  <span className="text-sm font-medium text-[#5b6b79]">Avg. km/L</span>
+                                  <span className="text-sm font-medium text-[#5b6b79]">Avg. km/L</span>
+                                      formatter={(value: any) => [`${value} km/L`, "Efficiency"]}
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full flex items-center border border-emerald-200">
                     <Icon name="trending_up" className="text-[14px] mr-1" />
                     {efficiencyChange}
@@ -343,7 +456,7 @@ export default function FuelEfficiencyPage() {
                   <YAxis domain={[2.5, 4.5]} tick={{ fill: "#5b6b79", fontSize: 12 }} axisLine={false} tickLine={false} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #ec2188/30", boxShadow: "0 10px 25px rgba(184,0,73,0.1)" }}
-                    formatter={(value: any) => [`${value} mi/kWh`, "Efficiency"]}
+                    formatter={(value: any) => [`${value} km/L`, "Efficiency"]}
                   />
                   <Area type="monotone" dataKey="efficiency" stroke="#b80049" strokeWidth={3} fillOpacity={1} fill="url(#primaryGradient)" />
                 </AreaChart>
@@ -365,12 +478,14 @@ export default function FuelEfficiencyPage() {
                   </div>
                 </div>
                 <p className="text-sm text-[#5b6b79] leading-relaxed mb-6">
-                  Reducing active route load by 12% across urban delivery corridors (Zone A) during peak afternoon hours could improve route-wide mileage output by <strong className="text-[#b80049] font-bold">0.4 mi/gal</strong>.
+                  {rangeLogs.length > 0 && avgEfficiency !== "—"
+                    ? `Recorded fuel usage in the selected period averages ${avgEfficiency} km/L across ${rangeLogs.length} refueling logs.`
+                    : "There is not enough odometer or trip-distance data in the selected period to calculate a route efficiency recommendation."}
                 </p>
                 <div className="bg-[#fff7fc] p-4 rounded-xl border border-[#ec2188]/20 mb-5">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-semibold text-[#5b6b79]">Projected Daily Savings</span>
-                    <span className="text-sm font-bold text-[#b80049]">{Math.round((currentLiters - previousLiters) || 0)} kWh</span>
+                    <span className="text-xs font-semibold text-[#5b6b79]">Fuel logged in selected period</span>
+                    <span className="text-sm font-bold text-[#b80049]">{Math.round(currentLiters || 0)} L</span>
                   </div>
                   <div className="w-full bg-[#f0e2ec] rounded-full h-2 overflow-hidden">
                     <div className="bg-[#b80049] h-2 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.abs(currentLiters - previousLiters) / Math.max(1, previousLiters) * 100)}%` }} />
@@ -396,7 +511,7 @@ export default function FuelEfficiencyPage() {
             <div className="bg-gradient-to-br from-[#b80049] to-[#ec2188] rounded-2xl p-6 shadow-md text-white flex flex-col justify-between relative overflow-hidden">
               <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none" />
               <div className="flex justify-between items-start relative z-10">
-                <span className="text-xs font-semibold uppercase tracking-wider opacity-90">Total Fuel Saved YTD</span>
+                <span className="text-xs font-semibold uppercase tracking-wider opacity-90">Total Fuel Used YTD</span>
                 <span className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                   <Icon name="eco" className="text-white text-lg" />
                 </span>
@@ -423,7 +538,8 @@ export default function FuelEfficiencyPage() {
                   </span>
                   <h3 className="text-base font-bold text-[#141d23]">Peak Route Load Profile</h3>
                 </div>
-                <span className="text-xs bg-[#fff7fc] text-[#5b6b79] px-2.5 py-1 rounded-full border border-[#ec2188]/20">Today</span>
+                <span className="text-xs bg-[#fff7fc] text-[#5b6b79] px-2.5 py-1 rounded-full border border-[#ec2188]/20">{selectedRange}</span>
+                              <span className="text-xs bg-[#fff7fc] text-[#5b6b79] px-2.5 py-1 rounded-full border border-[#ec2188]/20">{selectedRange}</span>
               </div>
               <p className="text-xs text-[#5b6b79] mb-4">Active route load utilization across urban zone nodes.</p>
             </div>
@@ -562,7 +678,8 @@ export default function FuelEfficiencyPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-extrabold text-[#b80049]">{l.value}</div>
-                      <div className="text-[10px] text-[#5b6b79]">mi/kWh</div>
+                      <div className="text-[10px] text-[#5b6b79]">km/L</div>
+                                          <div className="text-[10px] text-[#5b6b79]">km/L</div>
                     </div>
                   </div>
                 ))}
@@ -576,7 +693,8 @@ export default function FuelEfficiencyPage() {
               </div>
               <div className="text-right">
                 <span className="text-sm font-black text-[#141d23]">{avgEfficiency !== "—" ? avgEfficiency : "—"}</span>
-                <span className="text-[10px] text-[#5b6b79] ml-1">mi/kWh</span>
+                <span className="text-[10px] text-[#5b6b79] ml-1">km/L</span>
+                              <span className="text-[10px] text-[#5b6b79] ml-1">km/L</span>
               </div>
             </div>
           </section>

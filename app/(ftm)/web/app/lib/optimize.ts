@@ -4,6 +4,8 @@ export type LatLng = {
   lng: number;
 };
 
+export type OptimizationMode = "fastest" | "shortest" | "fuel" | "balanced";
+
 export type OptimizeStop = {
   id: string;
   lat: number;
@@ -17,6 +19,7 @@ export type OptimizeRequest = {
   vehicleCount?: number;
   availableVehicles?: Array<{ id: string; [key: string]: any }>;
   prioritizeFuelEfficiency?: boolean;
+  optimizationMode?: OptimizationMode;
   cargoWeightKg?: number;
   initialDistanceMi?: number;
   initialEtaMinutes?: number;

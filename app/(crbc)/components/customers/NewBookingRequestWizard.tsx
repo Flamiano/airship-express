@@ -17,12 +17,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
-  findCustomers,
-  submitBookingRequest,
-  type BookingRequestDraft,
-  type CustomerSearchResult,
-} from "../../actions/booking-request";
-import {
   CHANNEL_LABELS,
   type InteractionChannel,
   type PackageType,
@@ -32,6 +26,44 @@ import {
   isValidPhone,
   normalizePhone,
 } from "../../library/validation/customer.data.validate";
+
+interface CustomerSearchResult {
+  id: string;
+  customer_id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  role: string;
+  created_at: string;
+}
+
+interface BookingRequestDraft {
+  customer_id?: string;
+  new_customer?: {
+    full_name: string;
+    customer_type: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  };
+  request_channel: InteractionChannel;
+  receiver_name: string;
+  receiver_contact?: string;
+  receiver_address: string;
+  package_quantity: number;
+  package_type: PackageType;
+  item_category?: string;
+  weight?: number;
+  dimensions?: {
+    length_cm: number;
+    width_cm: number;
+    height_cm: number;
+  };
+  declared_value?: number;
+  airship_packaging_requested: boolean;
+  remarks?: string;
+}
 
 
 const STEPS = [
@@ -152,7 +184,7 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
         <Icon size={14} />
       </span>
       <div>
@@ -180,7 +212,7 @@ function RadioOption({
     <label
       className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
         current === value
-          ? "border-accent bg-accent/5 text-foreground"
+          ? "border-accent/40 bg-accent/5 text-foreground"
           : "border-line bg-paper text-muted hover:border-muted/50 hover:text-foreground"
       }`}
     >
@@ -190,7 +222,7 @@ function RadioOption({
         value={value}
         checked={current === value}
         onChange={() => onChange(value)}
-        className="h-3.5 w-3.5 accent-(--accent)"
+        className="h-3.5 w-3.5 accent-(--accent)/50"
       />
       {label}
     </label>
@@ -203,7 +235,7 @@ function RadioOption({
 
 function ProgressIndicator({ current }: { current: number }) {
   return (
-    <ol className="flex items-center gap-1.5">
+    <ol className="flex items-center justify-center gap-1.5">
       {STEPS.map((step, index) => {
         const isCurrent = step.number === current;
         const isDone = step.number < current;
@@ -353,13 +385,14 @@ export default function NewBookingRequestWizard({
       setIsSearching(true);
       await Promise.resolve();
       try {
-        const res = await findCustomers(debouncedQuery);
+        const response = await fetch(`/api/customers/search?q=${encodeURIComponent(debouncedQuery)}`);
+        const data = await response.json();
         if (cancelled) return;
-        if (res.error) {
-          setSearchError(res.error);
+        if (!data.success) {
+          setSearchError(data.error || "Search failed");
           setResults([]);
         } else {
-          setResults(res.data);
+          setResults(data.data);
         }
       } finally {
         if (!cancelled) setIsSearching(false);
@@ -459,8 +492,8 @@ export default function NewBookingRequestWizard({
         : undefined;
 
     return {
-      existingCustomerId: wizard.sender.selected?.id,
-      newCustomer:
+      customer_id: wizard.sender.selected?.id,
+      new_customer:
         wizard.sender.mode === "new"
           ? {
               full_name: wizard.sender.newCustomer.full_name,
@@ -502,14 +535,19 @@ export default function NewBookingRequestWizard({
     }
 
     startTransition(async () => {
-      const res = await submitBookingRequest(buildDraft());
+      const response = await fetch("/api/booking-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildDraft()),
+      });
+      const data = await response.json();
 
-      if (res.error) {
-        setStepError(res.error);
+      if (!data.success) {
+        setStepError(data.error || "Failed to create booking request");
         return;
       }
 
-      setSubmittedRequestId(res.request_id ?? null);
+      setSubmittedRequestId(data.request_id ?? null);
       router.refresh();
     });
   };
@@ -548,7 +586,7 @@ export default function NewBookingRequestWizard({
           <button
             type="button"
             onClick={onClose}
-            className="mt-6 w-full cursor-pointer rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-dark"
+            className="mt-6 w-full cursor-pointer rounded-lg bg-accent/70 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-dark"
           >
             Done
           </button>
@@ -569,12 +607,12 @@ export default function NewBookingRequestWizard({
         aria-modal="true"
         aria-labelledby={dialogId}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl bg-background border border-line rounded-2xl shadow-xl my-4 sm:my-8"
+        className="w-full max-w-3xl bg-background border border-line rounded-2xl shadow-xl my-4 sm:my-8"
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <ClipboardList size={18} />
             </span>
             <div>
@@ -626,7 +664,7 @@ export default function NewBookingRequestWizard({
                     }}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                       wizard.sender.mode === m.value
-                        ? "bg-accent text-white shadow-sm"
+                        ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted hover:text-foreground"
                     }`}
                   >
@@ -863,8 +901,8 @@ export default function NewBookingRequestWizard({
               <div className="space-y-2 rounded-xl border border-line bg-paper/50 p-4">
                 <SectionHeader
                   icon={Send}
-                  title="Interaction Channel"
-                  subtitle="How did the customer initiate this request?"
+                  title="Request Channel"
+                  subtitle="How did the customer submit this request?"
                 />
                 <div className="grid grid-cols-2 gap-2">
                   {CRM_CHANNELS.map((ch) => (
@@ -1317,7 +1355,7 @@ export default function NewBookingRequestWizard({
             <button
               type="button"
               onClick={goNext}
-              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-dark"
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-foreground/90"
             >
               Next
               <ArrowRight size={14} />

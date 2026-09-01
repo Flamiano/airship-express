@@ -1,9 +1,9 @@
 const { Client } = require('pg');
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = process.env.FTM_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error('DATABASE_URL is not configured');
+  console.error('FTM_DATABASE_URL is not configured');
   process.exit(1);
 }
 

@@ -290,8 +290,8 @@ export function useParcelStore() {
               recipientPhone: p.recipient_phone || p.recipientPhone || "",
               destinationAddress:
                 p.dropoff_location || p.dropoffLocation || p.destination || p.delivery_address || p.deliveryAddress || p.address || p.pickup_location || p.pickupLocation || "",
-              bulk_qr_code: p.bulk_qr_code || p.bulkQrCode || undefined,
-              bulkQrCode: p.bulk_qr_code || p.bulkQrCode || undefined,
+              bulk_qr_code: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
+              bulkQrCode: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
               destLat: Number(
                 p.dest_lat ?? p.destLat ?? p.dropoff_latitude ?? p.dropoffLatitude ?? p.latitude ?? p.lat ?? 0
               ),
@@ -481,8 +481,8 @@ export async function refreshStoreFromBackend() {
           recipientPhone: p.recipient_phone || p.recipientPhone || "",
           destinationAddress:
             p.dropoff_location || p.dropoffLocation || p.destination || p.delivery_address || p.deliveryAddress || p.address || p.pickup_location || p.pickupLocation || "",
-          bulk_qr_code: p.bulk_qr_code || p.bulkQrCode || undefined,
-          bulkQrCode: p.bulk_qr_code || p.bulkQrCode || undefined,
+          bulk_qr_code: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
+          bulkQrCode: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
           destLat: Number(
             p.dest_lat ?? p.destLat ?? p.dropoff_latitude ?? p.dropoffLatitude ?? p.latitude ?? p.lat ?? 0
           ),
@@ -612,6 +612,38 @@ export function assignVehicle(bookingId: string, vehicleId: string) {
   );
   const vehicles = state.vehicles.map((item) => item.id === vehicleId ? { ...item, status: "Assigned" as const } : item);
   writeState({ ...state, bookings, vehicles });
+}
+
+export function assignDriverAndVehicle(bookingId: string, driverId: string, vehicleId: string) {
+  const booking = state.bookings.find((item) => item.id === bookingId);
+  const driver = state.drivers.find((item) => item.id === driverId);
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId);
+  if (!booking || !driver || !vehicle) return;
+
+  const bookings = state.bookings.map((item) =>
+    item.id === bookingId
+      ? {
+          ...item,
+          driverId: driver.id,
+          driverName: driver.name,
+          vehicleId: vehicle.id,
+          vehiclePlate: vehicle.plate,
+          status: "DRIVER_VEHICLE_ASSIGNED" as const,
+        }
+      : item
+  );
+  const drivers = state.drivers.map((item) => {
+    if (item.id === booking.driverId && item.id !== driver.id) return { ...item, status: "Available" as const };
+    if (item.id === driver.id) return { ...item, status: "Assigned" as const };
+    return item;
+  });
+  const vehicles = state.vehicles.map((item) => {
+    if (item.id === booking.vehicleId && item.id !== vehicle.id) return { ...item, status: "Available" as const };
+    if (item.id === vehicle.id) return { ...item, status: "Assigned" as const };
+    return item;
+  });
+
+  writeState({ ...state, bookings, drivers, vehicles });
 }
 
 export function confirmDispatch(bookingId: string): { ok: boolean; reason?: string } {

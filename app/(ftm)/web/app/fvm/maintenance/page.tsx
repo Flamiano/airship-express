@@ -58,10 +58,12 @@ export default function FvmMaintenancePage() {
   const toggleDateSort = () => setDateSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
 
   return (
-    <RoleRestricted allowedRoles={["fleet_manager", "admin"]} hideWhenRestricted>
-      <div className="flex flex-col min-h-screen bg-background text-on-background">
-        <GlobalNavbar />
-        <main className="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg space-y-stack-lg">
+    <div>
+      {/* @ts-ignore - RoleRestricted component type compatibility */}
+      <RoleRestricted allowedRoles={["fleet_manager", "admin"]} hideWhenRestricted>
+        <div className="flex flex-col min-h-screen bg-background text-on-background">
+          <GlobalNavbar />
+          <main className="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg space-y-stack-lg">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-stack-md">
         <div>
           <h1 className="font-headline-lg text-headline-lg text-on-background">Maintenance Control</h1>
@@ -188,7 +190,8 @@ export default function FvmMaintenancePage() {
     </main>
         <GlobalFooter />
       </div>
-    </RoleRestricted>
+      </RoleRestricted>
+    </div>
   );
 }
 

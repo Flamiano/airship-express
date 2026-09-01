@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
+import { SkeletonTable } from "../components/PageSkeleton";
 import {
   useParcelStore,
   assignDriver,
   assignVehicle,
+  assignDriverAndVehicle,
   cancelBooking,
   confirmDispatch,
 } from "../lib/parcelStore";
@@ -25,6 +27,7 @@ export default function VrdsBookingsPage() {
   const [errorFor, setErrorFor] = useState<{ id: string; message: string } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookingStatusFilter>("All");
+  const [generatingAssignmentFor, setGeneratingAssignmentFor] = useState<string | null>(null);
 
   const openBookings = useMemo(
     () => bookings.filter((b) => b.status === "PENDING" || b.status === "DRIVER_VEHICLE_ASSIGNED"),
@@ -85,7 +88,44 @@ export default function VrdsBookingsPage() {
 
   const handleAssignVehicle = (bookingId: string, vehicleId: string) => {
     assignVehicle(bookingId, vehicleId);
-    showToast(`Vehicle updated for ${bookingId}`);
+  };
+
+  const handleGenerateAssignment = (booking: Booking) => {
+    if (generatingAssignmentFor) return;
+
+    const driver = booking.driverId
+      ? drivers.find((item) => item.id === booking.driverId)
+      : availableDrivers[0];
+    const vehicle = booking.vehicleId
+      ? vehicles.find((item) => item.id === booking.vehicleId)
+      : availableVehicles
+          .filter((item) => item.capacityKg >= booking.totalWeightKg)
+          .sort((first, second) => first.capacityKg - second.capacityKg)[0];
+
+    const driverUnavailable = !driver || (driver.status !== "Available" && driver.id !== booking.driverId);
+    const vehicleUnavailable = !vehicle;
+    const vehicleOverCapacity = vehicle && vehicle.capacityKg < booking.totalWeightKg;
+    if (driverUnavailable || vehicleUnavailable || vehicleOverCapacity) {
+      const unavailableResources = [];
+      if (driverUnavailable) unavailableResources.push("driver");
+      if (vehicleUnavailable || vehicleOverCapacity) unavailableResources.push("vehicle");
+      setErrorFor({
+        id: booking.id,
+        message: vehicleOverCapacity
+          ? `No available vehicle can carry ${booking.totalWeightKg} kg.`
+          : `No available ${unavailableResources.join(" or ")} for this assignment.`,
+      });
+      return;
+    }
+
+    setGeneratingAssignmentFor(booking.id);
+    setErrorFor(null);
+    window.setTimeout(() => {
+      assignDriverAndVehicle(booking.id, driver.id, vehicle.id);
+      setGeneratingAssignmentFor(null);
+      const vehicleLabel = vehicle.plateNumber ?? vehicle.plate ?? "selected vehicle";
+      showToast(`Suggested ${driver.name} with ${vehicleLabel}. Review before dispatch.`);
+    }, 1200);
   };
 
   const handleConfirm = async (booking: Booking) => {
@@ -319,9 +359,7 @@ export default function VrdsBookingsPage() {
 
             {/* List Content */}
             {!ready ? (
-              <div className="py-16 text-center text-rose-400 text-sm">
-                <span className="inline-block animate-spin mr-2">🌸</span> Loading bookings queue...
-              </div>
+              <SkeletonTable rows={5} />
             ) : filteredBookings.length === 0 ? (
               <div className="py-16 text-center rounded-xl border border-dashed border-rose-200 bg-pink-50/30 p-6">
                 <IconPackage className="w-8 h-8 text-rose-300 mx-auto mb-2" />
@@ -495,6 +533,28 @@ export default function VrdsBookingsPage() {
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Assignments</p>
 
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateAssignment(selectedBooking)}
+                      disabled={generatingAssignmentFor === selectedBooking.id}
+                      className="relative w-full overflow-hidden inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-wait disabled:opacity-90"
+                    >
+                      {generatingAssignmentFor === selectedBooking.id ? (
+                        <>
+                          <span className="absolute inset-y-0 left-0 w-1/3 bg-white/40 blur-sm animate-pulse" />
+                          <span className="relative flex items-center gap-2">
+                            <span className="material-symbols-outlined w-4 h-4 animate-spin text-base">progress_activity</span>
+                            AI matching vehicle and driver...
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <IconSparkles className="w-4 h-4" />
+                          Generate Assignment
+                        </>
+                      )}
+                    </button>
+
                     <DriverVehicleSelect
                       label="Assigned Driver"
                       value={selectedBooking.driverId || ""}
@@ -639,7 +699,7 @@ function DriverVehicleSelect({
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-lg border border-rose-100 bg-pink-50/30 px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 transition"
       >
-        <option value="">{placeholder}</option>
+        <option value="">{value ? `Unselect ${label.toLowerCase()}` : placeholder}</option>
         {options.map((item) => (
           <option key={item.id} value={item.id}>
             {item.name ?? item.plate}
@@ -699,6 +759,14 @@ function IconSearch({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  );
+}
+
+function IconSparkles({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4m-2-2h4m13 9v4m-2-2h4M12 5l1.5 4.5L18 11l-4.5 1.5L12 17l-1.5-4.5L6 11l4.5-1.5L12 5z" />
     </svg>
   );
 }

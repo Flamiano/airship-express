@@ -74,7 +74,7 @@ export default function CrbcSidebar({ collapsed, setCollapsed }: { collapsed: bo
                     )}
                     {!collapsed && (
                         <div>
-                            <div className="text-[13px] font-semibold text-foreground tracking-tight">Airship</div>
+                            <div className="text-[13px] font-semibold text-foreground tracking-tight">Airship Express</div>
                             <div className="text-[10px] text-muted uppercase tracking-wide">CRBC</div>
                         </div>
                     )}

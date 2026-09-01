@@ -20,15 +20,26 @@ function reportBackendLoadFailure(resource: string, error: unknown) {
 }
 
 async function readSupabaseTable<T = Record<string, unknown>>(table: string, select = "*") {
+  const unavailableTables = readSupabaseTable.unavailableTables;
+  if (unavailableTables.has(table)) return [] as T[];
+
   try {
     const { data, error } = await supabase.from(table).select(select).limit(200);
     if (error) throw error;
     return (Array.isArray(data) ? data : []) as T[];
   } catch (error) {
-    console.warn(`[api] ${table} unavailable`, error);
+    unavailableTables.add(table);
+    const message = error instanceof Error ? error.message : String(error);
+    if (/401|invalid api key|jwt/i.test(message)) {
+      console.warn(`[api] Supabase credentials rejected; ${table} data disabled until reload.`);
+    } else {
+      console.warn(`[api] ${table} unavailable`, error);
+    }
     return [] as T[];
   }
 }
+
+readSupabaseTable.unavailableTables = new Set<string>();
 
 async function readParcelTable<T = Record<string, unknown>>(table: string, select = "*") {
   try {

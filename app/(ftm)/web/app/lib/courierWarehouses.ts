@@ -79,9 +79,62 @@ function buildRegistry() {
 
 const WAREHOUSE_REGISTRY = buildRegistry();
 
+const COURIER_ALIASES: Record<string, CourierName> = {
+  "shopee xpress": "ShopeeXpress",
+  "shopee express": "ShopeeXpress",
+  "j&t express": "JNT Express",
+  "jnt": "JNT Express",
+  "lazada": "Lazada Express",
+  "flash": "Flash Express",
+  "tiktok": "TikTok Delivery",
+  "tiktok express": "TikTok Delivery",
+  "lbc express": "LBC",
+  "gogo": "GOGO Xpress",
+  "gogo express": "GOGO Xpress",
+};
+
+/** Normalize imported courier labels to the warehouse registry key. */
+export function resolveCourierName(value: unknown): CourierName {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Airship Express";
+  const normalized = raw.toLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ");
+  const exact = COURIER_NAMES.find((name) => name.toLowerCase() === normalized);
+  if (exact) return exact;
+  if (COURIER_ALIASES[normalized]) return COURIER_ALIASES[normalized];
+  if (normalized.includes("tiktok")) return "TikTok Delivery";
+  if (normalized.includes("gogo")) return "GOGO Xpress";
+  if (normalized.includes("lbc")) return "LBC";
+  if (normalized.includes("shopee")) return "ShopeeXpress";
+  if (normalized.includes("jnt") || normalized.includes("j&t")) return "JNT Express";
+  if (normalized.includes("lazada")) return "Lazada Express";
+  if (normalized.includes("flash")) return "Flash Express";
+  return "Airship Express";
+}
+
 /** The one fixed warehouse a given courier operates in a given city, or undefined if the city/courier isn't covered. */
 export function getCourierWarehouse(courier: string, city: string): CourierWarehouse | undefined {
-  return WAREHOUSE_REGISTRY.get(`${courier}::${city}`);
+  const normalizedCity = String(city ?? "").trim();
+  const knownCity = SERVICE_AREA_CITIES.find((candidate) => candidate.toLowerCase() === normalizedCity.toLowerCase());
+  return knownCity
+    ? WAREHOUSE_REGISTRY.get(`${resolveCourierName(courier)}::${knownCity}`)
+    : undefined;
+}
+
+/** Return a deterministic warehouse location even when imported city data is unknown. */
+export function getCourierWarehouseLocation(courier: string, city: string) {
+  const warehouse = getCourierWarehouse(courier, city);
+  if (warehouse) return warehouse;
+
+  const resolvedCourier = resolveCourierName(courier);
+  const offset = COURIER_CITY_OFFSETS[resolvedCourier];
+  return {
+    id: `${resolvedCourier}::fallback-${city || "unknown"}`,
+    courier: resolvedCourier,
+    city,
+    name: `${resolvedCourier} Hub${city ? ` - ${city}` : ""}`,
+    lat: Number((14.5995 + offset.dLat).toFixed(6)),
+    lng: Number((120.9745 + offset.dLng).toFixed(6)),
+  };
 }
 
 /** All fixed warehouses for one courier, across every covered city. */

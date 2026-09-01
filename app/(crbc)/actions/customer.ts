@@ -1,6 +1,3 @@
-// Package shape shared with the customer-portal request form
-// (RequestShipmentForm). Kept here so the portal form keeps its import path.
-// New CRM code should use BookingRequestDraft in actions/booking-request.ts.
 import type { PackageType } from "../types/booking-request";
 
 export type BookingPackageDetails = {

@@ -2,16 +2,16 @@ const path = require('path');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 let supabase = null;
 let serviceSupabase = null;
 let anonSupabase = null;
 
 const initSupabase = () => {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey = process.env.FTM_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.FTM_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || (!serviceKey && !anonKey)) {
     console.warn('Supabase env vars not configured. Falling back to in-memory routes.');
@@ -41,8 +41,8 @@ const getServiceSupabase = () => serviceSupabase || supabase;
 // to return a parcels-specific client when PARCELS_SUPABASE_* env vars are
 // present; otherwise fall back to the main supabase client.
 const getParcelsSupabase = () => {
-  const parcelsUrl = process.env.PARCELS_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const parcelsKey = process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY || process.env.PARCELS_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const parcelsUrl = process.env.FTM_PARCELS_SUPABASE_URL || process.env.PARCELS_SUPABASE_URL || process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC__FTM_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
+  const parcelsKey = process.env.FTM_PARCELS_SUPABASE_SERVICE_ROLE_KEY || process.env.FTM_PARCELS_SUPABASE_ANON_KEY || process.env.PARCELS_SUPABASE_SERVICE_ROLE_KEY || process.env.PARCELS_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_ANON_KEY || process.env.FTM_SUPABASE_SERVICE_ROLE_KEY || process.env.FTM_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (parcelsUrl && parcelsKey) {
     try {
       return createClient(parcelsUrl, parcelsKey);

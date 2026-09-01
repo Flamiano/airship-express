@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
+import { SkeletonTable } from "../../components/PageSkeleton";
 import { useParcelStore, receiveParcel, bulkDeliverParcels } from "@/app/lib/parcelStore";
 import { updateParcelStatus } from "@/app/lib/api";
 import { COURIER_NAMES, CourierName, Parcel, ParcelType, PARCEL_STATUS_LABEL } from "@/app/lib/parcelTypes";
@@ -496,10 +497,7 @@ export default function VrdsParcelsPage() {
         {/* Parcels Inventory Container */}
         <section className="mt-6">
           {!ready ? (
-            <div className="flex flex-col items-center justify-center rounded-3xl border border-pink-200/80 bg-white p-12 text-center shadow-sm">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600 mb-4" />
-              <p className="text-base font-semibold text-slate-800">Loading parcel logistics data...</p>
-            </div>
+            <SkeletonTable rows={6} />
           ) : filteredParcels.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-3xl border border-pink-200/80 bg-white p-16 text-center shadow-sm">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-50 text-pink-500 mb-4">

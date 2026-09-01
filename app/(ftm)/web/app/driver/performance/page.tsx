@@ -165,7 +165,7 @@ export default function DriverPerformancePage() {
 
         const tripsByDriver: Record<string, any[]> = {};
         (trips || []).forEach((t: any) => {
-          const id = String(t.driverId ?? "");
+          const id = String(t.driverId ?? t.driver_id ?? "");
           if (!id) return;
           tripsByDriver[id] = tripsByDriver[id] || [];
           tripsByDriver[id].push(t);
@@ -186,7 +186,9 @@ export default function DriverPerformancePage() {
             efficiency: String(efficiency),
             missions,
             onTime,
-            lastMission: (tripsByDriver[id] && tripsByDriver[id][0] && tripsByDriver[id][0].fromLocation) || "-",
+            lastMission:
+              (tripsByDriver[id] && tripsByDriver[id][0] &&
+                (tripsByDriver[id][0].fromLocation ?? tripsByDriver[id][0].from_location)) || "-",
           };
         });
 

@@ -254,7 +254,7 @@ function buildKpis(
 
   const topCategory = sortedByCategory.length
     ? sortedByCategory[0][0]
-    : "N/A";
+    : "TEC";
   const topCategoryAmount = sortedByCategory.length ? sortedByCategory[0][1] : 0;
   const topCategoryShare = totalCost ? (topCategoryAmount / totalCost) * 100 : 0;
 
@@ -371,7 +371,7 @@ function buildInsights(entries: CostEntry[], totalCost: number): Insight[] {
     return map;
   }, new Map<string, number>());
   const topCategory =
-    Array.from(feed.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "N/A";
+    Array.from(feed.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "TEC";
 
   return [
     {

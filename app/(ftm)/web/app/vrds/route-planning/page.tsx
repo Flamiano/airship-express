@@ -7,17 +7,14 @@ import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import { createRouteBooking, useParcelStore, refreshStoreFromBackend } from "../../lib/parcelStore";
 import { createBulkBooking, createRoutePlan, fetchJson } from "../../lib/api";
+import type { OptimizationMode } from "../../lib/optimize";
 import { getCityCoordinate } from "../../lib/serviceAreas";
-import { getCourierWarehouse, resolveKnownCity } from "../../lib/courierWarehouses";
+import { getCourierWarehouseLocation, resolveCourierName, resolveKnownCity } from "../../lib/courierWarehouses";
+import { SkeletonMap } from "../../components/PageSkeleton";
 
 const LeafletMap = dynamic(() => import("../../components/LeafletMap"), {
   ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 animate-pulse rounded-2xl">
-      <span className="material-symbols-outlined text-4xl mb-2">map</span>
-      <span className="text-sm font-medium">Loading Map Engine...</span>
-    </div>
-  ),
+  loading: () => <SkeletonMap className="h-full min-h-[320px] w-full" />,
 });
 
 /* ------------------------------------------------------------------ */
@@ -210,6 +207,7 @@ export default function VrdsRoutePlanningPage() {
   const [courierRoutes, setCourierRoutes] = useState<Map<string, OptimizeResponse>>(new Map());
   const [courierStopsMap, setCourierStopsMap] = useState<Map<string, string[]>>(new Map());
   const [selectedCourier, setSelectedCourier] = useState<string | null>(null);
+  const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>("balanced");
 
   const [creatingBookings, setCreatingBookings] = useState(false);
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
@@ -379,10 +377,10 @@ export default function VrdsRoutePlanningPage() {
     planningParcels.forEach((parcel) => {
       const address = getParcelAddress(parcel) || "Parcel destination";
       const city = resolveKnownCity(address) ?? resolveParcelCity(address);
-      const courier = parcel.courier || "LBC";
+      const courier = resolveCourierName(parcel.courier);
       if (city === "Unknown" && !address) return;
 
-      const warehouse = getCourierWarehouse(courier, city);
+      const warehouse = getCourierWarehouseLocation(courier, city);
 
       // Fallback chain when the courier has no fixed warehouse in this
       // city: service-area city centroid -> exact DB coords -> geocoded
@@ -469,7 +467,7 @@ export default function VrdsRoutePlanningPage() {
 
   const availableCouriers = useMemo(() => {
     const couriers = new Set<string>();
-    planningParcels.forEach((p) => couriers.add(p.courier || "LBC"));
+    planningParcels.forEach((p) => couriers.add(resolveCourierName(p.courier)));
     return Array.from(couriers).sort();
   }, [planningParcels]);
 
@@ -573,6 +571,8 @@ export default function VrdsRoutePlanningPage() {
         availableVehicles: availableVehicleOptions,
         initialDistanceMi: initialMetrics?.distanceMi ?? undefined,
         initialEtaMinutes: initialMetrics?.etaMinutes ?? undefined,
+        optimizationMode,
+        prioritizeFuelEfficiency: optimizationMode === "fuel",
       }),
     });
     if (!res.ok) throw new Error(`optimize-route failed: ${res.status}`);
@@ -583,7 +583,7 @@ export default function VrdsRoutePlanningPage() {
    *  the results into state. Used by both "optimize everyone" and
    *  "recalculate a single courier" — they only differ in which couriers
    *  they pass in and whether a single courier ends up selected after. */
-  async function optimizeCouriers(couriers: string[]) {
+  async function optimizeCouriers(couriers: string[], p0: { selectCourierAfter: any; }) {
     setLoading(true);
     try {
       const stopsByCourier = new Map<string, RouteStop[]>();
@@ -593,33 +593,64 @@ export default function VrdsRoutePlanningPage() {
         stopsByCourier.get(stop.courier)!.push(stop);
       });
 
-      const settled = await Promise.all(
-        Array.from(stopsByCourier.entries()).map(async ([courier, courierStops]) => {
-          try {
-            const data = await requestOptimizedRoute(courierStops);
-            return { courier, stopIds: courierStops.map((s) => s.id), data };
-          } catch (err) {
-            console.error(`Optimization failed for ${courier}:`, err);
-            return null;
-          }
-        })
-      );
+      const settled: { courier: string; stopIds: string[]; data: OptimizeResponse }[] = [];
+      for (const [courier, courierStops] of stopsByCourier.entries()) {
+        try {
+          const data = await requestOptimizedRoute(courierStops);
+          settled.push({ courier, stopIds: courierStops.map((s) => s.id), data });
+        } catch (err) {
+          console.error(`Optimization failed for ${courier}:`, err);
+          const fallbackPolyline = [origin, ...courierStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })), destination];
+          const fallbackMetrics = calculatePolylineMetrics(fallbackPolyline);
+          settled.push({
+            courier,
+            stopIds: courierStops.map((s) => s.id),
+            data: {
+              orderedStopIds: courierStops.map((stop) => stop.id),
+              polyline: fallbackPolyline,
+              distanceMi: fallbackMetrics.distanceMi,
+              etaMinutes: Math.max(1, fallbackMetrics.etaMinutes),
+              fuelSavingsPct: 0,
+              etaImprovementMin: 0,
+              engine: "heuristic-fallback",
+            },
+          });
+        }
+      }
 
       setCourierRoutes((prev) => {
         const next = new Map(prev);
-        settled.forEach((entry) => entry && next.set(entry.courier, entry.data));
+        settled.forEach((entry) => next.set(entry.courier, entry.data));
         return next;
       });
       setCourierStopsMap((prev) => {
         const next = new Map(prev);
-        settled.forEach((entry) => entry && next.set(entry.courier, entry.stopIds));
+        settled.forEach((entry) => next.set(entry.courier, entry.stopIds));
         return next;
       });
 
-      return settled.filter(Boolean) as { courier: string; stopIds: string[]; data: OptimizeResponse }[];
+      return settled;
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleOptimizeSelectedCourier() {
+    if (!selectedCourier) {
+      setBookingMessage("Select a courier first before recalculating its route.");
+      return;
+    }
+    if (planningParcels.length === 0) {
+      setBookingMessage("Select at least one parcel before generating a route plan.");
+      return;
+    }
+    if (activeStops.length === 0) {
+      setBookingMessage("Route plan unavailable: the selected parcels need a valid destination or map coordinates.");
+      return;
+    }
+
+    setBookingMessage(null);
+    await optimizeCouriers([selectedCourier], { selectCourierAfter: selectedCourier });
   }
 
   async function handleOptimizeAllCouriers() {
@@ -634,17 +665,8 @@ export default function VrdsRoutePlanningPage() {
 
     setSelectedCourier(null);
     setBookingMessage(null);
-    await optimizeCouriers(availableCouriers);
+    await optimizeCouriers(availableCouriers, { selectCourierAfter: null });
   }
-
-  // Auto-optimize every courier once parcels/stops are available.
-  useEffect(() => {
-    if (planningParcels.length > 0 && courierRoutes.size === 0 && !loading && availableCouriers.length > 0) {
-      const timer = setTimeout(() => handleOptimizeAllCouriers(), 500);
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planningParcels.length, courierRoutes.size, availableCouriers.length]);
 
   /* ---------------- Derived: which result set is "current" ---------------- */
 
@@ -666,13 +688,15 @@ export default function VrdsRoutePlanningPage() {
     const stopMap = new Map(activeStops.map((s) => [s.id, s]));
 
     if (selectedCourier === null && courierRoutes.size > 0) {
-      availableCouriers.forEach((c) => grouped.set(c, []));
+      availableCouriers.forEach((courier) => {
+        grouped.set(courier, activeStops.filter((stop) => stop.courier === courier));
+      });
       for (const [courier, result] of courierRoutes.entries()) {
         const orderedIds = result.routes?.length
           ? result.routes.flatMap((r) => r.orderedStopIds)
           : result.orderedStopIds;
         const stops = (orderedIds || []).map((id) => stopMap.get(id)).filter((s): s is RouteStop => Boolean(s));
-        grouped.set(courier, stops);
+        if (stops.length > 0) grouped.set(courier, stops);
       }
       return grouped;
     }
@@ -784,16 +808,17 @@ export default function VrdsRoutePlanningPage() {
 
   /* ---------------- Booking confirmation ---------------- */
 
-  // Bulk parcels for the SAME courier but spread across DIFFERENT cities get
-  // their own OR-Tools optimization run: depot = the central sorting hub
-  // (origin), stops = that courier's fixed warehouse in every city its
-  // parcels are headed to. Each courier's route is optimized independently,
-  // since different couriers don't share warehouses.
   async function handleCreateBookings() {
-    const groups = new Map<string, typeof planningParcels>();
+    const groups = new Map<string, { courier: string; bulkQrCode?: string; parcels: typeof planningParcels }>();
     planningParcels.forEach((parcel) => {
-      const courier = parcel.courier || "LBC";
-      groups.set(courier, [...(groups.get(courier) || []), parcel]);
+      const courier = resolveCourierName(parcel.courier);
+      const bulkQrCode = parcel.bulkQrCode ?? parcel.bulk_qr_code;
+      const groupKey = bulkQrCode
+        ? `${courier}::bulk::${bulkQrCode}`
+        : `${courier}::single::${parcel.id}`;
+      const group = groups.get(groupKey) || { courier, bulkQrCode, parcels: [] as typeof planningParcels };
+      group.parcels.push(parcel);
+      groups.set(groupKey, group);
     });
     if (groups.size === 0) {
       setBookingMessage("Select at least one booked parcel before confirming the route.");
@@ -807,7 +832,8 @@ export default function VrdsRoutePlanningPage() {
     const assignedParcelIds = new Set<string>();
 
     try {
-      for (const [courier, courierParcels] of groups.entries()) {
+      for (const group of groups.values()) {
+        const { courier, bulkQrCode, parcels: courierParcels } = group;
         const byCity = new Map<string, { city: string; parcelIds: string[]; weightKg: number }>();
         courierParcels.forEach((parcel) => {
           const address = getParcelAddress(parcel) || "Parcel destination";
@@ -820,8 +846,12 @@ export default function VrdsRoutePlanningPage() {
 
         const destinations = Array.from(byCity.values())
           .map((entry) => {
-            const warehouse = getCourierWarehouse(courier, entry.city);
-            const coord = warehouse ?? getCityCoordinate(entry.city);
+            const warehouse = getCourierWarehouseLocation(courier, entry.city);
+            const fallbackParcel = courierParcels.find((parcel) => entry.parcelIds.includes(parcel.id));
+            const parcelCoord = fallbackParcel && hasDbCoords(fallbackParcel)
+              ? { lat: fallbackParcel.destLat, lng: fallbackParcel.destLng }
+              : fallbackParcel ? resolvedPositions.get(fallbackParcel.id) : undefined;
+            const coord = warehouse ?? getCityCoordinate(entry.city) ?? parcelCoord;
             if (!coord) return null;
             return {
               name: warehouse ? warehouse.name : entry.city,
@@ -847,6 +877,7 @@ export default function VrdsRoutePlanningPage() {
         try {
           routePlan = await createRoutePlan({
             courier,
+            bulk_qr_code: bulkQrCode,
             pickup_location: origin.label,
             pickup_latitude: origin.lat,
             pickup_longitude: origin.lng,
@@ -872,6 +903,7 @@ export default function VrdsRoutePlanningPage() {
 
         const response = await createBulkBooking({
           courier,
+          bulk_qr_code: bulkQrCode,
           parcel_ids: parcelIds,
           pickup_location: origin.label,
           pickup_latitude: origin.lat,
@@ -995,6 +1027,25 @@ export default function VrdsRoutePlanningPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600">
+              <span className="material-symbols-outlined text-base text-[#b80049]">tune</span>
+              <span>Optimize for</span>
+              <select
+                value={optimizationMode}
+                onChange={(event) => {
+                  setOptimizationMode(event.target.value as OptimizationMode);
+                  setCourierRoutes(new Map());
+                  setCourierStopsMap(new Map());
+                }}
+                className="bg-transparent font-semibold text-slate-800 outline-none"
+                aria-label="Optimization objective"
+              >
+                <option value="balanced">Balanced</option>
+                <option value="fastest">Fastest ETA</option>
+                <option value="shortest">Shortest Distance</option>
+                <option value="fuel">Fuel Efficient</option>
+              </select>
+            </label>
             {currentResult && (
               <div className="flex items-center gap-2 self-start sm:self-auto text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600">
                 <span className="material-symbols-outlined text-base text-slate-500">memory</span>
@@ -1071,7 +1122,7 @@ export default function VrdsRoutePlanningPage() {
                 label="ETA Impact"
                 icon="timer"
                 iconColor="text-blue-600"
-                value={currentResult ? `-${formatDuration(currentResult.etaImprovementMin)}` : "0m"}
+                value={currentResult && currentResult.etaImprovementMin > 0 ? `-${formatDuration(currentResult.etaImprovementMin)}` : "0m"}
                 caption="time reduced"
               />
               <KpiCard
@@ -1227,10 +1278,33 @@ export default function VrdsRoutePlanningPage() {
 
                 {courierRoutes.size > 0 && (
                   <div className="flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-slate-600">
-                      {courierRoutes.size} courier{courierRoutes.size === 1 ? "" : "s"} optimized
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-slate-600">
+                        {courierRoutes.size} courier{courierRoutes.size === 1 ? "" : "s"} optimized
+                      </p>
+                      {selectedCourier && (
+                        <button
+                          type="button"
+                          onClick={handleOptimizeSelectedCourier}
+                          disabled={loading}
+                          className="text-[11px] font-semibold text-[#b80049] underline decoration-[#b80049]/30 underline-offset-2 disabled:opacity-60"
+                        >
+                          {loading ? "Recalculating..." : "Recalculate selected"}
+                        </button>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCourier(null)}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          selectedCourier === null
+                            ? "bg-slate-800 text-white border border-slate-800"
+                            : "bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200"
+                        }`}
+                      >
+                        All couriers
+                      </button>
                       {Array.from(courierRoutes.keys())
                         .sort()
                         .map((courier) => (

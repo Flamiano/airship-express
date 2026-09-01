@@ -317,26 +317,48 @@ export function createRouteBooking(parcelIds: string[], routeLabel: string, id?:
 }
 
 export function assignDriver(bookingId: string, driverId: string) {
-  const driver = state.drivers.find((item) => item.id === driverId);
-  if (!driver) return;
-  const bookings = state.bookings.map((booking) =>
-    booking.id === bookingId
-      ? { ...booking, driverId, driverName: driver.name, status: booking.vehicleId ? "DRIVER_VEHICLE_ASSIGNED" as const : booking.status }
-      : booking
+  const booking = state.bookings.find((item) => item.id === bookingId);
+  if (!booking) return;
+  const driver = driverId ? state.drivers.find((item) => item.id === driverId) : undefined;
+  if (driverId && !driver) return;
+  const bookings = state.bookings.map((item) =>
+    item.id === bookingId
+      ? {
+          ...item,
+          driverId: driverId || undefined,
+          driverName: driver?.name,
+          status: driverId && item.vehicleId ? "DRIVER_VEHICLE_ASSIGNED" as const : "PENDING" as const,
+        }
+      : item
   );
-  const drivers = state.drivers.map((item) => item.id === driverId ? { ...item, status: "Assigned" as const } : item);
+  const drivers = state.drivers.map((item) => {
+    if (item.id === booking.driverId) return { ...item, status: "Available" as const };
+    if (item.id === driverId) return { ...item, status: "Assigned" as const };
+    return item;
+  });
   writeState({ ...state, bookings, drivers });
 }
 
 export function assignVehicle(bookingId: string, vehicleId: string) {
-  const vehicle = state.vehicles.find((item) => item.id === vehicleId);
-  if (!vehicle) return;
-  const bookings = state.bookings.map((booking) =>
-    booking.id === bookingId
-      ? { ...booking, vehicleId, vehiclePlate: vehicle.plate, status: booking.driverId ? "DRIVER_VEHICLE_ASSIGNED" as const : booking.status }
-      : booking
+  const booking = state.bookings.find((item) => item.id === bookingId);
+  if (!booking) return;
+  const vehicle = vehicleId ? state.vehicles.find((item) => item.id === vehicleId) : undefined;
+  if (vehicleId && !vehicle) return;
+  const bookings = state.bookings.map((item) =>
+    item.id === bookingId
+      ? {
+          ...item,
+          vehicleId: vehicleId || undefined,
+          vehiclePlate: vehicle?.plate,
+          status: vehicleId && item.driverId ? "DRIVER_VEHICLE_ASSIGNED" as const : "PENDING" as const,
+        }
+      : item
   );
-  const vehicles = state.vehicles.map((item) => item.id === vehicleId ? { ...item, status: "Assigned" as const } : item);
+  const vehicles = state.vehicles.map((item) => {
+    if (item.id === booking.vehicleId) return { ...item, status: "Available" as const };
+    if (item.id === vehicleId) return { ...item, status: "Assigned" as const };
+    return item;
+  });
   writeState({ ...state, bookings, vehicles });
 }
 
