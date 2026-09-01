@@ -9,19 +9,19 @@
   --primary: #1c1b1f;
   --primary-foreground: #ffffff;
 
-  --color-ink: #1c1b1f;
-  --color-muted: #6b6b76;
-  --color-accent: #e5167e;
-  --color-accent-dark: #b3115f;
-  --color-paper: #fcfbf9;
-  --color-line: #eaeaea;
-
   --ink: #1c1b1f;
+  --paper: #fcfbf9;
   --muted: #6b6b76;
   --accent: #e5167e;
   --accent-dark: #b3115f;
-  --paper: #fcfbf9;
   --line: #eaeaea;
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
 }
 
 .dark {
@@ -31,13 +31,19 @@
   --primary: #f4f3f6;
   --primary-foreground: #131217;
 
-  --color-ink: #f4f3f6;
-  --color-muted: #9a98a3;
-  --color-accent: #ff4d9b;
-  --color-accent-dark: #e5167e;
-  --color-paper: #1c1b22;
-  --paper: #1c1b22;
-  --color-line: #2b2a33;
+  --ink: #131217;
+  --paper: #f4f3f6;
+  --muted: #9a98a3;
+  --accent: #ff4d9b;
+  --accent-dark: #e5167e;
+  --line: #2b2a33;
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
 }
 
 @theme {
@@ -68,9 +74,8 @@ body {
 
 html,
 body {
-  height: 100dvh;
-  overflow: hidden;
-  overscroll-behavior: none;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 .scroll-container.lenis {

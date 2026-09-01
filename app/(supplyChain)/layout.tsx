@@ -46,7 +46,7 @@ function LayoutContent({ children }: {
                     return true;
                 if (node.closest?.('[data-lenis-prevent]'))
                     return true;
-                if (node.closest?.('table, .table-pro, [role="dialog"], [role="menu"]'))
+                if (node.closest?.('[role="dialog"], [role="menu"]'))
                     return true;
                 let el: HTMLElement | null = node;
                 while (el && el !== document.body && el !== document.documentElement) {

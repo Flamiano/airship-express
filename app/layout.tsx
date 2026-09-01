@@ -46,7 +46,7 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body className="h-[100dvh] overflow-hidden font-rethink bg-paper dark:bg-ink">
+      <body className="min-h-screen font-rethink bg-paper dark:bg-ink">
         <ThemeProvider>
           <ConfirmProvider>
             {children}
