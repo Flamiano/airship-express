@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { apiFetch } from '@/lib/apiFetch';
-import type { SearchResult } from '@/types/api';
+import { apiFetch } from '../lib/apiFetch';
+import type { SearchResult } from '../types/api';
 
 const DEBOUNCE_MS = 250;
 const MIN_LEN = 2;

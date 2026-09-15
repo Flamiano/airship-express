@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { TopNav } from './TopNav';
 import { Sidebar } from './Sidebar';
-import { AiInsightsModal } from '@/components/modals/AiInsightsModal';
-import { useAiAnalysis } from '@/hooks/useAiAnalysis';
+import { AiInsightsModal } from '../modals/AiInsightsModal';
+import { useAiAnalysis } from '../../hooks/useAiAnalysis';
 
 interface DashboardLayoutProps {
  children: React.ReactNode;
@@ -27,7 +27,7 @@ export function DashboardLayout({ children, realtimeConnected = false }: Dashboa
  };
 
  return (
- <div className="min-h-screen bg-pink-50/30 text-pink-950 flex flex-col antialiased">
+ <div className="min-h-screen bg-pink-50/30 text-pink-950 flex flex-col antialiased" suppressHydrationWarning>
  <TopNav onMenuToggle={() => setSidebarOpen((v) => !v)} />
 
  <div className="flex flex-1 overflow-hidden">

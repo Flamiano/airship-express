@@ -1,8 +1,8 @@
 import React from 'react';
-import { Card, CardHeader } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { ATTENDANCE_BADGE } from '@/utils/constants';
-import type { AttendanceLog } from '@/types/workforce';
+import { Card, CardHeader } from '../ui/Card';
+import { Badge } from '../ui/Badge';
+import { ATTENDANCE_BADGE } from '../../utils/constants';
+import type { AttendanceLog } from '../../types/workforce';
 
 interface Card4Props {
  attendance: AttendanceLog[];

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Package } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { SHIFT_PRIORITIES } from '@/utils/constants';
-import type { CreateLoadPayload } from '@/types/api';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { SHIFT_PRIORITIES } from '../../utils/constants';
+import type { CreateLoadPayload } from '../../types/api';
 
 interface CreateLoadModalProps {
   open: boolean;

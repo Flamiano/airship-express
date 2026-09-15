@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { SHIFT_PRIORITIES } from '@/utils/constants';
-import type { CreateShiftPayload } from '@/types/api';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { SHIFT_PRIORITIES } from '../../utils/constants';
+import type { CreateShiftPayload } from '../../types/api';
 
 interface CreateShiftModalProps {
  open: boolean;

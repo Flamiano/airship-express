@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 import {
  Menu,
  Search,
@@ -16,11 +16,11 @@ import {
   Package,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useAuth } from '@/hooks/useAuth';
-import { useSearch } from '@/hooks/useSearch';
-import { useNotifications, type NotificationType } from '@/hooks/useNotifications';
-import { AirshipLogo } from '@/components/ui/AirshipLogo';
-import type { SearchResult, SearchResultType } from '@/types/api';
+import { useAuth } from '../../hooks/useAuth';
+import { useSearch } from '../../hooks/useSearch';
+import { useNotifications, type NotificationType } from '../../hooks/useNotifications';
+import { AirshipLogo } from '../ui/AirshipLogo';
+import type { SearchResult, SearchResultType } from '../../types/api';
 
 interface TopNavProps {
  onMenuToggle: () => void;

@@ -10,7 +10,7 @@ import {
   canManageAttendance,
   canManageLoads,
   canUseAiForecast,
-} from '@/utils/rbac';
+} from '../../utils/rbac';
 
 const HR = 'HR Admin' as const;
 const HR_GENERALIST = 'HR Generalist' as const;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
-import { Card, CardHeader } from '@/components/ui/Card';
-import { PERFORMANCE_SEGMENTS } from '@/utils/constants';
+import { Card, CardHeader } from '../ui/Card';
+import { PERFORMANCE_SEGMENTS } from '../../utils/constants';
 
 interface Card2Props {
   evaluatedCount: number;

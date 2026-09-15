@@ -10,10 +10,10 @@ import {
  Legend,
 } from 'recharts';
 import { Sparkles } from 'lucide-react';
-import { Card, CardHeader } from '@/components/ui/Card';
-import { CHART_COLORS } from '@/utils/constants';
-import { topSkillGaps } from '@/lib/analytics';
-import type { WorkforceForecast, SkillingProgress } from '@/types/workforce';
+import { Card, CardHeader } from '../ui/Card';
+import { CHART_COLORS } from '../../utils/constants';
+import { topSkillGaps } from '../../lib/analytics';
+import type { WorkforceForecast, SkillingProgress } from '../../types/workforce';
 
 interface Card1Props {
   data: WorkforceForecast[];

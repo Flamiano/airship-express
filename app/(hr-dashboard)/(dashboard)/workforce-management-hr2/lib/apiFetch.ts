@@ -1,11 +1,16 @@
-import type { ApiResponse } from '@/types/api';
+import type { ApiResponse } from '../types/api';
 
 /**
  * Thin wrapper around fetch for our JSON API. Throws on non-2xx or {error}.
  * Returns the unwrapped `data` payload.
  */
+const WF_API_BASE = '/workforce-management-hr2';
+
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+  // Prefix /api/... calls with the workforce module route so they hit the
+  // App Router route handlers at workforce-management-hr2/api/*/route.ts
+  const resolvedUrl = url.startsWith('/api/') ? `${WF_API_BASE}${url}` : url;
+  const res = await fetch(resolvedUrl, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   });

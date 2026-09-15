@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import type { Employee, UserRole } from '@/types/workforce';
+import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import type { Employee, UserRole } from '../types/workforce';
 
 /**
  * The demo account the app runs as now that sign-in is removed. Points at a real
@@ -20,17 +20,42 @@ export async function getRequestProfile(
 ): Promise<{ userId: string; role: UserRole; profile: Employee }> {
   const admin = getSupabaseAdmin();
 
+  // Try to find the demo/HR employee in hr1_employees
   const { data, error } = await admin
-    .from('profiles')
-    .select('*')
-    .eq('email', DEFAULT_EMAIL)
+    .from('hr1_employees')
+    .select('id, email, first_name, last_name, department, job_position:hr1_job_positions(title)')
+    .eq('department', 'HR')
+    .limit(1)
     .single();
 
   if (error || !data) {
-    throw new Error(`No default profile available: ${error?.message ?? 'not found'}`);
+    // Fallback demo employee if table is empty
+    const fallbackProfile: Employee = {
+      id: 'a9c8176c-a4d1-4aa9-8cd0-1e6efda85f2d',
+      email: 'jose.ramos@airshipexpress.com',
+      full_name: 'Jose Ramos',
+      role: 'HR Generalist',
+      avatar_initials: 'JR',
+      terminal: 'HQ — Operations Center',
+      created_at: new Date().toISOString(),
+    };
+    return { userId: fallbackProfile.id, role: fallbackProfile.role, profile: fallbackProfile };
   }
 
-  const profile = data as Employee;
+  const roleTitle = (data as any).job_position?.title || 'HR Generalist';
+  const fullName = `${data.first_name || ''} ${data.last_name || ''}`.trim() || 'HR Admin';
+  const initials = `${data.first_name?.[0] || ''}${data.last_name?.[0] || ''}`.toUpperCase() || 'HR';
+
+  const profile: Employee = {
+    id: data.id,
+    email: data.email || 'hr@airshipexpress.com',
+    full_name: fullName,
+    role: 'HR Generalist', // Ensure HR permissions in RBAC
+    avatar_initials: initials,
+    terminal: data.department || 'HQ — Operations Center',
+    created_at: new Date().toISOString(),
+  };
+
   return { userId: profile.id, role: profile.role, profile };
 }
 

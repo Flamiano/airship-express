@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isMissingTableError } from '@/lib/supabaseErrors';
+import { isMissingTableError } from '../../lib/supabaseErrors';
 
 describe('isMissingTableError', () => {
   it('detects the PGRST205 code', () => {

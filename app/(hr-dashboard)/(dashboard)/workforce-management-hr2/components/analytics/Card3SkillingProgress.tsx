@@ -1,9 +1,9 @@
 import React from 'react';
 import { ResponsiveContainer, BarChart, Bar, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Award, ShieldCheck } from 'lucide-react';
-import { Card, CardHeader } from '@/components/ui/Card';
-import { CHART_COLORS } from '@/utils/constants';
-import type { SkillingProgress } from '@/types/workforce';
+import { Card, CardHeader } from '../ui/Card';
+import { CHART_COLORS } from '../../utils/constants';
+import type { SkillingProgress } from '../../types/workforce';
 
 interface Card3Props {
   data: SkillingProgress[];

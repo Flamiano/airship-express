@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
+import { usePathname } from 'next/navigation';
 import {
  BarChart3,
  Clock,
@@ -13,7 +13,7 @@ import {
   Zap,
   ChevronRight,
 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '../../hooks/useAuth';
 
 interface NavItem {
  href: string;
@@ -22,12 +22,12 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
- { href: '/dashboard', label: 'Workforce Analytics', icon: <BarChart3 size={17} /> },
- { href: '/attendance', label: 'Time & Attendance', icon: <Clock size={17} /> },
- { href: '/shifts', label: 'Shifts & Schedules', icon: <Calendar size={17} /> },
- { href: '/timesheets', label: 'Timesheet Workflow', icon: <FileText size={17} /> },
- { href: '/leave', label: 'Leave & Fatigue Rest', icon: <UserCheck size={17} /> },
- { href: '/loads', label: 'Freight Load Dispatch', icon: <Package size={17} /> },
+ { href: '/workforce-management-hr2', label: 'Workforce Analytics', icon: <BarChart3 size={17} /> },
+ { href: '/workforce-management-hr2/attendance', label: 'Time & Attendance', icon: <Clock size={17} /> },
+ { href: '/workforce-management-hr2/shifts', label: 'Shifts & Schedules', icon: <Calendar size={17} /> },
+ { href: '/workforce-management-hr2/timesheets', label: 'Timesheet Workflow', icon: <FileText size={17} /> },
+ { href: '/workforce-management-hr2/leave', label: 'Leave & Fatigue Rest', icon: <UserCheck size={17} /> },
+ { href: '/workforce-management-hr2/loads', label: 'Freight Load Dispatch', icon: <Package size={17} /> },
 ];
 
 interface SidebarProps {
@@ -38,7 +38,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onNavigate, onRunAi, realtimeConnected }: SidebarProps) {
- const router = useRouter();
+ const pathname = usePathname();
  const { profile } = useAuth();
 
  return (
@@ -67,7 +67,7 @@ export function Sidebar({ open, onNavigate, onRunAi, realtimeConnected }: Sideba
  Core Sub-systems
  </p>
  {NAV_ITEMS.map((item) => {
- const active = router.pathname === item.href;
+ const active = pathname === item.href;
  return (
  <Link
  key={item.href}

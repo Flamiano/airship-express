@@ -5,7 +5,7 @@ import type {
   LeaveStatus,
   PerformanceSegment,
   LoadStatus,
-} from '@/types/workforce';
+} from '../types/workforce';
 
 // ---- Tailwind class maps for status badges (pink/white palette) ----
 

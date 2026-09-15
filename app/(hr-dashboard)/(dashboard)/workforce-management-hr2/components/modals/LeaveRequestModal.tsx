@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { LEAVE_TYPES } from '@/utils/constants';
-import type { CreateLeavePayload } from '@/types/api';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { LEAVE_TYPES } from '../../utils/constants';
+import type { CreateLeavePayload } from '../../types/api';
 
 interface LeaveRequestModalProps {
  open: boolean;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/apiFetch';
+import { apiFetch } from '../lib/apiFetch';
 
 export type NotificationType = 'timesheet' | 'leave' | 'attendance';
 

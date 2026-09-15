@@ -5,7 +5,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import type { User } from '@supabase/supabase-js';
-import type { Employee, UserRole } from '@/types/workforce';
+import type { Employee, UserRole } from '../types/workforce';
 
 interface AuthContextValue {
   user: User | null;

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { AiForecastResponse } from '@/types/api';
+import type { AiForecastResponse } from '../types/api';
 
 interface UseAiAnalysisResult {
   analysis: string | null;

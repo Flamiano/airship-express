@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeSearchQuery } from '@/lib/searchSanitize';
+import { sanitizeSearchQuery } from '../../lib/searchSanitize';
 
 describe('sanitizeSearchQuery', () => {
   it('keeps normal search terms', () => {

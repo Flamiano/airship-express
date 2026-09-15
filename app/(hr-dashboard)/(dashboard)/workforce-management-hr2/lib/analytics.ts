@@ -1,4 +1,4 @@
-import type { WorkforceForecast, SkillingProgress, AttendanceLog } from '@/types/workforce';
+import type { WorkforceForecast, SkillingProgress, AttendanceLog } from '../types/workforce';
 
 export function computePeakDeficit(forecast: WorkforceForecast[]): number {
   return forecast.reduce((max, d) => Math.max(max, d.deficit), 0);

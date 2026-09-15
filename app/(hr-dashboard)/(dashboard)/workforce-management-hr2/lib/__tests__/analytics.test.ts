@@ -5,8 +5,8 @@ import {
   computeCertificationStats,
   computeOnShiftUtilization,
   topSkillGaps,
-} from '@/lib/analytics';
-import type { WorkforceForecast, SkillingProgress, AttendanceLog } from '@/types/workforce';
+} from '../../lib/analytics';
+import type { WorkforceForecast, SkillingProgress, AttendanceLog } from '../../types/workforce';
 
 function forecastRow(overrides: Partial<WorkforceForecast>): WorkforceForecast {
   return {

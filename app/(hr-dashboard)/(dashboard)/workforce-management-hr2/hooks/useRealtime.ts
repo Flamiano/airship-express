@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { apiFetch } from '@/lib/apiFetch';
-import type { AttendanceLog } from '@/types/workforce';
+import { apiFetch } from '../lib/apiFetch';
+import type { AttendanceLog } from '../types/workforce';
 
 const POLL_MS = 10000;
 

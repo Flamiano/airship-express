@@ -1,4 +1,4 @@
-import type { UserRole } from '@/types/workforce';
+import type { UserRole } from '../types/workforce';
 
 /**
  * Role-Based Access Control helpers.

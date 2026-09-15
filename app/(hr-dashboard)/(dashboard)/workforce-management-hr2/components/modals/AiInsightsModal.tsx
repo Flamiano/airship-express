@@ -1,7 +1,7 @@
 import React from 'react';
-import { Modal } from '@/components/ui/Modal';
+import { Modal } from '../ui/Modal';
 import { Sparkles, RefreshCw, Info } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 interface AiInsightsModalProps {
  open: boolean;

@@ -1,24 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "@/app/globals.css";
 
 /*
- * Brand palette.
- * Neutral off-white / soft-gray surfaces (#FAFAFA / #F4F4F6), brand magenta
- * accents (#E6007A), and charcoal primary text (#1A1A1E) instead of pure black.
+ * Workforce HR2 utility & theme overlay.
+ * Inherits base theme from app/globals.css.
  */
 @layer base {
-  html {
-    color-scheme: light;
-  }
-
-  html,
-  body {
-    @apply bg-pink-50 text-pink-950 antialiased;
-    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
-      Helvetica, Arial, sans-serif;
-  }
-
   /* Scrollbars styled to match palette */
   ::-webkit-scrollbar {
     width: 8px;

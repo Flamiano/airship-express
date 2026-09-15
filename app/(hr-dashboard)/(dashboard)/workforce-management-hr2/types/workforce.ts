@@ -126,7 +126,7 @@ export interface PerformanceMetrics {
 }
 
 // Workforce deficit forecast interface (matches workforce_deficit_forecast table)
-export interface DeficitForecast {
+export interface WorkforceForecast {
   id: string;
   forecast_month: string;
   workforce_demand: number;
