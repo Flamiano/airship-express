@@ -12,9 +12,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { ATTENDANCE_BADGE } from '../../utils/constants';
 import { canManageAttendance } from '../../utils/rbac';
 import { apiFetch } from '../../lib/apiFetch';
+import { workforceApi } from '../../lib/workforceApi';
 import type { AttendanceLog, AttendanceStatus, Employee } from '../../types/workforce';
-
-const FASTAPI_URL = 'http://localhost:8000';
 
 export default function AttendancePage() {
   const { attendance, connected, refetch } = useRealtimeAttendance();
@@ -29,7 +28,14 @@ export default function AttendancePage() {
   const [isWaitingForCard, setIsWaitingForCard] = useState(false);
   const [pairingStatusMsg, setPairingStatusMsg] = useState<string | null>(null);
   const [pairedSuccessUid, setPairedSuccessUid] = useState<string | null>(null);
-  const [hwOnline, setHwOnline] = useState(true);
+  const [telemetry, setTelemetry] = useState<{
+    gatewayOnline: boolean;
+    deviceOnline: boolean;
+    deviceId?: string;
+  }>({
+    gatewayOnline: false,
+    deviceOnline: false,
+  });
 
   const loadProfiles = async () => {
     try {
@@ -49,12 +55,8 @@ export default function AttendancePage() {
 
   useEffect(() => {
     async function checkGateway() {
-      try {
-        const res = await fetch(`${FASTAPI_URL}/health-check`);
-        setHwOnline(res.ok);
-      } catch {
-        setHwOnline(false);
-      }
+      const data = await workforceApi.checkHealth();
+      setTelemetry(data);
     }
     checkGateway();
     const interval = setInterval(checkGateway, 8000);
@@ -65,16 +67,13 @@ export default function AttendancePage() {
     if (!isWaitingForCard || !selectedEmployee) return;
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${FASTAPI_URL}/api/v1/registration/status`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!data.is_active && data.captured_uid) {
-            setPairedSuccessUid(data.captured_uid);
-            setIsWaitingForCard(false);
-            setPairingStatusMsg(`Card [${data.captured_uid}] successfully paired with ${selectedEmployee.full_name}!`);
-            loadProfiles();
-            refetch();
-          }
+        const data = await workforceApi.getRegistrationStatus();
+        if (data && !data.is_active && data.captured_uid) {
+          setPairedSuccessUid(data.captured_uid);
+          setIsWaitingForCard(false);
+          setPairingStatusMsg(`Card [${data.captured_uid}] successfully paired with ${selectedEmployee.full_name}!`);
+          loadProfiles();
+          refetch();
         }
       } catch (err) {
         console.error('Registration polling error:', err);
@@ -89,18 +88,19 @@ export default function AttendancePage() {
     setPairedSuccessUid(null);
     setIsWaitingForCard(true);
     setPairingStatusMsg(`Waiting for physical card tap on ESP32 Terminal...`);
-    try {
-      const url = `${FASTAPI_URL}/api/v1/registration/start?employee_id=${encodeURIComponent(emp.id)}&full_name=${encodeURIComponent(emp.full_name)}&department=${encodeURIComponent(emp.role || 'Staff')}&position=${encodeURIComponent(emp.role || 'Staff')}`;
-      await fetch(url, { method: 'POST' });
-    } catch (err) {
-      setPairingStatusMsg('Could not connect to FastAPI Edge Gateway.');
+    const res = await workforceApi.startRegistration({
+      id: emp.id,
+      full_name: emp.full_name,
+      department: emp.role || 'Staff',
+      position: emp.role || 'Staff',
+    });
+    if (!res.ok) {
+      setPairingStatusMsg(res.message || 'Could not connect to Workforce API Gateway.');
     }
   };
 
   const cancelPairing = async () => {
-    try {
-      await fetch(`${FASTAPI_URL}/api/v1/registration/cancel`, { method: 'POST' });
-    } catch {}
+    await workforceApi.cancelRegistration();
     setIsWaitingForCard(false);
     setPairingModalOpen(false);
     setSelectedEmployee(null);
@@ -153,11 +153,40 @@ export default function AttendancePage() {
     <DashboardLayout realtimeConnected={connected}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-paper p-5 rounded-2xl border border-line shadow-sm">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-bold text-ink">Time & Attendance System</h1>
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${hwOnline ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'}`}>
-              <Radio size={13} className={hwOnline ? 'animate-pulse text-emerald-500' : ''} />
-              {hwOnline ? 'ESP32 Node 01 Online' : 'ESP32 Gateway Offline'}
+            
+            {/* ESP32 Physical Hardware Node Status */}
+            <span
+              title={
+                telemetry.deviceOnline
+                  ? 'Physical ESP32 hardware node is active and transmitting scans'
+                  : 'Physical ESP32 hardware is powered off or not connected to the gateway'
+              }
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                telemetry.deviceOnline
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+              }`}
+            >
+              <Radio
+                size={13}
+                className={telemetry.deviceOnline ? 'animate-pulse text-emerald-500' : 'text-amber-500'}
+              />
+              {telemetry.deviceOnline ? 'ESP32 Node 01 Online' : 'ESP32 Node 01 Offline'}
+            </span>
+
+            {/* Gateway Telemetry Status */}
+            <span
+              title={telemetry.gatewayOnline ? 'Workforce API Gateway is reachable' : 'Cannot reach Workforce API Gateway'}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                telemetry.gatewayOnline
+                  ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20'
+                  : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${telemetry.gatewayOnline ? 'bg-sky-500' : 'bg-rose-500'}`} />
+              {telemetry.gatewayOnline ? 'Gateway Connected' : 'Gateway Offline'}
             </span>
           </div>
           <p className="text-xs text-muted mt-1">Real-time biometric & RFID terminal scanner logs synced to Supabase database.</p>

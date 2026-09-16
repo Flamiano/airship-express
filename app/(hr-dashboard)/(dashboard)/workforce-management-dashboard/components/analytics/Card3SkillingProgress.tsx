@@ -30,8 +30,8 @@ export function Card3SkillingProgress({ data, activeCourses }: Card3Props) {
         }
       />
 
-      <div className="h-60 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-60 w-full overflow-hidden">
+        <ResponsiveContainer width="100%" height="100%" debounce={150}>
           <BarChart
             layout="vertical"
             data={data}
@@ -65,6 +65,7 @@ export function Card3SkillingProgress({ data, activeCourses }: Card3Props) {
               fill={CHART_COLORS.bar}
               radius={[0, 8, 8, 0]}
               barSize={18}
+              isAnimationActive={false}
             />
           </BarChart>
         </ResponsiveContainer>

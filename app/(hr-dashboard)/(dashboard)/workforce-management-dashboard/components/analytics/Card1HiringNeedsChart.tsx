@@ -60,8 +60,8 @@ export function Card1HiringNeedsChart({ data, skilling, onRunAi }: Card1Props) {
         }
       />
 
-      <div className="h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-64 w-full overflow-hidden">
+        <ResponsiveContainer width="100%" height="100%" debounce={150}>
           <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
             <XAxis
@@ -86,6 +86,7 @@ export function Card1HiringNeedsChart({ data, skilling, onRunAi }: Card1Props) {
               name="Current Staffing"
               stroke={CHART_COLORS.currentStaff}
               strokeWidth={2.5}
+              isAnimationActive={false}
               dot={{ fill: CHART_COLORS.currentStaff, r: 3 }}
             />
             <Line
@@ -94,6 +95,7 @@ export function Card1HiringNeedsChart({ data, skilling, onRunAi }: Card1Props) {
               name="Required Staffing"
               stroke={CHART_COLORS.requiredStaff}
               strokeWidth={2.5}
+              isAnimationActive={false}
               strokeDasharray="4 4"
               dot={{ fill: CHART_COLORS.requiredStaff, r: 3 }}
             />

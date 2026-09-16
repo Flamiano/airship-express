@@ -58,7 +58,7 @@ export function Sidebar() {
         }`}
       >
         <div
-          className={`flex h-full flex-col transition-[width] duration-300 ease-out ${
+          className={`flex h-full flex-col transition-[width] duration-300 ease-out will-change-[width] ${
             isCollapsed ? 'w-72 sm:w-[76px]' : 'w-72 sm:w-64'
           }`}
         >
