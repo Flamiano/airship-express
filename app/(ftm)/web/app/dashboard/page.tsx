@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
-import { getTrips, getVehicles, getBookings, getDrivers, getFuelLogs, getCostEntries, getParcels, getRoutePlan } from "../lib/api";
+import { getTrips, getVehicles, getBookings, getDrivers, getFuelLogs, getCostEntries, getParcelHistory, getRoutePlan } from "../lib/api";
 import { useParcelStore } from "../lib/parcelStore";
 import SpecializedLogistics from "./components/SpecializedLogistics";
 import PerformanceMetrics from "./components/PerformanceMetrics";
@@ -50,6 +50,7 @@ export type DashboardTrip = {
   driverId?: string | null;
   driver_id?: string | null;
   driver?: string | null;
+  driverName?: string | null;
   progress?: number | null;
   vehicleId?: string | null;
   fromLocation?: string | null;
@@ -60,6 +61,10 @@ export type DashboardTrip = {
   destination_zone?: string | null;
   fromCoords?: { lat: number; lng: number } | null;
   toCoords?: { lat: number; lng: number } | null;
+  from_latitude?: number | null;
+  from_longitude?: number | null;
+  to_latitude?: number | null;
+  to_longitude?: number | null;
   stops?: Array<{
     id?: string | null;
     name?: string | null;
@@ -82,7 +87,9 @@ export type DashboardTrip = {
   }> | null;
   loadKg?: number | null;
   updatedAt?: string | null;
+  updated_at?: string | null;
   createdAt?: string | null;
+  created_at?: string | null;
 };
 
 export type DashboardBooking = {
@@ -104,6 +111,36 @@ export type DashboardSnapshot = {
     vehicle_id?: string | null;
   }>;
 };
+const DASHBOARD_CACHE_KEY = "ftm-dashboard-cache";
+const DASHBOARD_CACHE_TTL_MS = 60_000;
+
+type DashboardCache = {
+  snapshot: DashboardSnapshot;
+  fuelLogs: any[];
+  costEntries: any[];
+  parcels: any[];
+  cachedAt: number;
+};
+
+function readDashboardCache(): DashboardCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(DASHBOARD_CACHE_KEY) || "null");
+    if (!parsed || Date.now() - Number(parsed.cachedAt) > DASHBOARD_CACHE_TTL_MS) return null;
+    return parsed as DashboardCache;
+  } catch {
+    return null;
+  }
+}
+
+function writeDashboardCache(cache: Omit<DashboardCache, "cachedAt">) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({ ...cache, cachedAt: Date.now() }));
+  } catch {
+    // Storage can be unavailable in private browsing or when the payload is too large.
+  }
+}
 
 // Helper functions to calculate real data from API
 const calculateFuelConsumptionData = (fuelLogs: any[], trips: DashboardTrip[]) => {
@@ -138,20 +175,24 @@ const calculateCostBreakdownData = (costEntries: any[]) => {
 
   costEntries.forEach(entry => {
     const category = entry.category || "Other";
-    if (category.toLowerCase().includes("fuel")) breakdown["Fuel & Energy"] += entry.amount || 0;
-    else if (category.toLowerCase().includes("maintenance")) breakdown["Maintenance"] += entry.amount || 0;
-    else if (category.toLowerCase().includes("payroll") || category.toLowerCase().includes("driver")) breakdown["Driver Payroll"] += entry.amount || 0;
-    else breakdown["Insurance & Tolls"] += entry.amount || 0;
+    const amount = Number(entry.amount || 0);
+    if (category.toLowerCase().includes("fuel")) breakdown["Fuel & Energy"] += amount;
+    else if (category.toLowerCase().includes("maintenance") || category.toLowerCase().includes("service")) breakdown.Maintenance += amount;
+    else if (category.toLowerCase().includes("payroll") || category.toLowerCase().includes("driver")) breakdown["Driver Payroll"] += amount;
+    else if (category.toLowerCase().includes("toll") || category.toLowerCase().includes("insurance")) breakdown["Insurance & Tolls"] += amount;
   });
 
-  const total = Object.values(breakdown).reduce((sum, val) => sum + val, 1);
-  
-  return [
-    { name: "Fuel & Energy", value: Math.round((breakdown["Fuel & Energy"] / total) * 100), color: "#b80049" },
-    { name: "Maintenance", value: Math.round((breakdown["Maintenance"] / total) * 100), color: "#ec2188" },
-    { name: "Driver Payroll", value: Math.round((breakdown["Driver Payroll"] / total) * 100), color: "#f472b6" },
-    { name: "Insurance & Tolls", value: Math.round((breakdown["Insurance & Tolls"] / total) * 100), color: "#fda4af" },
-  ];
+  const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return [];
+
+  return Object.entries(breakdown)
+    .filter(([, amount]) => amount > 0)
+    .map(([name, amount]) => ({
+      name,
+      amount,
+      value: Math.round((amount / total) * 100),
+      color: name === "Fuel & Energy" ? "#b80049" : name === "Maintenance" ? "#ec2188" : name === "Driver Payroll" ? "#f472b6" : "#fda4af",
+    }));
 };
 
 const calculateFleetUtilizationData = (vehicles: DashboardVehicle[]) => {
@@ -163,7 +204,6 @@ const calculateFleetUtilizationData = (vehicles: DashboardVehicle[]) => {
     else acc[type].maintenance++;
     return acc;
   }, {} as Record<string, any>);
-  
   return Object.entries(vehiclesByType).map(([category, data]) => ({
     category,
     active: data.active,
@@ -173,20 +213,18 @@ const calculateFleetUtilizationData = (vehicles: DashboardVehicle[]) => {
 };
 
 const calculateDeliveryPerformanceData = (trips: DashboardTrip[]) => {
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-  const completedTrips = trips.filter(t => t.status === "completed").length;
-  const delayedTrips = trips.filter(t => t.status === "delayed").length;
-  
-  return months.map((month) => {
-    const totalTrips = trips.length > 0 ? trips.length : 1;
-    const onTimePercentage = totalTrips > 0 && completedTrips > 0
-      ? Math.max(0, 100 - Math.floor((delayedTrips / completedTrips) * 100))
-      : 0;
-    return {
-      month,
-      onTime: Math.min(100, onTimePercentage),
-      delayed: Math.max(0, 100 - onTimePercentage),
-    };
+  const now = new Date();
+  return Array.from({ length: 6 }, (_, index) => {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    const nextMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+    const monthTrips = trips.filter((trip) => {
+      const timestamp = trip.updatedAt || trip.updated_at || trip.createdAt;
+      const date = timestamp ? new Date(timestamp) : null;
+      return date && !Number.isNaN(date.getTime()) && date >= monthDate && date < nextMonth;
+    });
+    const delayed = monthTrips.filter((trip) => /delayed|late|exception/i.test(String(trip.status ?? ""))).length;
+    const completed = monthTrips.filter((trip) => /completed|delivered|arrived/i.test(String(trip.status ?? ""))).length;
+    return { month: monthDate.toLocaleDateString("en-US", { month: "short" }), onTime: Math.max(0, completed - delayed), delayed };
   });
 };
 
@@ -199,7 +237,7 @@ const calculateParcelTrendData = (parcels: any[], timeframe: "daily" | "weekly" 
   const trendMap: Record<string, number> = {};
 
   parcels.forEach((parcel) => {
-    const createdDate = parcel.created_at ? new Date(parcel.created_at) : new Date();
+    const createdDate = new Date(parcel.createdAt || parcel.created_at || parcel.updatedAt || parcel.updated_at || 0);
     let key = "";
 
     if (timeframe === "daily") {
@@ -241,15 +279,14 @@ const calculateParcelTrendData = (parcels: any[], timeframe: "daily" | "weekly" 
 };
 
 const calculateWarehouseThroughputData = (bookings: DashboardBooking[]) => {
-  const totalBookings = bookings.length || 1;
-  return [
-    { hour: "06:00", inbound: Math.floor(totalBookings * 0.1), outbound: Math.floor(totalBookings * 0.08), capacity: 200 },
-    { hour: "09:00", inbound: Math.floor(totalBookings * 0.25), outbound: Math.floor(totalBookings * 0.22), capacity: 400 },
-    { hour: "12:00", inbound: Math.floor(totalBookings * 0.35), outbound: Math.floor(totalBookings * 0.33), capacity: 500 },
-    { hour: "15:00", inbound: Math.floor(totalBookings * 0.3), outbound: Math.floor(totalBookings * 0.36), capacity: 500 },
-    { hour: "18:00", inbound: Math.floor(totalBookings * 0.2), outbound: Math.floor(totalBookings * 0.24), capacity: 400 },
-    { hour: "21:00", inbound: Math.floor(totalBookings * 0.11), outbound: Math.floor(totalBookings * 0.12), capacity: 300 },
-  ];
+  return [6, 9, 12, 15, 18, 21].map((hour) => {
+    const inWindow = bookings.filter((booking) => {
+      const date = booking.created_at ? new Date(booking.created_at) : null;
+      return date && !Number.isNaN(date.getTime()) && date.getHours() >= hour && date.getHours() < hour + 3;
+    });
+    const outbound = inWindow.filter((booking) => /dispatched|assigned|in transit|delivered/i.test(String(booking.status ?? ""))).length;
+    return { hour: `${String(hour).padStart(2, "0")}:00`, inbound: inWindow.length, outbound, capacity: bookings.length };
+  });
 };
 
 const calculateRouteCongestionData = (trips: DashboardTrip[]) => {
@@ -266,8 +303,18 @@ const calculateRouteCongestionData = (trips: DashboardTrip[]) => {
   
   trips.forEach((trip) => {
     // Derive route name from pickup and destination locations (with multiple fallbacks)
-    const pickupLocation = trip.pickup_location || trip.pickup_zone || trip.fromLocation || "Unknown";
-    const destinationLocation = trip.destination_location || trip.destination_zone || trip.toLocation || "Unknown";
+    const tripData = trip as any;
+    const fromCoords = trip.fromCoords || (Number.isFinite(Number(tripData.from_latitude)) && Number.isFinite(Number(tripData.from_longitude))
+      ? { lat: Number(tripData.from_latitude), lng: Number(tripData.from_longitude) }
+      : null);
+    const toCoords = trip.toCoords || (Number.isFinite(Number(tripData.to_latitude)) && Number.isFinite(Number(tripData.to_longitude))
+      ? { lat: Number(tripData.to_latitude), lng: Number(tripData.to_longitude) }
+      : null);
+    const pickupLocation = trip.pickup_location || trip.pickup_zone || trip.fromLocation
+      || (fromCoords ? `${fromCoords.lat.toFixed(3)}, ${fromCoords.lng.toFixed(3)}` : "");
+    const destinationLocation = trip.destination_location || trip.destination_zone || trip.toLocation
+      || (toCoords ? `${toCoords.lat.toFixed(3)}, ${toCoords.lng.toFixed(3)}` : "");
+    if (!pickupLocation || !destinationLocation) return;
     const route = `${compactLocation(pickupLocation)} → ${compactLocation(destinationLocation)}`;
     
     if (!routeMap[route]) {
@@ -294,13 +341,45 @@ const calculateRouteCongestionData = (trips: DashboardTrip[]) => {
 };
 
 const calculateDriverSafetyScoreData = (drivers: Array<any>) => {
-  const totalDrivers = drivers.length || 1;
-  return [
-    { tier: "95-100 (Elite)", count: Math.floor(totalDrivers * 0.3) },
-    { tier: "85-94 (Good)", count: Math.floor(totalDrivers * 0.5) },
-    { tier: "75-84 (Standard)", count: Math.floor(totalDrivers * 0.15) },
-    { tier: "Below 75 (Review)", count: Math.floor(totalDrivers * 0.05) },
-  ];
+  const tiers = { "95-100 (Elite)": 0, "85-94 (Good)": 0, "75-84 (Standard)": 0, "Below 75 (Review)": 0 };
+  drivers.forEach((driver) => {
+    const score = Number(driver.safetyScore ?? driver.safety_score ?? driver.rating ?? driver.performanceScore);
+    if (!Number.isFinite(score)) return;
+    if (score >= 95) tiers["95-100 (Elite)"] += 1;
+    else if (score >= 85) tiers["85-94 (Good)"] += 1;
+    else if (score >= 75) tiers["75-84 (Standard)"] += 1;
+    else tiers["Below 75 (Review)"] += 1;
+  });
+  return Object.entries(tiers).map(([tier, count]) => ({ tier, count }));
+};
+
+const calculateDriverPerformanceData = (trips: DashboardTrip[], drivers: Array<any>) => {
+  const driverNames = new Map<string, string>();
+  drivers.forEach((driver) => {
+    const ids = [driver.id, driver.driver_id, driver.user_id].filter(Boolean).map(String);
+    const name = driver.full_name || driver.fullName || driver.name || driver.displayName;
+    if (name) ids.forEach((id) => driverNames.set(id, String(name)));
+  });
+  const performance = new Map<string, { completed: number; delayed: number; active: number }>();
+  trips.forEach((trip) => {
+    const driverId = trip.driverId || trip.driver_id;
+    const tripLabel = trip.driverName || trip.driver;
+    const isIdentifier = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(String(value || ""));
+    const driver = (driverId ? driverNames.get(String(driverId)) : null)
+      || (!isIdentifier(tripLabel) ? tripLabel : null);
+    const displayName = driver || "Unassigned driver";
+    const entry = performance.get(displayName) || { completed: 0, delayed: 0, active: 0 };
+    const status = String(trip.status ?? "").toLowerCase();
+    if (/completed|delivered|arrived/.test(status)) entry.completed += 1;
+    else if (/delayed|late|exception/.test(status)) entry.delayed += 1;
+    else entry.active += 1;
+    performance.set(displayName, entry);
+  });
+
+  return Array.from(performance.entries())
+    .sort(([, first], [, second]) => (second.completed + second.active) - (first.completed + first.active))
+    .slice(0, 5)
+    .map(([driver, data]) => ({ driver: driver.length > 16 ? `${driver.slice(0, 13)}...` : driver, ...data }));
 };
 
 const isInTransitStatus = (status?: string | null) => {
@@ -349,56 +428,37 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadDashboard = async () => {
-    setError(null);
-    setIsLoading(true);
-
-    try {
-      const [trips, vehicles, bookings, drivers, fuelData, costData, parcelData] = await Promise.all([
-        getTrips({ light: true }),
-        getVehicles(),
-        getBookings(),
-        getDrivers(),
-        getFuelLogs(),
-        getCostEntries(),
-        getParcels(),
-      ]);
-
-      const mergedBookings = Array.isArray(bookings) ? bookings : [...storeBookings];
-      const mergedDrivers = Array.isArray(drivers) ? drivers : [...storeDrivers];
-      const mergedParcels = Array.isArray(parcelData) ? [...parcelData, ...storeParcels] : [...storeParcels];
-
-      setSnapshot({
-        vehicles: Array.isArray(vehicles) ? vehicles : [],
-        trips: Array.isArray(trips) ? trips : [],
-        bookings: mergedBookings,
-        drivers: mergedDrivers,
-      });
-      setFuelLogs(Array.isArray(fuelData) ? fuelData : []);
-      setCostEntries(Array.isArray(costData) ? costData : []);
-      setParcels(mergedParcels);
-    } catch (requestError) {
-      console.error("Failed to load dashboard data:", requestError);
-      setError(requestError instanceof Error ? requestError.message : "Failed to load dashboard data.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     let active = true;
+    const cached = readDashboardCache();
+    if (cached) {
+      setSnapshot(cached.snapshot);
+      setFuelLogs(cached.fuelLogs);
+      setCostEntries(cached.costEntries);
+      setParcels(cached.parcels);
+      setIsLoading(false);
+      return () => { active = false; };
+    }
 
     const run = async () => {
       setError(null);
       setIsLoading(true);
 
-      try {
-        const [trips, vehicles, bookings] = await Promise.all([
+      const coreRequest = Promise.all([
           getTrips({ light: true }),
           getVehicles(),
           getBookings(),
-        ]);
+      ]);
+      const analyticsRequest = Promise.all([
+        getDrivers(),
+        getFuelLogs(),
+        getCostEntries(),
+        // Dashboard counts must include assigned and completed parcels too.
+        getParcelHistory(),
+      ]);
 
+      try {
+        const [trips, vehicles, bookings] = await coreRequest;
         if (!active) return;
 
         const mergedBookings = Array.isArray(bookings) ? bookings : [...storeBookings];
@@ -410,30 +470,33 @@ export default function Home() {
         });
         setIsLoading(false);
 
-        try {
-          const [drivers, fuelData, costData, parcelData] = await Promise.all([
-            getDrivers(),
-            getFuelLogs(),
-            getCostEntries(),
-            getParcels(),
-          ]);
-
-          if (!active) return;
-
-          const mergedDrivers = Array.isArray(drivers) ? drivers : [...storeDrivers];
-          const mergedParcels = Array.isArray(parcelData) ? [...parcelData, ...storeParcels] : [...storeParcels];
-          setSnapshot((current) => ({ ...current, drivers: mergedDrivers }));
-          setFuelLogs(Array.isArray(fuelData) ? fuelData : []);
-          setCostEntries(Array.isArray(costData) ? costData : []);
-          setParcels(mergedParcels);
-        } catch (analyticsError) {
-          console.warn("Dashboard analytics data is unavailable:", analyticsError);
-        }
       } catch (requestError) {
         console.error("Failed to load dashboard data:", requestError);
         if (active) setError(requestError instanceof Error ? requestError.message : "Failed to load dashboard data.");
       } finally {
         if (active) setIsLoading(false);
+      }
+
+      try {
+        const [drivers, fuelData, costData, parcelData] = await analyticsRequest;
+        if (!active) return;
+        const mergedDrivers = Array.isArray(drivers) ? drivers : [...storeDrivers];
+        const mergedParcels = Array.isArray(parcelData) ? [...parcelData, ...storeParcels] : [...storeParcels];
+        setSnapshot((current) => {
+          const nextSnapshot = { ...current, drivers: mergedDrivers };
+          writeDashboardCache({
+            snapshot: nextSnapshot,
+            fuelLogs: Array.isArray(fuelData) ? fuelData : [],
+            costEntries: Array.isArray(costData) ? costData : [],
+            parcels: mergedParcels,
+          });
+          return nextSnapshot;
+        });
+        setFuelLogs(Array.isArray(fuelData) ? fuelData : []);
+        setCostEntries(Array.isArray(costData) ? costData : []);
+        setParcels(mergedParcels);
+      } catch (analyticsError) {
+        console.warn("Dashboard analytics data is unavailable:", analyticsError);
       }
     };
 
@@ -479,7 +542,7 @@ export default function Home() {
           </p>
           <button
             type="button"
-            onClick={() => void loadDashboard()}
+            onClick={() => window.location.reload()}
             className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 px-5 py-3 text-xs font-bold text-white shadow-md shadow-pink-600/25 hover:from-pink-700 hover:to-rose-700 transition-all active:scale-[0.98]"
           >
             <span className="material-symbols-outlined text-[18px]">refresh</span>
@@ -524,6 +587,7 @@ export default function Home() {
   const warehouseThroughputData = calculateWarehouseThroughputData(snapshot.bookings);
   const routeCongestionData = calculateRouteCongestionData(snapshot.trips);
   const driverSafetyScoreData = calculateDriverSafetyScoreData(snapshot.drivers);
+  const driverPerformanceData = calculateDriverPerformanceData(snapshot.trips, snapshot.drivers);
 
   // Calculate KPI values from real data
   const fleetEfficiency = fuelLogs.length > 0 && fuelLogs.reduce((sum, log) => sum + (log.liters || 0), 0) > 0
@@ -682,7 +746,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Card 2: In-Transit Trips */}
+          {/* Card 2: Active Trips */}
           <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('in-transit')}>
             <div className="flex items-center justify-between text-[#b80049]">
               <span className="material-symbols-outlined text-[20px]">alt_route</span>
@@ -690,7 +754,7 @@ export default function Home() {
             </div>
             <div className="mt-2">
               <div className="text-lg font-black text-slate-900">{renderKPIValue('in-transit', activeTripsCount)}{renderKPITrend('in-transit')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">In Transit</div>
+              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Active Trips</div>
             </div>
           </div>
 
@@ -970,27 +1034,35 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Route Congestion Index */}
+              {/* Driver Performance */}
               <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5 flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Route Congestion</h3>
-                    <p className="text-xs text-slate-500">Traffic bottleneck score</p>
+                    <h3 className="text-sm font-bold text-slate-900">Driver Performance</h3>
+                    <p className="text-xs text-slate-500">Completed, active, and delayed trips</p>
                   </div>
                   <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
-                    <span className="material-symbols-outlined text-[18px]">traffic</span>
+                    <span className="material-symbols-outlined text-[18px]">badge</span>
                   </span>
                 </div>
                 <div className="h-[180px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={routeCongestionData} layout="vertical" margin={{ top: 10, right: 10, left: 20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis type="number" tick={{ fontSize: 10, fill: "#64748b" }} />
-                      <YAxis dataKey="route" type="category" tick={{ fontSize: 9, fill: "#64748b" }} width={80} />
-                      <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
-                      <Bar dataKey="congestionIndex" name="Index" fill="#ec2188" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {driverPerformanceData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={driverPerformanceData} layout="vertical" margin={{ top: 10, right: 10, left: 20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "#64748b" }} />
+                        <YAxis dataKey="driver" type="category" tick={{ fontSize: 9, fill: "#64748b" }} width={80} />
+                        <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
+                        <Bar dataKey="completed" name="Completed" fill="#10b981" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="active" name="Active" fill="#ec2188" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="delayed" name="Delayed" fill="#f43f5e" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-xs text-slate-500">
+                      No driver trip data available yet.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1007,6 +1079,7 @@ export default function Home() {
             <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
               <ResourceData 
                 bookings={snapshot.bookings} 
+                trips={snapshot.trips}
               />
             </div>
 
@@ -1055,7 +1128,7 @@ export default function Home() {
                 </span>
               </div>
               <div className="h-[180px] w-full flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
+                {costBreakdownData.length > 0 ? <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={costBreakdownData}
@@ -1070,10 +1143,16 @@ export default function Home() {
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }}
+                      formatter={(value: any, _name: any, item: any) => [
+                        `${value}% (${Number(item?.payload?.amount || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP" })})`,
+                        "Share",
+                      ]}
+                    />
                     <Legend iconSize={7} wrapperStyle={{ fontSize: "10px" }} />
                   </PieChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer> : <div className="flex h-full items-center justify-center text-center text-xs text-slate-500">No cost data available.</div>}
               </div>
             </div>
           </aside>

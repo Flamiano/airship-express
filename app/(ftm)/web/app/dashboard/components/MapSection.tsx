@@ -60,7 +60,20 @@ type Delivery = {
   bookingId: string;
   courier?: string;
   stops?: { name: string; lat: number; lng: number; status?: string }[];
+  routePlanPolyline?: LatLng[] | null;
 };
+
+function normalizeRoutePlanPolyline(value: any): LatLng[] | null {
+  const source = value?.polyline || value?.route?.polyline || value?.geometry?.coordinates || value;
+  if (!Array.isArray(source)) return null;
+
+  const points = source.map((point: any) => {
+    if (Array.isArray(point)) return { lat: Number(point[1]), lng: Number(point[0]) };
+    return { lat: Number(point?.lat ?? point?.latitude), lng: Number(point?.lng ?? point?.longitude) };
+  }).filter((point: LatLng) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+
+  return points.length > 1 ? points : null;
+}
 
 async function fetchOsrmRoutePath(waypoints: Array<{ lat: number; lng: number }>) {
   if (!Array.isArray(waypoints) || waypoints.length < 2) return null;
@@ -81,24 +94,18 @@ async function fetchOsrmRoutePath(waypoints: Array<{ lat: number; lng: number }>
 
 async function fetchOsrmMetrics(waypoints: LatLng[]): Promise<{ distanceKm: number; durationMin: number } | null> {
   if (!Array.isArray(waypoints) || waypoints.length < 2) return null;
-  
   try {
     const coords = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
-    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
-    
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
     if (!response || !response.ok) return null;
-    
     const data = await response.json();
     if (data.code !== "Ok" || !Array.isArray(data.routes) || data.routes.length === 0) return null;
-    
     const route = data.routes[0];
-    const distanceKm = Number(((route.distance || 0) / 1000).toFixed(2));
-    const durationMin = Math.ceil((route.duration || 0) / 60);
-    
-    return { distanceKm, durationMin };
-  } catch (error) {
-    console.warn("[MapSection] OSRM route request failed:", error);
+    return {
+      distanceKm: Number(((route.distance || 0) / 1000).toFixed(2)),
+      durationMin: Math.ceil((route.duration || 0) / 60),
+    };
+  } catch {
     return null;
   }
 }
@@ -335,10 +342,35 @@ export default function MapSection({
       const driverId = (trip as any)?.driverId || (trip as any)?.driver_id || "";
       const driverName = (trip as any)?.driverName || "";
       
-      const booking = bookingId ? bookings.find((item) => item.id === bookingId) : undefined;
-      const tripParcels = bookingId ? parcels.filter((p) => p.bookingId === bookingId) : [];
-      const routePlanId = (booking as any)?.routePlanId || tripParcels.find((p: any) => p.routePlanId)?.routePlanId || (trip as any)?.routePlanId || (trip as any)?.route_plan_id;
+      const booking = bookingId
+        ? bookings.find((item) => String(item.id) === String(bookingId))
+        : undefined;
+      const routePlanId: string = String(
+        (booking as any)?.routePlanId || (booking as any)?.route_plan_id || (trip as any)?.routePlanId || (trip as any)?.route_plan_id || ""
+      );
+      const bookingParcelIds = new Set(
+        Array.isArray((booking as any)?.parcelIds ?? (booking as any)?.parcel_ids)
+          ? ((booking as any).parcelIds ?? (booking as any).parcel_ids).map((id: unknown) => String(id))
+          : []
+      );
+      const bookingCargoCount = Number(
+        String((booking as any)?.cargo_description || "").match(/(\d+)\s+parcel/i)?.[1] || 0
+      );
+      const tripId = String((trip as any)?.id || (trip as any)?.trip_id || "");
+      const normalizedRoutePlanId: string = routePlanId;
+      const tripParcels: any[] = parcels.filter((p: any) => {
+        const parcelId = String(p.id || "");
+        return (
+          (bookingId && String(p.bookingId || p.booking_id || "") === String(bookingId)) ||
+          (tripId && String(p.tripId || p.trip_id || "") === tripId) ||
+          (normalizedRoutePlanId && String(p.routePlanId || p.route_plan_id || "") === normalizedRoutePlanId) ||
+          (driverId && String(p.driverId || p.driver_id || p.assignedDriverId || p.assigned_driver_id || "") === String(driverId)) ||
+          bookingParcelIds.has(parcelId)
+        );
+      });
+      const parcelCount = tripParcels.length || bookingParcelIds.size || Number((booking as any)?.parcelCount || (booking as any)?.parcel_count || 0) || bookingCargoCount;
       const routePlan = routePlanId ? routePlans[routePlanId] : null;
+      const routePlanPolyline = normalizeRoutePlanPolyline(routePlan);
       
       const stops = resolveTripStops(trip, booking, routePlan)
         .map((s) => ({
@@ -350,10 +382,21 @@ export default function MapSection({
       
       const destinationStop = stops[stops.length - 1];
       const destination = destinationStop?.name || trip.toLocation || trip.destination_location || (trip as any)?.to || "Destination";
-      const originPos = trip.fromCoords || { lat: HUB_POS.lat, lng: HUB_POS.lng };
+      const originPos = trip.fromCoords || (
+        Number.isFinite(Number(trip.from_latitude)) && Number.isFinite(Number(trip.from_longitude))
+          && !(Number(trip.from_latitude) === 0 && Number(trip.from_longitude) === 0)
+          ? { lat: Number(trip.from_latitude), lng: Number(trip.from_longitude) }
+          : HUB_POS
+      );
       const destPos = destinationStop
         ? { lat: destinationStop.lat, lng: destinationStop.lng }
-        : (trip.toCoords || { lat: HUB_POS.lat, lng: HUB_POS.lng });
+        : trip.toCoords || resolveDestination(
+          trip.toLocation || trip.destination_location || (trip as any)?.to || "",
+          Number.isFinite(Number(trip.to_latitude)) && Number.isFinite(Number(trip.to_longitude))
+            && !(Number(trip.to_latitude) === 0 && Number(trip.to_longitude) === 0)
+            ? { lat: Number(trip.to_latitude), lng: Number(trip.to_longitude) }
+            : null,
+        );
       
       const { etaMinutes, progress } = calculateEtaAndProgress(trip, osrmMetrics[trip.id || ""]);
       
@@ -373,8 +416,8 @@ export default function MapSection({
         name: resolvedDriverName,
         driverName: resolvedDriverName,
         vehiclePlate: trip.vehicleId || "Assigned vehicle",
-        parcelSummary: `${tripParcels.length} parcels — ${destination}${stops.length > 1 ? ` • ${stops.length} stops` : ""}`,
-        parcelCount: tripParcels.length || 0,
+        parcelSummary: `${parcelCount} parcels — ${destination}${stops.length > 1 ? ` • ${stops.length} stops` : ""}`,
+        parcelCount,
         parcelDetails,
         origin: trip.fromLocation || trip.pickup_location || "Airship Express Hub – Binondo, Manila",
         destination,
@@ -387,6 +430,7 @@ export default function MapSection({
         bookingId,
         courier,
         stops,
+        routePlanPolyline,
       } as Delivery;
     });
   }, [visibleTrips, bookings, parcels, osrmMetrics, drivers, routePlans]);
@@ -426,35 +470,43 @@ export default function MapSection({
     setRoadPaths({});
     setOsrmMetrics({});
 
+    const savedPaths = Object.fromEntries(
+      deliveries
+        .filter((delivery) => delivery.routePlanPolyline)
+        .map((delivery) => [delivery.id, delivery.routePlanPolyline])
+    ) as Record<string, LatLng[]>;
+    setRoadPaths(savedPaths);
+
     deliveries.slice(0, 6).forEach((delivery) => {
+      if (delivery.routePlanPolyline) return;
       if (delivery.destPos.lat === HUB_POS.lat && delivery.destPos.lng === HUB_POS.lng) return;
       const waypoints = delivery.stops && delivery.stops.length > 0
         ? [delivery.originPos, ...delivery.stops.map((s) => ({ lat: s.lat, lng: s.lng })), delivery.destPos]
         : [delivery.originPos, delivery.destPos];
-      const coordinates = waypoints.map((point) => `${point.lng},${point.lat}`).join(";");
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 8000);
+      const timeout = window.setTimeout(() => controller.abort(), 60000);
 
-      fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false&alternatives=false`, {
+      fetch("/api/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waypoints }),
         signal: controller.signal,
         cache: "no-store",
       })
         .then((response) => response.ok ? response.json() : null)
         .then((result) => {
-          if (cancelled || !result?.routes?.[0]) return;
-          const route = result.routes[0];
-          const geometry = route.geometry?.coordinates;
-          if (Array.isArray(geometry) && geometry.length > 1) {
+          if (cancelled || !Array.isArray(result?.polyline)) return;
+          if (result.polyline.length > 1) {
             setRoadPaths((current) => ({
               ...current,
-              [delivery.id]: geometry.map(([lng, lat]: [number, number]) => ({ lat, lng })),
+              [delivery.id]: result.polyline,
             }));
           }
           setOsrmMetrics((current) => ({
             ...current,
             [delivery.id]: {
-              distanceKm: Number(((route.distance || 0) / 1000).toFixed(2)),
-              durationMin: Math.ceil((route.duration || 0) / 60),
+              distanceKm: Number(result.distanceKm || 0),
+              durationMin: Number(result.durationMin || 0),
             },
           }));
         })
@@ -476,7 +528,7 @@ export default function MapSection({
       return filtered
         .map((delivery) => {
           const color = courierColors.get(delivery.courier || "LBC") || "#3b82f6";
-          const roadPath = roadPaths[delivery.id];
+          const roadPath = roadPaths[delivery.id] || delivery.routePlanPolyline;
           
           if (roadPath && roadPath.length > 1) {
             return {
@@ -540,10 +592,15 @@ export default function MapSection({
           return;
         }
 
+        const routePath = roadPaths[delivery.id] || delivery.routePlanPolyline;
+        const routeIndex = routePath && routePath.length > 1
+          ? Math.min(routePath.length - 1, Math.max(0, Math.round((delivery.progress / 100) * (routePath.length - 1))))
+          : -1;
+        const vehiclePosition = routeIndex >= 0 ? routePath[routeIndex] : delivery.currentPos;
         const deliveryMarkers: LeafletMarker[] = [
           {
             id: delivery.id,
-            position: delivery.currentPos,
+            position: vehiclePosition,
             color: delivery.status === "critical" ? "#e11d48" : "#be185d",
             label: (
               <div className="space-y-1 text-sm leading-tight">
@@ -686,8 +743,10 @@ export default function MapSection({
           routeColor="#ec4899"
           className={isFullscreen ? "w-full h-full min-h-screen pointer-events-auto" : "h-full w-full rounded-xl overflow-hidden border border-pink-100 bg-gradient-to-br from-blue-50 to-blue-100"}
           onMarkerClick={(marker) => {
-            const deliveryId = marker.id.split('-')[0];
-            if (deliveryId !== "airship" && deliveryId !== "vehicle") {
+            const deliveryId = deliveries.find((delivery) =>
+              marker.id === delivery.id || marker.id.startsWith(`${delivery.id}-`)
+            )?.id;
+            if (deliveryId) {
               setSelectedDeliveryId(deliveryId);
             }
           }}

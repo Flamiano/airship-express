@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getServiceSupabase } = require('../config/db');
 const { scanReceipt } = require('../services/receiptOcr');
+const { attachCategoryCost } = require('../services/costCategoryService');
 
 const CATEGORY_MAP = {
   fuel: 'Fuel', maintenance: 'Maintenance', toll: 'Toll', parking: 'Parking', other: 'Other',
@@ -203,6 +204,17 @@ router.post('/', async (req, res) => {
   if (result.error) {
     console.error('Supabase expense insert error:', result.error.message);
     return res.status(500).json({ error: `Unable to create expense: ${result.error.message}` });
+  }
+
+  try {
+    await attachCategoryCost(supabase, finalCategory, {
+      liters,
+      odometer_reading: req.body?.odometer_reading,
+      remarks: finalNote,
+    }, result.data.id);
+  } catch (categoryError) {
+    console.error('Supabase expense category insert error:', categoryError.message);
+    return res.status(500).json({ error: `Unable to create category cost: ${categoryError.message}` });
   }
 
   return res.status(201).json({ ...normalizeExpense(result.data), driver_id: driverId || null, ocr: ocrMeta });

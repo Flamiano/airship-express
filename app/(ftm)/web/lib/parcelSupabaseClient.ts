@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { getCachedSupabaseClient } from "./supabaseClientFactory";
 
 const parcelSupabaseUrl = process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_URL || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_URL;
 const parcelSupabaseAnonKey = process.env.NEXT_PUBLIC_FTM_PARCEL_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_PARCEL_SUPABASE_ANON_KEY;
@@ -9,4 +9,4 @@ if (!parcelSupabaseUrl || !parcelSupabaseAnonKey) {
   );
 }
 
-export const parcelSupabase = createClient(parcelSupabaseUrl, parcelSupabaseAnonKey);
+export const parcelSupabase = getCachedSupabaseClient(parcelSupabaseUrl, parcelSupabaseAnonKey);

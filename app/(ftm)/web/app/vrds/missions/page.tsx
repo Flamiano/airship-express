@@ -35,6 +35,71 @@ function resolveDestination(route: string, coordinates?: LatLng | null): LatLng 
   return city ? SERVICE_CITY_COORDINATES[city] : HUB_POS;
 }
 
+function normalizeMissionCoordinate(value: any, fallback: LatLng = HUB_POS): LatLng {
+  const lat = Number(value?.lat ?? value?.latitude);
+  const lng = Number(value?.lng ?? value?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : fallback;
+}
+
+function normalizeRoutePlanPolyline(value: any): LatLng[] | null {
+  const routeData = value?.routeGeojson || value?.route_geojson || value?.route || value?.geometry || value;
+  const featureLine = Array.isArray(routeData?.features)
+    ? routeData.features.find((feature: any) => feature?.geometry?.type === "LineString")?.geometry?.coordinates
+    : null;
+  const routeGeometryCoordinates = Array.isArray(routeData?.route_geometry?.coordinates)
+    ? routeData.route_geometry.coordinates
+    : Array.isArray(routeData?.route_geometry)
+      ? routeData.route_geometry
+      : null;
+  const source =
+    routeData?.polyline ||
+    routeData?.coordinates ||
+    routeData?.geometry?.coordinates ||
+    featureLine ||
+    routeData?.route?.polyline ||
+    routeGeometryCoordinates ||
+    routeData?.polylineCoordinates ||
+    value?.polyline ||
+    value?.coordinates ||
+    value;
+
+  if (!Array.isArray(source)) return null;
+
+  const points = source.map((point: any) => {
+    if (Array.isArray(point)) {
+      if (point.length >= 2 && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1]))) {
+        return { lat: Number(point[1]), lng: Number(point[0]) };
+      }
+      return null;
+    }
+
+    if (!point || typeof point !== "object") return null;
+    return {
+      lat: Number(point?.lat ?? point?.latitude ?? point?.y ?? 0),
+      lng: Number(point?.lng ?? point?.longitude ?? point?.x ?? 0),
+    };
+  }).filter((point: LatLng | null): point is LatLng => point !== null && Number.isFinite(point.lat) && Number.isFinite(point.lng));
+
+  return points.length > 1 ? points : null;
+}
+
+function calculatePolylineDistanceKm(points: LatLng[]): number {
+  let distanceKm = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const first = points[index];
+    const second = points[index + 1];
+    const earthRadiusKm = 6371;
+    const latDelta = ((second.lat - first.lat) * Math.PI) / 180;
+    const lngDelta = ((second.lng - first.lng) * Math.PI) / 180;
+    const firstLat = (first.lat * Math.PI) / 180;
+    const secondLat = (second.lat * Math.PI) / 180;
+    const arc = Math.sin(latDelta / 2) ** 2
+      + Math.cos(firstLat) * Math.cos(secondLat) * Math.sin(lngDelta / 2) ** 2;
+    distanceKm += earthRadiusKm * 2 * Math.atan2(Math.sqrt(arc), Math.sqrt(1 - arc));
+  }
+  return distanceKm;
+}
+
 /**
  * Fetches real road distance and duration from OSRM (Open Source Routing Machine).
  * Uses the /route endpoint to get actual driving metrics instead of straight-line distance.
@@ -44,20 +109,20 @@ async function fetchOsrmRouteMetrics(waypoints: LatLng[]): Promise<{ distanceKm:
   if (!Array.isArray(waypoints) || waypoints.length < 2) return null;
   
   try {
-    const coords = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
-    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
-    
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const response = await fetch("/api/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ waypoints }),
+      signal: AbortSignal.timeout(60000),
+    }).catch(() => null);
     if (!response || !response.ok) return null;
     
     const data = await response.json();
-    if (data.code !== "Ok" || !Array.isArray(data.routes) || data.routes.length === 0) return null;
-    
-    const route = data.routes[0];
-    const distanceKm = Number(((route.distance || 0) / 1000).toFixed(2));
-    const durationMin = Math.ceil((route.duration || 0) / 60);
-    
-    return { distanceKm, durationMin };
+    if (!Array.isArray(data.polyline) || data.polyline.length < 2) return null;
+    return {
+      distanceKm: Number(data.distanceKm || 0),
+      durationMin: Number(data.durationMin || 0),
+    };
   } catch (error) {
     console.warn("[missions] OSRM route request failed:", error);
     return null;
@@ -75,7 +140,20 @@ export default function VrdsMissionsPage() {
   const [routePlans, setRoutePlans] = useState<Record<string, any>>({});
   const [roadPaths, setRoadPaths] = useState<Record<string, LatLng[]>>({});
   const [osrmMetrics, setOsrmMetrics] = useState<Record<string, { distanceKm: number; durationMin: number }>>({});
+  const [osrmRouteErrors, setOsrmRouteErrors] = useState<Record<string, string>>({});
   const [loadingRouteCount, setLoadingRouteCount] = useState(0);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedDeliveryId(null);
+        setActiveMarker(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     getTrips().then(setTrips).catch(() => setTrips([]));
@@ -182,10 +260,26 @@ export default function VrdsMissionsPage() {
       }
     }
 
-    // Fallback: use provided duration or defaults
-    const durationMinutes = Number(trip?.durationMinutes ?? trip?.duration_minutes);
+    // Final fallback: use persisted duration, then derive an estimate from
+    // persisted distance. Never invent a fixed ETA for a generated route.
+    const durationMinutes = Number(
+      trip?.durationMinutes
+      ?? trip?.duration_minutes
+      ?? booking?.durationMinutes
+      ?? booking?.estimated_duration_min
+    );
+    const distanceKm = Number(
+      osrmMetrics?.distanceKm
+      ?? trip?.distanceKm
+      ?? trip?.distance_km
+      ?? booking?.distanceKm
+      ?? booking?.distance_km
+    );
+    const derivedDurationMinutes = Number.isFinite(distanceKm) && distanceKm > 0
+      ? Math.ceil((distanceKm / AVERAGE_SPEED_KMH) * 60)
+      : 0;
     return {
-      etaMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 0,
+      etaMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : derivedDurationMinutes,
       progress: Number(trip?.progress || 0),
     };
   };
@@ -208,12 +302,20 @@ export default function VrdsMissionsPage() {
       const booking = bookings.find((item) => item.id === trip.bookingId || item.id === trip.booking_id);
       const driverId = trip.driverId || trip.driver_id || booking?.driverId;
       const vehicleId = trip.vehicleId || trip.vehicle_id || booking?.vehicleId;
-      return Boolean(driverId && vehicleId);
+      const tripStatus = String(trip.status || trip.state || "").toLowerCase();
+      const hasMissionIdentity = Boolean(trip.bookingId || trip.booking_id || trip.id);
+      const isActive = !/completed|cancelled|failed|rejected/.test(tripStatus);
+      const hasAssignment = Boolean(driverId || vehicleId);
+      const hasRouteData = Boolean(
+        trip.fromLocation || trip.from || trip.toLocation || trip.to || trip.routePlanId || trip.route_plan_id || booking
+      );
+      return hasMissionIdentity && isActive && (hasAssignment || hasRouteData);
     }).map((trip) => {
       const booking = bookings.find((item) => item.id === trip.bookingId || item.id === trip.booking_id);
       const bookingParcels = parcels.filter((p) => p.bookingId === trip.bookingId || p.bookingId === trip.booking_id);
       const routePlanId = booking?.routePlanId || bookingParcels.find((parcel: any) => parcel.routePlanId)?.routePlanId || trip.routePlanId || trip.route_plan_id;
       const routePlan = routePlanId ? routePlans[routePlanId] : null;
+        const routePlanPolyline = normalizeRoutePlanPolyline(routePlan);
       const parcelCount = bookingParcels.length || booking?.parcelIds.length || booking?.parcelCount || 0;
       const fromLocation = trip.fromLocation || trip.from || routePlan?.pickupLocation || booking?.routeLabel || "Airship Express Hub – Binondo, Manila";
       const routeStops = Array.isArray(trip.stops)
@@ -250,14 +352,49 @@ export default function VrdsMissionsPage() {
           : bookingStops;
       const destinationStop = routePlanStops[routePlanStops.length - 1];
       const destinationName = destinationStop?.name || trip.toLocation || trip.to || booking?.routeLabel || "Assigned route";
+      const parcelDestination = bookingParcels.find((parcel: any) => {
+        const lat = Number(parcel.destLat);
+        const lng = Number(parcel.destLng);
+        return Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+      });
       const destinationPosition = destinationStop
         ? { lat: Number(destinationStop.lat), lng: Number(destinationStop.lng) }
-        : resolveDestination(destinationName, trip.toCoords || (booking && booking.dropoffLatitude && booking.dropoffLongitude ? { lat: Number(booking.dropoffLatitude), lng: Number(booking.dropoffLongitude) } : null));
-      const stops = routePlanStops.length > 0 ? routePlanStops : bookingStops;
+        : resolveDestination(
+          destinationName,
+          trip.toCoords
+            || (booking && booking.dropoffLatitude && booking.dropoffLongitude
+              ? { lat: Number(booking.dropoffLatitude), lng: Number(booking.dropoffLongitude) }
+              : null)
+            || (parcelDestination
+              ? { lat: Number(parcelDestination.destLat), lng: Number(parcelDestination.destLng) }
+              : null),
+        );
+      // A saved route plan is already ordered. Keep its final destination as
+      // the endpoint and pass only preceding destinations as OSRM waypoints.
+      const stops = routePlanStops.length > 1
+        ? routePlanStops.slice(0, -1)
+        : routePlanStops.length === 1
+          ? []
+          : bookingStops;
       const stopCountLabel = stops.length > 1 ? ` • ${stops.length} stops` : "";
-      const startPoint = trip.fromCoords || (booking?.pickupLatitude && booking?.pickupLongitude ? { lat: Number(booking.pickupLatitude), lng: Number(booking.pickupLongitude) } : null) || (routePlan?.pickupLocation ? { lat: Number(routePlan.pickupLatitude || 14.5995), lng: Number(routePlan.pickupLongitude || 120.9745) } : HUB_POS);
+      const startPoint = normalizeMissionCoordinate(
+        trip.fromCoords
+          || (booking?.pickupLatitude && booking?.pickupLongitude
+            ? { lat: booking.pickupLatitude, lng: booking.pickupLongitude }
+            : null)
+          || (routePlan?.pickupLocation
+            ? { lat: routePlan.pickupLatitude || 14.5995, lng: routePlan.pickupLongitude || 120.9745 }
+            : null)
+      );
 
-      const { etaMinutes, progress } = calculateEtaAndProgress(trip, booking, osrmMetrics[trip.id]);
+      const savedRouteMetrics = routePlanPolyline
+        ? {
+            distanceKm: Number(routePlan?.distanceKm ?? routePlan?.distance_km ?? routePlan?.routeGeojson?.distance_km)
+              || calculatePolylineDistanceKm(routePlanPolyline),
+            durationMin: Number(routePlan?.durationMinutes ?? routePlan?.estimated_duration_min ?? routePlan?.routeGeojson?.estimated_duration_min) || 0,
+          }
+        : null;
+      const { etaMinutes, progress } = calculateEtaAndProgress(trip, booking, osrmMetrics[trip.id] || savedRouteMetrics);
 
       // Extract courier info with smart fallback
       // Priority: parcel courier > route plan courier > booking ID (for color diversity)
@@ -293,21 +430,29 @@ export default function VrdsMissionsPage() {
         bookingId: trip.bookingId || trip.booking_id,
         courier,
         stops,
+        routePlanPolyline,
       } as Delivery;
     });
 
     const localDeliveries = bookings
       .filter((b) => {
-        // Only show bookings that have BOTH driver AND vehicle assigned (fully dispatched)
-        const isFullyDispatched = Boolean(b.driverId && b.vehicleId);
+        const isActiveBooking = b.status === "DISPATCHED" || Boolean(b.driverId || b.vehicleId) || Boolean(b.routePlanId || b.routeLabel);
         const notInTrips = !trips.some((trip) => trip.bookingId === b.id || trip.booking_id === b.id);
-        return isFullyDispatched && notInTrips;
+        return isActiveBooking && notInTrips;
       })
       .map((b) => {
         const bookingParcels = parcels.filter((p) => p.bookingId === b.id);
         const routePlan = b.routePlanId ? routePlans[b.routePlanId] : null;
+        const routePlanPolyline = normalizeRoutePlanPolyline(routePlan);
         
-        const { etaMinutes, progress } = calculateEtaAndProgress(b, b, osrmMetrics[b.id]);
+        const savedRouteMetrics = routePlanPolyline
+          ? {
+              distanceKm: Number(routePlan?.distanceKm ?? routePlan?.distance_km ?? routePlan?.routeGeojson?.distance_km)
+                || calculatePolylineDistanceKm(routePlanPolyline),
+              durationMin: Number(routePlan?.durationMinutes ?? routePlan?.estimated_duration_min ?? routePlan?.routeGeojson?.estimated_duration_min) || 0,
+            }
+          : null;
+        const { etaMinutes, progress } = calculateEtaAndProgress(b, b, osrmMetrics[b.id] || savedRouteMetrics);
         const isRush = etaMinutes > 0 && etaMinutes <= 15;
 
         // Extract courier info with smart fallback
@@ -363,6 +508,7 @@ export default function VrdsMissionsPage() {
           bookingId: b.id,
           courier,
           stops: routePlanStops,
+          routePlanPolyline: normalizeRoutePlanPolyline(routePlan),
         } as Delivery;
       });
 
@@ -411,6 +557,7 @@ export default function VrdsMissionsPage() {
         bookingId: parcelBookingId,
         courier: firstParcel.courier || "LBC",
         stops: [],
+        routePlanPolyline: null,
       } as Delivery;
     });
 
@@ -471,52 +618,92 @@ export default function VrdsMissionsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setRoadPaths({});
-    setOsrmMetrics({});
-    const routesToFetch = DELIVERIES.filter(
-      (delivery) => delivery.destPos.lat !== HUB_POS.lat || delivery.destPos.lng !== HUB_POS.lng
-    );
+    const getWaypoints = (delivery: Delivery) => [
+      normalizeMissionCoordinate(delivery.originPos),
+      ...(delivery.stops || []).map((stop) => normalizeMissionCoordinate(stop)),
+      normalizeMissionCoordinate(delivery.destPos),
+    ].filter((point, index, points) => {
+      if (point.lat === 0 && point.lng === 0) return false;
+      if (index === 0) return true;
+      const previous = points[index - 1];
+      return point.lat !== previous.lat || point.lng !== previous.lng;
+    });
+    const savedPaths = Object.fromEntries(
+      DELIVERIES
+        .filter((delivery) => delivery.routePlanPolyline)
+        .map((delivery) => [delivery.id, delivery.routePlanPolyline])
+    ) as Record<string, LatLng[]>;
+    setRoadPaths(savedPaths);
+
+    const routesToFetch = DELIVERIES.filter((delivery) => {
+      if (delivery.routePlanPolyline) return false;
+      const waypoints = getWaypoints(delivery);
+      return waypoints.length >= 2 && waypoints.every((point) =>
+        Number.isFinite(point.lat) && Number.isFinite(point.lng)
+        && point.lat >= -90 && point.lat <= 90
+        && point.lng >= -180 && point.lng <= 180
+      );
+    });
     setLoadingRouteCount(routesToFetch.length);
+
+    if (routesToFetch.length === 0) {
+      setLoadingRouteCount(0);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     // Fetch one complete OSRM response per delivery and publish each result
     // immediately, rather than waiting for the slowest route in the batch.
     DELIVERIES.forEach((delivery) => {
-      if (delivery.destPos.lat === HUB_POS.lat && delivery.destPos.lng === HUB_POS.lng) {
+      if (delivery.routePlanPolyline) return;
+      const waypoints = getWaypoints(delivery);
+
+      if (waypoints.length < 2 || !waypoints.every((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))) {
+        setOsrmRouteErrors((current) => ({ ...current, [delivery.id]: "Invalid route coordinates" }));
         return;
       }
 
-      const waypoints = delivery.stops && delivery.stops.length > 0
-        ? [delivery.originPos, ...delivery.stops.map((s) => ({ lat: s.lat, lng: s.lng })), delivery.destPos]
-        : [delivery.originPos, delivery.destPos];
-
-      const coordinates = waypoints.map((point) => `${point.lng},${point.lat}`).join(";");
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 8000);
+      const timeout = window.setTimeout(() => controller.abort(), 60000);
 
-      fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false&alternatives=false`, {
+      fetch("/api/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waypoints }),
         signal: controller.signal,
         cache: "no-store",
       })
         .then((response) => response.ok ? response.json() : null)
         .then((result) => {
-          if (cancelled || !result?.routes?.[0]) return;
-          const route = result.routes[0];
-          const geometry = route.geometry?.coordinates;
-          if (Array.isArray(geometry)) {
-            setRoadPaths((current) => ({
-              ...current,
-              [delivery.id]: geometry.map(([lng, lat]: [number, number]) => ({ lat, lng })),
-            }));
+          if (cancelled) return;
+          if (!Array.isArray(result?.polyline) || result.polyline.length < 2) {
+            setOsrmRouteErrors((current) => ({ ...current, [delivery.id]: result?.error || "OSRM returned no route" }));
+            return;
           }
+          setRoadPaths((current) => ({
+            ...current,
+            [delivery.id]: result.polyline,
+          }));
           setOsrmMetrics((current) => ({
             ...current,
             [delivery.id]: {
-              distanceKm: Number(((route.distance || 0) / 1000).toFixed(2)),
-              durationMin: Math.ceil((route.duration || 0) / 60),
+              distanceKm: Number(result.distanceKm || 0),
+              durationMin: Number(result.durationMin || 0),
             },
           }));
+          setOsrmRouteErrors((current) => {
+            if (!current[delivery.id]) return current;
+            const next = { ...current };
+            delete next[delivery.id];
+            return next;
+          });
         })
-        .catch(() => undefined)
+        .catch(() => {
+          if (!cancelled) {
+            setOsrmRouteErrors((current) => ({ ...current, [delivery.id]: "OSRM route unavailable" }));
+          }
+        })
         .finally(() => {
           window.clearTimeout(timeout);
           if (!cancelled) setLoadingRouteCount((count) => Math.max(0, count - 1));
@@ -576,10 +763,15 @@ export default function VrdsMissionsPage() {
       },
     },
     ...DELIVERIES.flatMap((m) => {
+      const routePath = roadPaths[m.id] || m.routePlanPolyline;
+      const routeIndex = routePath && routePath.length > 1
+        ? Math.min(routePath.length - 1, Math.max(0, Math.round((m.progress / 100) * (routePath.length - 1))))
+        : -1;
+      const vehiclePosition = routeIndex >= 0 ? routePath[routeIndex] : m.currentPos;
       const deliveryMarkers: LeafletMarker[] = [
         {
           id: m.id,
-          position: m.currentPos,
+          position: vehiclePosition,
           color: m.status === "critical" ? "#e11d48" : "#be185d",
           label: (
             <div className="space-y-1 text-sm leading-tight">
@@ -668,9 +860,9 @@ export default function VrdsMissionsPage() {
         if (selectedDeliveryId && m.id !== selectedDeliveryId) {
           return null;
         }
-        
+
         const color = courierColors.get(m.courier || "LBC") || "#3b82f6";
-        const roadPath = roadPaths[m.id];
+        const roadPath = roadPaths[m.id] || m.routePlanPolyline;
         
         if (roadPath && roadPath.length > 1) {
           return {
@@ -687,11 +879,12 @@ export default function VrdsMissionsPage() {
       .filter(Boolean) as Array<{ points: LatLng[]; color: string; label: string }>;
   }, [DELIVERIES, roadPaths, selectedDeliveryId, courierColors]);
 
-  const paths = coloredPaths.flatMap((p) => p.points);
-
   // Get selected delivery details for coordinate display
   const selectedDelivery = selectedDeliveryId 
     ? DELIVERIES.find((d) => d.id === selectedDeliveryId)
+    : null;
+  const selectedOsrmError = selectedDeliveryId
+    ? osrmRouteErrors[selectedDeliveryId]
     : null;
 
   return (
@@ -767,7 +960,7 @@ export default function VrdsMissionsPage() {
                 </div>
 
                 {DELIVERIES.length === 0 ? (
-                  <p className="py-8 text-slate-500">No booked deliveries with an assigned driver and vehicle yet.</p>
+                  <p className="py-8 text-slate-500">No in-transit deliveries with an assigned driver and vehicle yet.</p>
                 ) : (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                       {[...(critical ? [critical] : []), ...others].map((delivery) => (
@@ -795,17 +988,25 @@ export default function VrdsMissionsPage() {
                       zoom={12}
                       markers={markers}
                       coloredPaths={showRouteLines || selectedDeliveryId ? coloredPaths : []}
+                      onlyColoredPaths
                       routeColor="#ec4899"
                       onMarkerClick={(marker) => {
                         setActiveMarker(marker);
-                        const deliveryId = marker.id.split('-')[0];
-                        setSelectedDeliveryId(deliveryId);
+                        const deliveryId = DELIVERIES.find((delivery) =>
+                          marker.id === delivery.id || marker.id.startsWith(`${delivery.id}-`)
+                        )?.id;
+                        setSelectedDeliveryId(deliveryId || marker.id);
                       }}
                     />
                     {loadingRouteCount > 0 && (
                       <div className="pointer-events-none absolute left-3 top-3 z-[400] inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/95 px-3 py-2 text-xs font-semibold text-pink-700 shadow-sm">
                         <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
                         Loading {loadingRouteCount} OSRM {loadingRouteCount === 1 ? "route" : "routes"}...
+                      </div>
+                    )}
+                    {selectedOsrmError && (
+                      <div className="pointer-events-none absolute bottom-3 left-3 z-[400] rounded-lg border border-amber-200 bg-white/95 px-3 py-2 text-xs font-semibold text-amber-800 shadow-sm">
+                        OSRM: {selectedOsrmError}
                       </div>
                     )}
                   </div>
@@ -842,13 +1043,21 @@ export default function VrdsMissionsPage() {
                   zoom={11} 
                   markers={markers} 
                   coloredPaths={showRouteLines || selectedDeliveryId ? coloredPaths : []} 
+                  onlyColoredPaths
                   routeColor="#ec4899" 
                   onMarkerClick={(marker) => {
                     setActiveMarker(marker);
-                    const deliveryId = marker.id.split('-')[0];
-                    setSelectedDeliveryId(deliveryId);
+                    const deliveryId = DELIVERIES.find((delivery) =>
+                      marker.id === delivery.id || marker.id.startsWith(`${delivery.id}-`)
+                    )?.id;
+                    setSelectedDeliveryId(deliveryId || marker.id);
                   }}
                 />
+                {selectedOsrmError && (
+                  <div className="pointer-events-none absolute bottom-3 left-3 z-[400] rounded-lg border border-amber-200 bg-white/95 px-3 py-2 text-xs font-semibold text-amber-800 shadow-sm">
+                    OSRM: {selectedOsrmError}
+                  </div>
+                )}
               </div>
             </section>
           )}
@@ -1025,6 +1234,7 @@ type Delivery = {
   // Ordered waypoints (e.g. the courier warehouses an OR-Tools-optimized
   // bulk route visits, in visiting order) between origin and destination.
   stops?: { name: string; lat: number; lng: number; status?: string }[];
+  routePlanPolyline?: LatLng[] | null;
 };
 
 function StatItem({

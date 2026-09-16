@@ -1,50 +1,40 @@
-// @ts-nocheck
 "use client";
 
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline } from "react-leaflet";
-import type { LatLngExpression } from "leaflet";
+import dynamic from "next/dynamic";
 import type { DashboardVehicle } from "../page";
+import type { LeafletMarker } from "../../components/LeafletMap";
+
+const LeafletMap = dynamic(() => import("../../components/LeafletMap"), { ssr: false });
+
+const HUB_POS = { lat: 14.5995, lng: 120.9842 };
 
 export default function MapPanel({ vehicles }: { vehicles: DashboardVehicle[] }) {
-  const locatedVehicles = vehicles.filter((vehicle) => vehicle.locationLat != null && vehicle.locationLng != null);
-  const positions = locatedVehicles.map((vehicle) => [Number(vehicle.locationLat), Number(vehicle.locationLng)] as LatLngExpression);
-  const center = positions[0] || ([14.5995, 120.9842] as LatLngExpression);
+  const markers: LeafletMarker[] = vehicles
+    .filter((vehicle) => vehicle.locationLat != null && vehicle.locationLng != null)
+    .map((vehicle) => ({
+      id: `vehicle-${vehicle.id || vehicle.plateNumber || "unknown"}`,
+      position: { lat: Number(vehicle.locationLat), lng: Number(vehicle.locationLng) },
+      color: "#b80049",
+      label: vehicle.plateNumber || vehicle.id || "Vehicle",
+      radius: 7,
+      meta: {
+        title: vehicle.plateNumber || vehicle.id || "Vehicle",
+        subtitle: vehicle.vehicleType || "Vehicle",
+        details: (
+          <div className="space-y-1 text-sm text-slate-600">
+            <div>Status: {vehicle.status || "Unknown"}</div>
+            <div>Location: {Number(vehicle.locationLat).toFixed(6)}, {Number(vehicle.locationLng).toFixed(6)}</div>
+          </div>
+        ),
+      },
+    }));
 
   return (
-    <div className="absolute inset-0 z-0">
-      <MapContainer
-        center={center}
-        zoom={4}
-        scrollWheelZoom
-        className="w-full h-full"
-        style={{ background: "#f5faff" }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        />
-        {locatedVehicles.map((vehicle) => (
-          <CircleMarker
-            key={vehicle.id || vehicle.plateNumber}
-            center={[Number(vehicle.locationLat), Number(vehicle.locationLng)]}
-            radius={7}
-            pathOptions={{
-              color: "#ffffff",
-              weight: 2,
-              fillColor: "#b80049",
-              fillOpacity: 0.9,
-            }}
-          >
-            <Popup>
-              <div className="font-semibold text-text">{vehicle.plateNumber || vehicle.id || "Vehicle"}</div>
-              <div className="text-text-muted">{vehicle.vehicleType || "Vehicle"}</div>
-            </Popup>
-          </CircleMarker>
-        ))}
-      </MapContainer>
-      {locatedVehicles.length === 0 && (
+    <div className="relative h-full w-full">
+      <LeafletMap center={HUB_POS} zoom={4} markers={markers} routeColor="#b80049" />
+      {markers.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center">
-          <div className="rounded-md border border-border bg-white/90 px-4 py-2 text-xs text-text-muted shadow-sm backdrop-blur-sm">
+          <div className="rounded-md border border-slate-200 bg-white/90 px-4 py-2 text-xs text-slate-500 shadow-sm backdrop-blur-sm">
             No live vehicle locations available
           </div>
         </div>

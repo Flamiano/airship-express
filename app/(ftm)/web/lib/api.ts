@@ -4,7 +4,11 @@ import { parcelSupabase } from "./parcelSupabaseClient";
 export async function fetchJson(path: string, opts: RequestInit = {}) {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
   const url = path.startsWith("http") ? path : `${base}${path}`;
-  const res = await fetch(url, { ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = new Headers(opts.headers);
+  headers.set("Content-Type", "application/json");
+  if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
+  const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Request failed ${res.status}: ${text}`);
@@ -15,7 +19,7 @@ export async function fetchJson(path: string, opts: RequestInit = {}) {
 function reportBackendLoadFailure(resource: string, error: unknown) {
   // The local Express API is optional while developing the UI. A connection
   // refusal should fall back to the in-memory store without a console error.
-  if (error instanceof TypeError && error.message === "Failed to fetch") return;
+  if (error instanceof TypeError && /Failed to fetch|fetch failed/i.test(error.message)) return;
   console.error(`Failed to load ${resource} from backend proxy`, error);
 }
 

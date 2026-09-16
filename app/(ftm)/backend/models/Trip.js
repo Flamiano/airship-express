@@ -27,6 +27,7 @@ function normalizeTrip(record = {}) {
     toCoords: (record.to_latitude && record.to_longitude) ? { lat: record.to_latitude, lng: record.to_longitude } : null,
     // camelCase aliases expected by frontend
     bookingId: record.booking_id || record.bookingId || null,
+    routePlanId: record.route_plan_id || record.routePlanId || null,
     vehicleId: record.vehicle_id || record.vehicleId || null,
     driverId: record.driver_id || record.driverId || null,
     status: isOverdue ? 'Delayed' : (record.status || null),
@@ -40,8 +41,19 @@ function normalizeTrip(record = {}) {
   };
 }
 
+function isValidUuid(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+function normalizeVehicleId(value) {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
 function buildTripPayload(trip = {}) {
   const vehicleId = trip?.vehicle_id || trip?.vehicle;
+  const driverId = trip?.driver_id || trip?.driver;
   const fromLocation = trip?.from_location || trip?.from;
   const toLocation = trip?.to_location || trip?.to;
   const fromLat = trip?.from_latitude || trip?.fromCoords?.lat;
@@ -52,9 +64,11 @@ function buildTripPayload(trip = {}) {
   return {
     id: trip.id || trip.trip_id || null,
     booking_id: trip.booking_id || null,
-    vehicle_id: vehicleId || null,
-    driver_id: trip.driver_id || null,
+    route_plan_id: trip.route_plan_id || trip.routePlanId || null,
+    vehicle_id: normalizeVehicleId(vehicleId),
+    driver_id: isValidUuid(driverId) ? driverId : null,
     driver_name: trip.driver_name || trip.driver || null,
+    vehicle_plate: trip.vehicle_plate || trip.plate || null,
     from_location: fromLocation || null,
     to_location: toLocation || null,
     from_latitude: fromLat || null,

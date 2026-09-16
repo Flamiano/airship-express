@@ -6,7 +6,7 @@ export interface User {
   email: string;
   fullName: string;
   phone?: string;
-  role: 'admin' | 'dispatcher' | 'driver' | 'customer';
+  role: 'admin' | 'dispatcher' | 'driver' | 'fleet_manager';
   isActive?: boolean;
   createdAt?: string; // ISO timestamp
   updatedAt?: string;

@@ -3,8 +3,7 @@ import type { DashboardVehicle, DashboardTrip } from "../page";
 export default function SensorHub({ vehicles, trips }: { vehicles: DashboardVehicle[]; trips: DashboardTrip[] }) {
   const locatedVehicles = vehicles.filter((vehicle) => vehicle.locationLat != null && vehicle.locationLng != null);
   
-  // Get location name from first active trip
-  let displayLocation: string = "Location unavailable";
+  let displayLocation = "Airship Express Hub - Binondo, Manila";
   
   // Try to get location name from first active trip
   const activeTrip = trips.find(t => 
@@ -21,6 +20,11 @@ export default function SensorHub({ vehicles, trips }: { vehicles: DashboardVehi
     } else if (destinationLocation) {
       displayLocation = destinationLocation;
     }
+  }
+
+  if (displayLocation === "Airship Express Hub - Binondo, Manila" && locatedVehicles.length > 0) {
+    const vehicle = locatedVehicles[0];
+    displayLocation = `${Number(vehicle.locationLat).toFixed(4)}, ${Number(vehicle.locationLng).toFixed(4)}`;
   }
   
   const capacity = vehicles.reduce((total, vehicle) => total + Number(vehicle.capacityKg || 0), 0);

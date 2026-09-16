@@ -18,6 +18,7 @@ const LEGACY_ROUTE_PLAN_COLUMNS = [
 ];
 
 const WORKFLOW_ROUTE_PLAN_COLUMNS = [
+  'bulk_qr_code',
   'route_geojson',
   'distance_km',
   'estimated_duration_min',
@@ -164,16 +165,23 @@ async function createRoutePlan(req, res) {
     lng: Number(body.pickup_longitude),
   };
   const stops = body.delivery_destinations
-    .map((stop) => ({
+    .map((stop, index) => {
+      const rawName = stop.name || stop.address || stop.delivery_address || `Stop ${index + 1}`;
+      const cityLabel = stop.city || stop.location || stop.area || "";
+      const uniqueName = `${rawName}${cityLabel ? ` • ${cityLabel}` : ""} • ${index + 1}`;
+
       // Keep any extra metadata the caller attached to a stop (e.g. the
       // warehouse's city, its aggregate demand in kg, and which parcel_ids
       // it represents) so it survives the optimizer round trip and is
       // still there when Bookings reads the saved route plan back.
-      ...stop,
-      name: stop.name || stop.address || stop.delivery_address,
-      lat: Number(stop.lat ?? stop.latitude),
-      lng: Number(stop.lng ?? stop.longitude),
-    }))
+      return {
+        ...stop,
+        id: stop.id || stop.stop_id || `${uniqueName}-${index}`,
+        name: uniqueName,
+        lat: Number(stop.lat ?? stop.latitude),
+        lng: Number(stop.lng ?? stop.longitude),
+      };
+    })
     .filter((stop) => stop.name && Number.isFinite(stop.lat) && Number.isFinite(stop.lng));
 
   if (!Number.isFinite(depot.lat) || !Number.isFinite(depot.lng)) {
@@ -196,18 +204,33 @@ async function createRoutePlan(req, res) {
   // creation, Active Deliveries — gets the efficient sequence directly.
   const stopsByName = new Map(stops.map((stop) => [stop.name, stop]));
   const orderedStops = Array.isArray(optimized.order) && optimized.order.length > 0
-    ? optimized.order.map((name) => stopsByName.get(name)).filter(Boolean)
+    ? optimized.order
+        .map((name) => stopsByName.get(name) ?? stops.find((stop) => stop.name === name) ?? stops.find((stop) => stop.id === name))
+        .filter(Boolean)
     : stops;
   // Include any stop the optimizer didn't echo back by name (defensive).
-  orderedStops.forEach((stop) => stopsByName.delete(stop.name));
+  orderedStops.forEach((stop) => {
+    if (stop && stop.name) stopsByName.delete(stop.name);
+  });
   const finalStops = [...orderedStops, ...Array.from(stopsByName.values())];
+
+  const submittedRouteGeojson = body.route_geojson || body.routeGeojson || null;
+  const routeGeojson = submittedRouteGeojson && typeof submittedRouteGeojson === 'object'
+    ? { ...submittedRouteGeojson }
+    : {};
 
   const payloadRaw = buildRoutePlanPayload({
     ...body,
+    // Keep the caller's FeatureCollection and metadata, then add the
+    // authoritative server optimization result alongside it.
     route_geojson: {
+      ...routeGeojson,
       order: optimized.order,
-      routes: optimized.routes || null,
-      route_geometry: optimized.route_geometry || null,
+      routes: optimized.routes || routeGeojson.routes || null,
+      route_geometry: optimized.route_geometry || routeGeojson.route_geometry || null,
+      distance_km: optimized.distance_km,
+      estimated_duration_min: optimized.duration_min,
+      generated_by: optimized.solver || body.generated_by || 'OR-Tools',
     },
     distance_km: optimized.distance_km,
     estimated_duration_min: optimized.duration_min,

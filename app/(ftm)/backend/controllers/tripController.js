@@ -85,7 +85,7 @@ function isPermissionError(error) {
 }
 
 function isInTransitStatus(status) {
-  return /in transit|in_transit|transit|assigned|scheduled|dispatch|moving|en route|active|delayed|late/i.test(String(status || ''));
+  return /in transit|in_transit|transit|assigned|scheduled|dispatch|moving|en route|active/i.test(String(status || ''));
 }
 
 function normalizeStopPoint(stop) {
@@ -147,14 +147,17 @@ async function getTrips(req, res) {
 
   try {
     const isLightRequest = req.query.light === 'true';
-    const buildTripQuery = (includeStops = true) => {
-      const baseSelect = `
+    const buildTripQuery = (includeStops = true, includeBookingJoin = true) => {
+      const coreFields = `
         id, booking_id, vehicle_id, driver_id, status, progress,
         estimated_departure, estimated_arrival, actual_departure, actual_arrival,
-        delay_reason, created_at, updated_at, route_plan_id,
-        bookings(pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight)
-        ${includeStops ? ', trip_stops(sequence, name, latitude, longitude, status)' : ''}
+        delay_reason, created_at, updated_at, route_plan_id
       `;
+      const bookingJoin = includeBookingJoin
+        ? `, bookings(pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight)`
+        : '';
+      const stopsJoin = includeStops ? ', trip_stops(sequence, name, latitude, longitude, status)' : '';
+      const baseSelect = `${coreFields}${bookingJoin}${stopsJoin}`;
       const query = supabase.from('trips').select(baseSelect).order('created_at', { ascending: false }).limit(isLightRequest ? 100 : 200);
       if (req.query.status) query.eq('status', req.query.status);
       if (req.query.driver_id) query.eq('driver_id', req.query.driver_id);
@@ -163,6 +166,7 @@ async function getTrips(req, res) {
 
     let tripData = [];
     let tripError = null;
+    let bookingsById = new Map();
     let routePlans = [];
     let routePlanBookings = [];
     const routePlansPromise = isLightRequest
@@ -178,12 +182,15 @@ async function getTrips(req, res) {
       if (error) {
         tripError = error;
         const msg = String(error.message || error || '');
-        if (/trip_stops|Could not find a relationship|schema cache/i.test(msg)) {
-          console.warn('trip_stops relation unavailable; retrying trips query without it:', msg);
-          const fallback = await buildTripQuery(false);
+        if (/trip_stops|Could not find a relationship|schema cache|Could not find the table/i.test(msg)) {
+          console.warn('Trip schema relationship unavailable; retrying trips query without joins:', msg);
+          const fallback = await buildTripQuery(false, false);
           const fallbackResult = await fallback;
           tripData = fallbackResult.data || [];
-          tripError = fallbackResult.error;
+          const fallbackMsg = String(fallbackResult.error?.message || fallbackResult.error || '');
+          tripError = /trip_stops|Could not find a relationship|schema cache|Could not find the table/i.test(fallbackMsg)
+            ? null
+            : fallbackResult.error;
         } else {
           tripData = [];
         }
@@ -233,6 +240,22 @@ async function getTrips(req, res) {
       });
     }
 
+    // Some Supabase projects do not expose a foreign-key relationship between
+    // trips and bookings. Load the booking rows separately so trip locations
+    // remain available to dashboard consumers in that schema variant.
+    const bookingIds = Array.from(new Set((tripData || []).map((trip) => trip.booking_id).filter(Boolean)));
+    if (bookingIds.length > 0) {
+      const { data: bookingRows, error: bookingRowsError } = await supabase
+        .from('bookings')
+        .select('id, pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight')
+        .in('id', bookingIds);
+      if (!bookingRowsError) {
+        bookingsById = new Map((bookingRows || []).map((booking) => [String(booking.id), booking]));
+      } else {
+        console.warn('Unable to load booking locations for trips:', bookingRowsError.message || bookingRowsError);
+      }
+    }
+
     const routePlanMap = new Map((Array.isArray(routePlans) ? routePlans : []).map((row) => [row.id, row]));
     const routePlanBookingsByRoutePlan = new Map();
     (Array.isArray(routePlanBookings) ? routePlanBookings : []).forEach((row) => {
@@ -244,7 +267,7 @@ async function getTrips(req, res) {
     });
 
     const tripsWithCoords = (tripData || []).map((trip) => {
-      const booking = Array.isArray(trip.bookings) ? trip.bookings[0] : trip.bookings;
+      const booking = Array.isArray(trip.bookings) ? trip.bookings[0] : trip.bookings || bookingsById.get(String(trip.booking_id));
       const routePlan = trip.route_plan_id ? routePlanMap.get(trip.route_plan_id) : null;
       const stops = resolveTripStops(trip, routePlan);
 
@@ -300,8 +323,12 @@ async function createTrip(req, res) {
   const stops = Array.isArray(trip?.stops) ? trip.stops : [];
   const payload = buildTripPayload(trip);
 
-  if (!payload.id || !payload.vehicle_id || !payload.from_location || !payload.to_location) {
-    return res.status(400).json({ error: 'id, vehicle_id, from_location, and to_location are required' });
+  if (!payload.id || !payload.from_location || !payload.to_location) {
+    return res.status(400).json({ error: 'id, from_location, and to_location are required' });
+  }
+
+  if (isInTransitStatus(payload.status) && !payload.vehicle_id) {
+    return res.status(400).json({ error: 'A vehicle must be assigned before a trip can be dispatched.' });
   }
 
   const supabase = getServiceSupabase();
@@ -377,6 +404,22 @@ async function createTrip(req, res) {
     }
   } catch (e) {
     console.error('Failed to update booking:', e);
+  }
+  // Keep the saved route plan linked to the dispatched trip so route-plan,
+  // booking, and mission pages all read the same lifecycle state.
+  try {
+    const routePlanId = data?.route_plan_id || payload.route_plan_id || null;
+    if (routePlanId) {
+      const { error: routePlanUpdateError } = await supabase
+        .from('route_plans')
+        .update({ trip_id: data.id, status: isInTransitStatus(data.status) ? 'in_progress' : 'assigned' })
+        .eq('id', routePlanId);
+      if (routePlanUpdateError) {
+        console.warn('Failed to update route plan dispatch state:', routePlanUpdateError.message || routePlanUpdateError);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to sync route plan with trip:', e);
   }
   // update parcel records to reference this trip and mark remote parcels based on trip state
   try {
@@ -473,9 +516,33 @@ async function updateTripStatus(req, res, status, progress) {
 
   const bookingId = data?.booking_id;
   if (bookingId) {
-    const parcelStatus = isInTransitStatus(status) ? 'in_transit' : status === 'Completed' ? 'delivered' : null;
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+    const parcelStatus = /delayed|late|exception/.test(normalizedStatus)
+      ? 'delayed'
+      : isInTransitStatus(status)
+        ? 'in_transit'
+        : normalizedStatus === 'completed'
+          ? 'delivered'
+          : null;
     if (parcelStatus) {
       await updateRemoteParcelStatus(bookingId, parcelStatus);
+    }
+  }
+
+  if (data?.route_plan_id) {
+    const routePlanStatus = isInTransitStatus(status)
+      ? 'in_progress'
+      : status === 'Completed'
+        ? 'completed'
+        : null;
+    if (routePlanStatus) {
+      const { error: routePlanError } = await supabase
+        .from('route_plans')
+        .update({ status: routePlanStatus })
+        .eq('id', data.route_plan_id);
+      if (routePlanError) {
+        console.warn('Failed to update route plan status:', routePlanError.message || routePlanError);
+      }
     }
   }
 

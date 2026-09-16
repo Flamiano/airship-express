@@ -191,9 +191,7 @@ router.get('/', async (req, res) => {
         .order('created_at', { ascending: false })
         .limit(100),
       supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(200),
-      // Parcels can be stored in a separate Supabase project. Query that
-      // connection so a missing `parcels` table in the fleet project does
-      // not prevent the whole dashboard (including fleet analytics) loading.
+      // Parcels can be stored in a separate Supabase project.
       parcelsSupabase.from('parcels').select('*').order('created_at', { ascending: false }).limit(200),
       supabase
         .from('route_plans')
@@ -204,14 +202,37 @@ router.get('/', async (req, res) => {
       fetchDrivers(supabase),
     ]);
 
-    if (vehiclesResult.error || tripsResult.error || bookingsResult.error || parcelsResult.error || routePlansResult.error || routePlanBookingsResult.error) {
-      const queryError = vehiclesResult.error || tripsResult.error || bookingsResult.error || parcelsResult.error || routePlansResult.error || routePlanBookingsResult.error;
+    const queryError = vehiclesResult.error || tripsResult.error || bookingsResult.error || routePlansResult.error || routePlanBookingsResult.error;
+    if (queryError) {
+      const queryErrorMessage = String(queryError?.message || queryError || '');
       console.error('Dashboard snapshot query error:', queryError);
-      if (queryError && (queryError.code === 'PGRST002' || queryError.code === '42501' || queryError.code === 'PGRST303')) {
-        console.warn('Using fallback dashboard snapshot because Supabase data access is temporarily unavailable.');
+      if (
+        queryError && (
+          queryError.code === 'PGRST002' ||
+          queryError.code === '42501' ||
+          queryError.code === 'PGRST303' ||
+          /relationship|schema cache|Could not find the table|Could not find a relationship/i.test(queryErrorMessage)
+        )
+      ) {
+        console.warn('Using fallback dashboard snapshot because Supabase schema/data is temporarily unavailable.');
         return res.json(buildFallbackDashboardSnapshot());
       }
       return res.status(500).json({ error: 'Failed to fetch dashboard snapshot data' });
+    }
+
+    // A parcel project/schema outage must not erase the rest of the dashboard.
+    // Retry the main fleet project before exposing an empty parcel list.
+    let parcelRows = Array.isArray(parcelsResult.data) ? parcelsResult.data : [];
+    if (parcelsResult.error) {
+      const fallbackParcelsResult = await supabase
+        .from('parcels')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      parcelRows = Array.isArray(fallbackParcelsResult.data) ? fallbackParcelsResult.data : [];
+      if (fallbackParcelsResult.error) {
+        console.warn('Dashboard parcel query unavailable:', parcelsResult.error.message || parcelsResult.error);
+      }
     }
 
     const vehicleIds = (vehiclesResult.data || [])
@@ -289,7 +310,7 @@ router.get('/', async (req, res) => {
       })
       .filter((trip) => !isSeedTrip(trip));
     const bookings = bookingsResult.data || [];
-    const parcels = parcelsResult.data || [];
+    const parcels = parcelRows;
     const driverRecords = (Array.isArray(drivers) ? drivers : []).filter(
       (driver) =>
         !SEED_DRIVER_IDS.has(driver.id) &&

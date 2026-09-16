@@ -4,23 +4,41 @@ import { parcelSupabase } from "./parcelSupabaseClient";
 export async function fetchJson(path: string, opts: RequestInit = {}) {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
   const url = path.startsWith("http") ? path : `${base}${path}`;
-  const res = await fetch(url, { ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Request failed ${res.status}: ${text}`);
+  let slowTimer: number | undefined;
+
+  if (typeof window !== "undefined") {
+    slowTimer = window.setTimeout(() => window.dispatchEvent(new Event("ftm:network-slow")), 2500);
   }
-  return res.json();
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = new Headers(opts.headers);
+    headers.set("Content-Type", "application/json");
+    if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
+    const res = await fetch(url, { ...opts, headers });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/ftmAuth")) {
+        window.location.assign(`/ftmAuth?next=${encodeURIComponent(window.location.pathname)}`);
+      }
+      throw new Error(`Request failed ${res.status}: ${text}`);
+    }
+    return res.json();
+  } finally {
+    if (slowTimer) window.clearTimeout(slowTimer);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("ftm:network-finished"));
+  }
 }
 
 function isIgnorableBackendError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
-  return /Failed to fetch|JWT issued at future|invalid JWT|permission denied|not authorized|RLS|rls|Unauthorized/i.test(message);
+  return /Failed to fetch|fetch failed|JWT issued at future|invalid JWT|permission denied|not authorized|RLS|rls|Unauthorized/i.test(message);
 }
 
 function reportBackendLoadFailure(resource: string, error: unknown) {
   // The local Express API is optional while developing the UI. A connection
   // refusal should fall back to the in-memory store without a console error.
-  if (error instanceof TypeError && error.message === "Failed to fetch") return;
+  if (error instanceof TypeError && /Failed to fetch|fetch failed/i.test(error.message)) return;
   if (isIgnorableBackendError(error)) return;
   console.error(`Failed to load ${resource} from backend proxy`, error);
 }
@@ -58,19 +76,20 @@ function normalizeStatus(value: unknown) {
 
 export async function getCostEntries() {
   try {
-    return await fetchJson('/api/costs');
+    const rows = await fetchJson('/api/costs');
+    return (Array.isArray(rows) ? rows : []).map((entry) => ({
+      ...entry,
+      id: entry.id ?? entry.entry_id,
+      vehicleId: entry.vehicle_id ?? entry.vehicleId,
+      tripId: entry.trip_id ?? entry.tripId,
+      category: entry.category ?? "Other",
+      amount: Number(entry.amount ?? 0),
+      entryDate: entry.entry_date ?? entry.entryDate ?? entry.created_at,
+      remarks: entry.remarks ?? entry.description ?? "",
+      receipt_image: entry.receipt_image ?? entry.receiptImage,
+    }));
   } catch (error) {
     reportBackendLoadFailure("cost entries", error);
-    return [] as any[];
-  }
-}
-
-export async function getTrips(options: { light?: boolean } = {}) {
-  try {
-    const query = options.light ? "?light=true" : "";
-    return await fetchJson(`/api/trips${query}`);
-  } catch (error) {
-    reportBackendLoadFailure("trips", error);
     return [] as any[];
   }
 }
@@ -85,10 +104,21 @@ export async function getDashboardSnapshot() {
       vehicles: [],
       trips: [],
       bookings: [],
+      parcels: [],
       drivers: [],
       costEntries: [],
       fuelLogs: [],
     };
+  }
+}
+
+export async function getTrips(options: { light?: boolean } = {}) {
+  try {
+    const query = options.light ? "?light=true" : "";
+    return await fetchJson(`/api/trips${query}`);
+  } catch (error) {
+    reportBackendLoadFailure("trips", error);
+    return [] as any[];
   }
 }
 
@@ -101,8 +131,44 @@ export async function getVehicles() {
   }
 }
 
+export async function getCouriers() {
+  try {
+    return await fetchJson('/api/vehicles/couriers');
+  } catch (error) {
+    reportBackendLoadFailure("couriers", error);
+    return [] as any[];
+  }
+}
+
+export async function createSupportTicket(payload: { driver_id?: string; subject?: string; message: string }) {
+  return fetchJson("/api/support/report", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getNextVehicleId(courierId?: string) {
+  const query = courierId ? `?courier_id=${encodeURIComponent(courierId)}` : "";
+  const result = await fetchJson(`/api/vehicles/next-id${query}`);
+  return String(result?.id || "");
+}
+
 export async function createVehicle(payload: Record<string, unknown>) {
   return fetchJson('/api/vehicles', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createVehicleDocument(payload: Record<string, unknown>) {
+  return fetchJson('/api/vehicles/documents', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadVehicleDocument(payload: Record<string, unknown>) {
+  return fetchJson('/api/vehicles/documents/upload', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -126,13 +192,21 @@ export async function getDrivers() {
   }
 }
 
-export async function getParcels() {
+export async function getParcels(options: { status?: string; history?: boolean } = {}) {
   try {
-    return await fetchJson('/api/parcels');
+    const params = new URLSearchParams();
+    if (options.status) params.set('status', options.status);
+    if (options.history) params.set('history', 'true');
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return await fetchJson(`/api/parcels${query}`);
   } catch (error) {
     reportBackendLoadFailure("parcels", error);
     return [] as any[];
   }
+}
+
+export async function getParcelHistory() {
+  return fetchJson('/api/parcels?history=true');
 }
 
 export async function getFuelLogs() {
@@ -142,6 +216,26 @@ export async function getFuelLogs() {
     reportBackendLoadFailure("fuel logs", error);
     return [] as any[];
   }
+}
+
+export async function getExpenses() {
+  try {
+    return await fetchJson('/api/expenses');
+  } catch (error) {
+    reportBackendLoadFailure("expenses", error);
+    return [] as any[];
+  }
+}
+
+export async function getCosts() {
+  return fetchJson('/api/costs');
+}
+
+export async function createExpense(payload: Record<string, unknown>) {
+  return fetchJson('/api/expenses', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getPendingParcelsByCourier() {
@@ -218,6 +312,20 @@ export async function createRoutePlan(payload: Record<string, unknown>) {
   });
 }
 
+function normalizeParcelStatusForApi(status: string) {
+  const value = String(status ?? "").trim().toLowerCase();
+  if (!value) return value;
+  switch (value) {
+    case "booked":
+    case "assigned":
+    case "ready_for_booking":
+    case "ready":
+      return "picked_up";
+    default:
+      return value;
+  }
+}
+
 export async function createBulkBooking(payload: Record<string, unknown>) {
   return fetchJson("/api/parcels/bulk-booking", {
     method: "POST",
@@ -228,7 +336,7 @@ export async function createBulkBooking(payload: Record<string, unknown>) {
 export async function updateParcelStatus(parcelId: string, status: string) {
   return fetchJson(`/api/parcels/${encodeURIComponent(parcelId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status: normalizeParcelStatusForApi(status) }),
   });
 }
 
@@ -237,6 +345,32 @@ export async function createTrip(payload: Record<string, unknown>) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function assignBookingResources(bookingId: string, payload: Record<string, unknown>) {
+  return fetchJson(`/api/bookings/${encodeURIComponent(bookingId)}/assignment`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAdminUsers() {
+  return fetchJson("/api/admin/users");
+}
+
+export async function updateAdminUserRole(userId: string, role: string) {
+  return fetchJson(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function lockAdminUser(userId: string) {
+  return fetchJson(`/api/admin/users/${encodeURIComponent(userId)}/lock`, { method: "PATCH" });
+}
+
+export async function unlockAdminUser(userId: string) {
+  return fetchJson(`/api/admin/users/${encodeURIComponent(userId)}/unlock`, { method: "PATCH" });
 }
 
 export default {

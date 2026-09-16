@@ -13,7 +13,7 @@ import {
   Area,
 } from "recharts";
 import GlobalNavbar from "../../components/GlobalNavbar";
-import { getDashboardSnapshot, getTrips, getAlertsSnapshot } from "../../lib/api";
+import { createSupportTicket, fetchJson, getAlertsSnapshot } from "../../lib/api";
 
  
 
@@ -63,6 +63,7 @@ export default function DriverPerformancePage() {
     (typeof window !== 'undefined' && (window as any).__computedDrivers) || []
   );
   const [metricsState, setMetricsState] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const drivers = driversState.length
     ? driversState
     : (typeof window !== 'undefined' && (window as any).__computedDrivers) || [];
@@ -115,12 +116,8 @@ export default function DriverPerformancePage() {
     setTimeout(() => setShowExportNotice(false), 2500);
   }
 
-  function getDriverLogs(id: string) {
-    return [
-      { ts: "2026-07-12T14:22:00Z", event: "Completed mission", note: "No incidents" },
-      { ts: "2026-07-09T09:11:00Z", event: "Hard braking detected", note: "Brake event severity: medium" },
-      { ts: "2026-07-02T18:02:00Z", event: "Speeding alert", note: "15km/h over limit" },
-    ];
+  function getDriverLogs(driver: any) {
+    return Array.isArray(driver.logs) ? driver.logs : [];
   }
 
   function generateTrendData(metric: "Efficiency" | "Volume", range: string) {
@@ -137,11 +134,7 @@ export default function DriverPerformancePage() {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
       const label = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      const base = metric === "Efficiency" ? 7.5 : 100;
-      const variance = metric === "Efficiency" ? 0.8 : 30;
-      const value =
-        Math.round((base + (Math.sin(i) * variance) / 10 + Math.random() * (variance / 3)) * 10) / 10;
-      data.push({ period: label, value });
+      data.push({ period: label, value: 0 });
     }
     return data;
   }
@@ -159,8 +152,11 @@ export default function DriverPerformancePage() {
     let mounted = true;
     async function load() {
       try {
-        const snap = await getDashboardSnapshot();
-        const trips = await getTrips();
+        setLoadError(null);
+        const [drivers, trips] = await Promise.all([
+          fetchJson("/api/drivers"),
+          fetchJson("/api/trips"),
+        ]);
         const alerts = await getAlertsSnapshot();
 
         const tripsByDriver: Record<string, any[]> = {};
@@ -171,11 +167,11 @@ export default function DriverPerformancePage() {
           tripsByDriver[id].push(t);
         });
 
-        const computedDrivers = (snap.drivers || []).map((d: any, idx: number) => {
+        const computedDrivers = (Array.isArray(drivers) ? drivers : []).map((d: any, idx: number) => {
           const id = d.id ?? `drv-${idx}`;
           const missions = (tripsByDriver[id] || []).length;
           const safety = Math.max(60, 100 - ((alerts?.incidents || []).filter((i: any) => String(i.driverId) === String(id)).length * 8));
-          const efficiency = (7 + Math.min(3, missions / 40)).toFixed(1);
+          const efficiency = "N/A";
           const onTime = missions > 0 ? `${Math.max(85, Math.round(90 + (missions % 10))) }%` : "N/A";
           return {
             name: d.full_name ?? d.fullName ?? d.email ?? "Driver",
@@ -186,6 +182,20 @@ export default function DriverPerformancePage() {
             efficiency: String(efficiency),
             missions,
             onTime,
+            logs: [
+              ...(tripsByDriver[id] || []).map((trip: any) => ({
+                ts: trip.updatedAt || trip.updated_at || trip.createdAt || trip.created_at,
+                event: `Trip ${trip.status || "updated"}`,
+                note: trip.toLocation || trip.to_location || "Route update",
+              })),
+              ...(alerts?.incidents || [])
+                .filter((incident: any) => String(incident.driverId || incident.driver_id || "") === String(id))
+                .map((incident: any) => ({
+                  ts: incident.reportedAt || incident.reported_at || incident.createdAt || incident.created_at,
+                  event: incident.incidentType || "Incident reported",
+                  note: incident.description || "Incident details unavailable",
+                })),
+            ].filter((log: any) => log.ts).sort((a: any, b: any) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, 10),
             lastMission:
               (tripsByDriver[id] && tripsByDriver[id][0] &&
                 (tripsByDriver[id][0].fromLocation ?? tripsByDriver[id][0].from_location)) || "-",
@@ -211,7 +221,7 @@ export default function DriverPerformancePage() {
 
           setMetricsState([
             { label: "Average Safety Score", icon: "security", value: `${safetyAvg}%`, delta: null },
-            { label: "Efficiency Rating", icon: "eco", value: `${effAvg}`, valueSuffix: "/10", note: `Fleet Avg: ${effAvg}` },
+            { label: "Efficiency Rating", icon: "eco", value: effVals.length ? `${effAvg}` : "N/A", valueSuffix: effVals.length ? "/10" : "", note: effVals.length ? `Fleet Avg: ${effAvg}` : "No measured data" },
             { label: "On-Time Rate", icon: "schedule", value: `${onTimeAvg}%`, delta: null },
             { label: "Active Drivers", icon: "group", value: `${activeDrivers}`, note: "Currently on shift" },
           ]);
@@ -222,6 +232,11 @@ export default function DriverPerformancePage() {
         }
       } catch (e) {
         console.warn("Failed to load driver snapshot", e);
+        if (mounted) {
+          setDriversState([]);
+          setMetricsState([]);
+          setLoadError(e instanceof Error ? e.message : "Unable to load driver performance data.");
+        }
       }
     }
     load();
@@ -267,6 +282,18 @@ export default function DriverPerformancePage() {
                 Export queued for <strong>{selectedMetric}</strong> • <strong>{selectedRange}</strong>.
                 Your report will download automatically.
               </span>
+            </div>
+          )}
+
+          {loadError && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="flex items-start gap-2">
+                <span className="material-symbols-outlined text-amber-600">cloud_off</span>
+                <div>
+                  <p className="font-bold">Live driver data is unavailable</p>
+                  <p className="mt-1 text-xs">{loadError.includes("401") || /authorization|session|token/i.test(loadError) ? "Your session may have expired. Sign in again to load current driver performance." : loadError}</p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -626,10 +653,16 @@ export default function DriverPerformancePage() {
                   </button>
                   <button
                     className="rounded-xl bg-pink-600 hover:bg-pink-700 text-white px-5 py-2 text-xs font-semibold transition-all shadow-sm shadow-pink-600/30"
-                    onClick={() => {
-                      setActionNotice(`Message sent to ${messageTarget.name}`);
-                      setMessageTarget(null);
-                      setMessageText("");
+                    onClick={async () => {
+                      if (!messageText.trim()) return;
+                      try {
+                        await createSupportTicket({ driver_id: messageTarget.id, subject: `Dispatch note: ${messageTarget.name}`, message: messageText.trim() });
+                        setActionNotice(`Dispatch note saved for ${messageTarget.name}`);
+                        setMessageTarget(null);
+                        setMessageText("");
+                      } catch (error) {
+                        setActionNotice(error instanceof Error ? error.message : "Unable to save dispatch note");
+                      }
                       setTimeout(() => setActionNotice(null), 2500);
                     }}
                   >
@@ -695,7 +728,7 @@ export default function DriverPerformancePage() {
                       Recent Activity Log
                     </h4>
                     <ul className="space-y-2">
-                      {getDriverLogs(detailsTarget.id).map((l) => (
+                      {getDriverLogs(detailsTarget).map((l: any) => (
                         <li
                           key={l.ts}
                           className="text-xs bg-slate-50 border border-slate-200/60 p-3 rounded-xl space-y-1"
@@ -711,6 +744,7 @@ export default function DriverPerformancePage() {
                           <div className="text-slate-600">{l.event}</div>
                         </li>
                       ))}
+                      {getDriverLogs(detailsTarget).length === 0 && <li className="rounded-xl border border-slate-200/60 bg-slate-50 p-3 text-xs text-slate-500">No recent trip or incident activity recorded.</li>}
                     </ul>
                   </div>
                 </div>
@@ -723,9 +757,16 @@ export default function DriverPerformancePage() {
                     Close
                   </button>
                   <button
-                    onClick={() => {
-                      setActionNotice(`Ticket created for ${detailsTarget.name}`);
-                      setDetailsTarget(null);
+                    onClick={async () => {
+                      const message = window.prompt(`Describe the support issue for ${detailsTarget.name}:`);
+                      if (!message?.trim()) return;
+                      try {
+                        await createSupportTicket({ driver_id: detailsTarget.id, subject: `Driver support: ${detailsTarget.name}`, message: message.trim() });
+                        setActionNotice(`Support ticket submitted for ${detailsTarget.name}`);
+                        setDetailsTarget(null);
+                      } catch (error) {
+                        setActionNotice(error instanceof Error ? error.message : "Unable to submit support ticket");
+                      }
                       setTimeout(() => setActionNotice(null), 2500);
                     }}
                     className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-xs font-semibold transition-all shadow-2xs"
@@ -734,7 +775,7 @@ export default function DriverPerformancePage() {
                   </button>
                   <button
                     onClick={() => {
-                      const logs = getDriverLogs(detailsTarget.id);
+                      const logs = getDriverLogs(detailsTarget);
                       const blob = new Blob([JSON.stringify(logs, null, 2)], {
                         type: "application/json",
                       });

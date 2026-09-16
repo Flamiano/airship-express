@@ -42,6 +42,10 @@ export function getCurrentRole(): AppRole | null {
   return null;
 }
 
+export function getRoleForAuthUser(user: { user_metadata?: { role?: string | null }; role?: string | null } | null | undefined): AppRole | null {
+  return normalizeRole(user?.user_metadata?.role ?? user?.role ?? null);
+}
+
 export function hasRoleAccess(allowedRoles: AppRole[], currentRole?: AppRole | null): boolean {
   const role = currentRole ?? getCurrentRole();
   if (!role) return false;
@@ -61,7 +65,7 @@ export function getDashboardRouteForRole(role?: AppRole | string | null): string
     case "driver":
       return "/driver/overview";
     case "customer":
-      return "/dashboard";
+      return "/customer/dashboard";
     default:
       return "/ftmAuth";
   }

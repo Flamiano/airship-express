@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "leaflet/dist/leaflet.css";
 import CursorHost from "./components/CursorHost";
 import { ThemeProvider } from "./components/ThemeProvider";
 import FtmLoadingProvider from "./components/FtmLoadingProvider";
+import FtmSecurityProvider from "./components/FtmSecurityProvider";
+import FleetAIChatbot from "../components/fleet-ai/FleetAIChatbot";
 
 export const metadata: Metadata = {
   title: "Airship Express - Fleet & Transport Suite",
@@ -28,8 +29,11 @@ export default function RootLayout({
       <body className="font-sans antialiased min-h-screen flex flex-col">
         <ThemeProvider>
           <FtmLoadingProvider>
-            <CursorHost />
-            {children}
+            <FtmSecurityProvider>
+              <CursorHost />
+              {children}
+              <FleetAIChatbot />
+            </FtmSecurityProvider>
           </FtmLoadingProvider>
         </ThemeProvider>
       </body>

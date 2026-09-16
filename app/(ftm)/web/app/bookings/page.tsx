@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
 import { SkeletonTable } from "../components/PageSkeleton";
@@ -13,7 +13,7 @@ import {
   confirmDispatch,
 } from "../lib/parcelStore";
 import { Booking, BOOKING_STATUS_LABEL } from "../lib/parcelTypes";
-import { createTrip, getRoutePlans, getRoutePlan } from "../lib/api";
+import { assignBookingResources, createTrip, getCouriers, getRoutePlans, getRoutePlan } from "../lib/api";
 
 const STATUS_OPTIONS = ["All", "PENDING", "DRIVER_VEHICLE_ASSIGNED"] as const;
 type BookingStatusFilter = (typeof STATUS_OPTIONS)[number];
@@ -22,12 +22,18 @@ export default function VrdsBookingsPage() {
   const { bookings, parcels, drivers, vehicles, ready } = useParcelStore();
   const availableDrivers = drivers.filter((driver) => driver.status === "Available");
   const availableVehicles = vehicles.filter((vehicle) => vehicle.status === "Available");
+  const [couriers, setCouriers] = useState<Array<{ id: string; code?: string; name?: string }>>([]);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [errorFor, setErrorFor] = useState<{ id: string; message: string } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookingStatusFilter>("All");
   const [generatingAssignmentFor, setGeneratingAssignmentFor] = useState<string | null>(null);
+  const [dispatchingBookingId, setDispatchingBookingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getCouriers().then((rows) => setCouriers(Array.isArray(rows) ? rows : [])).catch(() => setCouriers([]));
+  }, []);
 
   const openBookings = useMemo(
     () => bookings.filter((b) => b.status === "PENDING" || b.status === "DRIVER_VEHICLE_ASSIGNED"),
@@ -90,22 +96,47 @@ export default function VrdsBookingsPage() {
     assignVehicle(bookingId, vehicleId);
   };
 
+  const normalizeCourier = (value: unknown) => String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[&._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace("shopee xpress", "shopeexpress")
+    .replace("lbc express", "lbc");
+
+  const getBookingCourier = (booking: Booking) => {
+    if (booking.courier) return booking.courier;
+    return parcels.find((parcel) => parcel.bookingId === booking.id)?.courier;
+  };
+
+  const isVehicleForCourier = (vehicle: typeof vehicles[number], courier: unknown) => {
+    if (!courier) return true;
+    const requested = normalizeCourier(courier);
+    const courierRecord = couriers.find((item) => String(item.id) === String(vehicle.courierId));
+    const vehicleCourier = vehicle.courier || courierRecord?.name || courierRecord?.code || vehicle.courierId;
+    return Boolean(vehicleCourier) && normalizeCourier(vehicleCourier) === requested;
+  };
+
   const handleGenerateAssignment = (booking: Booking) => {
     if (generatingAssignmentFor) return;
 
+    const bookingCourier = getBookingCourier(booking);
+    const compatibleVehicles = availableVehicles
+      .filter((item) => item.capacityKg >= booking.totalWeightKg)
+      .filter((item) => isVehicleForCourier(item, bookingCourier));
+    const existingVehicle = booking.vehicleId ? vehicles.find((item) => item.id === booking.vehicleId) : undefined;
+    const vehicle = existingVehicle || compatibleVehicles
+      .filter((item) => availableDrivers.some((driver) => driver.vehicleId === item.id))
+      .sort((first, second) => first.capacityKg - second.capacityKg)[0];
     const driver = booking.driverId
       ? drivers.find((item) => item.id === booking.driverId)
-      : availableDrivers[0];
-    const vehicle = booking.vehicleId
-      ? vehicles.find((item) => item.id === booking.vehicleId)
-      : availableVehicles
-          .filter((item) => item.capacityKg >= booking.totalWeightKg)
-          .sort((first, second) => first.capacityKg - second.capacityKg)[0];
+      : availableDrivers.find((item) => item.vehicleId === vehicle?.id);
 
     const driverUnavailable = !driver || (driver.status !== "Available" && driver.id !== booking.driverId);
-    const vehicleUnavailable = !vehicle;
+    const vehicleUnavailable = !vehicle || (driver?.vehicleId && driver.vehicleId !== vehicle.id);
     const vehicleOverCapacity = vehicle && vehicle.capacityKg < booking.totalWeightKg;
-    if (driverUnavailable || vehicleUnavailable || vehicleOverCapacity) {
+    const vehicleCourierMismatch = Boolean(vehicle && !isVehicleForCourier(vehicle, bookingCourier));
+    if (driverUnavailable || vehicleUnavailable || vehicleOverCapacity || vehicleCourierMismatch) {
       const unavailableResources = [];
       if (driverUnavailable) unavailableResources.push("driver");
       if (vehicleUnavailable || vehicleOverCapacity) unavailableResources.push("vehicle");
@@ -113,7 +144,11 @@ export default function VrdsBookingsPage() {
         id: booking.id,
         message: vehicleOverCapacity
           ? `No available vehicle can carry ${booking.totalWeightKg} kg.`
-          : `No available ${unavailableResources.join(" or ")} for this assignment.`,
+          : vehicleCourierMismatch
+            ? `The selected driver and vehicle do not match courier ${bookingCourier}.`
+          : bookingCourier
+            ? `No available vehicle matched courier ${bookingCourier} for this assignment.`
+            : `No available ${unavailableResources.join(" or ")} for this assignment.`,
       });
       return;
     }
@@ -122,6 +157,14 @@ export default function VrdsBookingsPage() {
     setErrorFor(null);
     window.setTimeout(() => {
       assignDriverAndVehicle(booking.id, driver.id, vehicle.id);
+      void assignBookingResources(booking.id, {
+        driver_id: driver.id,
+        driver_name: driver.name,
+        vehicle_id: vehicle.id,
+        vehicle_plate: vehicle.plate,
+      }).catch((error) => {
+        console.warn("Generated assignment was saved locally but not persisted to the backend:", error);
+      });
       setGeneratingAssignmentFor(null);
       const vehicleLabel = vehicle.plateNumber ?? vehicle.plate ?? "selected vehicle";
       showToast(`Suggested ${driver.name} with ${vehicleLabel}. Review before dispatch.`);
@@ -139,38 +182,41 @@ export default function VrdsBookingsPage() {
       return;
     }
 
-    // If this booking's parcels came from an OR-Tools-optimized Route Plan
-    // (bulk parcels for one courier across several city warehouses), pull
-    // that plan's ordered stop sequence so the trip carries every waypoint
-    // — not just the first parcel's destination.
-    const routePlanId = selectedBookingParcels.find((p: any) => p.routePlanId)?.routePlanId;
-    let planStops: { name: string; lat: number; lng: number }[] = [];
-    let planPickup: { label?: string; lat?: number; lng?: number } | null = null;
-    if (routePlanId) {
-      try {
-        const plan = await getRoutePlan(routePlanId);
-        const dests = Array.isArray(plan?.deliveryDestinations) ? plan.deliveryDestinations : [];
-        planStops = dests
-          .map((d: any) => ({
-            name: d.name || d.label || "Stop",
-            lat: Number(d.lat ?? d.latitude),
-            lng: Number(d.lng ?? d.longitude),
-          }))
-          .filter((s: any) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
-        if (plan?.pickupLocation) {
-          planPickup = { label: plan.pickupLocation, lat: Number(plan.pickupLatitude), lng: Number(plan.pickupLongitude) };
-        }
-      } catch (err) {
-        console.warn(`Unable to load route plan ${routePlanId} for booking ${booking.id}; falling back to single-destination trip.`, err);
-      }
-    }
-
-    const finalStop = planStops[planStops.length - 1];
-    const fromLocation = planPickup?.label || "Airship Express Hub - Binondo, Manila";
-    const fromLat = planPickup?.lat || 14.5995;
-    const fromLng = planPickup?.lng || 120.9745;
+    setDispatchingBookingId(booking.id);
+    setErrorFor(null);
 
     try {
+      // If this booking's parcels came from an OR-Tools-optimized Route Plan
+      // (bulk parcels for one courier across several city warehouses), pull
+      // that plan's ordered stop sequence so the trip carries every waypoint
+      // — not just the first parcel's destination.
+      const routePlanId = selectedBookingParcels.find((p: any) => p.routePlanId)?.routePlanId;
+      let planStops: { name: string; lat: number; lng: number }[] = [];
+      let planPickup: { label?: string; lat?: number; lng?: number } | null = null;
+      if (routePlanId) {
+        try {
+          const plan = await getRoutePlan(routePlanId);
+          const dests = Array.isArray(plan?.deliveryDestinations) ? plan.deliveryDestinations : [];
+          planStops = dests
+            .map((d: any) => ({
+              name: d.name || d.label || "Stop",
+              lat: Number(d.lat ?? d.latitude),
+              lng: Number(d.lng ?? d.longitude),
+            }))
+            .filter((s: any) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+          if (plan?.pickupLocation) {
+            planPickup = { label: plan.pickupLocation, lat: Number(plan.pickupLatitude), lng: Number(plan.pickupLongitude) };
+          }
+        } catch (err) {
+          console.warn(`Unable to load route plan ${routePlanId} for booking ${booking.id}; falling back to single-destination trip.`, err);
+        }
+      }
+
+      const finalStop = planStops[planStops.length - 1];
+      const fromLocation = planPickup?.label || "Airship Express Hub - Binondo, Manila";
+      const fromLat = planPickup?.lat || 14.5995;
+      const fromLng = planPickup?.lng || 120.9745;
+
       await createTrip({
         id: `TRIP-${booking.id}`,
         booking_id: booking.id,
@@ -186,9 +232,6 @@ export default function VrdsBookingsPage() {
         status: "In Transit",
         progress: 5,
         load_kg: booking.totalWeightKg,
-        // Full ordered waypoint list (courier warehouses this bulk route
-        // visits) — persisted to trip_stops and picked up by Active
-        // Deliveries for multi-stop tracking.
         stops: planStops,
       });
 
@@ -197,13 +240,14 @@ export default function VrdsBookingsPage() {
         setErrorFor({ id: booking.id, message: result.reason || "Unable to dispatch booking." });
         return;
       }
+
+      setErrorFor(null);
+      showToast(`Booking ${booking.id} dispatched. Parcels are now in transit.`);
     } catch (error) {
       setErrorFor({ id: booking.id, message: error instanceof Error ? error.message : "Unable to create delivery trip." });
-      return;
+    } finally {
+      setDispatchingBookingId((current) => (current === booking.id ? null : current));
     }
-
-    setErrorFor(null);
-    showToast(`Booking ${booking.id} dispatched. Parcels are now in transit.`);
   };
 
   const selectedParcels = selectedBooking
@@ -249,6 +293,43 @@ export default function VrdsBookingsPage() {
   return (
     <div className="min-h-screen flex flex-col bg-transparent text-inherit antialiased">
       <GlobalNavbar />
+
+      {dispatchingBookingId && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm">
+          <div className="w-[min(92vw,420px)] rounded-3xl border border-rose-200 bg-white p-6 shadow-2xl">
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="relative mb-4 flex h-20 w-28 items-center justify-center overflow-hidden rounded-2xl bg-rose-50">
+                <div className="absolute left-2 right-2 top-1/2 flex -translate-y-1/2 items-center justify-between">
+                  <div className="h-3 w-3 rounded-full bg-rose-500 animate-pulse" />
+                  <div className="ml-4 h-2 w-16 rounded-full bg-rose-200">
+                    <div className="h-full w-1/2 rounded-full bg-rose-500 animate-[pulse_1.2s_ease-in-out_infinite]" />
+                  </div>
+                </div>
+                <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-4xl text-rose-600 animate-bounce">local_shipping</span>
+                </div>
+                <div className="absolute -left-8 bottom-3 h-3 w-16 rounded-full bg-slate-300/80" />
+                <div className="absolute bottom-3 right-2 flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-rose-500 animate-ping" />
+                  <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
+                </div>
+              </div>
+
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-rose-500">Dispatch in progress</p>
+              <h3 className="mt-2 text-xl font-extrabold text-slate-900">Authorizing & dispatching</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Assigning driver, vehicle, and trip route for <span className="font-semibold text-slate-800">{dispatchingBookingId}</span>
+              </p>
+
+              <div className="mt-5 flex w-full items-center gap-3">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-rose-100">
+                  <div className="h-full w-2/3 animate-[loadingBar_1.5s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-rose-400 via-rose-500 to-fuchsia-500" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Container - Full Width Expansion */}
       <main className="flex-1 w-full max-w-[1800px] mx-auto px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
@@ -380,6 +461,7 @@ export default function VrdsBookingsPage() {
                   const isSelected = selectedBooking?.id === booking.id;
                   const vehicle = vehicles.find((v) => v.id === booking.vehicleId);
                   const overCapacity = vehicle ? booking.totalWeightKg > vehicle.capacityKg : false;
+                  const bookingCourier = booking.courier || displayBookingParcels[0]?.courier || "Unassigned";
 
                   return (
                     <div
@@ -454,6 +536,10 @@ export default function VrdsBookingsPage() {
                           <span className="font-medium text-slate-800 truncate block">
                             {booking.vehiclePlate || <span className="text-slate-400 italic">Unassigned</span>}
                           </span>
+                        </div>
+                        <div className="bg-pink-50/40 p-2.5 rounded-lg border border-pink-100/60">
+                          <span className="text-rose-400 block text-[10px] uppercase font-bold">Courier</span>
+                          <span className="font-medium text-slate-800 truncate block">{bookingCourier}</span>
                         </div>
                       </div>
 
@@ -608,10 +694,20 @@ export default function VrdsBookingsPage() {
                   <div className="pt-2 border-t border-rose-100/80 flex flex-col gap-2">
                     <button
                       onClick={() => handleConfirm(selectedBooking)}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white py-2.5 px-4 text-xs font-bold transition shadow-xs"
+                      disabled={dispatchingBookingId === selectedBooking.id}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white py-2.5 px-4 text-xs font-bold transition shadow-xs disabled:cursor-wait disabled:opacity-80"
                     >
-                      <IconCheck className="w-4 h-4" />
-                      Start Dispatch (In Transit)
+                      {dispatchingBookingId === selectedBooking.id ? (
+                        <>
+                          <span className="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                          Authorizing & Dispatching...
+                        </>
+                      ) : (
+                        <>
+                          <IconCheck className="w-4 h-4" />
+                          Start Dispatch (In Transit)
+                        </>
+                      )}
                     </button>
 
                     <button

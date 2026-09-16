@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
+import { getDashboardSnapshot, getFuelLogs } from "../lib/api";
 import {
   BarChart,
   Bar,
@@ -21,14 +22,107 @@ import {
   Area,
 } from "recharts";
 
+const formatPeso = (value: number, fractionDigits = 2) =>
+  `₱${Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })}`;
+
 export default function FuelOverviewPage() {
   const [selectedTrendView, setSelectedTrendView] = useState<"Daily" | "Weekly">("Daily");
   const [selectedEnergyType, setSelectedEnergyType] = useState<"All" | "EV" | "Hybrid" | "Diesel">("All");
   const [showExportNotice, setShowExportNotice] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const [showMetricValues, setShowMetricValues] = useState(false);
+
+  useEffect(() => {
+    const handleMetricVisibilityShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        setShowMetricValues(true);
+      }
+      if (key === "h") {
+        event.preventDefault();
+        setShowMetricValues(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleMetricVisibilityShortcut);
+    return () => window.removeEventListener("keydown", handleMetricVisibilityShortcut);
+  }, []);
 
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [snapshot, setSnapshot] = useState<any | null>(null);
+
+  const trendData = (() => {
+    if (!hasData || !snapshot) {
+      return {
+        fuelSpendDelta: 0,
+        fuelSpendDirection: "flat" as const,
+        routeEfficiencyDelta: 0,
+        routeEfficiencyDirection: "flat" as const,
+        routeConsumptionDelta: 0,
+        routeConsumptionDirection: "flat" as const,
+        dispatchEfficiencyDelta: 0,
+        dispatchEfficiencyDirection: "flat" as const,
+      };
+    }
+
+    const logs = (snapshot.fuelLogs || []) as any[];
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime();
+
+    const currentMonthLogs = logs.filter((log) => {
+      const time = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? 0).getTime();
+      return time >= currentMonthStart;
+    });
+
+    const previousMonthLogs = logs.filter((log) => {
+      const time = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? 0).getTime();
+      return time >= previousMonthStart && time <= previousMonthEnd;
+    });
+
+    const sum = (items: number[]) => items.reduce((acc, value) => acc + value, 0);
+    const getMonthDelta = (current: number, previous: number) => {
+      if (!previous) return 0;
+      return ((current - previous) / previous) * 100;
+    };
+
+    const currentSpend = sum(currentMonthLogs.map((log) => Number(log.cost ?? log.amount ?? 0) || 0));
+    const previousSpend = sum(previousMonthLogs.map((log) => Number(log.cost ?? log.amount ?? 0) || 0));
+    const fuelSpendDelta = getMonthDelta(currentSpend, previousSpend);
+
+    const currentRouteDistance = sum(currentMonthLogs.map((log) => Number(log.distance ?? 0) || 0));
+    const previousRouteDistance = sum(previousMonthLogs.map((log) => Number(log.distance ?? 0) || 0));
+    const currentRouteConsumption = sum(currentMonthLogs.map((log) => Number(log.liters ?? log.consumption ?? log.volume ?? 0) || 0));
+    const previousRouteConsumption = sum(previousMonthLogs.map((log) => Number(log.liters ?? log.consumption ?? log.volume ?? 0) || 0));
+
+    const currentEfficiency = currentRouteConsumption ? currentRouteDistance / currentRouteConsumption : 0;
+    const previousEfficiency = previousRouteConsumption ? previousRouteDistance / previousRouteConsumption : 0;
+    const routeEfficiencyDelta = getMonthDelta(currentEfficiency, previousEfficiency);
+
+    const routeConsumptionDelta = getMonthDelta(currentRouteConsumption, previousRouteConsumption);
+
+    const vehicles = (snapshot.vehicles || []) as any[];
+    const currentDispatchEfficiency = vehicles.length
+      ? vehicles.reduce((total, vehicle) => total + (Number(vehicle.efficiency ?? 0) || 0), 0) / vehicles.length
+      : currentEfficiency;
+    const dispatchEfficiencyDelta = getMonthDelta(currentDispatchEfficiency, previousEfficiency || currentDispatchEfficiency || 0);
+
+    return {
+      fuelSpendDelta,
+      fuelSpendDirection: fuelSpendDelta > 0 ? "up" : fuelSpendDelta < 0 ? "down" : "flat",
+      routeEfficiencyDelta,
+      routeEfficiencyDirection: routeEfficiencyDelta > 0 ? "up" : routeEfficiencyDelta < 0 ? "down" : "flat",
+      routeConsumptionDelta,
+      routeConsumptionDirection: routeConsumptionDelta > 0 ? "up" : routeConsumptionDelta < 0 ? "down" : "flat",
+      dispatchEfficiencyDelta,
+      dispatchEfficiencyDirection: dispatchEfficiencyDelta > 0 ? "up" : dispatchEfficiencyDelta < 0 ? "down" : "flat",
+    };
+  })();
+
   const totalFuelSpend = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => s + Number(l.cost ?? l.amount ?? 0), 0) : null;
   const totalRouteConsumption = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => s + Number(l.liters ?? l.consumption ?? l.volume ?? 0), 0) : null;
   const totalRouteDistance = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => s + Number(l.distance ?? 0), 0) : null;
@@ -39,14 +133,35 @@ export default function FuelOverviewPage() {
     return eff;
   })() : null;
 
+  const formatTrend = (value: number) => {
+    const rounded = Math.abs(value).toFixed(1);
+    return `${value >= 0 ? "+" : "-"}${rounded}%`;
+  };
+
+  const getTrendMeta = (value: number) => {
+    if (Math.abs(value) < 0.05) return { direction: "flat" as const, text: "0.0%", arrow: "→" };
+    if (value > 0) return { direction: "up" as const, text: formatTrend(value), arrow: "↗" };
+    return { direction: "down" as const, text: formatTrend(value), arrow: "↘" };
+  };
+
+  const fuelSpendTrend = getTrendMeta(trendData.fuelSpendDelta);
+  const routeEfficiencyTrend = getTrendMeta(trendData.routeEfficiencyDelta);
+  const routeConsumptionTrend = getTrendMeta(trendData.routeConsumptionDelta);
+  const dispatchEfficiencyTrend = getTrendMeta(trendData.dispatchEfficiencyDelta);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const dash = await (await import("../lib/api")).getDashboardSnapshot();
-        const logs = dash.fuelLogs || [];
+        const [dash, fuelLogs] = await Promise.all([
+          getDashboardSnapshot(),
+          getFuelLogs(),
+        ]);
+        const logs = Array.isArray(fuelLogs) && fuelLogs.length > 0
+          ? fuelLogs
+          : (dash.fuelLogs || []);
         if (mounted) {
-          setSnapshot(dash);
+          setSnapshot({ ...dash, fuelLogs: logs });
           setHasData(Boolean(logs.length));
         }
       } catch (e) {
@@ -165,7 +280,7 @@ export default function FuelOverviewPage() {
         name: (l.vehicleId || l.vehicle_id) ? `Unit ${l.vehicleId ?? l.vehicle_id}` : (l.name || "Delivery Unit"),
         person: l.driverName || l.person || "—",
         time: new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        cost: l.cost ? (typeof l.cost === 'number' ? `$${l.cost.toFixed(2)}` : String(l.cost)) : "—",
+        cost: l.cost ? formatPeso(Number(l.cost)) : "—",
         volume: `${Math.round(Number(l.liters ?? l.volume ?? 0))} kWh`,
         alert: Boolean(l.alert),
       }));
@@ -260,42 +375,51 @@ export default function FuelOverviewPage() {
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <KpiCard
             label="Total Delivery Fuel Spend"
-            value={hasData && totalFuelSpend != null ? `$${totalFuelSpend.toLocaleString()}` : "—"}
+            value={hasData && totalFuelSpend != null ? `₱${Math.round(totalFuelSpend).toLocaleString()}` : "₱0"}
+            unit={hasData ? undefined : undefined}
             icon="payments"
-            trend={hasData ? "-2.4%" : "—"}
-            trendDirection="down"
-            subtext={hasData ? "vs prior month" : ""}
+            trend={fuelSpendTrend.text}
+            trendDirection={fuelSpendTrend.direction}
+            subtext={hasData ? "vs prior month" : "No data"}
             isGoodTrend={true}
+            showValues={showMetricValues}
+            onToggle={() => setShowMetricValues((current) => !current)}
           />
           <KpiCard
             label="Avg Route Efficiency"
-            value={hasData && avgRouteEfficiency != null ? `${avgRouteEfficiency.toFixed(2)}` : "—"}
+            value={hasData && avgRouteEfficiency != null ? `${avgRouteEfficiency.toFixed(2)}` : "0.00"}
             unit={hasData ? "mi/kWh" : undefined}
             icon="speed"
-            trend="+1.2%"
-            trendDirection="up"
+            trend={routeEfficiencyTrend.text}
+            trendDirection={routeEfficiencyTrend.direction}
             subtext="Optimized routing gain"
             isGoodTrend={true}
+            showValues={showMetricValues}
+            onToggle={() => setShowMetricValues((current) => !current)}
           />
           <KpiCard
             label="Total Route Consumption"
             value={hasData && totalRouteConsumption != null ? `${Math.round(totalRouteConsumption).toLocaleString()}` : "0"}
             unit={hasData ? "kWh" : undefined}
             icon="ev_station"
-            trend="+4.5%"
-            trendDirection="up"
+            trend={routeConsumptionTrend.text}
+            trendDirection={routeConsumptionTrend.direction}
             subtext="Increased total mileage"
             isGoodTrend={false}
+            showValues={showMetricValues}
+            onToggle={() => setShowMetricValues((current) => !current)}
           />
           <KpiCard
             label="Dispatch Efficiency"
-            value={hasData && dispatchEfficiency != null ? `${dispatchEfficiency.toFixed(1)}` : "—"}
+            value={hasData && dispatchEfficiency != null ? `${dispatchEfficiency.toFixed(1)}` : "0.0"}
             unit={hasData ? "Tons" : undefined}
             icon="eco"
-            trend="+8.1%"
-            trendDirection="up"
+            trend={dispatchEfficiencyTrend.text}
+            trendDirection={dispatchEfficiencyTrend.direction}
             subtext="Route optimization progress"
             isGoodTrend={true}
+            showValues={showMetricValues}
+            onToggle={() => setShowMetricValues((current) => !current)}
           />
         </section>
 
@@ -439,7 +563,7 @@ export default function FuelOverviewPage() {
                 </PieChart>
               </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-black text-slate-900">{hasData ? "$124.8k" : "—"}</span>
+                <span className="text-2xl font-black text-slate-900">{hasData ? formatPeso(totalFuelSpend ?? 0, 0) : "—"}</span>
                 <span className="text-[11px] font-bold text-slate-400 uppercase">Total Spend</span>
               </div>
             </div>
@@ -618,45 +742,49 @@ function KpiCard({
   trendDirection,
   subtext,
   isGoodTrend,
+  showValues = true,
+  onToggle,
 }: {
   label: string;
   value: string;
   unit?: string;
   icon: string;
   trend: string;
-  trendDirection: "up" | "down";
+  trendDirection: "up" | "down" | "flat";
   subtext: string;
   isGoodTrend: boolean;
+  showValues?: boolean;
+  onToggle?: () => void;
 }) {
+  const displayValue = showValues ? value : (label.toLowerCase().includes("spend") || label.toLowerCase().includes("cost") ? "₱****" : "****");
+  const trendColor = trendDirection === "up" ? "text-emerald-600" : trendDirection === "down" ? "text-rose-600" : "text-slate-500";
+
   return (
-    <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm shadow-pink-900/5 flex flex-col justify-between hover:border-pink-200 transition-all hover:shadow-md">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</span>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{value}</span>
-            {unit && <span className="text-xs font-extrabold text-slate-500">{unit}</span>}
-          </div>
-        </div>
-        <div className="w-11 h-11 rounded-xl bg-pink-50 border border-pink-100 flex items-center justify-center text-[#b80049]">
-          <Icon name={icon} className="text-2xl" />
+    <button
+      type="button"
+      onClick={onToggle}
+      title={showValues ? "Hide value" : "Show value"}
+      className="bg-white/90 border border-pink-100 rounded-2xl p-4 shadow-sm shadow-pink-500/5 hover:border-pink-200 transition-all min-h-[150px] flex flex-col justify-between text-left cursor-pointer"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="w-10 h-10 rounded-xl bg-pink-50 border border-pink-100 flex items-center justify-center text-[#b80049] shrink-0">
+          <Icon name={icon} className="text-[20px]" />
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-pink-50 pt-3 mt-1">
-        <span
-          className={`inline-flex items-center gap-0.5 text-xs font-black px-2 py-0.5 rounded-full ${
-            isGoodTrend
-              ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-              : "bg-rose-50 text-rose-600 border border-rose-100"
-          }`}
-        >
-          <Icon name={trendDirection === "up" ? "arrow_upward" : "arrow_downward"} className="text-sm" />
-          {trend}
-        </span>
-        <span className="text-xs font-medium text-slate-400">{subtext}</span>
+      <div className="mt-3">
+        <div className="flex items-end justify-between gap-2">
+          <span className="text-[26px] font-black tracking-tight text-slate-900 leading-none">{displayValue}</span>
+          <div className={`flex items-center gap-1 text-[11px] font-bold ${trendColor}`}>
+            <span>{trendDirection === "up" ? "↗" : trendDirection === "down" ? "↘" : "→"}</span>
+            <span>{trend}</span>
+          </div>
+        </div>
+        <div className="mt-2 text-xs font-medium text-slate-700 leading-snug">{label}</div>
       </div>
-    </div>
+
+      {subtext && <div className="mt-2 text-[11px] font-medium text-slate-400">{subtext}</div>}
+    </button>
   );
 }
 

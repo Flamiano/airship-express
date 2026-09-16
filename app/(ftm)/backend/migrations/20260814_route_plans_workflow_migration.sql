@@ -8,6 +8,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS public.route_plans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   trip_id text,
+  bulk_qr_code text,
   courier text,
   pickup_location text,
   pickup_latitude numeric,
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.route_plans (
 
 ALTER TABLE IF EXISTS public.route_plans
   ADD COLUMN IF NOT EXISTS trip_id text,
+  ADD COLUMN IF NOT EXISTS bulk_qr_code text,
   ADD COLUMN IF NOT EXISTS courier text,
   ADD COLUMN IF NOT EXISTS pickup_location text,
   ADD COLUMN IF NOT EXISTS pickup_latitude numeric,

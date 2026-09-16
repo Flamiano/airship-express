@@ -12,10 +12,11 @@ type Item = { label: string; path: string; children?: Child[] };
 const ITEMS: Item[] = [
   { label: "Operations Center", path: "/dashboard" },
   { label: "Alerts", path: "/alerts", children: [
-    { label: "Active Alerts", path: "/alerts", description: "Review current operational alerts." },
+  { label: "Active Alerts", path: "/alerts?tab=active", description: "Review current operational alerts." },
     { label: "Maintenance Notifications", path: "/alerts?tab=maintenance", description: "Review maintenance notices." },
     { label: "Safety Events", path: "/alerts?tab=safety", description: "Inspect recent safety events." },
     { label: "System History", path: "/alerts?tab=history", description: "Review historical system events." },
+    { label: "Manage Users", path: "/users", description: "Manage FTM accounts and roles." },
   ] },
   { label: "Cost Analysis", path: "/cost" },
   { label: "Driver Performance", path: "/driver/overview", children: [
@@ -35,6 +36,7 @@ const ITEMS: Item[] = [
     { label: "Fuel Photo Log", path: "/fuel/photo-log", description: "Review recent image submissions." },
     { label: "Proof of Pickup", path: "/fuel/proof-pickup", description: "Verify pickup confirmations and image proof." },
     { label: "Destination Gallery", path: "/fuel/destination-gallery", description: "Review destination photo submissions." },
+    { label: "Parcel History", path: "/fuel/parcel-history", description: "Review parcel status and movement history." },
   ] },
   { label: "FVM", path: "/fvm", children: [
     { label: "Fleet Overview", path: "/fvm", description: "View fleet status." },
@@ -69,6 +71,7 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
     "/fuel/photo-log",
     "/fuel/proof-pickup",
     "/fuel/destination-gallery",
+    "/fuel/parcel-history",
     "/fvm",
     "/fvm/inventory",
     "/fvm/analytics",
@@ -83,6 +86,7 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
   admin: [
     "/dashboard",
     "/alerts",
+    "/users",
     "/cost",
     "/driver/overview",
     "/driver/performance",
@@ -96,6 +100,7 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
     "/fuel/photo-log",
     "/fuel/proof-pickup",
     "/fuel/destination-gallery",
+    "/fuel/parcel-history",
     "/fvm",
     "/fvm/inventory",
     "/fvm/analytics",
@@ -114,6 +119,7 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
     "/driver/overview",
     "/fuel",
     "/fuel/receipts",
+    "/fuel/parcel-history",
     "/vrds/dashboard",
     "/vrds/parcels",
     "/vrds/bookings",
@@ -128,9 +134,8 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
     "/alerts",
   ],
   customer: [
-    "/dashboard",
-    "/alerts",
-    "/cost",
+    "/customer",
+    "/account",
   ],
 };
 
@@ -252,19 +257,21 @@ export default function GlobalNavbar() {
           <a href={homeDashboardPath} className="shrink-0 h-full flex items-center" aria-label="Go to your home dashboard">
             <img src="/airship-logo.png" alt="Airship Express logo" className="h-full w-auto object-contain" />
           </a>
-          <nav ref={navRef} className="hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex" aria-label="Main navigation">
+          <nav ref={navRef} className="hidden min-w-0 flex-1 items-center justify-center gap-2 lg:flex" aria-label="Main navigation">
             {visibleItems.map((item) => (
               <div key={item.path} className="relative shrink-0" onMouseEnter={() => item.children && setOpenMenu(item.path)} onMouseLeave={() => item.children && setOpenMenu(null)}>
                 {item.children ? (
-                  <button type="button" onClick={() => setOpenMenu(openMenu === item.path ? null : item.path)} aria-haspopup="menu" aria-expanded={openMenu === item.path} className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${active(item) || openMenu === item.path ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>
+                  <button type="button" onClick={() => setOpenMenu(openMenu === item.path ? null : item.path)} aria-haspopup="menu" aria-expanded={openMenu === item.path} className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${active(item) || openMenu === item.path ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>
                     {item.label}<span className={`material-symbols-outlined text-[16px] transition-transform ${openMenu === item.path ? "rotate-180" : ""}`}>expand_more</span>
                   </button>
-                ) : <a href={item.path} className={`block rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${active(item) ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>{item.label}</a>}
+                ) : <a href={item.path} className={`block whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${active(item) ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>{item.label}</a>}
                 {item.children && openMenu === item.path && (
-                  <div className="absolute left-0 top-full z-[1200] w-72 pt-2" role="menu">
+                  <div className={`absolute top-full z-[1200] pt-2 ${item.children.length > 4 ? "left-1/2 w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2" : "left-0 w-72"}`} role="menu">
                     <div className="rounded-2xl border border-pink-200 bg-white p-2 shadow-[0_18px_45px_rgba(20,29,35,0.16)]">
                       <div className="border-b border-pink-100 px-3 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#b80049]">{item.label}</div>
-                      {item.children.map((child) => <a key={child.path} href={child.path} role="menuitem" className="mt-1 flex flex-col rounded-xl px-3 py-2.5 hover:bg-pink-50"><span className="text-sm font-bold text-[#141d23]">{child.label}</span><span className="mt-0.5 text-xs text-[#6e6870]">{child.description}</span></a>)}
+                      <div className={item.children.length > 4 ? "grid grid-cols-2 gap-1" : ""}>
+                        {item.children.map((child) => <a key={child.path} href={child.path} role="menuitem" className="mt-1 flex min-w-0 flex-col rounded-xl px-3 py-2.5 hover:bg-pink-50"><span className="text-sm font-bold text-[#141d23]">{child.label}</span><span className="mt-0.5 text-xs text-[#6e6870]">{child.description}</span></a>)}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -273,8 +280,6 @@ export default function GlobalNavbar() {
           </nav>
 
           <div className="hidden shrink-0 items-center gap-2 lg:flex">
-            {isAllowedPath("/vrds/missions") && <a href="/vrds/missions" className="rounded-full border border-pink-200 px-4 py-2 text-xs font-bold text-[#141d23] hover:bg-pink-50">Track Shipment</a>}
-            {isAllowedPath("/vrds/bookings") && <a href="/vrds/bookings" className="rounded-full bg-[#17151a] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#b80049]">Book a Delivery <span aria-hidden>→</span></a>}
             <ThemeToggle className="ml-2" />
           </div>
 
@@ -282,38 +287,60 @@ export default function GlobalNavbar() {
             <button
               type="button"
               onClick={() => setProfileOpen((current) => !current)}
-              className="flex items-center gap-3 rounded-full border border-pink-200 bg-white px-2 py-1.5 text-left shadow-sm transition hover:border-pink-300 hover:bg-pink-50"
+              className={`group flex min-w-[214px] items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-all duration-200 ${profileOpen ? "bg-pink-50" : "hover:bg-pink-50/70"}`}
               aria-haspopup="menu"
               aria-expanded={profileOpen}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white">
+              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white shadow-[inset_0_-3px_0_rgba(0,0,0,0.12)]">
                 {profileInitials}
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
               </span>
-              <span className="hidden xl:block">
-                <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-pink-700">{formatRoleLabel(currentRole)}</span>
-                <span className="block text-xs font-bold text-[#141d23]">{profileName}</span>
+              <span className="hidden min-w-0 flex-1 xl:block">
+                <span className="block text-[10px] font-extrabold uppercase tracking-[0.2em] leading-none text-pink-700">{formatRoleLabel(currentRole)}</span>
+                <span className="mt-1 block max-w-[132px] truncate text-[13px] font-extrabold leading-none text-[#141d23]">{profileName}</span>
               </span>
-              <span className="material-symbols-outlined text-base text-[#5b6b79]">expand_more</span>
+              <span className={`material-symbols-outlined text-[20px] text-[#5b6b79] transition-transform duration-200 group-hover:text-[#b80049] ${profileOpen ? "rotate-180 text-[#b80049]" : ""}`}>expand_more</span>
             </button>
 
             {profileOpen && (
-              <div className="absolute right-0 top-full z-[1201] mt-2 w-64 rounded-2xl border border-pink-200 bg-white p-2 shadow-[0_18px_45px_rgba(20,29,35,0.16)]">
-                <div className="flex items-center gap-3 border-b border-pink-100 px-2 pb-3 pt-1">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white">{profileInitials}</span>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-black text-[#141d23]">{profileName}</div>
-                    <div className="truncate text-[11px] text-[#5b6b79]">{profileEmail}</div>
+              <div className="absolute right-0 top-full z-[1201] mt-3 w-64 overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-[0_20px_50px_rgba(20,29,35,0.18)]">
+                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white">
+                      {profileInitials}
+                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-extrabold text-[#141d23]">{profileName}</div>
+                      <div className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.16em] text-pink-700">{formatRoleLabel(currentRole)}</div>
+                    </div>
                   </div>
                 </div>
 
-                <button type="button" onClick={handleAccountSettings} className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] hover:bg-pink-50">
-                  <span className="material-symbols-outlined text-base text-[#b80049]">manage_accounts</span>
-                  Account settings
-                </button>
-                <button type="button" onClick={handleLogout} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] hover:bg-pink-50">
-                  <span className="material-symbols-outlined text-base text-[#b80049]">logout</span>
-                  Logout
-                </button>
+                <div className="p-2">
+                  <button type="button" onClick={handleAccountSettings} className="flex w-full items-center gap-3 rounded-lg bg-pink-50 px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-100">
+                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">person</span>
+                    <span>Profile</span>
+                  </button>
+                  <a href={homeDashboardPath} onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">dashboard</span>
+                    <span>Dashboard</span>
+                  </a>
+                  <button type="button" onClick={handleAccountSettings} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">settings</span>
+                    <span>Settings</span>
+                  </button>
+                  <button type="button" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">notifications</span>
+                    <span>Messages</span>
+                    <span className="ml-auto rounded-full bg-pink-100 px-2 py-0.5 text-[10px] font-extrabold text-pink-700">3</span>
+                  </button>
+                  <div className="my-1.5 border-t border-slate-100" />
+                  <button type="button" onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">logout</span>
+                    <span>Logout</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -321,7 +348,7 @@ export default function GlobalNavbar() {
           <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-[#141d23] hover:bg-pink-50 lg:hidden" aria-label="Toggle menu" aria-expanded={mobileOpen}><span className="material-symbols-outlined">{mobileOpen ? "close" : "menu"}</span></button>
         </div>
       </div>
-      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4"><button type="button" onClick={handleAccountSettings} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></button><button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div><div className="mt-4 grid grid-cols-2 gap-2"><a href="/vrds/missions" className="rounded-full border border-pink-200 px-4 py-3 text-center text-sm font-bold">Track</a><a href="/vrds/bookings" className="rounded-full bg-[#b80049] px-4 py-3 text-center text-sm font-bold text-white">Book a Delivery</a></div></div>}
+      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4"><button type="button" onClick={handleAccountSettings} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></button><button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div></div>}
 </header>
   );
 }

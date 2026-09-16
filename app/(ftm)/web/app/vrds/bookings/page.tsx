@@ -13,7 +13,7 @@ import {
   confirmDispatch,
 } from "../../lib/parcelStore";
 import { Booking, BOOKING_STATUS_LABEL } from "../../lib/parcelTypes";
-import { createTrip, getRoutePlan } from "../../lib/api";
+import { assignBookingResources, createTrip, getRoutePlan } from "../../lib/api";
 
 /* Custom Lightweight SVG Icons */
 function IconCheckCircle({ className = "w-4 h-4" }: { className?: string }) {
@@ -166,9 +166,14 @@ export default function VrdsBookingsPage() {
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [loadingBookingId, setLoadingBookingId] = useState<string | null>(null);
+  const [dispatchingBookingId, setDispatchingBookingId] = useState<string | null>(null);
   const [assignmentStep, setAssignmentStep] = useState<"driver" | "vehicle">("driver");
   const [toast, setToast] = useState<string | null>(null);
   const [errorFor, setErrorFor] = useState<{ id: string; message: string } | null>(null);
+  const [assignmentErrorModal, setAssignmentErrorModal] = useState<{ isOpen: boolean; message: string }>({
+    isOpen: false,
+    message: "",
+  });
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookingStatusFilter>("All");
   const [draggedAssignment, setDraggedAssignment] = useState<{
@@ -181,6 +186,18 @@ export default function VrdsBookingsPage() {
   const openBookings = useMemo(
     () => bookings.filter((b) => b.status === "PENDING" || b.status === "DRIVER_VEHICLE_ASSIGNED"),
     [bookings]
+  );
+
+  const routeOptimizedBookings = useMemo(
+    () => openBookings.filter((booking) => {
+      const hasRoutePlan = Boolean(booking.routePlanId);
+      const hasDeliveryStops = Array.isArray(booking.deliveryDestinations) && booking.deliveryDestinations.length > 0;
+      const hasParcelRoutePlan = parcels.some(
+        (parcel) => parcel.bookingId === booking.id && Boolean(parcel.routePlanId)
+      );
+      return hasRoutePlan || hasDeliveryStops || hasParcelRoutePlan;
+    }),
+    [openBookings, parcels]
   );
 
   const getBookingRouteLabel = (booking: Booking, parcelList: typeof parcels = parcels) => {
@@ -202,8 +219,10 @@ export default function VrdsBookingsPage() {
     return "Airship Express Hub - Binondo, Manila → Route destinations";
   };
 
+  const visibleBookings = routeOptimizedBookings.length > 0 ? routeOptimizedBookings : openBookings;
+
   const filteredBookings = useMemo(() => {
-    return openBookings.filter((booking) => {
+    return visibleBookings.filter((booking) => {
       const matchesStatus = statusFilter === "All" || booking.status === statusFilter;
       const routeLabel = getBookingRouteLabel(booking, parcels);
       const matchesSearch =
@@ -213,14 +232,16 @@ export default function VrdsBookingsPage() {
         );
       return matchesStatus && matchesSearch;
     });
-  }, [openBookings, parcels, searchText, statusFilter]);
+  }, [visibleBookings, parcels, searchText, statusFilter]);
 
   const bookingsById = useMemo(
-    () => Object.fromEntries(openBookings.map((booking) => [booking.id, booking])) as Record<string, Booking>,
-    [openBookings]
+    () => Object.fromEntries(visibleBookings.map((booking) => [booking.id, booking])) as Record<string, Booking>,
+    [visibleBookings]
   );
 
-  const selectedBooking = selectedBookingId ? bookingsById[selectedBookingId] : null;
+  const selectedBooking = selectedBookingId && bookingsById[selectedBookingId]
+    ? bookingsById[selectedBookingId]
+    : filteredBookings[0] ?? null;
 
   const assignedBookings = openBookings.filter((booking) => booking.driverId && booking.vehicleId).length;
 
@@ -239,33 +260,141 @@ export default function VrdsBookingsPage() {
     showToast(`Vehicle updated for booking #${bookingId}`);
   };
 
-  const handleGenerateAssignment = (booking: Booking) => {
-    const driver = availableDrivers[0];
-    const vehicle = availableVehicles
-      .filter((item) => item.capacityKg >= booking.totalWeightKg)
-      .sort((a, b) => a.capacityKg - b.capacityKg)[0];
+  const handleGenerateAssignment = async (booking: Booking) => {
+    console.log("[DEBUG] handleGenerateAssignment called with booking:", {
+      bookingId: booking.id,
+      parcelsCount: parcels.length,
+      driversCount: drivers.length,
+      availableDriversCount: availableDrivers.length,
+      vehiclesCount: vehicles.length,
+      availableVehiclesCount: availableVehicles.length,
+      bookingTotalWeightKg: booking.totalWeightKg,
+      bookingCourier: booking.courier,
+    });
 
-    if (!driver || !vehicle) {
+    // Calculate actual weight from parcels if booking weight is 0
+    const bookingParcels = parcels.filter((p) => p.bookingId === booking.id);
+    const actualWeightKg = bookingParcels.length > 0
+      ? bookingParcels.reduce((sum, p) => sum + (p.weightKg || 0), 0)
+      : booking.totalWeightKg;
+
+    console.log("[DEBUG] Weight calculation:", {
+      bookingTotalWeightKg: booking.totalWeightKg,
+      bookingParcelsCount: bookingParcels.length,
+      actualWeightKg,
+    });
+
+    const bookingCourier =
+      booking.courier ||
+      parcels
+        .filter((parcel) => parcel.bookingId === booking.id)
+        .map((parcel) => parcel.courier)
+        .find(Boolean) ||
+      "";
+
+    console.log("[DEBUG] Resolved booking courier:", bookingCourier);
+
+    const normalizedCourierToken = bookingCourier
+      .toLowerCase()
+      .replace(/express|delivery|xpress|courier/g, "")
+      .replace(/[^a-z]/g, "")
+      .trim();
+
+    const driver = booking.driverId
+      ? drivers.find((item) => item.id === booking.driverId && item.status === "Available") ??
+        (bookingCourier
+          ? availableDrivers.find((item) => {
+              const itemToken = item.name.toLowerCase().replace(/express|delivery|xpress|courier/g, "").replace(/[^a-z]/g, "");
+              return itemToken.includes(normalizedCourierToken) || normalizedCourierToken.includes(itemToken);
+            }) ?? availableDrivers[0]
+          : availableDrivers[0])
+      : bookingCourier
+        ? availableDrivers.find((item) => {
+            const itemToken = item.name.toLowerCase().replace(/express|delivery|xpress|courier/g, "").replace(/[^a-z]/g, "");
+            return itemToken.includes(normalizedCourierToken) || normalizedCourierToken.includes(itemToken);
+          }) ?? availableDrivers[0]
+        : availableDrivers[0];
+
+    const capacityReadyVehicles = availableVehicles.filter((item) => item.capacityKg >= actualWeightKg);
+    const vehicle = booking.vehicleId
+      ? vehicles.find(
+          (item) => item.id === booking.vehicleId && item.capacityKg >= actualWeightKg && item.status === "Available"
+        ) ?? capacityReadyVehicles.sort((a, b) => a.capacityKg - b.capacityKg)[0]
+      : capacityReadyVehicles.sort((a, b) => a.capacityKg - b.capacityKg)[0];
+
+    console.log("[DEBUG] Vehicle availability details:", {
+      totalVehicles: vehicles.length,
+      availableVehicles: availableVehicles.length,
+      capacityReadyVehicles: capacityReadyVehicles.length,
+      availableVehiclesDetails: availableVehicles.map((v) => ({
+        id: v.id,
+        plate: v.plate,
+        capacity: v.capacityKg,
+        status: v.status,
+      })),
+      selectedVehicle: vehicle ? { id: vehicle.id, plate: vehicle.plate, capacityKg: vehicle.capacityKg } : null,
+    });
+
+    const driverUnavailable = !driver || (driver.status !== "Available" && driver.id !== booking.driverId);
+    const vehicleUnavailable = !vehicle || vehicle.capacityKg < actualWeightKg;
+
+    console.log("[DEBUG] Availability check:", { driverUnavailable, vehicleUnavailable, actualWeightKg });
+
+    if (driverUnavailable || vehicleUnavailable) {
+      let errorMsg = "";
+      if (vehicleUnavailable) {
+        if (availableVehicles.length === 0) {
+          errorMsg = `No available vehicles in the system. All vehicles are currently assigned.`;
+        } else if (capacityReadyVehicles.length === 0) {
+          errorMsg = `No vehicle can carry ${actualWeightKg} kg. Available vehicles: ${availableVehicles.map((v) => `${v.plate} (${v.capacityKg}kg)`).join(", ")}`;
+        } else {
+          errorMsg = `Vehicle assignment failed for ${actualWeightKg} kg booking.`;
+        }
+      } else if (driverUnavailable) {
+        errorMsg = `No available driver can be assigned right now for ${bookingCourier || "this route"}.`;
+      }
+      console.log("[DEBUG] Setting error:", errorMsg);
       setErrorFor({
         id: booking.id,
-        message: !driver
-          ? "No available driver can be assigned right now."
-          : "No available vehicle has enough capacity for this booking.",
+        message: errorMsg,
+      });
+      setAssignmentErrorModal({
+        isOpen: true,
+        message: errorMsg,
       });
       return;
     }
 
-    // Start loading animation
+    console.log("[DEBUG] Proceeding with assignment...");
     setLoadingBookingId(booking.id);
+    setErrorFor(null);
 
-    // Simulate processing time for animation
-    setTimeout(() => {
-      assignDriverAndVehicle(booking.id, driver.id, vehicle.id);
-      setErrorFor(null);
+    try {
+      console.log("[DEBUG] Calling assignDriverAndVehicle:", {
+        bookingId: booking.id,
+        driverId: driver!.id,
+        vehicleId: vehicle!.id,
+      });
+      await assignBookingResources(booking.id, {
+        driver_id: driver!.id,
+        driver_name: driver!.name,
+        vehicle_id: vehicle!.id,
+        vehicle_plate: vehicle!.plateNumber ?? vehicle!.plate,
+      });
+      assignDriverAndVehicle(booking.id, driver!.id, vehicle!.id);
       setAssignmentStep("vehicle");
       setLoadingBookingId(null);
-      showToast(`Suggested ${driver.name} with ${vehicle.plateNumber}. Review and dispatch when ready.`);
-    }, 1200);
+      setSelectedBookingId(booking.id);
+      setIsDetailsModalOpen(true);
+      showToast(
+        `Assigned ${bookingCourier || driver!.name} route to ${driver!.name} with ${vehicle!.plateNumber ?? vehicle!.plate ?? "selected vehicle"}.`
+      );
+    } catch (error) {
+      setLoadingBookingId(null);
+      const message = error instanceof Error ? error.message : "Unable to save the assignment.";
+      setErrorFor({ id: booking.id, message });
+      setAssignmentErrorModal({ isOpen: true, message });
+    }
   };
 
   const handleConfirm = async (booking: Booking) => {
@@ -278,38 +407,43 @@ export default function VrdsBookingsPage() {
       return;
     }
 
-    const routePlanId = booking.routePlanId || selectedBookingParcels.find((p: any) => p.routePlanId)?.routePlanId;
-    let planStops: { name: string; lat: number; lng: number }[] = [];
-    let planPickup: { label?: string; lat?: number; lng?: number } | null = null;
-
-    if (routePlanId) {
-      try {
-        const plan = await getRoutePlan(routePlanId);
-        const dests = Array.isArray(plan?.deliveryDestinations) ? plan.deliveryDestinations : [];
-        planStops = dests
-          .map((d: any) => ({
-            name: d.name || d.label || "Stop",
-            lat: Number(d.lat ?? d.latitude),
-            lng: Number(d.lng ?? d.longitude),
-          }))
-          .filter((s: any) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
-        if (plan?.pickupLocation) {
-          planPickup = { label: plan.pickupLocation, lat: Number(plan.pickupLatitude), lng: Number(plan.pickupLongitude) };
-        }
-      } catch (err) {
-        console.warn(`Unable to load route plan ${routePlanId}; falling back to single destination.`, err);
-      }
-    }
-
-    const finalStop = planStops[planStops.length - 1];
-    const fromLocation = planPickup?.label || "Airship Express Hub - Binondo, Manila";
-    const fromLat = planPickup?.lat || 14.5995;
-    const fromLng = planPickup?.lng || 120.9745;
+    setDispatchingBookingId(booking.id);
+    setErrorFor(null);
 
     try {
+      const routePlanId = booking.routePlanId || selectedBookingParcels.find((p: any) => p.routePlanId)?.routePlanId;
+      let planStops: { name: string; lat: number; lng: number }[] = [];
+      let planPickup: { label?: string; lat?: number; lng?: number } | null = null;
+      let activeRoutePlan: any = null;
+
+      if (routePlanId) {
+        try {
+          activeRoutePlan = await getRoutePlan(routePlanId);
+          const dests = Array.isArray(activeRoutePlan?.deliveryDestinations) ? activeRoutePlan.deliveryDestinations : [];
+          planStops = dests
+            .map((d: any) => ({
+              name: d.name || d.label || "Stop",
+              lat: Number(d.lat ?? d.latitude),
+              lng: Number(d.lng ?? d.longitude),
+            }))
+            .filter((s: any) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+          if (activeRoutePlan?.pickupLocation) {
+            planPickup = { label: activeRoutePlan.pickupLocation, lat: Number(activeRoutePlan.pickupLatitude), lng: Number(activeRoutePlan.pickupLongitude) };
+          }
+        } catch (err) {
+          console.warn(`Unable to load route plan ${routePlanId}; falling back to single destination.`, err);
+        }
+      }
+
+      const finalStop = planStops[planStops.length - 1];
+      const fromLocation = planPickup?.label || "Airship Express Hub - Binondo, Manila";
+      const fromLat = planPickup?.lat || 14.5995;
+      const fromLng = planPickup?.lng || 120.9745;
+
       await createTrip({
         id: `TRIP-${booking.id}`,
         booking_id: booking.id,
+        route_plan_id: routePlanId,
         driver_id: booking.driverId,
         driver_name: driver?.name || booking.driverName,
         vehicle_id: booking.vehicleId,
@@ -323,6 +457,8 @@ export default function VrdsBookingsPage() {
         progress: 5,
         load_kg: booking.totalWeightKg,
         stops: planStops,
+        distance_km: activeRoutePlan?.distanceKm ?? activeRoutePlan?.distance_km ?? null,
+        duration_minutes: activeRoutePlan?.durationMinutes ?? activeRoutePlan?.estimated_duration_min ?? null,
       });
 
       const result = confirmDispatch(booking.id);
@@ -330,20 +466,21 @@ export default function VrdsBookingsPage() {
         setErrorFor({ id: booking.id, message: result.reason || "Unable to dispatch booking." });
         return;
       }
+
+      setErrorFor(null);
+      showToast(`Booking ${booking.id} successfully dispatched!`);
+
+      setTimeout(() => {
+        router.push(`/vrds/missions?dispatch=${booking.id}`);
+      }, 500);
     } catch (error) {
       setErrorFor({
         id: booking.id,
         message: error instanceof Error ? error.message : "Unable to create delivery trip.",
       });
-      return;
+    } finally {
+      setDispatchingBookingId((current) => (current === booking.id ? null : current));
     }
-
-    setErrorFor(null);
-    showToast(`Booking ${booking.id} successfully dispatched!`);
-
-    setTimeout(() => {
-      router.push(`/vrds/missions?dispatch=${booking.id}`);
-    }, 500);
   };
 
   const selectedParcels = selectedBooking
@@ -390,6 +527,43 @@ export default function VrdsBookingsPage() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/50 text-slate-800 antialiased selection:bg-rose-500 selection:text-white">
       <GlobalNavbar />
+
+      {dispatchingBookingId && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm">
+          <div className="w-[min(92vw,420px)] rounded-3xl border border-rose-200 bg-white p-6 shadow-2xl">
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="relative mb-4 flex h-20 w-28 items-center justify-center overflow-hidden rounded-2xl bg-rose-50">
+                <div className="absolute left-2 right-2 top-1/2 flex -translate-y-1/2 items-center justify-between">
+                  <div className="h-3 w-3 rounded-full bg-rose-500 animate-pulse" />
+                  <div className="ml-4 h-2 w-16 rounded-full bg-rose-200">
+                    <div className="h-full w-1/2 rounded-full bg-rose-500 animate-pulse" />
+                  </div>
+                </div>
+                <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-4xl text-rose-600 animate-bounce">local_shipping</span>
+                </div>
+                <div className="absolute -left-8 bottom-3 h-3 w-16 rounded-full bg-slate-300/80" />
+                <div className="absolute bottom-3 right-2 flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-rose-500 animate-ping" />
+                  <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
+                </div>
+              </div>
+
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-rose-500">Dispatch in progress</p>
+              <h3 className="mt-2 text-xl font-extrabold text-slate-900">Authorizing & dispatching</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Assigning driver, vehicle, and trip route for <span className="font-semibold text-slate-800">{dispatchingBookingId}</span>
+              </p>
+
+              <div className="mt-5 flex w-full items-center gap-3">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-rose-100">
+                  <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-rose-400 via-rose-500 to-fuchsia-500" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Toast Notification */}
       {toast && (
@@ -505,6 +679,7 @@ export default function VrdsBookingsPage() {
 
                   const currentBookingParcels = parcels.filter((p) => p.bookingId === booking.id);
                   const parcelCount = currentBookingParcels.length || booking.parcelIds.length || booking.parcelCount || 0;
+                  const bookingCourier = booking.courier || currentBookingParcels[0]?.courier || "Unassigned";
 
                   return (
                     <div
@@ -596,6 +771,15 @@ export default function VrdsBookingsPage() {
                               {booking.vehiclePlate || <span className="text-slate-400 italic font-normal">Unassigned</span>}
                             </span>
                           </div>
+
+                          <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Courier
+                            </span>
+                            <span className="text-xs font-bold text-slate-800 truncate block">
+                              {bookingCourier}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Over Capacity Warning */}
@@ -653,14 +837,20 @@ export default function VrdsBookingsPage() {
           {/* Booking Details Modal */}
           {isDetailsModalOpen && selectedBooking && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 sm:p-6"
+              className="fixed inset-0 z-[1099] flex items-start justify-center bg-slate-950/50 p-4 pt-24 sm:p-6 sm:pt-28"
               onMouseDown={() => setIsDetailsModalOpen(false)}
             >
               <aside
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="dispatch-inspector-title"
-                className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto"
+                className="max-h-[calc(100vh-7rem)] w-full max-w-2xl overflow-y-auto"
+                style={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  WebkitOverflowScrolling: "touch",
+                  overflow: "-moz-scrollbars-none",
+                }}
                 onMouseDown={(event) => event.stopPropagation()}
               >
                 <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-lg space-y-6">
@@ -860,29 +1050,6 @@ export default function VrdsBookingsPage() {
                     </div>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateAssignment(selectedBooking)}
-                    disabled={loadingBookingId === selectedBooking.id}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition ${
-                      loadingBookingId === selectedBooking.id
-                        ? "border border-rose-200 bg-rose-50 text-rose-600 opacity-75"
-                        : "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
-                    }`}
-                  >
-                    {loadingBookingId === selectedBooking.id ? (
-                      <>
-                        <TruckLoadingAnimation size="w-5 h-5" />
-                        <span>Generating Assignment...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                        Generate Assignment
-                      </>
-                    )}
-                  </button>
-
                   {/* Vehicle Capacity Meter */}
                   {selectedBooking.vehicleId && (
                     <div className="hidden bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
@@ -1023,94 +1190,6 @@ export default function VrdsBookingsPage() {
                     </div>
                   </div>
 
-                  {/* SECTION 2: DRIVERS POOL SECTION */}
-                  <div className={assignmentStep === "driver" ? "space-y-2.5" : "hidden"}>
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <IconUser className="w-3.5 h-3.5 text-indigo-500" />
-                        Available Drivers ({availableDrivers.length})
-                      </h3>
-                      <span className="text-[10px] text-slate-400">Select a driver</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {availableDrivers.length === 0 ? (
-                        <p className="text-[11px] text-slate-400 italic text-center py-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                          No drivers available in pool
-                        </p>
-                      ) : (
-                        availableDrivers.map((driver) => {
-                          const isAssigned = selectedBooking.driverId === driver.id;
-                          return (
-                            <div
-                              key={driver.id}
-                              onClick={() => handleAssignDriver(selectedBooking.id, isAssigned ? "" : driver.id)}
-                              className={`min-w-0 cursor-pointer rounded-xl border p-2.5 transition text-xs ${
-                                isAssigned
-                                  ? "bg-indigo-50 border-indigo-200 text-indigo-900"
-                                  : "bg-white border-slate-200 hover:border-slate-300"
-                              }`}
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[10px] text-slate-600">
-                                  {driver.name.slice(0, 2).toUpperCase()}
-                                </div>
-                                <span className="truncate font-semibold text-slate-800">{driver.name}</span>
-                              </div>
-                              <span className="mt-2 inline-flex text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                                {isAssigned ? "Remove" : "Select"}
-                              </span>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-
-                  {/* SECTION 3: FLEET VEHICLES POOL SECTION */}
-                  <div className={assignmentStep === "vehicle" ? "space-y-2.5" : "hidden"}>
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <IconTruck className="w-3.5 h-3.5 text-amber-500" />
-                        Available Vehicles ({availableVehicles.length})
-                      </h3>
-                      <span className="text-[10px] text-slate-400">Select a vehicle</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {availableVehicles.length === 0 ? (
-                        <p className="text-[11px] text-slate-400 italic text-center py-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                          No fleet vehicles available in pool
-                        </p>
-                      ) : (
-                        availableVehicles.map((vehicle) => {
-                          const isAssigned = selectedBooking.vehicleId === vehicle.id;
-                          return (
-                            <div
-                              key={vehicle.id}
-                              onClick={() => handleAssignVehicle(selectedBooking.id, isAssigned ? "" : vehicle.id)}
-                              className={`min-w-0 cursor-pointer rounded-xl border p-2.5 transition text-xs ${
-                                isAssigned
-                                  ? "bg-amber-50 border-amber-200 text-amber-900"
-                                  : "bg-white border-slate-200 hover:border-slate-300"
-                              }`}
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                <IconTruck className="w-4 h-4 text-slate-400" />
-                                <div className="min-w-0">
-                                  <span className="block truncate font-bold text-slate-800">{vehicle.plateNumber}</span>
-                                  <span className="block truncate text-[10px] text-slate-400">{vehicle.model} ({vehicle.capacityKg}kg cap)</span>
-                                </div>
-                              </div>
-                              <span className="mt-2 inline-flex text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                                {isAssigned ? "Remove" : "Select"}
-                              </span>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
 
                   {/* SECTION 4: PARCELS MANIFEST INSPECTOR */}
                   <div className="space-y-2.5 pt-2 border-t border-slate-100">
@@ -1137,16 +1216,34 @@ export default function VrdsBookingsPage() {
 
                   {/* SECTION 5: DISPATCH ACTION BUTTON */}
                   <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
-                    {assignmentStep === "vehicle" && (
-                      <button
-                        type="button"
-                        onClick={() => setAssignmentStep("driver")}
-                        className="rounded-xl border border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
-                      >
-                        Back
-                      </button>
-                    )}
-                    {assignmentStep === "driver" ? (
+                    {assignmentStep === "vehicle" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setAssignmentStep("driver")}
+                          className="rounded-xl border border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                        >
+                          Back
+                        </button>
+                        <button
+                          onClick={() => handleConfirm(selectedBooking)}
+                          disabled={!selectedBooking.driverId || !selectedBooking.vehicleId || dispatchingBookingId === selectedBooking.id}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                        >
+                          {dispatchingBookingId === selectedBooking.id ? (
+                            <>
+                              <span className="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                              Authorizing & Dispatching...
+                            </>
+                          ) : (
+                            <>
+                              <IconSend className="w-4 h-4" />
+                              Authorize & Dispatch
+                            </>
+                          )}
+                        </button>
+                      </>
+                    ) : assignmentStep === "driver" ? (
                       <button
                         type="button"
                         onClick={() => setAssignmentStep("vehicle")}
@@ -1156,16 +1253,7 @@ export default function VrdsBookingsPage() {
                         Next: Assign Vehicle
                         <span className="material-symbols-outlined text-base">arrow_forward</span>
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => handleConfirm(selectedBooking)}
-                        disabled={!selectedBooking.driverId || !selectedBooking.vehicleId}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-                      >
-                        <IconSend className="w-4 h-4" />
-                        Authorize & Dispatch
-                      </button>
-                    )}
+                    ) : null}
                   </div>
                 </>
                 ) : (
@@ -1178,6 +1266,38 @@ export default function VrdsBookingsPage() {
             </div>
           )}
         </div>
+
+        {/* Assignment Error Modal */}
+        {assignmentErrorModal.isOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            onMouseDown={() => setAssignmentErrorModal({ isOpen: false, message: "" })}
+          >
+            <div
+              className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-100 rounded-full">
+                  <IconAlert className="w-6 h-6 text-rose-600" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">Assignment Failed</h2>
+              </div>
+
+              <p className="text-sm text-slate-700 leading-relaxed">{assignmentErrorModal.message}</p>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAssignmentErrorModal({ isOpen: false, message: "" })}
+                  className="flex-1 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-100"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <GlobalFooter />

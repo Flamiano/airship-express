@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { optimizeRoute, SAMPLE_OPTIMIZATION_PAYLOAD } from "../../lib/optimize";
 import { getTrips } from "../../lib/api";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
@@ -9,17 +8,37 @@ import { SkeletonBlock } from "../../components/PageSkeleton";
 
 export default function VrdsHistoryPage() {
   const [dateSortDirection, setDateSortDirection] = useState<"asc" | "desc">("desc");
-  const [selectedDriverGroup, setSelectedDriverGroup] = useState<"All Drivers" | "Senior Drivers" | "Backup Drivers">("All Drivers");
   const [selectedDateRange, setSelectedDateRange] = useState<"Last 30 Days" | "Last 7 Days" | "This Month">("Last 30 Days");
-  const [optimizationMessage, setOptimizationMessage] = useState<string | null>(null);
-  const [optimizing, setOptimizing] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const dateRanges = ["Last 30 Days", "Last 7 Days", "This Month"] as const;
+
+  const filteredHistory = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let startDate: Date;
+
+    if (selectedDateRange === "This Month") {
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    } else {
+      const days = selectedDateRange === "Last 7 Days" ? 7 : 30;
+      startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - (days - 1));
+    }
+
+    return history.filter((item) => {
+      const itemDate = new Date(item.date);
+      if (Number.isNaN(itemDate.getTime())) return false;
+      const itemDay = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
+      return itemDay >= startDate && itemDay <= today;
+    });
+  }, [history, selectedDateRange]);
+
   const historySummary = useMemo(() => {
-    const totalDeliveries = history.length;
-    const completedHistory = history.filter((item) => item.status === "Completed");
+    const totalDeliveries = filteredHistory.length;
+    const completedHistory = filteredHistory.filter((item) => item.status === "Completed");
     const efficiencyValues = completedHistory
       .map((item) => item.efficiency)
       .filter((value): value is number => value != null && !Number.isNaN(value));
@@ -38,7 +57,7 @@ export default function VrdsHistoryPage() {
       averageEfficiency,
       recordCount: totalDeliveries,
     };
-  }, [history]);
+  }, [filteredHistory]);
 
   useEffect(() => {
     let active = true;
@@ -65,17 +84,14 @@ export default function VrdsHistoryPage() {
     };
   }, []);
 
-  const dateRanges = ["Last 30 Days", "Last 7 Days", "This Month"] as const;
-  const driverGroups = ["All Drivers", "Senior Drivers", "Backup Drivers"] as const;
-
   const sortedHistory = useMemo(() => {
     const direction = dateSortDirection === "asc" ? 1 : -1;
-    return [...history].sort((a, b) => {
+    return [...filteredHistory].sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       return (dateA - dateB) * direction;
     });
-  }, [dateSortDirection, history]);
+  }, [dateSortDirection, filteredHistory]);
 
   const toggleDateSort = () => setDateSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
   
@@ -84,26 +100,6 @@ export default function VrdsHistoryPage() {
     setSelectedDateRange(dateRanges[nextIndex]);
   };
   
-  const cycleDriverGroup = () => {
-    const nextIndex = (driverGroups.indexOf(selectedDriverGroup) + 1) % driverGroups.length;
-    setSelectedDriverGroup(driverGroups[nextIndex]);
-  };
-
-  const handleReroute = async () => {
-    setOptimizing(true);
-    setOptimizationMessage(null);
-    try {
-      const result = await optimizeRoute(SAMPLE_OPTIMIZATION_PAYLOAD);
-      setOptimizationMessage(
-        `OR-Tools reroute ready — ETA ${result.etaMinutes} min, ${result.distanceMi.toFixed(1)} mi.`
-      );
-    } catch {
-      setOptimizationMessage("OR-Tools optimization unavailable, using fallback route.");
-    } finally {
-      setOptimizing(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-transparent text-inherit font-sans">
       <GlobalNavbar />
@@ -131,25 +127,6 @@ export default function VrdsHistoryPage() {
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
             {/* Filter Buttons */}
             <div className="relative">
-              <label className="sr-only">Driver Group</label>
-              <div className={`rounded-xl border px-4 py-2.5 text-xs font-semibold inline-flex items-center gap-2 transition-all shadow-sm ${selectedDriverGroup === "All Drivers" ? "border-pink-200 bg-pink-50 text-pink-700" : "border-slate-200 bg-white text-slate-700"}`}>
-                <span className="material-symbols-outlined text-[16px] text-pink-600">group</span>
-                <span className="truncate">{selectedDriverGroup}</span>
-                <span className="material-symbols-outlined ml-2">expand_more</span>
-              </div>
-              <select
-                aria-label="Driver Group"
-                value={selectedDriverGroup}
-                onChange={(e) => setSelectedDriverGroup(e.target.value as any)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              >
-                {driverGroups.map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="relative">
               <label className="sr-only">Date Range</label>
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 inline-flex items-center gap-2 transition-all shadow-sm">
                 <span className="material-symbols-outlined text-[16px] text-pink-600">calendar_today</span>
@@ -168,32 +145,10 @@ export default function VrdsHistoryPage() {
               </select>
             </div>
 
-            <button
-              type="button"
-              onClick={handleReroute}
-              disabled={optimizing}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-pink-600/20 hover:from-pink-700 hover:to-rose-700 transition-all active:scale-[0.98] disabled:opacity-60"
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                {optimizing ? "sync" : "alt_route"}
-              </span>
-              {optimizing ? "Recalculating..." : "Test Route Optimization"}
-            </button>
           </div>
         </div>
 
         {/* Global Action / Notification Banner */}
-        {optimizationMessage && (
-          <div className="rounded-xl border border-pink-200 bg-pink-50/90 backdrop-blur-sm px-5 py-3.5 text-pink-900 text-sm font-medium flex items-center justify-between shadow-sm animate-fadeIn">
-            <div className="flex items-center gap-2.5">
-              <span className="material-symbols-outlined text-pink-600 text-[20px]">
-                info
-              </span>
-              <span>{optimizationMessage}</span>
-            </div>
-          </div>
-        )}
-
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           

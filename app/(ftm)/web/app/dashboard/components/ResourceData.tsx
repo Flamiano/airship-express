@@ -1,15 +1,19 @@
 import { useMemo, useState } from "react";
-import type { DashboardBooking } from "../page";
+import type { DashboardBooking, DashboardTrip } from "../page";
 
-export default function ResourceData({ bookings }: { bookings: DashboardBooking[] }) {
+export default function ResourceData({ bookings, trips = [] }: { bookings: DashboardBooking[]; trips?: DashboardTrip[] }) {
   const [period, setPeriod] = useState<"All" | "Today" | "Week">("All");
   const filteredBookings = useMemo(() => filterByPeriod(bookings, period), [bookings, period]);
+  const filteredTrips = useMemo(() => filterByPeriod(trips, period), [trips, period]);
   
   const statuses = ["pending", "assigned", "in-transit", "completed"];
   const bars = statuses.map((status, index) => {
-    const count = filteredBookings.filter((booking) => {
-      const bookingStatus = (booking.status || "").toLowerCase();
-      return bookingStatus.includes(status) || bookingStatus.replace(/_/g, "-").includes(status);
+    const count = [...filteredBookings, ...filteredTrips].filter((record) => {
+      const rawStatus = String(record.status || "").toLowerCase().replace(/[_\s]+/g, "-");
+      if (status === "in-transit") return /in-transit|transit|dispatch|moving|en-route/.test(rawStatus);
+      if (status === "assigned") return /assigned|approved|ready/.test(rawStatus);
+      if (status === "completed") return /completed|delivered|finished/.test(rawStatus);
+      return /pending|booked|requested|new/.test(rawStatus);
     }).length;
     
     return {
@@ -70,8 +74,8 @@ export default function ResourceData({ bookings }: { bookings: DashboardBooking[
   );
 }
 
-function filterByPeriod(bookings: DashboardBooking[], period: "All" | "Today" | "Week") {
-  if (period === "All") return bookings;
+function filterByPeriod(records: Array<DashboardBooking | DashboardTrip>, period: "All" | "Today" | "Week") {
+  if (period === "All") return records;
   const now = new Date();
   const start = new Date(now);
   if (period === "Today") {
@@ -80,9 +84,8 @@ function filterByPeriod(bookings: DashboardBooking[], period: "All" | "Today" | 
     start.setDate(start.getDate() - 6);
     start.setHours(0, 0, 0, 0);
   }
-  return bookings.filter((booking) => {
-    if (!booking.created_at) return false;
-    const timestamp = new Date(booking.created_at).getTime();
+  return records.filter((record) => {
+    const timestamp = new Date(record.created_at ?? record.createdAt ?? record.updated_at ?? record.updatedAt ?? 0).getTime();
     return Number.isFinite(timestamp) && timestamp >= start.getTime() && timestamp <= now.getTime();
   });
 }

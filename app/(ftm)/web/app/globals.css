@@ -1,6 +1,14 @@
+@import "leaflet/dist/leaflet.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes ftm-loading-progress {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(360%); }
+}
+
 
 .hide-scrollbar::-webkit-scrollbar {
   width: 0;
@@ -48,6 +56,86 @@
   --surface-container: #06070b;
   --surface-container-low: rgba(230,238,248,0.03);
   --surface-container-lowest: #04050a;
+}
+
+.fvm-page-shell {
+  background: linear-gradient(135deg, rgba(253, 242, 248, 0.9), rgba(255, 255, 255, 0.96), rgba(252, 231, 243, 0.8));
+}
+
+.dark .fvm-page-shell {
+  background: linear-gradient(135deg, rgba(2, 6, 23, 0.96), rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.98));
+}
+
+.fvm-panel {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(244, 114, 182, 0.42);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.dark .fvm-panel {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: 0 18px 45px rgba(2, 6, 23, 0.34);
+}
+
+.fvm-panel-subtle {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(244, 114, 182, 0.24);
+}
+
+.dark .fvm-panel-subtle {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.fvm-input,
+.fvm-select,
+.fvm-textarea {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(244, 114, 182, 0.32);
+  color: var(--foreground);
+}
+
+.dark .fvm-input,
+.dark .fvm-select,
+.dark .fvm-textarea {
+  background: rgba(15, 23, 42, 0.78);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: var(--foreground);
+}
+
+.dark .fvm-input::placeholder,
+.dark .fvm-select::placeholder,
+.dark .fvm-textarea::placeholder {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.fvm-step-chip {
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #64748b;
+}
+
+.dark .fvm-step-chip {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: var(--color-muted);
+}
+
+.dark .fvm-step-chip.active {
+  background: rgba(219, 39, 119, 0.16);
+  border-color: rgba(219, 39, 119, 0.35);
+  color: #f9a8d4;
+}
+
+.fvm-feed-card {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(244, 114, 182, 0.22);
+}
+
+.dark .fvm-feed-card {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(148, 163, 184, 0.18);
 }
 
 body {
@@ -465,8 +553,6 @@ body {
 .glass-card,
 .glass-panel {
   background: rgba(255, 255, 255, 0.95);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
   border: 1px solid rgba(228, 189, 194, 0.3);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
@@ -621,6 +707,4 @@ body {
   border-radius: 12px !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
   border: 1px solid rgba(226, 232, 240, 0.8);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }

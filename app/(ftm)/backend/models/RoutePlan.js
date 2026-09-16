@@ -1,6 +1,8 @@
 function normalizeRoutePlan(record = {}) {
   return {
     ...record,
+    bulkQrCode: record.bulk_qr_code ?? null,
+    tripId: record.trip_id ?? null,
     pickupLocation: record.pickup_location,
     pickupLatitude: record.pickup_latitude ?? null,
     pickupLongitude: record.pickup_longitude ?? null,
@@ -15,6 +17,8 @@ function normalizeRoutePlan(record = {}) {
 function buildRoutePlanPayload(record = {}) {
   return {
     id: record.id || record.route_plan_id || null,
+    trip_id: record.trip_id ?? record.tripId ?? null,
+    bulk_qr_code: record.bulk_qr_code ?? record.bulkQrCode ?? null,
     courier: record.courier || null,
     pickup_location: record.pickup_location || record.pickupLocation || null,
     pickup_latitude: record.pickup_latitude ?? record.pickupLatitude ?? null,

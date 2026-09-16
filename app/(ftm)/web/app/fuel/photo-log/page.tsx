@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { getDashboardSnapshot } from "../../lib/api";
+import { getCosts } from "../../lib/api";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
@@ -15,10 +15,11 @@ type PhotoEntry = {
   image?: string;
 };
 
-const photoEntries: PhotoEntry[] = [];
 export default function FuelPhotoLogPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<PhotoEntry | null>(null);
+  const [photoEntries, setPhotoEntries] = useState<PhotoEntry[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const filteredEntries = useMemo(() => {
     const q = search.toLowerCase();
@@ -38,18 +39,30 @@ export default function FuelPhotoLogPage() {
     let mounted = true;
     (async () => {
       try {
-        const dash = await getDashboardSnapshot();
-        const logs = dash.fuelLogs || [];
-        if (mounted) setHasData(Boolean(logs.length));
+        const logs = await getCosts();
+        const entries = (Array.isArray(logs) ? logs : [])
+          .filter((log: any) => String(log.category || '').toLowerCase() === 'fuel' && (log.receipt_image || log.photo_url || log.photoUrl))
+          .map((log: any) => ({
+            id: String(log.id),
+            vehicle: log.vehicle_id || log.vehicleId || "Unassigned vehicle",
+            driver: log.driver_id || log.driverId || "Unassigned driver",
+            date: log.entry_date || log.created_at || new Date().toISOString(),
+            location: "Field upload",
+            note: log.note || log.remarks || log.categoryCost?.note || "Fuel photo upload",
+            image: log.receipt_image || log.photo_url || log.photoUrl,
+          }));
+        if (mounted) setLoadError(null);
+        if (mounted) setHasData(Boolean(entries.length));
+        if (mounted) setPhotoEntries(entries);
       } catch (e) {
-        console.warn('Failed to load fuel snapshot', e);
-        if (mounted) setHasData(false);
+        const message = e instanceof Error ? e.message : "Unable to load fuel photos.";
+        console.warn('Failed to load fuel photo log', e);
+        if (mounted) setLoadError(message);
+        if (mounted) setHasData(null);
       }
     })();
     return () => { mounted = false; };
   }, []);
-
-  // Keep the gallery and layout visible; individual cards will show placeholders if needed.
 
   const visibleEntries = hasData ? filteredEntries : [];
 
@@ -84,6 +97,7 @@ export default function FuelPhotoLogPage() {
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-3 text-sm outline-none ring-0 transition focus:border-pink-300 focus:bg-white"
             />
           </div>
+          {loadError && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>}
         </section>
 
         <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">

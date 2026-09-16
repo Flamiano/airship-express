@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import GlobalNavbar from "../components/GlobalNavbar";
 import { SkeletonBlock } from "../components/PageSkeleton";
 import { getIncidentReports, getNotifications, getTrackingEvents } from "../lib/api";
 
 // Types & Data Definitions
-type AlertTab = "active" | "maintenance" | "safety" | "history";
+type AlertTab = "overview" | "active" | "maintenance" | "safety" | "history";
 type Severity = "critical" | "high" | "medium" | "low";
 
 interface ActiveAlert {
@@ -140,18 +142,19 @@ const toneIconBg: Record<string, string> = {
 
 // Root Component
 export default function AlertsPage() {
-  const [tab, setTab] = useState<AlertTab>("active");
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-50/50 p-6"><div className="mx-auto max-w-[1800px] animate-pulse space-y-5"><div className="h-10 w-64 rounded-lg bg-slate-200" /><div className="h-24 rounded-2xl bg-white" /><div className="grid gap-5 md:grid-cols-2"><div className="h-40 rounded-2xl bg-white" /><div className="h-40 rounded-2xl bg-white" /></div></div></main>}>
+      <AlertsPageContent />
+    </Suspense>
+  );
+}
 
-  useEffect(() => {
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (
-      requestedTab === "maintenance" ||
-      requestedTab === "safety" ||
-      requestedTab === "history"
-    ) {
-      setTab(requestedTab);
-    }
-  }, []);
+function AlertsPageContent() {
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab: AlertTab = requestedTab === "active" || requestedTab === "maintenance" || requestedTab === "safety" || requestedTab === "history"
+    ? requestedTab
+    : "overview";
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/50 text-slate-800 font-sans selection:bg-pink-500 selection:text-white">
@@ -159,6 +162,7 @@ export default function AlertsPage() {
 
       {/* Main Content Area - Maximized Width */}
       <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-8 py-8">
+        {tab === "overview" && <MonitoringHub />}
         {tab === "active" && <ActiveAlerts />}
         {tab === "maintenance" && <MaintenanceNotifications />}
         {tab === "safety" && <SafetyEventsView />}
@@ -168,6 +172,71 @@ export default function AlertsPage() {
       {/* Footer */}
       <Footer />
     </div>
+  );
+}
+
+function MonitoringHub() {
+  const cards = [
+    {
+      href: "/alerts?tab=active",
+      icon: "warning",
+      title: "Active Alerts",
+      description: "Review current operational alerts.",
+      accent: "border-rose-200 hover:border-rose-400 hover:bg-rose-50/60",
+      iconTone: "bg-rose-100 text-rose-600",
+    },
+    {
+      href: "/alerts?tab=maintenance",
+      icon: "build",
+      title: "Maintenance Notifications",
+      description: "Review maintenance notices.",
+      accent: "border-amber-200 hover:border-amber-400 hover:bg-amber-50/60",
+      iconTone: "bg-amber-100 text-amber-600",
+    },
+    {
+      href: "/alerts?tab=safety",
+      icon: "health_and_safety",
+      title: "Safety Events",
+      description: "Inspect recent safety events.",
+      accent: "border-pink-200 hover:border-pink-400 hover:bg-pink-50/60",
+      iconTone: "bg-pink-100 text-pink-600",
+    },
+    {
+      href: "/alerts?tab=history",
+      icon: "history",
+      title: "System History",
+      description: "Review historical system events.",
+      accent: "border-slate-200 hover:border-slate-400 hover:bg-slate-50",
+      iconTone: "bg-slate-100 text-slate-600",
+    },
+  ];
+
+  return (
+    <section className="space-y-8">
+      <header className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm sm:p-8">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-pink-600">Operations monitoring</p>
+        <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">Alerts & history</h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">Monitor operational risks, vehicle readiness, driver safety, and system activity from one place.</p>
+      </header>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        {cards.map((card) => (
+          <Link
+            key={card.href}
+            href={card.href}
+            className={`group rounded-2xl border bg-white p-6 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 ${card.accent}`}
+          >
+            <div className="flex items-start justify-between gap-5">
+              <span className={`material-symbols-outlined flex h-12 w-12 items-center justify-center rounded-xl text-2xl ${card.iconTone}`}>{card.icon}</span>
+              <span className="material-symbols-outlined text-slate-300 transition group-hover:translate-x-1 group-hover:text-pink-500">arrow_forward</span>
+            </div>
+            <h2 className="mt-6 text-xl font-bold text-slate-900">{card.title}</h2>
+            <p className="mt-2 text-sm text-slate-600">{card.description}</p>
+            <span className="mt-6 inline-flex items-center text-xs font-bold uppercase tracking-[0.16em] text-pink-600">Open monitoring view</span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -1,7 +1,8 @@
 function normalizeVehicle(vehicle = {}) {
   return {
     ...vehicle,
-    // legacy/transformed fields
+    // `plate_number` is the canonical database column. `plate` and
+    // `plateNumber` are response aliases kept for older frontend consumers.
     type: vehicle.vehicle_type || vehicle.type,
     plate: vehicle.plate_number || vehicle.plate,
     capacity: vehicle.capacity_kg ?? vehicle.capacity ?? null,
@@ -14,6 +15,7 @@ function normalizeVehicle(vehicle = {}) {
     plateNumber: vehicle.plate_number || vehicle.plate || vehicle.plateNumber || null,
     vehicleType: vehicle.vehicle_type || vehicle.type || vehicle.vehicleType || null,
     capacityKg: vehicle.capacity_kg ?? vehicle.capacity ?? vehicle.capacityKg ?? null,
+    courierId: vehicle.courier_id || vehicle.courierId || null,
     mileage: vehicle.mileage ?? vehicle.odometer ?? null,
   };
 }

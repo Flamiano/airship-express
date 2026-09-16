@@ -6,7 +6,7 @@
  * hardcoded for the pair (courier, city).
  */
 import { COURIER_NAMES, CourierName } from "./parcelTypes";
-import { SERVICE_AREA_CITIES, ServiceAreaCity } from "./serviceAreas";
+import { getCityCoordinate, SERVICE_AREA_CITIES, ServiceAreaCity } from "./serviceAreas";
 
 export type CourierWarehouse = {
   id: string;
@@ -30,16 +30,42 @@ const CITY_BASE_WAREHOUSE: Record<ServiceAreaCity, { lat: number; lng: number }>
   Taguig: { lat: 14.525, lng: 121.055 },
   "Parañaque": { lat: 14.485, lng: 121.015 },
   Valenzuela: { lat: 14.705, lng: 120.99 },
+  "Antipolo City": { lat: 14.6019, lng: 121.1797 },
+  "Las Piñas": { lat: 14.454, lng: 120.999 },
+  "Muntinlupa": { lat: 14.404, lng: 121.035 },
+  Bacoor: { lat: 14.459, lng: 120.95 },
+  "Cavite City": { lat: 14.48, lng: 120.89 },
+  Dasmariñas: { lat: 14.326, lng: 120.936 },
+  Imus: { lat: 14.425, lng: 120.94 },
+  "General Trias": { lat: 14.386, lng: 120.882 },
+  "Trece Martires": { lat: 14.279, lng: 120.87 },
+  Tagaytay: { lat: 14.114, lng: 120.94 },
+  "Baguio City": { lat: 16.415, lng: 120.596 },
+  "Bacolod City": { lat: 10.6765, lng: 122.951 },
+  "Batangas City": { lat: 13.756, lng: 121.058 },
+  "Cagayan de Oro": { lat: 8.4542, lng: 124.6319 },
   "Cebu City": { lat: 10.3157, lng: 123.8854 },
   "Davao City": { lat: 7.1907, lng: 125.4553 },
-  "Manila City": { lat: 14.5995, lng: 120.9745 },
-  "Cagayan de Oro": { lat: 8.4542, lng: 124.6319 },
-  "Bacolod City": { lat: 10.6765, lng: 122.951 },
+  "General Santos City": { lat: 6.1167, lng: 125.171 },
   "Iloilo City": { lat: 10.7202, lng: 122.5621 },
   "La Trinidad": { lat: 16.4145, lng: 120.5904 },
-  "General Santos City": { lat: 6.1167, lng: 125.171 },
+  Lipa: { lat: 13.941, lng: 121.163 },
+  "San Pablo City": { lat: 14.07, lng: 121.321 },
+  "Santa Rosa": { lat: 14.314, lng: 121.111 },
+  "Tarlac City": { lat: 15.480, lng: 120.597 },
   "Zamboanga City": { lat: 6.9214, lng: 122.079 },
-  "Antipolo City": { lat: 14.6019, lng: 121.1797 },
+  "Angeles City": { lat: 15.145, lng: 120.59 },
+  "San Fernando": { lat: 15.032, lng: 120.69 },
+  Bataan: { lat: 14.357, lng: 120.574 },
+  "Puerto Princesa": { lat: 9.739, lng: 118.737 },
+  "Butuan City": { lat: 8.949, lng: 125.54 },
+  "Iligan City": { lat: 8.228, lng: 124.246 },
+  "Dumaguete City": { lat: 9.309, lng: 123.307 },
+  "Cabanatuan City": { lat: 15.486, lng: 120.967 },
+  "Naga City": { lat: 13.621, lng: 123.195 },
+  "Legazpi City": { lat: 13.139, lng: 123.741 },
+  "Sorsogon City": { lat: 12.973, lng: 124.004 },
+  "Tuguegarao City": { lat: 17.613, lng: 121.726 },
 };
 
 const COURIER_CITY_OFFSETS: Record<CourierName, { dLat: number; dLng: number }> = {
@@ -114,7 +140,17 @@ export function resolveCourierName(value: unknown): CourierName {
 /** The one fixed warehouse a given courier operates in a given city, or undefined if the city/courier isn't covered. */
 export function getCourierWarehouse(courier: string, city: string): CourierWarehouse | undefined {
   const normalizedCity = String(city ?? "").trim();
-  const knownCity = SERVICE_AREA_CITIES.find((candidate) => candidate.toLowerCase() === normalizedCity.toLowerCase());
+  const cityKey = normalizedCity
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const knownCity = SERVICE_AREA_CITIES.find((candidate) => {
+    const candidateKey = candidate
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    return candidateKey === cityKey || candidateKey.includes(cityKey) || cityKey.includes(candidateKey);
+  });
   return knownCity
     ? WAREHOUSE_REGISTRY.get(`${resolveCourierName(courier)}::${knownCity}`)
     : undefined;
@@ -125,15 +161,30 @@ export function getCourierWarehouseLocation(courier: string, city: string) {
   const warehouse = getCourierWarehouse(courier, city);
   if (warehouse) return warehouse;
 
+  const cityCoordinate = getCityCoordinate(city || "");
+  if (cityCoordinate && !(cityCoordinate.lat === 0 && cityCoordinate.lng === 0)) {
+    const resolvedCourier = resolveCourierName(courier);
+    const offset = COURIER_CITY_OFFSETS[resolvedCourier] ?? { dLat: 0, dLng: 0 };
+    return {
+      id: `${resolvedCourier}::city-${city || "unknown"}`,
+      courier: resolvedCourier,
+      city,
+      name: `${resolvedCourier} Hub${city ? ` - ${city}` : ""}`,
+      lat: Number((cityCoordinate.lat + offset.dLat).toFixed(6)),
+      lng: Number((cityCoordinate.lng + offset.dLng).toFixed(6)),
+    };
+  }
+
   const resolvedCourier = resolveCourierName(courier);
-  const offset = COURIER_CITY_OFFSETS[resolvedCourier];
+  const offset = COURIER_CITY_OFFSETS[resolvedCourier] ?? { dLat: 0, dLng: 0 };
+  const base = { lat: 14.5995, lng: 120.9745 };
   return {
     id: `${resolvedCourier}::fallback-${city || "unknown"}`,
     courier: resolvedCourier,
     city,
     name: `${resolvedCourier} Hub${city ? ` - ${city}` : ""}`,
-    lat: Number((14.5995 + offset.dLat).toFixed(6)),
-    lng: Number((120.9745 + offset.dLng).toFixed(6)),
+    lat: Number((base.lat + offset.dLat).toFixed(6)),
+    lng: Number((base.lng + offset.dLng).toFixed(6)),
   };
 }
 
@@ -150,7 +201,43 @@ export function listCityWarehouses(city: string): CourierWarehouse[] {
 
 /** Best-effort match of a free-text address against a known service-area city (case-insensitive substring match). */
 export function resolveKnownCity(address: string): ServiceAreaCity | undefined {
-  const haystack = (address || "").toLowerCase();
+  const haystack = (address || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
   if (!haystack) return undefined;
-  return SERVICE_AREA_CITIES.find((city) => haystack.includes(city.toLowerCase()));
+
+  const aliasMap: Record<string, ServiceAreaCity> = {
+    "las pinas": "Las Piñas",
+    "muntinlupa": "Muntinlupa",
+    "bacoor": "Bacoor",
+    "general trias": "General Trias",
+    "gen trias": "General Trias",
+    "tagaytay": "Tagaytay",
+    "baguio": "Baguio City",
+    "batangas": "Batangas City",
+    "cavite": "Cavite City",
+    "lipa": "Lipa",
+    "san pablo": "San Pablo City",
+    "santa rosa": "Santa Rosa",
+    "angeles": "Angeles City",
+    "san fernando": "San Fernando",
+    "tarlac": "Tarlac City",
+    "naga": "Naga City",
+    "tuguegarao": "Tuguegarao City",
+    "legazpi": "Legazpi City",
+    "butuan": "Butuan City",
+    "dumaguete": "Dumaguete City",
+    "iligan": "Iligan City",
+    "cabanatuan": "Cabanatuan City",
+    "sorsogon": "Sorsogon City",
+  };
+
+  const aliasMatch = Object.entries(aliasMap).find(([alias]) => haystack.includes(alias));
+  if (aliasMatch) return aliasMatch[1];
+
+  return SERVICE_AREA_CITIES.find((city) => {
+    const cityKey = city.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    return haystack.includes(cityKey);
+  });
 }

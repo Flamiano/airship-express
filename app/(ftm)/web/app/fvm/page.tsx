@@ -6,7 +6,7 @@ import RoleRestricted from "../components/RoleRestricted";
 import { SkeletonBlock } from "../components/PageSkeleton";
 
 import { useEffect, useMemo, useState } from "react";
-import { createVehicle, getDashboardSnapshot } from "../lib/api";
+import { createVehicle, createVehicleDocument, getCouriers, getDashboardSnapshot, getNextVehicleId, uploadVehicleDocument } from "../lib/api";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -34,10 +34,51 @@ type DashboardSnapshot = {
     bookings?: number;
     drivers?: number;
   };
-  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; fuel_level?: number; driver?: string; location?: string }>;
+  vehicles?: Array<{ id?: string; courier_id?: string | null; courierId?: string | null; status?: string; plate_number?: string; fuel_level?: number; driver?: string; location?: string }>;
   trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; driver_id?: string; destination?: string }>;
   drivers?: Array<{ id?: string; full_name?: string | null; name?: string | null }>;
 };
+
+type CourierOption = { id: string; code?: string | null; name: string };
+type VehicleDocumentDraft = {
+  id: string;
+  type: string;
+  number: string;
+  expiry: string;
+  file: File | null;
+};
+
+const VEHICLE_TYPES = ["Light Truck", "Medium Truck", "Heavy Truck", "Delivery Van", "Cargo Van", "Pickup Truck", "Motorcycle", "Utility Vehicle"];
+const MANUFACTURERS = ["Isuzu", "Toyota", "Mitsubishi", "Nissan", "Ford", "Hyundai", "Fuso"];
+const MODELS: Record<string, string[]> = {
+  Isuzu: ["N-Series", "Elf", "D-Max", "Forward"],
+  Toyota: ["HiAce", "Hilux", "Dyna"],
+  Mitsubishi: ["Canter", "L300", "Strada"],
+  Nissan: ["Urvan", "Navara", "Cabstar"],
+  Ford: ["Transit", "Ranger"],
+  Hyundai: ["H-100", "Starex"],
+  Fuso: ["Canter", "Rosa"],
+};
+const DOCUMENT_TYPES = ["Registration Certificate", "Insurance Certificate", "Inspection Certificate", "Emission Certificate", "Vehicle Permit", "Other"];
+
+function documentStatus(expiry: string) {
+  if (!expiry) return "Valid";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const date = new Date(`${expiry}T00:00:00`);
+  const soon = new Date(today);
+  soon.setDate(soon.getDate() + 30);
+  if (date < today) return "Expired";
+  if (date <= soon) return "Expiring Soon";
+  return "Valid";
+}
+
+function addMonths(date: string, months: number) {
+  if (!date) return "";
+  const next = new Date(`${date}T00:00:00`);
+  next.setMonth(next.getMonth() + months);
+  return next.toISOString().slice(0, 10);
+}
 
 type ActivityItem = {
   tone: keyof typeof toneStyles;
@@ -146,21 +187,95 @@ export default function FvmOverviewPage() {
   const [quickAlertDismissed, setQuickAlertDismissed] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [couriers, setCouriers] = useState<CourierOption[]>([]);
+  const [registrationStep, setRegistrationStep] = useState(1);
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
+  const [isModalDragging, setIsModalDragging] = useState(false);
+  const [modalDragOffset, setModalDragOffset] = useState({ x: 0, y: 0 });
+  const [plateStatus, setPlateStatus] = useState<"idle" | "checking" | "available" | "duplicate">("idle");
+  const [documents, setDocuments] = useState<VehicleDocumentDraft[]>([
+    { id: "registration", type: "Registration Certificate", number: "", expiry: "", file: null },
+    { id: "insurance", type: "Insurance Certificate", number: "", expiry: "", file: null },
+  ]);
   const [vehicleForm, setVehicleForm] = useState({
     id: "",
+    courierId: "",
     plateNumber: "",
-    vehicleType: "",
-    status: "Active",
+    vehicleType: "Delivery Van",
+    manufacturer: "",
+    model: "",
+    year: String(new Date().getFullYear()),
+    vinNumber: "",
+    engineNumber: "",
+    fuelType: "Diesel",
+    registrationExpiry: "",
+    insuranceExpiry: "",
+    status: "Available",
     driver: "",
-    location: "",
-    capacityKg: "",
-    fuelEfficiency: "",
-    mileage: "",
+    location: "Airship Express Hub - Binondo, Manila",
+    capacityKg: "1000",
+    fuelEfficiency: "10",
+    mileage: "0",
     lastService: "",
     nextService: "",
   });
   const [vehicleSubmitError, setVehicleSubmitError] = useState("");
   const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
+  const [vehicleSubmitSuccess, setVehicleSubmitSuccess] = useState("");
+
+  const updateVehicleField = (field: keyof typeof vehicleForm, value: string) => {
+    setVehicleForm((current) => ({ ...current, [field]: value }));
+    if (field === "manufacturer") setVehicleForm((current) => ({ ...current, model: "" }));
+  };
+
+  const normalizePlate = (value: string) => {
+    const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const letters = compact.replace(/[^A-Z]/g, "").slice(0, 3);
+    const digits = compact.replace(/[^0-9]/g, "").slice(0, 3);
+    return letters + (digits ? `-${digits}` : "");
+  };
+  const numericOnly = (value: string, allowDecimal = false) => value.replace(allowDecimal ? /[^0-9.]/g : /[^0-9]/g, "").replace(/(\..*)\./g, "$1");
+
+  const handleModalPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button, input, select, textarea")) return;
+    setIsModalDragging(true);
+    setModalDragOffset({ x: event.clientX - modalPosition.x, y: event.clientY - modalPosition.y });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleModalPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isModalDragging) return;
+    setModalPosition({ x: event.clientX - modalDragOffset.x, y: event.clientY - modalDragOffset.y });
+  };
+
+  const handleModalPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    setIsModalDragging(false);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  useEffect(() => {
+    const plate = normalizePlate(vehicleForm.plateNumber);
+    if (!/^[A-Z]{3}-\d{3}$/.test(plate)) {
+      setPlateStatus("idle");
+      return;
+    }
+    if (!plate) {
+      setPlateStatus("idle");
+      return;
+    }
+    setPlateStatus("checking");
+    const timer = window.setTimeout(async () => {
+      try {
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+        const result = await fetch(`${apiBase}/api/vehicles?plate_number=${encodeURIComponent(plate)}`);
+        const rows = result.ok ? await result.json() : [];
+        setPlateStatus(Array.isArray(rows) && rows.some((item: any) => normalizePlate(item.plate_number || item.plate) === plate) ? "duplicate" : "available");
+      } catch {
+        setPlateStatus("idle");
+      }
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [vehicleForm.plateNumber]);
 
   const handleExportReport = () => {
     const rows = [
@@ -206,6 +321,12 @@ export default function FvmOverviewPage() {
     };
   }, []);
 
+  useEffect(() => {
+    getCouriers()
+      .then((data) => setCouriers(Array.isArray(data) ? data : []))
+      .catch((error) => console.error("Failed to load couriers:", error));
+  }, []);
+
   const vehicles = snapshot?.vehicles ?? [];
   const trips = snapshot?.trips ?? [];
   const totalVehicles = snapshot?.counts?.vehicles ?? (vehicles.length > 0 ? vehicles.length : 0);
@@ -225,41 +346,128 @@ export default function FvmOverviewPage() {
     });
   }, [selectedTimeframe, trips]);
 
-  const nextVehicleId = () => {
-    const highestNumber = vehicles.reduce((highest, vehicle) => {
+  const nextVehicleId = (courierId?: string) => {
+    const selectedCourier = couriers.find((courier) => courier.id === courierId);
+    const prefix = selectedCourier?.code?.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "VH";
+    const assignedVehicles = courierId
+      ? vehicles.filter((vehicle) => {
+          const vehicleId = String(vehicle.id || "").toUpperCase();
+          const sameCourier = String(vehicle.courier_id ?? vehicle.courierId ?? "") === courierId;
+          return sameCourier || vehicleId.startsWith(`${prefix}-`);
+        })
+      : vehicles;
+    const usedIds = new Set(vehicles.map((vehicle) => String(vehicle.id || "")));
+    const highestNumber = assignedVehicles.reduce((highest, vehicle) => {
       const match = String(vehicle.id || "").match(/(\d+)$/);
       return match ? Math.max(highest, Number(match[1])) : highest;
     }, 0);
-    return `TRK-${String(highestNumber + 1).padStart(3, "0")}`;
+    let nextNumber = highestNumber + 1;
+    let candidate = `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+    while (usedIds.has(candidate)) {
+      nextNumber += 1;
+      candidate = `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+    }
+    return candidate;
+  };
+
+  const handleCourierChange = async (courierId: string) => {
+    setVehicleForm((current) => ({ ...current, courierId, id: courierId ? "Checking..." : nextVehicleId() }));
+    if (!courierId) return;
+
+    try {
+      const id = await getNextVehicleId(courierId);
+      setVehicleForm((current) => current.courierId === courierId ? { ...current, id } : current);
+    } catch (error) {
+      setVehicleSubmitError(error instanceof Error ? error.message : "Unable to calculate the next vehicle ID.");
+    }
   };
 
   const openAddVehicle = () => {
     setVehicleSubmitError("");
-    setVehicleForm((current) => ({ ...current, id: current.id || nextVehicleId() }));
+    setVehicleSubmitSuccess("");
+    setRegistrationStep(1);
+    setModalPosition({ x: 0, y: 0 });
+    setDocuments([
+      { id: "registration", type: "Registration Certificate", number: "", expiry: "", file: null },
+      { id: "insurance", type: "Insurance Certificate", number: "", expiry: "", file: null },
+    ]);
+    setVehicleForm((current) => ({ ...current, id: nextVehicleId() }));
     setShowAddVehicle(true);
   };
 
   const handleAddVehicle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setVehicleSubmitError("");
+    if (plateStatus === "duplicate") {
+      setVehicleSubmitError("This plate number is already registered.");
+      setRegistrationStep(1);
+      return;
+    }
+    if (!vehicleForm.courierId || !vehicleForm.plateNumber || !vehicleForm.vehicleType || !vehicleForm.manufacturer || !vehicleForm.model || !vehicleForm.year || !vehicleForm.capacityKg || !vehicleForm.fuelType) {
+      setVehicleSubmitError("Please review the required vehicle fields.");
+      setRegistrationStep(1);
+      return;
+    }
     setVehicleSubmitting(true);
     try {
-      await createVehicle({
-        id: vehicleForm.id.trim(),
-        plate_number: vehicleForm.plateNumber.trim(),
+      const submissionId = await getNextVehicleId(vehicleForm.courierId);
+      if (!submissionId) throw new Error("Unable to calculate the next vehicle ID.");
+      setVehicleForm((current) => ({ ...current, id: submissionId }));
+      const vehicle = await createVehicle({
+        id: submissionId,
+        courier_id: vehicleForm.courierId || null,
+        plate_number: normalizePlate(vehicleForm.plateNumber),
         vehicle_type: vehicleForm.vehicleType.trim(),
-        status: vehicleForm.status,
+        manufacturer: vehicleForm.manufacturer.trim(),
+        model: vehicleForm.model.trim(),
+        year: Number(vehicleForm.year),
+        vin_number: vehicleForm.vinNumber.trim().toUpperCase() || null,
+        engine_number: vehicleForm.engineNumber.trim() || null,
+        fuel_type: vehicleForm.fuelType,
+        registration_expiry: vehicleForm.registrationExpiry || null,
+        insurance_expiry: vehicleForm.insuranceExpiry || null,
+        status: "Available",
+        availability: "Available",
         driver: vehicleForm.driver.trim() || null,
         location: vehicleForm.location.trim() || null,
-        capacity_kg: vehicleForm.capacityKg ? Number(vehicleForm.capacityKg) : null,
+        capacity_kg: Number(vehicleForm.capacityKg),
         fuel_efficiency: vehicleForm.fuelEfficiency ? Number(vehicleForm.fuelEfficiency) : null,
         mileage: vehicleForm.mileage ? Number(vehicleForm.mileage) : null,
         last_service: vehicleForm.lastService || null,
-        next_service: vehicleForm.nextService || null,
+        next_service: addMonths(vehicleForm.lastService, 3) || null,
       });
+      for (const document of documents.filter((item) => item.file)) {
+        const safeName = document.file!.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${vehicle.id}/${document.type.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/${crypto.randomUUID()}-${safeName}`;
+        const bytes = new Uint8Array(await document.file!.arrayBuffer());
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 8192) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+        }
+        await uploadVehicleDocument({
+          path,
+          content: btoa(binary),
+          content_type: document.file!.type || "application/octet-stream",
+        });
+        const metadata = await createVehicleDocument({
+          vehicle_id: vehicle.id,
+          document_type: document.type,
+          document_number: document.number.trim() || null,
+          expiry_date: document.expiry || null,
+          file_url: path,
+          status: documentStatus(document.expiry),
+        });
+        if (!metadata) throw new Error(`Unable to save the ${document.type}.`);
+      }
+      setSnapshot((current) => current ? {
+        ...current,
+        vehicles: [...(current.vehicles ?? []), vehicle],
+        counts: { ...current.counts, vehicles: (current.counts?.vehicles ?? vehicles.length) + 1 },
+      } : current);
       setShowAddVehicle(false);
-      setVehicleForm((current) => ({ ...current, id: "", plateNumber: "", vehicleType: "", driver: "", location: "", capacityKg: "", fuelEfficiency: "", mileage: "", lastService: "", nextService: "" }));
-      window.location.reload();
+      setVehicleSubmitSuccess(`Vehicle ${vehicle.id} was added successfully.`);
+      setVehicleForm((current) => ({ ...current, id: "", courierId: "", plateNumber: "", vehicleType: "Delivery Van", manufacturer: "", model: "", year: String(new Date().getFullYear()), vinNumber: "", engineNumber: "", fuelType: "Diesel", registrationExpiry: "", insuranceExpiry: "", status: "Available", driver: "", location: "Airship Express Hub - Binondo, Manila", capacityKg: "1000", fuelEfficiency: "10", mileage: "0", lastService: "", nextService: "" }));
+      setDocuments([]);
     } catch (error) {
       setVehicleSubmitError(error instanceof Error ? error.message : "Unable to add vehicle.");
     } finally {
@@ -303,14 +511,14 @@ export default function FvmOverviewPage() {
   return (
     // @ts-ignore - RoleRestricted's React node type conflicts with the installed React typings.
     <RoleRestricted allowedRoles={["fleet_manager", "admin"]} hideWhenRestricted>
-      <div className="flex flex-col min-h-screen bg-gradient-to-br from-pink-50/60 via-white to-pink-100/40 text-slate-800 selection:bg-pink-600 selection:text-white">
+      <div className="fvm-page-shell flex flex-col min-h-screen bg-gradient-to-br from-pink-50/60 via-white to-pink-100/40 text-slate-800 selection:bg-pink-600 selection:text-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
         <GlobalNavbar />
 
         {/* Full-Width Fluid Container */}
         <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-5">
         
         {/* Compact Page Header */}
-        <div className="flex flex-col md:flex-row justify-between md:items-center gap-3 bg-white/90 backdrop-blur-xl px-6 py-4 rounded-2xl border border-pink-200/60 shadow-sm">
+        <div className="fvm-panel flex flex-col md:flex-row justify-between md:items-center gap-3 px-6 py-4 rounded-2xl dark:text-slate-100">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-pink-100 text-pink-700 uppercase tracking-wider flex items-center gap-1.5 border border-pink-200">
@@ -394,7 +602,7 @@ export default function FvmOverviewPage() {
           {kpiCards.map((card) => (
             <div
               key={card.label}
-              className="rounded-lg border border-slate-200 bg-white p-3 transition-colors hover:border-pink-300"
+              className="fvm-panel rounded-lg p-3 transition-colors hover:border-pink-300"
             >
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{card.label}</h3>
@@ -416,7 +624,7 @@ export default function FvmOverviewPage() {
           <div className="xl:col-span-7 flex flex-col gap-5">
             
             {/* Fleet Status Distribution Chart */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col min-h-[380px]">
+            <div className="fvm-panel rounded-2xl p-4 flex flex-col min-h-[380px]">
               <div className="flex items-center justify-between border-b border-pink-100 pb-3">
                 <div className="flex items-center gap-2.5">
                   <span className="p-2 rounded-xl bg-pink-100 text-pink-600"><span className="material-symbols-outlined text-base">bar_chart</span></span>
@@ -446,7 +654,7 @@ export default function FvmOverviewPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               
               {/* Fleet Status Pie Breakdown */}
-              <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col justify-between">
+              <div className="fvm-panel rounded-2xl p-4 flex flex-col justify-between">
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
                     <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
@@ -496,7 +704,7 @@ export default function FvmOverviewPage() {
               </div>
 
               {/* Fleet Health Radar Chart */}
-              <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col justify-between">
+              <div className="fvm-panel rounded-2xl p-4 flex flex-col justify-between">
                 <div className="flex justify-between items-center mb-1">
                   <div className="flex items-center gap-2">
                     <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
@@ -530,7 +738,7 @@ export default function FvmOverviewPage() {
             </div>
 
             {/* Fleet Activity Trend Chart */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col min-h-[380px]">
+            <div className="fvm-panel rounded-2xl p-4 flex flex-col min-h-[380px]">
               <div className="flex items-center justify-between border-b border-pink-100 pb-3">
                 <div className="flex items-center gap-2.5">
                   <span className="p-2 rounded-xl bg-rose-100 text-rose-600"><span className="material-symbols-outlined text-base">monitoring</span></span>
@@ -565,7 +773,7 @@ export default function FvmOverviewPage() {
           <div className="xl:col-span-5 flex flex-col gap-5">
             
             {/* Hourly Operational Trend Chart */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col justify-between">
+            <div className="fvm-panel rounded-2xl p-4 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2.5">
                   <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
@@ -600,7 +808,7 @@ export default function FvmOverviewPage() {
             </div>
 
             {/* NEW FEATURE: Fleet Fuel Level Bar Chart Distribution */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 p-4 shadow-sm flex flex-col justify-between">
+            <div className="fvm-panel rounded-2xl p-4 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
                   <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
@@ -627,7 +835,7 @@ export default function FvmOverviewPage() {
             </div>
 
             {/* Vehicle Activity Feed */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-pink-200/60 shadow-sm flex flex-col h-[280px] overflow-hidden">
+            <div className="fvm-feed-card rounded-2xl flex flex-col h-[280px] overflow-hidden">
               <div className="px-4 py-3 border-b border-pink-100 flex justify-between items-center bg-pink-50/40">
                 <div className="flex items-center gap-2">
                   <span className="p-2 rounded-xl bg-pink-100 text-pink-600">
@@ -654,7 +862,7 @@ export default function FvmOverviewPage() {
                     return (
                       <div
                         key={idx}
-                        className={`p-3 rounded-xl border border-pink-100 bg-white hover:bg-pink-50/40 transition-all border-l-4 ${tone.border} shadow-2xs`}
+                        className={`fvm-feed-card p-3 rounded-xl hover:bg-pink-50/40 transition-all border-l-4 ${tone.border} shadow-2xs`}
                       >
                         <div className="flex justify-between items-start mb-1">
                           <div className="flex items-center gap-1.5">
@@ -681,70 +889,76 @@ export default function FvmOverviewPage() {
         </div>
       </main>
 
+        {vehicleSubmitSuccess && (
+          <div className="fixed inset-x-4 top-20 z-[2147483647] mx-auto flex max-w-xl items-center justify-between gap-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800 shadow-2xl shadow-emerald-950/20" role="status" aria-live="polite">
+            <div className="flex items-center gap-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600" aria-hidden="true">✓</span>
+            <span>{vehicleSubmitSuccess}</span>
+            </div>
+            <button type="button" onClick={() => setVehicleSubmitSuccess("")} className="rounded-full p-1 text-emerald-700 hover:bg-emerald-200" aria-label="Dismiss success message"><span className="material-symbols-outlined text-base">close</span></button>
+          </div>
+        )}
+
         {showAddVehicle && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4" onClick={() => !vehicleSubmitting && setShowAddVehicle(false)}>
-            <form onSubmit={handleAddVehicle} onClick={(event) => event.stopPropagation()} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-wider text-pink-600">Fleet onboarding</p>
-                  <h2 className="mt-1 text-2xl font-black text-slate-900">Add Company Vehicle</h2>
-                  <p className="mt-1 text-sm text-slate-500">Register the vehicle once and make it available across fleet operations.</p>
+            <form onSubmit={handleAddVehicle} onClick={(event) => event.stopPropagation()} style={{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }} className="fvm-panel relative max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-4 shadow-2xl transition-transform sm:p-5">
+              {vehicleSubmitting && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 p-6 backdrop-blur-sm" role="status" aria-live="polite">
+                  <div className="flex w-full max-w-xs flex-col items-center gap-4 text-center">
+                    <span className="h-12 w-12 animate-spin rounded-full border-4 border-pink-100 border-t-pink-600" aria-hidden="true" />
+                    <div>
+                      <p className="text-base font-black text-slate-900">Creating vehicle</p>
+                      <p className="mt-1 text-sm text-slate-500">Saving vehicle details and documents...</p>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-pink-100"><span className="block h-full w-2/5 animate-pulse rounded-full bg-pink-600" /></div>
+                  </div>
                 </div>
-                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full p-2 text-slate-500 hover:bg-pink-50" aria-label="Close">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
+              )}
+              <div onPointerDown={handleModalPointerDown} onPointerMove={handleModalPointerMove} onPointerUp={handleModalPointerUp} onPointerCancel={handleModalPointerUp} className={`flex cursor-grab items-start justify-between gap-4 border-b border-slate-100 pb-3 select-none ${isModalDragging ? "cursor-grabbing" : ""}`}>
+                <div><p className="text-[11px] font-black uppercase tracking-wider text-pink-600">Fleet onboarding</p><h2 className="mt-1 text-2xl font-black text-slate-900">Add New Vehicle</h2><p className="mt-1 text-sm text-slate-500">Register a vehicle into the Airship Express fleet.</p></div>
+                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full p-2 text-slate-500 hover:bg-pink-50" aria-label="Close"><span className="material-symbols-outlined">close</span></button>
               </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {([
-                  ["id", "Vehicle ID", "TRK-015", "text", true],
-                  ["plateNumber", "Plate Number", "ABC-1234", "text", true],
-                  ["vehicleType", "Vehicle Type", "Truck, van, or pickup", "text", true],
-                  ["status", "Initial Status", "", "select", true],
-                  ["driver", "Assigned Driver", "Optional", "text", false],
-                  ["location", "Current Location", "Manila Hub", "text", false],
-                  ["capacityKg", "Capacity (kg)", "1500", "number", false],
-                  ["fuelEfficiency", "Fuel Efficiency (km/L)", "8.5", "number", false],
-                  ["mileage", "Mileage (km)", "0", "number", false],
-                  ["lastService", "Last Service", "", "date", false],
-                  ["nextService", "Next Service", "", "date", false],
-                ] as const).map(([field, label, placeholder, inputType, required]) => (
-                  <label key={field} className="text-xs font-bold text-slate-700">
-                    {label}
-                    {inputType === "select" ? (
-                      <select
-                        value={vehicleForm.status}
-                        onChange={(event) => setVehicleForm((current) => ({ ...current, status: event.target.value }))}
-                        className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-100"
-                      >
-                        <option>Active</option>
-                        <option>Idle</option>
-                        <option>Maintenance</option>
-                      </select>
-                    ) : (
-                      <input
-                        required={required}
-                        type={inputType}
-                        min={inputType === "number" ? "0" : undefined}
-                        step={field === "fuelEfficiency" ? "0.1" : "1"}
-                        placeholder={placeholder}
-                        value={vehicleForm[field]}
-                        onChange={(event) => setVehicleForm((current) => ({ ...current, [field]: event.target.value }))}
-                        className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-100"
-                      />
-                    )}
-                  </label>
+              <div className="flex items-center gap-2 overflow-x-auto py-3 text-[11px] font-bold text-slate-400">
+                {['Vehicle', 'Specifications', 'Documents', 'Maintenance', 'Review'].map((step, index) => (
+                  <button
+                    type="button"
+                    key={step}
+                    onClick={() => setRegistrationStep(index + 1)}
+                    className={`fvm-step-chip whitespace-nowrap rounded-full px-3 py-1.5 ${registrationStep === index + 1 ? 'active bg-pink-600 text-white' : ''}`}
+                  >
+                    {index + 1}. {step}
+                  </button>
                 ))}
               </div>
 
-              <p className="mt-4 text-xs text-slate-500">Vehicle ID is automatically suggested from the next available fleet number. You can change it before saving.</p>
-              {vehicleSubmitError && <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{vehicleSubmitError}</p>}
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowAddVehicle(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={vehicleSubmitting} className="rounded-full bg-pink-600 px-5 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60">
-                  {vehicleSubmitting ? "Registering..." : "Register Vehicle"}
-                </button>
-              </div>
+              {registrationStep === 1 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="text-xs font-bold text-slate-700">Vehicle ID<input readOnly value={vehicleForm.id} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px] font-normal text-slate-400">Automatically generated from the courier code</span></label>
+                <label className="text-xs font-bold text-slate-700">Courier *<select required value={vehicleForm.courierId} onChange={(event) => handleCourierChange(event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal"><option value="">Select courier</option>{couriers.map((courier) => <option key={courier.id} value={courier.id}>{courier.name}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Plate Number *<input required value={vehicleForm.plateNumber} onChange={(event) => updateVehicleField("plateNumber", normalizePlate(event.target.value))} placeholder="ABC-234" maxLength={7} pattern="[A-Za-z]{3}-[0-9]{3}" title="Use three letters, a hyphen, and three numbers, for example ABC-234." className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal uppercase" />{plateStatus !== "idle" && <span className={`mt-1 block text-[10px] ${plateStatus === "duplicate" ? "text-rose-600" : "text-emerald-600"}`}>{plateStatus === "checking" ? "Checking plate..." : plateStatus === "duplicate" ? "This plate number is already registered." : "Plate number available"}</span>}</label>
+                <label className="text-xs font-bold text-slate-700">Vehicle Type *<input required list="vehicle-types" value={vehicleForm.vehicleType} onChange={(event) => updateVehicleField("vehicleType", event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /><datalist id="vehicle-types">{VEHICLE_TYPES.map((item) => <option key={item} value={item} />)}</datalist></label>
+                <label className="text-xs font-bold text-slate-700">Manufacturer *<input required list="vehicle-manufacturers" value={vehicleForm.manufacturer} onChange={(event) => updateVehicleField("manufacturer", event.target.value)} placeholder="Isuzu" className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /><datalist id="vehicle-manufacturers">{MANUFACTURERS.map((item) => <option key={item} value={item} />)}</datalist></label>
+                <label className="text-xs font-bold text-slate-700">Model *<input required list="vehicle-models" value={vehicleForm.model} onChange={(event) => updateVehicleField("model", event.target.value)} placeholder="N-Series" className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /><datalist id="vehicle-models">{(MODELS[vehicleForm.manufacturer] || []).map((item) => <option key={item} value={item} />)}</datalist></label>
+                <label className="text-xs font-bold text-slate-700">Year *<input required inputMode="numeric" type="text" min="1900" max={new Date().getFullYear()} value={vehicleForm.year} onChange={(event) => updateVehicleField("year", numericOnly(event.target.value))} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">VIN Number<input value={vehicleForm.vinNumber} onChange={(event) => updateVehicleField("vinNumber", event.target.value.toUpperCase().replace(/\s/g, ""))} maxLength={17} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal uppercase" /></label>
+              </div>}
+
+              {registrationStep === 2 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="text-xs font-bold text-slate-700">Engine Number<input value={vehicleForm.engineNumber} onChange={(event) => updateVehicleField("engineNumber", event.target.value.trimStart())} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Capacity (kg) *<input required inputMode="numeric" type="text" min="1" value={vehicleForm.capacityKg} onChange={(event) => updateVehicleField("capacityKg", numericOnly(event.target.value))} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px] font-normal text-slate-400">Suggested based on the selected vehicle.</span></label>
+                <label className="text-xs font-bold text-slate-700">Fuel Type *<select required value={vehicleForm.fuelType} onChange={(event) => updateVehicleField("fuelType", event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal"><option>Diesel</option><option>Gasoline</option><option>Hybrid</option><option>Electric</option></select></label>
+                <label className="text-xs font-bold text-slate-700">Fuel Efficiency (km/L)<input inputMode="decimal" type="text" min="0" step="0.1" value={vehicleForm.fuelEfficiency} onChange={(event) => updateVehicleField("fuelEfficiency", numericOnly(event.target.value, true))} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Current Mileage (km)<input inputMode="numeric" type="text" min="0" value={vehicleForm.mileage} onChange={(event) => updateVehicleField("mileage", numericOnly(event.target.value))} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /></label>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800">Initial Fleet Status<br /><span className="mt-1 inline-block">● Available</span><span className="block text-[10px] font-normal">New vehicles are automatically registered as Available.</span></div>
+              </div>}
+
+              {registrationStep === 3 && <div className="space-y-3"><p className="text-xs text-slate-500">Documents are optional. Upload PDF, JPG, JPEG, or PNG files.</p>{documents.map((document, index) => <div key={document.id} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-4"><label className="text-xs font-bold text-slate-700">Document Type<select value={document.type} onChange={(event) => setDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value } : item))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs">{DOCUMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label><label className="text-xs font-bold text-slate-700">Document Number<input value={document.number} onChange={(event) => setDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, number: event.target.value.trimStart() } : item))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs" /></label><label className="text-xs font-bold text-slate-700">Expiry Date<input type="date" value={document.expiry} onChange={(event) => setDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, expiry: event.target.value } : item))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs" /><span className="mt-1 block text-[10px] font-normal">{documentStatus(document.expiry)}</span></label><label className="text-xs font-bold text-slate-700">Upload File<input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(event) => { const file = event.target.files?.[0] || null; if (file && file.size > 10 * 1024 * 1024) { setVehicleSubmitError("File is too large."); return; } setDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, file } : item)); }} className="mt-1 w-full text-xs" />{document.file && <span className="mt-1 block truncate text-[10px] text-emerald-600">✓ {document.file.name}</span>}</label></div>)}<button type="button" onClick={() => setDocuments((current) => [...current, { id: crypto.randomUUID(), type: "Inspection Certificate", number: "", expiry: "", file: null }])} className="text-xs font-bold text-pink-600">+ Add Another Document</button></div>}
+
+              {registrationStep === 4 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-slate-700">Last Service<input type="date" value={vehicleForm.lastService} onChange={(event) => updateVehicleField("lastService", event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /></label><label className="text-xs font-bold text-slate-700">Next Service<input readOnly value={addMonths(vehicleForm.lastService, 3)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px] font-normal text-slate-400">Automatically calculated from the last service date.</span></label><label className="text-xs font-bold text-slate-700">Location<input value={vehicleForm.location} onChange={(event) => updateVehicleField("location", event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /></label><label className="text-xs font-bold text-slate-700">Registration Expiry<input type="date" value={vehicleForm.registrationExpiry} onChange={(event) => updateVehicleField("registrationExpiry", event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px]">{documentStatus(vehicleForm.registrationExpiry)}</span></label><label className="text-xs font-bold text-slate-700">Insurance Expiry<input type="date" value={vehicleForm.insuranceExpiry} onChange={(event) => updateVehicleField("insuranceExpiry", event.target.value)} className="mt-1.5 w-full rounded-xl border border-pink-200 px-3 py-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px]">{documentStatus(vehicleForm.insuranceExpiry)}</span></label></div>}
+
+              {registrationStep === 5 && <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2"><p><b>Vehicle ID:</b> {vehicleForm.id}</p><p><b>Courier:</b> {couriers.find((courier) => courier.id === vehicleForm.courierId)?.name || "Not selected"}</p><p><b>Plate:</b> {normalizePlate(vehicleForm.plateNumber)}</p><p><b>Vehicle:</b> {vehicleForm.manufacturer} {vehicleForm.model}</p><p><b>Type:</b> {vehicleForm.vehicleType}</p><p><b>Year:</b> {vehicleForm.year}</p><p><b>Capacity:</b> {vehicleForm.capacityKg} kg</p><p><b>Fuel:</b> {vehicleForm.fuelType} · {vehicleForm.fuelEfficiency} km/L</p><p><b>Status:</b> Available</p><p><b>Documents:</b> {documents.filter((document) => document.file).length} uploaded</p></div>}
+
+              {vehicleSubmitError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{vehicleSubmitError}</p>}
+              <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-4"><button type="button" onClick={() => registrationStep > 1 ? setRegistrationStep((step) => step - 1) : setShowAddVehicle(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">{registrationStep > 1 ? "Back" : "Cancel"}</button>{registrationStep < 5 ? <button type="button" onClick={() => setRegistrationStep((step) => step + 1)} className="rounded-full bg-pink-600 px-5 py-2 text-sm font-bold text-white hover:bg-pink-700">Next</button> : <button type="submit" disabled={vehicleSubmitting || plateStatus === "duplicate"} className="rounded-full bg-pink-600 px-5 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60">{vehicleSubmitting ? "Creating Vehicle..." : "Create Vehicle"}</button>}</div>
             </form>
           </div>
         )}

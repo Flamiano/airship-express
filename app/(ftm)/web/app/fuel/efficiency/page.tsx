@@ -3,58 +3,88 @@
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
-import { useState, useEffect } from "react";
-import { getDashboardSnapshot } from "../../lib/api";
-import { usePathname } from "next/navigation";
-import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from "recharts";
+import { useState, useEffect, useMemo } from "react";
+import { useParcelStore } from "../../lib/parcelStore";
+import { getFuelLogs } from "../../lib/api";
+import { SERVICE_AREA_CITIES, inferCityFromCoordinates } from "../../lib/serviceAreas";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from "recharts";
 const MS_DAY = 24 * 60 * 60 * 1000;
 
-type FuelLog = {
-  id?: string;
-  vehicleId?: string | null;
-  tripId?: string | null;
-  liters?: number | null;
-  cost?: number | null;
-  odometerReading?: number | null;
-  loggedAt?: string | null;
-  distanceKm?: number;
-  recovered?: number;
+type VrdsRecord = {
+  id: string;
+  date: Date;
+  city: string;
+  status: string;
+  courier?: string;
+  delivered: number;
+  total: number;
 };
 
-function getLogDate(log: FuelLog) {
-  return new Date(log.loggedAt || 0);
+function getRecordDate(value: string | undefined | null) {
+  const parsed = new Date(value || 0);
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 }
 
-function buildFuelLogs(snapshot: any): FuelLog[] {
-  const rawLogs: FuelLog[] = Array.isArray(snapshot?.fuelLogs) ? snapshot.fuelLogs : [];
-  const trips = Array.isArray(snapshot?.trips) ? snapshot.trips : [];
-  const sorted = rawLogs
-    .map((log: any) => ({
-      ...log,
-      vehicleId: log.vehicleId ?? log.vehicle_id ?? null,
-      tripId: log.tripId ?? log.trip_id ?? null,
-      liters: Number(log.liters ?? 0),
-      cost: Number(log.cost ?? 0),
-      odometerReading: log.odometerReading ?? log.odometer_reading,
-      loggedAt: log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? null,
-      recovered: Number(log.regen ?? log.recovered ?? 0),
-    }))
-    .filter((log) => Number.isFinite(log.liters) && log.liters > 0 && getLogDate(log).getTime() > 0)
-    .sort((a, b) => getLogDate(a).getTime() - getLogDate(b).getTime());
+function inferCityFromAddress(address: string, lat?: number | null, lng?: number | null) {
+  if (typeof lat === "number" && typeof lng === "number") {
+    const city = inferCityFromCoordinates(lat, lng);
+    if (city) return city;
+  }
 
-  const previousOdometer = new Map<string, number>();
-  return sorted.map((log) => {
-    const odometer = Number(log.odometerReading);
-    const vehicleId = String(log.vehicleId || "unknown");
-    const previous = previousOdometer.get(vehicleId);
-    const trip = trips.find((item: any) => String(item.id || item.trip_id || "") === String(log.tripId || ""));
-    const tripDistance = Number(trip?.distance_km ?? trip?.distanceKm ?? 0);
-    const distanceKm = Number.isFinite(odometer) && previous != null && odometer >= previous
-      ? odometer - previous
-      : tripDistance;
-    if (Number.isFinite(odometer)) previousOdometer.set(vehicleId, odometer);
-    return { ...log, distanceKm: Number.isFinite(distanceKm) ? distanceKm : 0 };
-  });
+  const head = (address || "").toLowerCase();
+  for (const city of SERVICE_AREA_CITIES) {
+    if (head.includes(city.toLowerCase())) return city;
+  }
+
+  return "Unknown";
+}
+
+function buildVrdsRecords(parcels: any[], bookings: any[]) {
+  const records: VrdsRecord[] = [];
+  const parcelBucket = new Map<string, VrdsRecord>();
+
+  for (const parcel of parcels) {
+    const city = inferCityFromAddress(parcel.destinationAddress || "", parcel.destLat, parcel.destLng);
+    const date = getRecordDate(parcel.receivedAt || "");
+    const key = `${city}-${date.toISOString().slice(0, 10)}`;
+    const entry = parcelBucket.get(key) ?? {
+      id: key,
+      date,
+      city,
+      status: String(parcel.status || "RECEIVED"),
+      courier: parcel.courier || "Unassigned",
+      delivered: 0,
+      total: 0,
+    };
+
+    entry.total += 1;
+    if (String(parcel.status || "").toUpperCase() === "DELIVERED") entry.delivered += 1;
+    parcelBucket.set(key, entry);
+  }
+
+  for (const booking of bookings) {
+    const city = inferCityFromAddress(booking.routeLabel || booking.route_label || "", booking.pickupLatitude, booking.pickupLongitude);
+    const date = getRecordDate(booking.createdAt || booking.created_at || booking.updatedAt || booking.updated_at);
+    const key = `${city}-${date.toISOString().slice(0, 10)}-booking`;
+    const entry = parcelBucket.get(key) ?? {
+      id: key,
+      date,
+      city,
+      status: String(booking.status || "PENDING"),
+      courier: booking.courier || "Unassigned",
+      delivered: 0,
+      total: 0,
+    };
+    entry.total += 1;
+    if (String(booking.status || "").toUpperCase() === "DISPATCHED") entry.delivered += 1;
+    parcelBucket.set(key, entry);
+  }
+
+  for (const entry of parcelBucket.values()) {
+    records.push(entry);
+  }
+
+  return records.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 function getRangeStart(range: "Last 7 Days" | "Last 30 Days" | "This Month") {
@@ -96,112 +126,155 @@ export default function FuelEfficiencyPage() {
   const [selectedVehicleClass, setSelectedVehicleClass] = useState<string>("All Classes");
   const [selectedRegion, setSelectedRegion] = useState("All Regions");
   const [selectedRouteStatus, setSelectedRouteStatus] = useState("All States");
+  const [showMetricValues, setShowMetricValues] = useState(false);
+  const [fuelLogs, setFuelLogs] = useState<any[]>([]);
 
-  const [hasData, setHasData] = useState<boolean | null>(null);
-  const [snapshot, setSnapshot] = useState<any | null>(null);
+  const handleMetricToggle = () => setShowMetricValues((current) => !current);
+
+  useEffect(() => {
+    const handleMetricVisibilityShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        setShowMetricValues(true);
+      }
+      if (key === "h") {
+        event.preventDefault();
+        setShowMetricValues(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleMetricVisibilityShortcut);
+    return () => window.removeEventListener("keydown", handleMetricVisibilityShortcut);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        const dash = await getDashboardSnapshot();
-        const logs = dash.fuelLogs || [];
-        if (mounted) {
-          setHasData(Boolean(logs.length));
-          setSnapshot(dash);
-        }
-      } catch (e) {
-        console.warn('Failed to load fuel snapshot', e);
-        if (mounted) setHasData(false);
-      }
-    })();
+    getFuelLogs().then((logs) => {
+      if (mounted) setFuelLogs(Array.isArray(logs) ? logs : []);
+    }).catch(() => {
+      if (mounted) setFuelLogs([]);
+    });
     return () => { mounted = false; };
   }, []);
 
-  const fuelLogs = buildFuelLogs(snapshot);
+  const { parcels: vrdsParcels, bookings: vrdsBookings, drivers: vrdsDrivers, vehicles: vrdsVehicles } = useParcelStore();
   const rangeStart = getRangeStart(selectedRange);
-  const vehiclesById = new Map((snapshot?.vehicles || []).map((vehicle: any) => [String(vehicle.id), vehicle]));
-  const tripsById = new Map((snapshot?.trips || []).map((trip: any) => [String(trip.id || trip.trip_id), trip]));
-  const rangeLogs = fuelLogs.filter((log) => {
-    if (getLogDate(log).getTime() < rangeStart) return false;
-    const vehicle = vehiclesById.get(String(log.vehicleId || ""));
-    const trip = tripsById.get(String(log.tripId || ""));
-    if (selectedVehicleClass !== "All Classes" && getVehicleClass(vehicle) !== selectedVehicleClass) return false;
-    if (selectedRouteStatus !== "All States") {
-      const status = String(trip?.status || "").toLowerCase();
-      const matchesStatus = selectedRouteStatus === "Active / En Route (>20% SOC)"
-        ? /active|transit|dispatch|assigned|scheduled|moving|en route|delayed|late/.test(status)
-        : selectedRouteStatus === "Charging Hub"
-          ? /charg|fuel|refuel/.test(status) || /charg|fuel|refuel/.test(getRouteText(trip))
-          : selectedRouteStatus === "Low Battery Flagged"
-            ? Number(vehicle?.fuel_level ?? vehicle?.fuelLevel ?? 100) <= 20
-            : true;
-      if (!matchesStatus) return false;
-    }
-    if (selectedRegion !== "All Regions") {
-      const routeText = getRouteText({ ...trip, ...vehicle });
-      const regionText = selectedRegion === "Zone A - Urban Core" ? "manila makati pasig taguig quezon" : selectedRegion === "Zone B - West Suburbs" ? "cavite las pinas paranaque muntinlupa" : "caloocan valenzuela bulacan north";
-      if (!regionText.split(" ").some((region) => routeText.includes(region))) return false;
+  const vrdsRecords = useMemo(
+    () => buildVrdsRecords(vrdsParcels, vrdsBookings),
+    [vrdsParcels, vrdsBookings]
+  );
+
+  const vehiclesById = useMemo(
+    () => new Map((vrdsVehicles || []).map((vehicle: any) => [String(vehicle.id), vehicle])),
+    [vrdsVehicles]
+  );
+
+  const rangeRecords = useMemo(
+    () => vrdsRecords.filter((record) => record.date.getTime() >= rangeStart),
+    [vrdsRecords, rangeStart]
+  );
+
+  const rangeLogs = useMemo(() => {
+    const next = vrdsParcels.filter((parcel: any) => {
+      const parcelDate = getRecordDate(parcel.receivedAt || "");
+      if (parcelDate.getTime() < rangeStart) return false;
+      if (selectedVehicleClass !== "All Classes") {
+        const vehicle = vehiclesById.get(String(parcel.vehicleId || parcel.vehicle_id || ""));
+        if (getVehicleClass(vehicle) !== selectedVehicleClass) return false;
+      }
+      if (selectedRegion !== "All Regions") {
+        const city = inferCityFromAddress(parcel.destinationAddress || "", parcel.destLat, parcel.destLng);
+        const regionText = selectedRegion === "Zone A - Urban Core" ? ["Manila", "Makati", "Pasig", "Taguig", "Quezon City"] : selectedRegion === "Zone B - West Suburbs" ? ["Parañaque", "Pasay", "Mandaluyong", "San Juan"] : ["Caloocan", "Valenzuela", "Quezon City", "Marikina"];
+        if (!regionText.includes(city)) return false;
+      }
+      return true;
+    });
+    return next;
+  }, [vrdsParcels, rangeStart, selectedVehicleClass, selectedRegion, vehiclesById]);
+
+  const rangeFuelLogs = useMemo(() => fuelLogs.filter((log: any) => {
+    const timestamp = getRecordDate(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at).getTime();
+    if (timestamp < rangeStart) return false;
+    if (selectedVehicleClass !== "All Classes") {
+      const vehicle = vehiclesById.get(String(log.vehicleId ?? log.vehicle_id ?? ""));
+      if (getVehicleClass(vehicle) !== selectedVehicleClass) return false;
     }
     return true;
-  });
+  }), [fuelLogs, rangeStart, selectedVehicleClass, vehiclesById]);
 
   const efficiencyTrendDataView = (() => {
     const days = selectedMode === "Daily" ? (selectedRange === "Last 7 Days" ? 7 : 10) : 5;
-    const results: { date: string; efficiency: number; regen: number }[] = [];
+    const results: { date: string; efficiency: number; throughput: number }[] = [];
     const now = new Date();
+
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now);
       if (selectedMode === "Daily") d.setDate(now.getDate() - i);
       else d.setDate(now.getDate() - i * 7);
-      results.push({ date: d.toISOString().slice(0, 10), efficiency: 0, regen: 0 });
+      results.push({ date: d.toISOString().slice(0, 10), efficiency: 0, throughput: 0 });
     }
-    if (!rangeLogs.length) return results.map((item) => ({ ...item, date: new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) }));
-    for (const r of results) {
-      const bucketDate = new Date(r.date);
-      const bucketLogs = rangeLogs.filter((log) => {
-        const date = getLogDate(log);
+
+    if (!rangeFuelLogs.length) {
+      return results.map((item) => ({
+        ...item,
+        date: new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      }));
+    }
+
+    for (const result of results) {
+      const bucketDate = new Date(result.date);
+      const bucketLogs = rangeFuelLogs.filter((log: any) => {
+        const parcelDate = getRecordDate(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at);
         return selectedMode === "Daily"
-          ? date.toDateString() === bucketDate.toDateString()
-          : Math.floor((bucketDate.getTime() - date.getTime()) / (7 * MS_DAY)) === 0;
+          ? parcelDate.toDateString() === bucketDate.toDateString()
+          : Math.floor((bucketDate.getTime() - parcelDate.getTime()) / (7 * MS_DAY)) === 0;
       });
-      const liters = bucketLogs.reduce((sum, log) => sum + Number(log.liters || 0), 0);
-      const distance = bucketLogs.reduce((sum, log) => sum + Number(log.distanceKm || 0), 0);
-      r.efficiency = liters > 0 && distance > 0 ? Number((distance / liters).toFixed(2)) : 0;
+      const liters = bucketLogs.reduce((sum: number, log: any) => sum + Number(log.liters ?? log.volume ?? 0), 0);
+      const distance = bucketLogs.reduce((sum: number, log: any) => sum + Number(log.distance ?? log.distance_km ?? 0), 0);
+      result.throughput = bucketLogs.length;
+      result.efficiency = liters > 0 ? Number((distance / liters).toFixed(1)) : 0;
     }
-    return results.map((item) => ({ ...item, date: new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) }));
+
+    return results.map((item) => ({
+      ...item,
+      date: new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    }));
   })();
 
   const hourlyLoadDataView = (() => {
     const slots = ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00"];
     const result = slots.map((s) => ({ hour: s, load: 0 }));
     if (!rangeLogs.length) return result;
-    const totalVehicles = Math.max(1, (snapshot?.vehicles || []).length);
-    for (const l of rangeLogs) {
-      const h = getLogDate(l).getHours();
+
+    for (const parcel of rangeLogs) {
+      const parcelDate = getRecordDate(parcel.receivedAt || "");
+      const h = parcelDate.getHours();
       const idx = Math.floor((h - 6) / 3);
       const place = Math.max(0, Math.min(result.length - 1, idx));
       result[place].load += 1;
     }
-    return result.map((r) => ({ hour: r.hour, load: Math.min(100, Math.round((r.load / totalVehicles) * 100)) }));
+
+    const maxLoad = Math.max(...result.map((r) => r.load), 1);
+    return result.map((r) => ({ hour: r.hour, load: Math.round((r.load / maxLoad) * 100) }));
   })();
 
-  // Helper: percent change
   function percentChange(current: number, previous: number) {
     if (!isFinite(previous) || previous === 0) return "—";
     const pct = ((current - previous) / Math.abs(previous)) * 100;
     return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
   }
 
-  // KPI: average efficiency (distance / liters)
   const avgEfficiency = (() => {
-    const totalLiters = rangeLogs.reduce((s, l) => s + Number(l.liters || 0), 0);
-    const totalDistance = rangeLogs.reduce((s, l) => s + Number(l.distanceKm || 0), 0);
-    if (totalLiters <= 0 || totalDistance <= 0) return "—";
-    return (totalDistance / totalLiters).toFixed(2);
+    const liters = rangeFuelLogs.reduce((sum: number, log: any) => sum + Number(log.liters ?? log.volume ?? 0), 0);
+    const distance = rangeFuelLogs.reduce((sum: number, log: any) => sum + Number(log.distance ?? log.distance_km ?? 0), 0);
+    if (liters <= 0 || distance <= 0) return "—";
+    const value = (distance / liters).toFixed(1);
+    return showMetricValues ? `${value}%` : "••••";
   })();
 
-  // Compute 30-day change vs previous 30-day window
   const now = Date.now();
   const windowDays = 30;
   const periodEnd = now;
@@ -209,87 +282,118 @@ export default function FuelEfficiencyPage() {
   const prevPeriodStart = periodStart - windowDays * MS_DAY;
   const prevPeriodEnd = periodStart - 1;
 
-  function sumRange(startMs: number, endMs: number, field: "liters" | "distanceKm") {
-    return fuelLogs.reduce((s, log) => {
-      const ts = getLogDate(log).getTime();
-      if (ts >= startMs && ts <= endMs) return s + Number(log[field] || 0);
-      return s;
-    }, 0);
+  const currentLiters = fuelLogs.filter((log: any) => {
+    const ts = getRecordDate(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at).getTime();
+    return ts >= periodStart && ts <= periodEnd;
+  }).reduce((sum: number, log: any) => sum + Number(log.liters ?? log.volume ?? 0), 0);
+
+  const previousLiters = fuelLogs.filter((log: any) => {
+    const ts = getRecordDate(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at).getTime();
+    return ts >= prevPeriodStart && ts <= prevPeriodEnd;
+  }).reduce((sum: number, log: any) => sum + Number(log.liters ?? log.volume ?? 0), 0);
+
+  function getDeliveredShare(startMs: number, endMs: number) {
+    const total = vrdsParcels.filter((parcel: any) => {
+      const ts = getRecordDate(parcel.receivedAt || "").getTime();
+      return ts >= startMs && ts <= endMs;
+    }).length;
+    const delivered = vrdsParcels.filter((parcel: any) => {
+      const ts = getRecordDate(parcel.receivedAt || "").getTime();
+      return ts >= startMs && ts <= endMs && String(parcel.status || "").toUpperCase() === "DELIVERED";
+    }).length;
+    return total > 0 ? delivered / total : 0;
   }
 
-  const currentLiters = hasData && snapshot ? sumRange(periodStart, periodEnd, "liters") : 0;
-  const previousLiters = hasData && snapshot ? sumRange(prevPeriodStart, prevPeriodEnd, "liters") : 0;
+  const currentShare = getDeliveredShare(periodStart, periodEnd);
+  const previousShare = getDeliveredShare(prevPeriodStart, prevPeriodEnd);
   const efficiencyChange = (() => {
-    if (!hasData || !snapshot) return "—";
-    // compute efficiency as distance/liters for windows
-    const currDist = sumRange(periodStart, periodEnd, "distanceKm");
-    const prevDist = sumRange(prevPeriodStart, prevPeriodEnd, "distanceKm");
-    const currEff = currentLiters > 0 ? currDist / currentLiters : 0;
-    const prevEff = previousLiters > 0 ? prevDist / previousLiters : 0;
-    return prevEff > 0 ? percentChange(currEff, prevEff) : "—";
+    return previousShare > 0 ? percentChange(currentShare * 100, previousShare * 100) : "—";
   })();
 
-  // Total fuel YTD
   const totalFuelYTD = (() => {
-    if (!hasData || !snapshot) return "—";
     const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime();
-    const total = sumRange(yearStart, Date.now(), "liters");
-    return `${Math.round(total).toLocaleString()} L`;
+    const total = fuelLogs.filter((log: any) => {
+      const ts = getRecordDate(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at).getTime();
+      return ts >= yearStart && ts <= Date.now();
+    }).reduce((sum: number, log: any) => sum + Number(log.liters ?? log.volume ?? 0), 0);
+    return `${total.toLocaleString()} L`;
   })();
 
-  // Regen groups (group by vehicle type share of total fuel)
   const regenRoutesView = (() => {
-    if (!rangeLogs.length) return [] as any[];
-    const vehicles = snapshot.vehicles || [];
-    const logs = rangeLogs;
-    const totalsByType: Record<string, number> = {};
-    for (const l of logs) {
-      const v = vehicles.find((vv: any) => vv.id === (l.vehicleId ?? l.vehicle_id));
-      const t = String(v?.vehicleType ?? v?.vehicle_type ?? "Other").toLowerCase();
-      const key = /ev|electric/.test(t) ? "EV" : /hybrid/.test(t) ? "Hybrid" : /truck|rig|van/.test(t) ? "Heavy" : "Other";
-      totalsByType[key] = (totalsByType[key] || 0) + Number(l.liters ?? l.amount ?? 0);
+    const totalsByCity: Record<string, number> = {};
+    for (const parcel of rangeLogs) {
+      const city = inferCityFromAddress(parcel.destinationAddress || "", parcel.destLat, parcel.destLng);
+      totalsByCity[city] = (totalsByCity[city] || 0) + 1;
     }
-    const entries = Object.entries(totalsByType).map(([label, value]) => ({ label, value }));
-    const total = entries.reduce((s, e) => s + e.value, 0) || 1;
-    const colors = ["#b80049", "#ec4899", "#f43f5e", "#fb7185"];
-    return entries.slice(0, 3).map((e, i) => ({ label: e.label === "Heavy" ? "Highway Routes (Steady)" : e.label === "EV" ? "Urban Routes (Stop-and-Go)" : e.label === "Hybrid" ? "Suburban Routes (Mixed)" : e.label, pct: Math.round((e.value / total) * 100), opacity: i === 0 ? "" : i === 1 ? "opacity-80" : "opacity-50" }));
+
+    const entries = Object.entries(totalsByCity).map(([label, value]) => ({ label, value }));
+    const total = entries.reduce((sum, entry) => sum + entry.value, 0) || 1;
+    return entries.slice(0, 3).map((entry, index) => ({
+      label: entry.label,
+      pct: Math.round((entry.value / total) * 100),
+      opacity: index === 0 ? "" : index === 1 ? "opacity-80" : "opacity-50",
+    }));
   })();
 
-  // Route recovery percent (uses `regen` / `recovered` fields if present)
   const routeRecoveryPct = (() => {
-    const logs = rangeLogs;
-    const recovered = logs.reduce((s, l) => s + Number(l.recovered || 0), 0);
-    if (!logs.some((log) => log.recovered > 0)) return null;
-    const total = logs.reduce((s, l) => s + Number(l.liters || 0), 0) || 1;
-    const pct = Math.round((recovered / total) * 100);
-    return Math.min(100, Math.max(0, pct));
+    const total = vrdsParcels.length || 1;
+    const delivered = vrdsParcels.filter((parcel: any) => String(parcel.status || "").toUpperCase() === "DELIVERED").length;
+    return Math.round((delivered / total) * 100);
   })();
 
   const numRoutes = (() => {
-    if (!snapshot) return "—";
-    const trips = (snapshot.trips || []).filter((trip: any) => {
-      const timestamp = new Date(trip.updated_at || trip.created_at || 0).getTime();
-      return timestamp >= rangeStart;
+    const active = vrdsBookings.filter((booking: any) => {
+      const ts = getRecordDate(booking.createdAt || booking.created_at || booking.updatedAt || booking.updated_at).getTime();
+      return ts >= rangeStart;
     });
-    return (trips.length || 0) as number | string;
+    return active.length || 0;
   })();
 
-  // Leaderboard by vehicle (efficiency = distance / liters)
   const leaderboardItems = (() => {
-    if (!rangeLogs.length) return [] as any[];
-    const logs = rangeLogs;
-    const vehicles = snapshot.vehicles || [];
-    const byVehicle: Record<string, { id: string; name: string; liters: number; distance: number }> = {};
-    for (const l of logs) {
-      const vid = l.vehicleId ?? l.vehicle_id ?? "unknown";
-      const vehicle = vehicles.find((item: any) => String(item.id) === String(vid));
-      byVehicle[vid] = byVehicle[vid] || { id: vid, name: vehicle?.plate_number || vehicle?.plate || `Unit ${vid}`, liters: 0, distance: 0 };
-      byVehicle[vid].liters += Number(l.liters ?? l.amount ?? 0);
-      byVehicle[vid].distance += Number(l.distanceKm || 0);
+    const byKey: Record<string, { id: string; name: string; total: number; delivered: number }> = {};
+
+    for (const parcel of rangeLogs) {
+      const key = String(parcel.courier || "Unassigned");
+      const courier = key;
+      byKey[key] = byKey[key] || { id: key, name: courier, total: 0, delivered: 0 };
+      byKey[key].total += 1;
+      if (String(parcel.status || "").toUpperCase() === "DELIVERED") byKey[key].delivered += 1;
     }
-    const arr = Object.values(byVehicle).map((v) => ({ ...v, efficiency: v.liters > 0 ? Number((v.distance / v.liters).toFixed(2)) : 0 }));
-    arr.sort((a, b) => (b.efficiency || 0) - (a.efficiency || 0));
-    return arr.slice(0, 5).map((v, idx) => ({ rank: idx + 1, name: v.name, route: v.id, value: `${v.efficiency}` }));
+
+    const arr = Object.values(byKey)
+      .map((value) => ({
+        ...value,
+        efficiency: value.total > 0 ? Number(((value.delivered / value.total) * 100).toFixed(1)) : 0,
+      }))
+      .sort((a, b) => (b.efficiency || 0) - (a.efficiency || 0));
+
+    return arr.slice(0, 5).map((entry, idx) => ({
+      rank: idx + 1,
+      name: entry.name,
+      route: `${entry.total} parcels`,
+      value: `${entry.efficiency}%`,
+    }));
+  })();
+
+  const classEfficiencyChart = (() => {
+    const stats = new Map<string, { liters: number; distance: number; label: string }>();
+
+    for (const log of rangeFuelLogs) {
+      const vehicle = vehiclesById.get(String(log.vehicleId ?? log.vehicle_id ?? ""));
+      const label = getVehicleClass(vehicle);
+      const current = stats.get(label) ?? { liters: 0, distance: 0, label };
+      current.liters += Number(log.liters ?? log.volume ?? 0);
+      current.distance += Number(log.distance ?? log.distance_km ?? 0);
+      stats.set(label, current);
+    }
+
+    return Array.from(stats.values())
+      .map((entry) => ({
+        label: entry.label,
+        efficiency: entry.liters > 0 ? Number((entry.distance / entry.liters).toFixed(1)) : 0,
+      }))
+      .sort((a, b) => b.efficiency - a.efficiency)
+      .slice(0, 4);
   })();
 
   return (
@@ -406,16 +510,21 @@ export default function FuelEfficiencyPage() {
                     <p className="text-xs text-[#5b6b79]">Tracking fuel performance across active delivery routes</p>
                   </div>
                 </div>
-                <div className="flex items-baseline gap-3 mt-4">
-                  <span className="text-4xl font-extrabold text-[#141d23]">{avgEfficiency !== "—" ? avgEfficiency : "—"}</span>
+                <button
+                  type="button"
+                  onClick={handleMetricToggle}
+                  title={showMetricValues ? "Hide value" : "Show value"}
+                  className="mt-4 flex items-center gap-3 text-left"
+                >
+                  <span className="text-4xl font-extrabold text-[#141d23] tracking-tight">
+                    {avgEfficiency !== "—" ? (showMetricValues ? avgEfficiency : "••••") : "—"}
+                  </span>
                   <span className="text-sm font-medium text-[#5b6b79]">Avg. km/L</span>
-                                  <span className="text-sm font-medium text-[#5b6b79]">Avg. km/L</span>
-                                      formatter={(value: any) => [`${value} km/L`, "Efficiency"]}
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full flex items-center border border-emerald-200">
                     <Icon name="trending_up" className="text-[14px] mr-1" />
                     {efficiencyChange}
                   </span>
-                </div>
+                </button>
               </div>
 
               <div className="flex bg-[#fff7fc] p-1 rounded-xl border border-[#ec2188]/20">
@@ -478,14 +587,14 @@ export default function FuelEfficiencyPage() {
                   </div>
                 </div>
                 <p className="text-sm text-[#5b6b79] leading-relaxed mb-6">
-                  {rangeLogs.length > 0 && avgEfficiency !== "—"
-                    ? `Recorded fuel usage in the selected period averages ${avgEfficiency} km/L across ${rangeLogs.length} refueling logs.`
+                  {rangeFuelLogs.length > 0 && avgEfficiency !== "—"
+                    ? `Recorded fuel usage in the selected period averages ${avgEfficiency} km/L across ${rangeFuelLogs.length} refueling logs.`
                     : "There is not enough odometer or trip-distance data in the selected period to calculate a route efficiency recommendation."}
                 </p>
                 <div className="bg-[#fff7fc] p-4 rounded-xl border border-[#ec2188]/20 mb-5">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-semibold text-[#5b6b79]">Fuel logged in selected period</span>
-                    <span className="text-sm font-bold text-[#b80049]">{Math.round(currentLiters || 0)} L</span>
+                    <span className="text-xs font-semibold text-[#5b6b79]">Parcels in selected period</span>
+                    <span className="text-sm font-bold text-[#b80049]">{Math.round(currentLiters || 0)}</span>
                   </div>
                   <div className="w-full bg-[#f0e2ec] rounded-full h-2 overflow-hidden">
                     <div className="bg-[#b80049] h-2 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.abs(currentLiters - previousLiters) / Math.max(1, previousLiters) * 100)}%` }} />
@@ -508,7 +617,12 @@ export default function FuelEfficiencyPage() {
               )}
             </div>
 
-            <div className="bg-gradient-to-br from-[#b80049] to-[#ec2188] rounded-2xl p-6 shadow-md text-white flex flex-col justify-between relative overflow-hidden">
+            <button
+              type="button"
+              onClick={handleMetricToggle}
+              title={showMetricValues ? "Hide value" : "Show value"}
+              className="bg-gradient-to-br from-[#b80049] to-[#ec2188] rounded-2xl p-6 shadow-md text-white flex flex-col justify-between relative overflow-hidden text-left"
+            >
               <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none" />
               <div className="flex justify-between items-start relative z-10">
                 <span className="text-xs font-semibold uppercase tracking-wider opacity-90">Total Fuel Used YTD</span>
@@ -516,17 +630,17 @@ export default function FuelEfficiencyPage() {
                   <Icon name="eco" className="text-white text-lg" />
                 </span>
               </div>
-                <div className="mt-6 relative z-10">
-                <div className="text-3xl font-black tracking-tight">{totalFuelYTD}</div>
+              <div className="mt-6 relative z-10">
+                <div className="text-3xl font-black tracking-tight">{totalFuelYTD === "—" ? "—" : showMetricValues ? totalFuelYTD : "••••"}</div>
                 <div className="text-xs opacity-85 mt-1">Total fuel used YTD</div>
               </div>
-            </div>
+            </button>
           </section>
 
         </div>
 
         {/* Secondary Row: Live Peak Load Chart & Energy Recovery & Leaderboard */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           {/* New Added Feature Chart: Hourly Thermal / HVAC Load Curve */}
           <section className="bg-white rounded-2xl border border-[#ec2188]/15 p-6 shadow-sm flex flex-col justify-between">
@@ -539,7 +653,6 @@ export default function FuelEfficiencyPage() {
                   <h3 className="text-base font-bold text-[#141d23]">Peak Route Load Profile</h3>
                 </div>
                 <span className="text-xs bg-[#fff7fc] text-[#5b6b79] px-2.5 py-1 rounded-full border border-[#ec2188]/20">{selectedRange}</span>
-                              <span className="text-xs bg-[#fff7fc] text-[#5b6b79] px-2.5 py-1 rounded-full border border-[#ec2188]/20">{selectedRange}</span>
               </div>
               <p className="text-xs text-[#5b6b79] mb-4">Active route load utilization across urban zone nodes.</p>
             </div>
@@ -555,6 +668,34 @@ export default function FuelEfficiencyPage() {
                     formatter={(val: any) => [`${val}% Capacity`, "Load"]}
                   />
                   <Bar dataKey="load" fill="#b80049" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+
+          {/* Added chart: Vehicle Class Efficiency */}
+          <section className="bg-white rounded-2xl border border-[#ec2188]/15 p-6 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-[#fff7fc] text-[#b80049] border border-[#ec2188]/20">
+                  <Icon name="bar_chart" className="text-lg" />
+                </span>
+                <h3 className="text-base font-bold text-[#141d23]">Vehicle Class Efficiency</h3>
+              </div>
+              <span className="text-[10px] font-semibold uppercase tracking-wider bg-[#fff7fc] text-[#5b6b79] px-2 py-1 rounded-full border border-[#ec2188]/20">km/L</span>
+            </div>
+
+            <div className="w-full h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={classEfficiencyChart} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0e2ec" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: "#5b6b79", fontSize: 10 }} axisLine={{ stroke: "#f0e2ec" }} tickLine={false} />
+                  <YAxis tick={{ fill: "#5b6b79", fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#ffffff", borderRadius: 10, border: "1px solid #ec2188/30" }}
+                    formatter={(value: any) => [`${value} km/L`, "Efficiency"]}
+                  />
+                  <Bar dataKey="efficiency" fill="#f59e0b" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -679,7 +820,6 @@ export default function FuelEfficiencyPage() {
                     <div className="text-right">
                       <div className="text-sm font-extrabold text-[#b80049]">{l.value}</div>
                       <div className="text-[10px] text-[#5b6b79]">km/L</div>
-                                          <div className="text-[10px] text-[#5b6b79]">km/L</div>
                     </div>
                   </div>
                 ))}
@@ -692,9 +832,8 @@ export default function FuelEfficiencyPage() {
                 <span className="text-xs font-bold text-[#141d23]">Your Route Average</span>
               </div>
               <div className="text-right">
-                <span className="text-sm font-black text-[#141d23]">{avgEfficiency !== "—" ? avgEfficiency : "—"}</span>
+                <span className="text-sm font-black text-[#141d23]">{avgEfficiency !== "—" ? (showMetricValues ? avgEfficiency : "••••") : "—"}</span>
                 <span className="text-[10px] text-[#5b6b79] ml-1">km/L</span>
-                              <span className="text-[10px] text-[#5b6b79] ml-1">km/L</span>
               </div>
             </div>
           </section>

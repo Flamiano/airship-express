@@ -8,6 +8,8 @@ import { getDashboardSnapshot } from "../../lib/api";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 // dailySpendData is computed from snapshot.fuelLogs when available
+const formatPeso = (value: number, fractionDigits = 2) =>
+  `₱${Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })}`;
 
 export default function FuelRefuelingLogPage() {
   const [dateSortDirection, setDateSortDirection] = useState<"asc" | "desc">("desc");
@@ -18,6 +20,26 @@ export default function FuelRefuelingLogPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [snapshot, setSnapshot] = useState<any | null>(null);
+  const [showMetricValues, setShowMetricValues] = useState(false);
+
+  useEffect(() => {
+    const handleMetricVisibilityShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        setShowMetricValues(true);
+      }
+      if (key === "h") {
+        event.preventDefault();
+        setShowMetricValues(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleMetricVisibilityShortcut);
+    return () => window.removeEventListener("keydown", handleMetricVisibilityShortcut);
+  }, []);
 
   const [hasData, setHasData] = useState<boolean | null>(null);
 
@@ -39,10 +61,52 @@ export default function FuelRefuelingLogPage() {
     return () => { mounted = false; };
   }, []);
 
-  const rowsView = useMemo(() => {
+  const filteredFuelLogs = useMemo(() => {
     if (!hasData || !snapshot) return [] as any[];
+
+    const logs = (snapshot.fuelLogs || []) as any[];
     const vehicles = snapshot.vehicles || [];
-    return (snapshot.fuelLogs || []).map((log: any) => {
+
+    const getFuelType = (log: any) => {
+      const vehicle = vehicles.find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
+      const type = String(vehicle?.vehicle_type ?? vehicle?.vehicleType ?? "").toLowerCase();
+      if (/ev|electric/.test(type)) return "Electric";
+      if (/hydrogen/.test(type)) return "Hydrogen";
+      return "Diesel";
+    };
+
+    const normalizedLogs = logs.filter((log) => {
+      const dateValue = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
+      if (Number.isNaN(dateValue.getTime())) return false;
+
+      const now = new Date();
+      const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+      if (dateRangeFilter === "Last 7 Days") {
+        if (dateValue < daysAgo(7)) return false;
+      }
+
+      if (dateRangeFilter === "Last 30 Days") {
+        if (dateValue < daysAgo(30)) return false;
+      }
+
+      if (dateRangeFilter === "This Month") {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        if (dateValue < startOfMonth) return false;
+      }
+
+      if (fuelFilter !== "All Fuel Types" && getFuelType(log) !== fuelFilter) return false;
+
+      return true;
+    });
+
+    return normalizedLogs;
+  }, [hasData, snapshot, fuelFilter, dateRangeFilter]);
+
+  const rowsView = useMemo(() => {
+    if (!filteredFuelLogs.length) return [] as any[];
+    const vehicles = snapshot?.vehicles || [];
+    return filteredFuelLogs.map((log: any) => {
       const dateObj = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
       const vehicle = vehicles.find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
       const vtype = String(vehicle?.vehicle_type ?? vehicle?.vehicleType ?? "").toLowerCase();
@@ -54,12 +118,12 @@ export default function FuelRefuelingLogPage() {
         vehicle: vehicle?.plateNumber ?? vehicle?.plate_number ?? vehicle?.id ?? String(log.vehicleId ?? log.vehicle_id ?? "-").slice(0, 8),
         fuel: fuelType,
         volume: `${Math.round(Number(log.liters ?? log.amount ?? 0) || 0)} ${unit}`,
-        cost: log.cost ? `$${Number(log.cost).toFixed(2)}` : "—",
+        cost: log.cost ? formatPeso(Number(log.cost)) : "—",
         station: log.station ?? "—",
         status: "done",
       };
     });
-  }, [hasData, snapshot]);
+  }, [filteredFuelLogs, snapshot]);
 
   const sortedRows = useMemo(() => {
     const direction = dateSortDirection === "asc" ? 1 : -1;
@@ -75,9 +139,8 @@ export default function FuelRefuelingLogPage() {
   const dailySpendDataView = (() => {
     const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const map: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
-    if (!hasData || !snapshot) return labels.map((d) => ({ day: d, spend: 0 }));
-    const logs = snapshot.fuelLogs || [];
-    for (const l of logs) {
+    if (!filteredFuelLogs.length) return labels.map((d) => ({ day: d, spend: 0 }));
+    for (const l of filteredFuelLogs) {
       const date = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? Date.now());
       const day = date.toLocaleDateString(undefined, { weekday: 'short' });
       const cost = Number(l.cost ?? 0) || 0;
@@ -86,37 +149,138 @@ export default function FuelRefuelingLogPage() {
     return labels.map((d) => ({ day: d, spend: Math.round(map[d] || 0) }));
   })();
 
-  const totalTransactions = (() => {
-    if (!hasData || !snapshot) return 0;
-    return (snapshot.fuelLogs || []).length || 0;
+  const fuelMixDataView = (() => {
+    const mix = { Electric: 0, Diesel: 0, Hydrogen: 0 };
+    if (!filteredFuelLogs.length) {
+      return Object.entries(mix).map(([name, value]) => ({ name, value }));
+    }
+
+    const vehicles = snapshot?.vehicles || [];
+    for (const log of filteredFuelLogs) {
+      const vehicle = vehicles.find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
+      const vtype = String(vehicle?.vehicle_type ?? vehicle?.vehicleType ?? "").toLowerCase();
+      const fuelType: keyof typeof mix = /ev|electric/.test(vtype)
+        ? "Electric"
+        : /hydrogen/.test(vtype)
+          ? "Hydrogen"
+          : "Diesel";
+      mix[fuelType] += Number(log.cost ?? 0) || 0;
+    }
+
+    return Object.entries(mix).map(([name, value]) => ({ name, value }));
   })();
 
-  const avgDispatchCost = (() => {
-    if (!hasData || !snapshot) return "—";
-    const logs = snapshot.fuelLogs || [];
-    const costs = logs.map((l: any) => Number(l.cost ?? 0)).filter((c: number) => c > 0);
-    if (!costs.length) return "—";
-    const avg = costs.reduce((s: number, c: number) => s + c, 0) / costs.length;
-    return `$${avg.toFixed(2)}`;
-  })();
+  const metricSnapshot = useMemo(() => {
+    if (!hasData || !snapshot) {
+      return {
+        totalTransactions: 0,
+        totalTransactionsDelta: 0,
+        avgDispatchCost: 0,
+        avgDispatchCostDelta: 0,
+        totalSpendMTD: 0,
+        totalSpendMTDDelta: 0,
+      };
+    }
 
-  const totalSpendMTD = (() => {
-    if (!hasData || !snapshot) return "—";
+    const logs = filteredFuelLogs as any[];
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const logs = snapshot.fuelLogs || [];
-    const total = logs.reduce((s: number, l: any) => {
-      const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
-      if (ts >= start) return s + (Number(l.cost ?? 0) || 0);
-      return s;
-    }, 0);
-    return `$${Math.round(total).toLocaleString()}`;
-  })();
+
+    const getRange = () => {
+      if (dateRangeFilter === "Last 7 Days") {
+        const currentStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const previousStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+        const previousEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000 - 1);
+        return { currentStart, previousStart, previousEnd };
+      }
+
+      if (dateRangeFilter === "Last 30 Days") {
+        const currentStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const previousStart = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        const previousEnd = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000 - 1);
+        return { currentStart, previousStart, previousEnd };
+      }
+
+      if (dateRangeFilter === "This Month") {
+        const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const previousStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const previousEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        return { currentStart, previousStart, previousEnd };
+      }
+
+      return {
+        currentStart: new Date(0),
+        previousStart: new Date(0),
+        previousEnd: new Date(0),
+      };
+    };
+
+    const { currentStart, previousStart, previousEnd } = getRange();
+
+    const currentLogs = logs.filter((log) => {
+      const time = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? 0).getTime();
+      return time >= currentStart.getTime() && time <= now.getTime();
+    });
+
+    const previousLogs = logs.filter((log) => {
+      const time = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? 0).getTime();
+      return time >= previousStart.getTime() && time <= previousEnd.getTime();
+    });
+
+    const totalTransactions = currentLogs.length;
+    const previousMonthCount = previousLogs.length;
+    const totalTransactionsDelta = previousMonthCount ? ((totalTransactions - previousMonthCount) / previousMonthCount) * 100 : 0;
+
+    const currentCosts = currentLogs.map((log) => Number(log.cost ?? 0)).filter((value) => value > 0);
+    const previousCosts = previousLogs.map((log) => Number(log.cost ?? 0)).filter((value) => value > 0);
+
+    const sum = (items: number[]) => items.reduce((acc, value) => acc + value, 0);
+    const avg = (items: number[]) => (items.length ? sum(items) / items.length : 0);
+
+    const currentAvg = avg(currentCosts);
+    const previousAvg = avg(previousCosts);
+    const avgDispatchCostDelta = previousAvg ? ((currentAvg - previousAvg) / previousAvg) * 100 : 0;
+
+    const totalSpendMTD = sum(currentCosts);
+    const previousSpendMTD = sum(previousCosts);
+    const totalSpendMTDDelta = previousSpendMTD ? ((totalSpendMTD - previousSpendMTD) / previousSpendMTD) * 100 : 0;
+
+    return {
+      totalTransactions,
+      totalTransactionsDelta,
+      avgDispatchCost: currentAvg,
+      avgDispatchCostDelta,
+      totalSpendMTD,
+      totalSpendMTDDelta,
+    };
+  }, [dateRangeFilter, filteredFuelLogs, hasData, snapshot]);
+
+  const totalTransactions = metricSnapshot.totalTransactions;
+  const totalTransactionsDelta = metricSnapshot.totalTransactionsDelta;
+  const avgDispatchCost = metricSnapshot.avgDispatchCost;
+  const avgDispatchCostDelta = metricSnapshot.avgDispatchCostDelta;
+  const totalSpendMTD = metricSnapshot.totalSpendMTD;
+  const totalSpendMTDDelta = metricSnapshot.totalSpendMTDDelta;
+
+  const formatTrend = (value: number) => {
+    const rounded = Math.abs(value).toFixed(1);
+    return `${value >= 0 ? "+" : "-"}${rounded}%`;
+  };
+
+  const getTrendMeta = (value: number) => {
+    if (Number.isNaN(value) || value === 0) return { direction: "flat", arrow: "→", tone: "neutral" as const, text: "0.0%" };
+    if (Math.abs(value) < 0.05) return { direction: "flat", arrow: "→", tone: "neutral" as const, text: "0.0%" };
+    if (value > 0) return { direction: "up", arrow: "↗", tone: "green" as const, text: formatTrend(value) };
+    return { direction: "down", arrow: "↘", tone: "rose" as const, text: formatTrend(value) };
+  };
+
+  const transactionsTrend = getTrendMeta(totalTransactionsDelta);
+  const avgCostTrend = getTrendMeta(avgDispatchCostDelta);
+  const spendTrend = getTrendMeta(totalSpendMTDDelta);
 
   const peakDayLabel = (() => {
-    if (!hasData || !dailySpendDataView) return "Peak Day: — ($0)";
+    if (!hasData || !dailySpendDataView) return "Peak Day: — (₱0)";
     const max = dailySpendDataView.reduce((best, d) => (d.spend > best.spend ? d : best), dailySpendDataView[0]);
-    return `Peak Day: ${max.day} ($${max.spend})`;
+    return `Peak Day: ${max.day} (${formatPeso(max.spend, 0)})`;
   })();
 
   const filteredRows = useMemo(() => {
@@ -190,93 +354,68 @@ export default function FuelRefuelingLogPage() {
           </div>
         )}
 
-        {/* Top KPI Cards & Bento Chart Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* KPI Stack (4 Columns) */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
-            
-            {/* KPI 1 */}
-            <div className="bg-white rounded-2xl p-6 border border-[#ec2188]/15 shadow-sm flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-[#5b6b79]">Total Monthly Transactions</span>
-                <div className="bg-[#b80049]/10 p-2.5 rounded-xl">
-                  <Icon name="receipt_long" className="text-[#b80049] text-[20px]" />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-[#141d23]">{hasData ? totalTransactions.toLocaleString() : "—"}</div>
-                <div className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full w-fit border border-emerald-200">
-                  <Icon name="trending_up" className="text-[14px]" />
-                  <span>+4.2% from last month</span>
-                </div>
-              </div>
-            </div>
+        {/* Top KPI Cards & Chart Section */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+          <div className="xl:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <MetricCard
+              label="Monthly transactions"
+              value={showMetricValues ? totalTransactions.toLocaleString() : "₱****"}
+              hiddenValue="₱****"
+              positiveText={transactionsTrend.text}
+              positiveTone={transactionsTrend.tone}
+              icon="receipt_long"
+              arrow={transactionsTrend.arrow}
+              onToggle={() => setShowMetricValues((current) => !current)}
+            />
 
-            {/* KPI 2 */}
-            <div className="bg-white rounded-2xl p-6 border border-[#ec2188]/15 shadow-sm flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-[#5b6b79]">Average Dispatch Fuel Cost</span>
-                <div className="bg-[#fff7fc] border border-[#ec2188]/20 p-2.5 rounded-xl">
-                  <Icon name="payments" className="text-[#b80049] text-[20px]" />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-[#141d23]">{avgDispatchCost}</div>
-                <div className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-[#5b6b79] bg-[#fff7fc] px-2.5 py-1 rounded-full w-fit border border-[#ec2188]/20">
-                  <Icon name="horizontal_rule" className="text-[14px]" />
-                  <span>Stable rolling average</span>
-                </div>
-              </div>
-            </div>
+            <MetricCard
+              label="Avg. dispatch fuel cost"
+              value={showMetricValues ? `₱${avgDispatchCost.toFixed(2)}` : "₱****"}
+              hiddenValue="₱****"
+              positiveText={avgCostTrend.text}
+              positiveTone={avgCostTrend.tone}
+              icon="payments"
+              arrow={avgCostTrend.arrow}
+              onToggle={() => setShowMetricValues((current) => !current)}
+            />
 
-            {/* KPI 3 */}
-            <div className="bg-white rounded-2xl p-6 border border-[#ec2188]/15 shadow-sm flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-[#5b6b79]">Total Route Fuel Spend (MTD)</span>
-                <div className="bg-[#b80049]/10 p-2.5 rounded-xl">
-                  <Icon name="account_balance_wallet" className="text-[#b80049] text-[20px]" />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-[#141d23]">{totalSpendMTD}</div>
-                <div className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full w-fit border border-rose-200">
-                  <Icon name="trending_up" className="text-[14px]" />
-                  <span>+1.8% over monthly budget</span>
-                </div>
-              </div>
-            </div>
-
+            <MetricCard
+              label="Total route fuel spend"
+              value={showMetricValues ? `₱${Math.round(totalSpendMTD).toLocaleString()}` : "₱****"}
+              hiddenValue="₱****"
+              positiveText={spendTrend.text}
+              positiveTone={spendTrend.tone}
+              icon="account_balance_wallet"
+              arrow={spendTrend.arrow}
+              onToggle={() => setShowMetricValues((current) => !current)}
+            />
           </div>
 
-          {/* Daily Spend Distribution Chart (8 Columns) */}
-          <div className="lg:col-span-8 bg-white rounded-2xl border border-[#ec2188]/15 p-6 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="p-2 rounded-xl bg-[#fff7fc] text-[#b80049] border border-[#ec2188]/20">
-                    <Icon name="bar_chart" className="text-xl" />
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-bold text-[#141d23]">Daily Delivery Fuel Expenditure</h2>
-                    <p className="text-xs text-[#5b6b79]">Aggregate fuel outflow across all hubs this week</p>
-                  </div>
+          <div className="xl:col-span-8 bg-white rounded-2xl border border-[#ec2188]/15 p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-4 flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-[#fff7fc] text-[#b80049] border border-[#ec2188]/20">
+                  <Icon name="bar_chart" className="text-xl" />
+                </span>
+                <div>
+                  <h2 className="text-base font-bold text-[#141d23]">Daily Delivery Fuel Expenditure</h2>
+                  <p className="text-[11px] text-[#5b6b79]">Aggregate fuel outflow across all hubs this week</p>
                 </div>
               </div>
-              <div className="text-xs bg-[#fff7fc] text-[#5b6b79] px-3 py-1.5 rounded-xl border border-[#ec2188]/20 font-medium">
+              <div className="text-[11px] bg-[#fff7fc] text-[#5b6b79] px-2.5 py-1 rounded-xl border border-[#ec2188]/20 font-medium">
                 {peakDayLabel}
               </div>
             </div>
 
-            <div className="w-full h-[300px]">
+            <div className="w-full h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailySpendDataView} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0e2ec" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fill: "#5b6b79", fontSize: 12 }} axisLine={{ stroke: "#f0e2ec" }} tickLine={false} />
-                  <YAxis tick={{ fill: "#5b6b79", fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
-                  <Tooltip 
+                  <XAxis dataKey="day" tick={{ fill: "#5b6b79", fontSize: 11 }} axisLine={{ stroke: "#f0e2ec" }} tickLine={false} />
+                  <YAxis tick={{ fill: "#5b6b79", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₱${val}`} />
+                  <Tooltip
                     contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid rgba(233,30,99,0.2)", boxShadow: "0 10px 25px rgba(184,0,73,0.1)" }}
-                    formatter={(val: any) => [`$${val}`, "Spend"]}
+                    formatter={(val: any) => [`₱${val}`, "Spend"]}
                   />
                   <Bar dataKey="spend" fill="#b80049" radius={[8, 8, 0, 0]}>
                     {dailySpendDataView.map((entry, index) => (
@@ -288,6 +427,32 @@ export default function FuelRefuelingLogPage() {
             </div>
           </div>
 
+          <div className="xl:col-span-4 bg-white rounded-2xl border border-[#ec2188]/15 p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="p-2 rounded-xl bg-[#fff7fc] text-[#b80049] border border-[#ec2188]/20">
+                <Icon name="scatter_plot" className="text-xl" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-[#141d23]">Fuel Mix Spend</h3>
+                <p className="text-[11px] text-[#5b6b79]">Cost by energy type</p>
+              </div>
+            </div>
+
+            <div className="w-full h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fuelMixDataView} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0e2ec" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: "#5b6b79", fontSize: 11 }} axisLine={{ stroke: "#f0e2ec" }} tickLine={false} />
+                  <YAxis tick={{ fill: "#5b6b79", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₱${val}`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#ffffff", borderRadius: 10, border: "1px solid rgba(233,30,99,0.2)" }}
+                    formatter={(val: any) => [`₱${val}`, "Spend"]}
+                  />
+                  <Bar dataKey="value" fill="#ec2188" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         {/* Table & Filtering Section */}
@@ -444,6 +609,59 @@ const fuelStyles: Record<FuelType, { icon: string; classes: string }> = {
 };
 
 // Rows are derived from `snapshot.fuelLogs` when available; seeded sample rows removed.
+
+function MetricCard({
+  label,
+  value,
+  hiddenValue,
+  positiveText,
+  positiveTone,
+  icon,
+  arrow,
+  onToggle,
+}: {
+  label: string;
+  value: string;
+  hiddenValue: string;
+  positiveText: string;
+  positiveTone: "green" | "neutral" | "rose";
+  icon: string;
+  arrow: string;
+  onToggle: () => void;
+}) {
+  const pillClasses =
+    positiveTone === "green"
+      ? "text-emerald-600"
+      : positiveTone === "rose"
+        ? "text-rose-600"
+        : "text-slate-500";
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={value === hiddenValue ? "Show value" : "Hide value"}
+      className="bg-white/90 border border-pink-100 rounded-2xl p-4 shadow-sm shadow-pink-500/5 hover:border-pink-200 transition-all min-h-[150px] flex flex-col justify-between text-left cursor-pointer"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="w-10 h-10 rounded-xl bg-pink-50 border border-pink-100 flex items-center justify-center text-[#b80049] shrink-0">
+          <Icon name={icon} className="text-[20px]" />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="flex items-end justify-between gap-2">
+          <span className="text-[26px] font-black tracking-tight text-slate-900 leading-none">{value}</span>
+          <div className={`flex items-center gap-1 text-[11px] font-bold ${pillClasses}`}>
+            <span>{arrow}</span>
+            <span>{positiveText}</span>
+          </div>
+        </div>
+        <div className="mt-2 text-xs font-medium text-slate-700 leading-snug">{label}</div>
+      </div>
+    </button>
+  );
+}
 
 function Icon({
   name,

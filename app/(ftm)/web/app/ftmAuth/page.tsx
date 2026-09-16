@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 import { signInWithPassword } from "../lib/auth";
 import { getDashboardRouteForRole, normalizeRole } from "../lib/roleAccess";
 
@@ -34,7 +35,12 @@ export default function AuthPage() {
 
     setLoading(false);
     setIsNavigating(true);
-    const role = normalizeRole(user.role) ?? "customer";
+    const role = normalizeRole(user.role);
+    if (!role) {
+      setIsNavigating(false);
+      setError("This account does not have an approved FTM role.");
+      return;
+    }
     const destination = getDashboardRouteForRole(role);
     window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination } }));
   };
@@ -72,9 +78,9 @@ export default function AuthPage() {
               <motion.div
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#b80049] text-xl font-black text-white shadow-lg shadow-pink-600/30"
+                className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-pink-600/30"
               >
-                AE
+                <Image src="/airship-logo.png" alt="Airship Express" width={48} height={48} className="h-full w-full object-contain p-1" priority />
               </motion.div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.28em] text-pink-300">Airship Express</p>
@@ -113,7 +119,7 @@ export default function AuthPage() {
 
         <section className="flex h-full w-full flex-col justify-center bg-white/60 px-8 backdrop-blur-xl sm:px-16 lg:px-20 xl:px-28">
           <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }} className="mx-auto w-full max-w-md space-y-8">
-            <div className="space-y-2"><div className="mb-6 flex items-center gap-3 lg:hidden"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#b80049] font-black text-white">AE</div><span className="text-xs font-bold uppercase tracking-[0.2em] text-pink-600">Airship Express</span></div><h2 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Sign in to portal</h2><p className="text-sm text-slate-500">Enter your corporate credentials to access your dashboard.</p></div>
+            <div className="space-y-2"><div className="mb-6 flex items-center gap-3 lg:hidden"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm"><Image src="/airship-logo.png" alt="Airship Express" width={40} height={40} className="h-full w-full object-contain p-1" priority /></div><span className="text-xs font-bold uppercase tracking-[0.2em] text-pink-600">Airship Express</span></div><h2 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Sign in to portal</h2><p className="text-sm text-slate-500">Enter your corporate credentials to access your dashboard.</p></div>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5"><label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider text-slate-600">Email Address</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-2xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5 text-sm text-slate-900 outline-none transition-all duration-200 focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-100" placeholder="name@company.com" required /></div>
               <div className="space-y-1.5"><label htmlFor="password" className="block text-xs font-bold uppercase tracking-wider text-slate-600">Password</label><input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-2xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5 text-sm text-slate-900 outline-none transition-all duration-200 focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-100" placeholder="••••••••••••" required /></div>

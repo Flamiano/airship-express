@@ -85,6 +85,25 @@ function normalizeDate(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeCostEntry(entry: any): CostEntry {
+  const rawCategory = String(entry?.category ?? "Other").trim();
+  const category = rawCategory.toLowerCase().includes("fuel")
+    ? "Fuel"
+    : rawCategory.toLowerCase().includes("maintenance") || rawCategory.toLowerCase().includes("service") || rawCategory.toLowerCase().includes("repair")
+      ? "Maintenance"
+      : rawCategory;
+
+  return {
+    ...entry,
+    id: String(entry?.id ?? ""),
+    vehicleId: entry?.vehicleId ?? entry?.vehicle_id ?? null,
+    tripId: entry?.tripId ?? entry?.trip_id ?? null,
+    category,
+    amount: Number.isFinite(Number(entry?.amount ?? entry?.cost)) ? Number(entry?.amount ?? entry?.cost) : null,
+    entryDate: entry?.entryDate ?? entry?.entry_date ?? entry?.recorded_at ?? entry?.created_at ?? null,
+  };
+}
+
 function buildCategoryTotals(entries: CostEntry[]) {
   const totals = new Map<string, number>();
   let totalAmount = 0;
@@ -411,7 +430,8 @@ export default async function Home() {
   let costEntries: CostEntry[] = [];
 
   try {
-    costEntries = await getCostEntries();
+    const loadedEntries = await getCostEntries();
+    costEntries = Array.isArray(loadedEntries) ? loadedEntries.map(normalizeCostEntry) : [];
   } catch (error) {
     console.error("Failed to load cost entries:", error);
   }

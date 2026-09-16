@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { getDashboardSnapshot } from "../../lib/api";
+import { getCosts } from "../../lib/api";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
@@ -17,7 +17,6 @@ type Receipt = {
   image?: string;
 };
 
-const sampleReceipts: Receipt[] = [];
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
@@ -28,9 +27,11 @@ export default function FuelReceiptsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const filteredReceipts = useMemo(() => {
-    return sampleReceipts.filter((receipt) => {
+    return receipts.filter((receipt) => {
       const matchesQuery =
         receipt.vehicle.toLowerCase().includes(search.toLowerCase()) ||
         receipt.driver.toLowerCase().includes(search.toLowerCase()) ||
@@ -39,7 +40,7 @@ export default function FuelReceiptsPage() {
       const matchesCategory = category === "All" || receipt.category === category;
       return matchesQuery && matchesCategory;
     });
-  }, [search, category]);
+  }, [receipts, search, category]);
 
   const totalValue = filteredReceipts.reduce((sum, item) => sum + (item.amount || 0), 0);
 
@@ -49,18 +50,36 @@ export default function FuelReceiptsPage() {
     let mounted = true;
     (async () => {
       try {
-        const dash = await getDashboardSnapshot();
-        const logs = dash.fuelLogs || [];
-        if (mounted) setHasData(Boolean(logs.length));
+        const costs = await getCosts();
+        const loadedReceipts = (Array.isArray(costs) ? costs : [])
+          .filter((cost: any) => cost.receipt_image || cost.receiptImage)
+          .map((cost: any) => ({
+            id: String(cost.id),
+            vehicle: cost.vehicle_id || cost.vehicleId || "Unassigned vehicle",
+            driver: cost.driver_id || cost.driverId || "Unassigned driver",
+            category: cost.category || "Other",
+            amount: Number(cost.amount || 0),
+            date: cost.entry_date || cost.entryDate || cost.created_at || new Date().toISOString(),
+            station: cost.categoryCost?.fuel_station || cost.categoryCost?.toll_location || cost.categoryCost?.parking_location || "Field upload",
+            note: cost.remarks || cost.description || "Expense receipt",
+            image: cost.receipt_image || cost.receiptImage,
+          }));
+        if (mounted) {
+          setReceipts(loadedReceipts);
+          setHasData(Boolean(loadedReceipts.length));
+          setLoadError(null);
+        }
       } catch (e) {
-        console.warn('Failed to load fuel snapshot', e);
-        if (mounted) setHasData(false);
+        const message = e instanceof Error ? e.message : "Unable to load receipts.";
+        console.warn('Failed to load receipts', e);
+        if (mounted) {
+          setHasData(null);
+          setLoadError(message);
+        }
       }
     })();
     return () => { mounted = false; };
   }, []);
-
-  // Keep page layout visible; show placeholders (0/—) inside components when no data.
 
   const visibleReceipts = hasData ? filteredReceipts : [];
   const displayedTotal = hasData ? totalValue : 0;
@@ -97,7 +116,9 @@ export default function FuelReceiptsPage() {
           </div>
           <div className="rounded-2xl border border-pink-100 bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Last upload</p>
-            <p className="mt-3 text-3xl font-black text-slate-900">Aug 9</p>
+            <p className="mt-3 text-3xl font-black text-slate-900">
+              {hasData && receipts[0] ? new Date(receipts[0].date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+            </p>
           </div>
         </section>
 
@@ -125,6 +146,7 @@ export default function FuelReceiptsPage() {
               <option value="Maintenance">Maintenance</option>
             </select>
           </div>
+          {loadError && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>}
         </section>
 
         <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">

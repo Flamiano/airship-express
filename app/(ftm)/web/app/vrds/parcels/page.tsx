@@ -7,6 +7,8 @@ import { SkeletonTable } from "../../components/PageSkeleton";
 import { useParcelStore, receiveParcel, bulkDeliverParcels } from "@/app/lib/parcelStore";
 import { updateParcelStatus } from "@/app/lib/api";
 import { COURIER_NAMES, CourierName, Parcel, ParcelType, PARCEL_STATUS_LABEL } from "@/app/lib/parcelTypes";
+import { QRCodeSVG } from "qrcode.react";
+import { getParcelGroupKey } from "@/app/lib/parcelGrouping";
 
 const PARCEL_TYPES: ParcelType[] = [
   "Document",
@@ -30,8 +32,9 @@ const COURIER_BRANDING: Record<CourierName, { label: string; badge: string; acce
   "Airship Express": { label: "Airship Express", badge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200", accent: "bg-fuchsia-600 text-white", icon: "A" },
 };
 
-const STATUS_FILTERS = ["All", "RECEIVED", "BOOKED", "IN_TRANSIT"] as const;
+const STATUS_FILTERS = ["All", "RECEIVED", "PICKED_UP", "BOOKED", "IN_TRANSIT", "DELAYED", "DELIVERED"] as const;
 const SORT_OPTIONS = ["Newest", "Weight", "Destination"] as const;
+const STORAGE_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
 import { PERSISTED_SERVICE_AREA_KEY, ALL_SERVICE_AREA_SENTINEL, SERVICE_AREA_CITIES, SERVICE_CITY_BOUNDS, inferCityFromCoordinates } from "@/app/lib/serviceAreas";
 
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -65,6 +68,18 @@ function normalizeLocationText(value: string) {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function normalizeBulkQrCode(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, "").trim().toUpperCase();
+}
+
+function getBulkParcelCount(parcel: Parcel) {
+  const record = parcel as Parcel & Record<string, unknown>;
+  const storedCount = Number(
+    record.bulk_parcel_count ?? record.parcel_count ?? record.package_count ?? record.quantity ?? 0
+  );
+  return Number.isFinite(storedCount) && storedCount > 0 ? storedCount : 1;
 }
 
 function getLocationParts(address: string, lat?: number | null, lng?: number | null) {
@@ -125,7 +140,7 @@ function getLocationParts(address: string, lat?: number | null, lng?: number | n
 }
 
 export default function VrdsParcelsPage() {
-  const { parcels, ready }: { parcels: Parcel[]; ready: boolean } = useParcelStore();
+  const { parcels, ready }: { parcels: Parcel[]; ready: boolean } = useParcelStore({ history: true });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -137,6 +152,9 @@ export default function VrdsParcelsPage() {
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [sortBy, setSortBy] = useState<SortOption>("Newest");
   const [viewMode, setViewMode] = useState<"grid" | "stream">("grid");
+  const [contentMode, setContentMode] = useState<"parcels" | "bulk">("parcels");
+  const [expandedBulkQr, setExpandedBulkQr] = useState<string | null>(null);
+  const [historyScope, setHistoryScope] = useState<"active" | "archived" | "all">("active");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -160,9 +178,39 @@ export default function VrdsParcelsPage() {
     [parcels]
   );
 
+  const storageParcels = useMemo<Parcel[]>(() => {
+    return availableParcels.filter((parcel) => {
+      const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
+      return parcel.status !== "DELIVERED" && Date.now() - receivedAt < STORAGE_RETENTION_MS;
+    });
+  }, [availableParcels]);
+
+  const archivedParcels = useMemo<Parcel[]>(() => {
+    return availableParcels.filter((parcel) => {
+      const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
+      return parcel.status !== "DELIVERED" && Date.now() - receivedAt >= STORAGE_RETENTION_MS;
+    });
+  }, [availableParcels]);
+
+  const deliveredParcels = useMemo<Parcel[]>(() => parcels.filter((p) => p.status === "DELIVERED"), [parcels]);
+
+  const allArchivedParcels = useMemo<Parcel[]>(
+    () => parcels.filter((parcel) => {
+      if (parcel.status === "DELIVERED" || parcel.status === "CANCELLED") return true;
+      const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
+      return Date.now() - receivedAt >= STORAGE_RETENTION_MS;
+    }),
+    [parcels]
+  );
+
   const filteredParcels = useMemo<Parcel[]>(() => {
+    const sourceParcels = historyScope === "all"
+      ? parcels
+      : historyScope === "archived"
+      ? allArchivedParcels
+      : filterStatus === "DELIVERED" ? deliveredParcels : storageParcels;
     const query = searchText.toLowerCase().trim();
-    return availableParcels
+    return sourceParcels
       .filter((p) => {
         if (!query) return true;
         return [p.trackingNumber, p.senderName, p.recipientName, p.destinationAddress, p.parcelType]
@@ -170,6 +218,7 @@ export default function VrdsParcelsPage() {
       })
       .filter((p) => {
         if (filterStatus === "All") return true;
+        if (filterStatus === "DELIVERED") return p.status === "DELIVERED";
         return p.status === filterStatus;
       })
       .filter((p) => {
@@ -195,7 +244,27 @@ export default function VrdsParcelsPage() {
         const bTime = new Date(b.receivedAt).getTime() || 0;
         return bTime - aTime;
       });
-  }, [availableParcels, searchText, filterStatus, selectedCourier, selectedLocation, sortBy]);
+  }, [parcels, storageParcels, allArchivedParcels, deliveredParcels, historyScope, searchText, filterStatus, selectedCourier, selectedLocation, sortBy]);
+
+  const bulkGroups = useMemo(() => {
+    const groups = new Map<string, { parcels: Parcel[]; courier: string; city: string }>();
+    filteredParcels.forEach((parcel) => {
+      const groupKey = getParcelGroupKey(parcel);
+      const courier = groupKey.courier;
+      const city = groupKey.city;
+      const key = groupKey.key;
+      const group = groups.get(key) || { parcels: [], courier, city };
+      group.parcels.push(parcel);
+      groups.set(key, group);
+    });
+    return Array.from(groups.entries()).map(([key, group]) => ({
+      qrCode: `BULK-${key.replace(/::/g, "-")}-${group.parcels.map((parcel) => parcel.id).join("-")}`,
+      parcels: group.parcels,
+      courier: group.courier,
+      city: group.city,
+      parcelCount: group.parcels.reduce((total, parcel) => total + getBulkParcelCount(parcel), 0),
+    }));
+  }, [filteredParcels]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -303,194 +372,126 @@ export default function VrdsParcelsPage() {
               </div>
             </div>
 
-            {/* Hub Metrics Cards */}
+            {/* Storage Metrics Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3.5 w-full lg:max-w-2xl">
               <StatusCard
-                label="Waiting Intake"
+                label="Active Storage"
+                value={storageParcels.length}
+                description="Current parcel stock"
+                icon="inventory_2"
+                color="pink"
+              />
+              <StatusCard
+                label="Archived"
+                value={allArchivedParcels.length}
+                description="Moved to history"
+                icon="history"
+                color="pink"
+              />
+              <StatusCard
+                label="Received"
                 value={receivedParcels.length}
-                description="Arrived at hub"
+                description="Stored this week"
                 icon="inbox"
-                color="pink"
-              />
-              <StatusCard
-                label="Ready to Book"
-                value={readyParcels.length}
-                description="Staged for dispatch"
-                icon="mark_as_unread"
-                color="pink"
-              />
-              <StatusCard
-                label="Active Bookings"
-                value={bookedParcels.length}
-                description="Assigned & routed"
-                icon="local_shipping"
                 color="pink"
               />
               <StatusCard
                 label="Total Inventory"
                 value={parcels.length}
-                description="In VRDS pipeline"
-                icon="inventory_2"
+                description="All parcel records"
+                icon="archive"
                 color="pink"
               />
             </div>
           </div>
         </section>
 
-        {/* Filter Toolbar & Actions */}
+        {/* Parcel Storage Only */}
         <section className="mt-8 rounded-2xl border border-pink-100 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            {/* Search Bar */}
-            <div className="relative flex-1 min-w-[280px]">
-              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-400 text-[20px]">
-                search
-              </span>
-              <input
-                type="text"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search by tracking #, recipient, sender, or barangay..."
-                className="w-full rounded-xl border border-pink-100 bg-pink-50/30 pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-pink-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-              {searchText && (
-                <button
-                  onClick={() => setSearchText("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <span className="material-symbols-outlined text-[18px]">close</span>
-                </button>
-              )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Parcel Storage</h2>
+              <p className="text-sm text-slate-500">Active storage only. Parcels older than 7 days are automatically moved to history.</p>
             </div>
-
-            {/* Filter Dropdowns & View Switches */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-200 bg-pink-50/40 p-1.5">
-                {STATUS_FILTERS.map((status) => {
-                  const isActive = filterStatus === status;
-                  const label = status === "All" ? "All" : status === "RECEIVED" ? "Pick Up" : status === "BOOKED" ? "Booked" : "In Transit";
-
-                  return (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => setFilterStatus(status)}
-                      className={`relative rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all duration-200 ${
-                        isActive
-                          ? "bg-pink-600 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-white hover:text-pink-700"
-                      }`}
-                    >
-                      <span className="relative z-10">{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <select
-                value={selectedCourier}
-                onChange={(e) => setSelectedCourier(e.target.value as CourierName | "")}
-                className="rounded-xl border border-pink-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-700 transition hover:border-pink-300 focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 cursor-pointer"
-              >
-                <option value="">All Couriers</option>
-                {courierGroups.map((group) => (
-                  <option key={group.courier} value={group.courier}>
-                    {group.courier} ({group.parcels.length})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                className="rounded-xl border border-pink-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-700 transition hover:border-pink-300 focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 cursor-pointer"
-              >
-                <option value="">All Service Cities</option>
-                {locationGroups.map((group) => (
-                  <option key={group.key} value={group.key}>
-                    {group.label} ({group.parcels.length})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortOption)}
-                className="rounded-xl border border-pink-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-700 transition hover:border-pink-300 focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 cursor-pointer"
-              >
-                <option value="Newest">Sort: Newest</option>
-                <option value="Weight">Sort: Weight</option>
-                <option value="Destination">Sort: Destination</option>
-              </select>
-
-              {/* View Mode Toggle */}
-              <div className="flex items-center rounded-xl border border-pink-200 bg-pink-50/50 p-1">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  title="Grid View"
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-                    viewMode === "grid" ? "bg-pink-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">grid_view</span>
-                </button>
-                <button
-                  onClick={() => setViewMode("stream")}
-                  title="Horizontal Stream"
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-                    viewMode === "stream" ? "bg-pink-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">view_carousel</span>
-                </button>
-              </div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700 border border-pink-200">
+              <span className="material-symbols-outlined text-[15px]">inventory_2</span>
+              {filteredParcels.length} {historyScope === "all" ? "history" : historyScope === "archived" ? "archived" : filterStatus === "DELIVERED" ? "delivered" : "active"} parcels
             </div>
           </div>
 
-          {/* Action Row & Bulk Selection Bar */}
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-pink-100 pt-4">
-            <div className="flex items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/30 p-1.5">
+            {(["active", "archived", "all"] as const).map((scope) => (
               <button
-                onClick={toggleAll}
-                className="inline-flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50/50 px-3 py-1.5 text-xs font-semibold text-pink-700 hover:bg-pink-100 transition"
+                key={scope}
+                type="button"
+                onClick={() => {
+                  setHistoryScope(scope);
+                  if (scope === "active") setFilterStatus("All");
+                }}
+                className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                  historyScope === scope
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white hover:text-pink-700"
+                }`}
               >
-                <span className="material-symbols-outlined text-[16px]">
-                  {filteredParcels.length > 0 && filteredParcels.every((p) => selected.has(p.id))
-                    ? "check_box"
-                    : "check_box_outline_blank"}
-                </span>
-                {filteredParcels.length > 0 && filteredParcels.every((p) => selected.has(p.id))
-                  ? "Deselect All"
-                  : "Select All Filtered"}
+                {scope === "active" ? "Active" : scope === "archived" ? "Archived" : "All history"}
               </button>
-              <span className="text-xs font-medium text-slate-500">
-                Showing <strong className="text-slate-900">{filteredParcels.length}</strong> of {availableParcels.length} parcels
-                {selected.size > 0 && (
-                  <span className="ml-2 inline-flex items-center rounded-full bg-pink-100 px-2 py-0.5 text-xs font-semibold text-pink-700">
-                    {selected.size} selected
-                  </span>
-                )}
-              </span>
-            </div>
+            ))}
+          </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowReceiveModal(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-pink-700 transition active:scale-95"
-              >
-                <span className="material-symbols-outlined text-[18px]">add</span>
-                Receive Parcel
-              </button>
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/30 p-1.5">
+            {STATUS_FILTERS.map((status) => {
+              const isActive = filterStatus === status;
+              const label =
+                status === "All"
+                  ? "All"
+                  : status === "RECEIVED"
+                  ? "Received"
+                  : status === "PICKED_UP"
+                  ? "Pick Up"
+                  : status === "BOOKED"
+                  ? "Booked"
+                  : status === "IN_TRANSIT"
+                  ? "In Transit"
+                  : status === "DELAYED"
+                  ? "Delayed"
+                  : "Delivered";
 
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setFilterStatus(status)}
+                  className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                    isActive
+                      ? "bg-pink-600 text-white shadow-sm"
+                      : "text-slate-600 hover:bg-white hover:text-pink-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+            {(["parcels", "bulk"] as const).map((mode) => (
               <button
-                onClick={() => bulkDeliverEligible && setShowBulkModal(true)}
-                disabled={!bulkDeliverEligible}
-                title={bulkDeliverEligible ? "Book received parcels for dispatch" : "Booking is available only for Received parcels"}
-                className="inline-flex items-center gap-2 rounded-xl border border-pink-300 bg-pink-50 px-4 py-2 text-xs sm:text-sm font-semibold text-pink-700 shadow-xs hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-95"
+                key={mode}
+                type="button"
+                onClick={() => setContentMode(mode)}
+                className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all ${
+                  contentMode === mode ? "bg-pink-600 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-pink-700"
+                }`}
               >
-                <span className="material-symbols-outlined text-[18px]">local_shipping</span>
-                Book for Dispatch {selectedParcels.length > 0 && `(${selectedParcels.length})`}
+                {mode === "parcels" ? "Parcel records" : "Bulk QR codes"}
               </button>
-            </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium">Retention: 7 days</span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium">Archived: {allArchivedParcels.length}</span>
           </div>
         </section>
 
@@ -505,7 +506,7 @@ export default function VrdsParcelsPage() {
               </div>
               <h3 className="text-lg font-bold text-slate-900">No parcels found</h3>
               <p className="mt-1 text-sm text-slate-500 max-w-md">
-                No parcels matched your active search or filters. Try adjusting your courier selection or clear search query.
+                No parcels matched this view or its filters. Try changing the scope, courier, status, or search query.
               </p>
               <button
                 onClick={() => {
@@ -519,6 +520,90 @@ export default function VrdsParcelsPage() {
                 Reset Filters
               </button>
             </div>
+          ) : contentMode === "bulk" ? (
+            bulkGroups.length === 0 ? (
+              <div className="rounded-3xl border border-pink-200/80 bg-white p-16 text-center shadow-sm">
+                <span className="material-symbols-outlined text-4xl text-pink-400">qr_code_2</span>
+                <h3 className="mt-3 text-lg font-bold text-slate-900">No bulk QR codes found</h3>
+                <p className="mt-1 text-sm text-slate-500">The current scope and filters contain no parcels with a bulk QR code.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {bulkGroups.map(({ qrCode, parcels: groupParcels, parcelCount, courier, city }) => {
+                  const expanded = expandedBulkQr === qrCode;
+                  return (
+                    <article
+                      key={qrCode}
+                      className="group relative overflow-hidden rounded-3xl border border-pink-200 bg-gradient-to-br from-white via-pink-50/60 to-rose-50 p-4 shadow-sm ring-1 ring-pink-100 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                    >
+                      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-rose-400 to-fuchsia-500" />
+
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="inline-flex items-center gap-1.5 rounded-full border border-pink-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-pink-700">
+                          <span className="material-symbols-outlined text-[12px]">qr_code_2</span>
+                          Compressed
+                        </div>
+                        <span className="rounded-full bg-slate-900 px-2 py-1 text-[10px] font-bold text-white">
+                          {parcelCount} pcs
+                        </span>
+                      </div>
+
+                      <div className="mt-4 rounded-2xl border border-pink-200 bg-white p-3 shadow-inner shadow-pink-100/30">
+                        <div className="flex items-center justify-center rounded-xl bg-slate-50 p-2">
+                          <QRCodeSVG value={qrCode} size={92} level="M" includeMargin bgColor="#ffffff" fgColor="#111827" />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-pink-100 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-pink-700">
+                            {courier}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                            {city}
+                          </span>
+                        </div>
+
+                        <h3 className="text-sm font-black text-slate-900">Bulk QR bundle</h3>
+                        <p className="text-xs text-slate-600">{parcelCount} parcel{parcelCount === 1 ? "" : "s"} grouped into one QR code</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpandedBulkQr(expanded ? null : qrCode)}
+                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-pink-300 bg-[#b80049] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#96003b]"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">{expanded ? "collapse_content" : "expand_content"}</span>
+                        {expanded ? "Hide extracted parcels" : "View extracted parcels"}
+                      </button>
+
+                      {expanded && (
+                        <div className="mt-4 rounded-2xl border border-pink-100 bg-white p-2 shadow-inner shadow-pink-100/40">
+                          <div className="mb-2 flex items-center justify-between px-1">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Extracted parcels</span>
+                            <span className="text-[10px] font-semibold text-pink-700">{groupParcels.length} items</span>
+                          </div>
+
+                          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                            {groupParcels.map((parcel) => (
+                              <button
+                                key={parcel.id}
+                                type="button"
+                                onClick={() => setActiveParcel(parcel)}
+                                className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs transition hover:border-pink-200 hover:bg-pink-50"
+                              >
+                                <span className="min-w-0 truncate font-semibold text-slate-800">{parcel.trackingNumber}</span>
+                                <span className="shrink-0 text-slate-500">{parcel.recipientName || "Recipient"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )
           ) : (
             <div key={filterStatus} className="animate-[fadeIn_180ms_ease-out] transition-all duration-200">
               {viewMode === "grid" ? (
@@ -617,19 +702,9 @@ function ParcelCard({
       }`}
     >
       <div>
-        {/* Top Header Row: Checkbox, Courier Badge, Status */}
+        {/* Top Header Row: Courier Badge, Status */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="h-4 w-4 rounded border-pink-300 text-pink-600 focus:ring-pink-500/30 cursor-pointer"
-            />
             <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${brand.badge}`}>
               <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-black ${brand.accent}`}>
                 {brand.icon}

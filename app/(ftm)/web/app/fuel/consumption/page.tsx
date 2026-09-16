@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getDashboardSnapshot } from "../../lib/api";
+import { getDashboardSnapshot, getFuelLogs } from "../../lib/api";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
@@ -23,11 +23,85 @@ export default function FuelConsumptionPage() {
   const [showHeatmapFilters, setShowHeatmapFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "diesel" | "ev">("all");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [showMetricValues, setShowMetricValues] = useState(false);
+
+  useEffect(() => {
+    const handleMetricVisibilityShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        setShowMetricValues(true);
+      }
+      if (key === "h") {
+        event.preventDefault();
+        setShowMetricValues(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleMetricVisibilityShortcut);
+    return () => window.removeEventListener("keydown", handleMetricVisibilityShortcut);
+  }, []);
 
   // Quick Action Feedback
   const triggerToast = (msg: string) => {
     setActionNotice(msg);
     setTimeout(() => setActionNotice(null), 3000);
+  };
+
+  const exportFuelData = () => {
+    const rows = filteredFuelLogs.length ? filteredFuelLogs : (snapshot?.fuelLogs ?? []);
+    if (!rows.length) {
+      triggerToast("No fuel data available to export.");
+      return;
+    }
+
+    const headers = [
+      "id",
+      "vehicleId",
+      "vehicleType",
+      "station",
+      "loggedAt",
+      "fuelType",
+      "liters",
+      "amount",
+      "distance",
+      "cost",
+      "status",
+    ];
+
+    const escapeCsvValue = (value: any) => {
+      const stringValue = value == null ? "" : String(value);
+      if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const csvRows = rows.map((log: any) => {
+      const vehicle = snapshot?.vehicles?.find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
+      const values = headers.map((header) => {
+        const normalizedKey = header === "vehicleType" ? "vehicleType" : header;
+        const raw = normalizedKey === "vehicleType"
+          ? (vehicle?.vehicle_type ?? vehicle?.vehicleType ?? "")
+          : (log[header] ?? log[header.toLowerCase()] ?? log[header.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? "");
+        return escapeCsvValue(raw);
+      });
+      return values.join(",");
+    });
+
+    const csv = [headers.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fuel-consumption-${selectedPeriod.toLowerCase().replace(/\s+/g, "-")}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    triggerToast("Fuel export generated.");
   };
 
   const [hasData, setHasData] = useState<boolean | null>(null);
@@ -37,11 +111,16 @@ export default function FuelConsumptionPage() {
     let mounted = true;
     (async () => {
       try {
-        const dash = await getDashboardSnapshot();
-        const logs = dash.fuelLogs || [];
+        const [dash, fuelLogs] = await Promise.all([
+          getDashboardSnapshot(),
+          getFuelLogs(),
+        ]);
+        const logs = Array.isArray(fuelLogs) && fuelLogs.length > 0
+          ? fuelLogs
+          : (dash.fuelLogs || []);
         if (mounted) {
           setHasData(Boolean(logs.length));
-          setSnapshot(dash);
+          setSnapshot({ ...dash, fuelLogs: logs });
         }
       } catch (e) {
         console.warn('Failed to load fuel snapshot', e);
@@ -53,25 +132,64 @@ export default function FuelConsumptionPage() {
 
   // When no data, we'll keep rendering the page but components should display placeholders (0 / "—").
 
+  const filteredFuelLogs = (() => {
+    if (!hasData || !snapshot) return [] as any[];
+
+    const logs = snapshot.fuelLogs || [];
+    const vehicles = snapshot.vehicles || [];
+    const now = new Date();
+
+    const getStartOfRange = () => {
+      if (selectedPeriod === "This Week") return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      if (selectedPeriod === "This Month") return new Date(now.getFullYear(), now.getMonth(), 1);
+      return new Date(now.getFullYear(), 0, 1);
+    };
+
+    const start = getStartOfRange();
+
+    return logs.filter((log: any) => {
+      const date = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
+      if (Number.isNaN(date.getTime()) || date < start) return false;
+
+      const vehicle = vehicles.find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
+      const vtype = String(vehicle?.vehicle_type ?? vehicle?.vehicleType ?? vehicle?.model ?? "").toLowerCase();
+      const isEv = /ev|electric/.test(vtype);
+      const isDiesel = !isEv;
+
+      if (activeTab === "ev" && !isEv) return false;
+      if (activeTab === "diesel" && !isDiesel) return false;
+      return true;
+    });
+  })();
+
+  const pesoFormatter = new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  });
+
+  const formatPeso = (value: number) => pesoFormatter.format(Number.isFinite(value) ? value : 0);
+
   // Derived view data (computed from snapshot when available)
   const chartDataView = (() => {
     const labels = ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"];
-    const buckets = labels.map((l) => ({ label: l, diesel: 0, ev: 0, total: "0" }));
-    if (!hasData || !snapshot) return buckets;
-    const logs = snapshot.fuelLogs || [];
-    const vehicles = snapshot.vehicles || [];
-    for (const log of logs) {
+    const buckets = labels.map((l) => ({ label: l, diesel: 0, ev: 0, total: "₱0" }));
+    if (!filteredFuelLogs.length) return buckets;
+
+    const vehicles = snapshot?.vehicles || [];
+    for (const log of filteredFuelLogs) {
       const date = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
       const hour = date.getHours();
       const idx = Math.floor(hour / 3) % 8;
-      const liters = Number(log.liters ?? log.amount ?? 0) || 0;
+      const cost = Number(log.cost ?? log.amount ?? 0) || 0;
       const vehicle = vehicles.find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
       const vtype = String(vehicle?.vehicle_type ?? vehicle?.vehicleType ?? vehicle?.model ?? "").toLowerCase();
-      if (/ev|electric/.test(vtype)) buckets[idx].ev += liters;
-      else buckets[idx].diesel += liters;
+      if (/ev|electric/.test(vtype)) buckets[idx].ev += cost;
+      else buckets[idx].diesel += cost;
     }
     for (const b of buckets) {
-      b.total = (b.diesel + b.ev).toFixed(1);
+      const total = b.diesel + b.ev;
+      b.total = formatPeso(total);
     }
     return buckets;
   })();
@@ -79,7 +197,7 @@ export default function FuelConsumptionPage() {
   const classBreakdownView = (() => {
     if (!hasData || !snapshot) return [] as any[];
     const vehicles = snapshot.vehicles || [];
-    const logs = snapshot.fuelLogs || [];
+    const logs = filteredFuelLogs;
     const groups: Record<string, { icon: string; label: string; count: number; value: number; efficiency: string; bar: string }> = {};
     for (const v of vehicles) {
       const t = String(v.vehicle_type ?? v.vehicleType ?? "").toLowerCase();
@@ -93,23 +211,42 @@ export default function FuelConsumptionPage() {
     for (const log of logs) {
       const v = vehicles.find((x: any) => x.id === (log.vehicleId ?? log.vehicle_id));
       const t = String(v?.vehicle_type ?? v?.vehicleType ?? "").toLowerCase();
-      const liters = Number(log.liters ?? log.amount ?? 0) || 0;
+      const cost = Number(log.cost ?? log.amount ?? 0) || 0;
       const key = /rig|truck|class/.test(t) ? "Heavy Rig" : /ev|electric/.test(t) ? "EV Delivery Vans" : /bike|pedal|cargo/.test(t) ? "Urban Cargo eBikes" : "Other";
-      if (groups[key]) groups[key].value += liters;
+      if (groups[key]) groups[key].value += cost;
     }
-    const items = Object.values(groups).map((g) => ({ ...g, value: `${Math.round(g.value)} kWh` }));
+    const maxValue = Math.max(...Object.values(groups).map((g) => g.value), 1);
+    const items = Object.values(groups).map((g) => ({
+      ...g,
+      value: formatPeso(g.value),
+      efficiency: g.value > 0 ? `${((g.value / maxValue) * 100).toFixed(0)}% mix` : "0%",
+      width: maxValue > 0 ? `${(g.value / maxValue) * 100}%` : "0%",
+    }));
     return items;
   })();
 
   const anomaliesView = (() => {
     if (!hasData || !snapshot) return [] as AnomalyAlert[];
-    // simple anomaly detection: very large single-fill events
-    const logs = snapshot.fuelLogs || [];
+    const logs = filteredFuelLogs;
     const alerts: AnomalyAlert[] = [];
     for (const log of logs) {
-      const liters = Number(log.liters ?? log.amount ?? 0) || 0;
-      if (liters > 500) {
-        alerts.push({ id: String(log.id ?? Math.random()), target: `Unit ${log.vehicleId ?? "?"}`, type: "High Idle", severity: "critical", description: `Large refuel event of ${liters}`, metric: `${liters}` });
+      const cost = Number(log.cost ?? log.amount ?? 0) || 0;
+      const liters = Number(log.liters ?? 0) || 0;
+      const fuelCostThreshold = 25000;
+      const idleThreshold = 200;
+      const isSupplySpike = cost > fuelCostThreshold;
+      const isIdleWaste = (log.idle === true) || Number(log.distance ?? 0) < 1;
+      if (isSupplySpike || (isIdleWaste && liters > idleThreshold)) {
+        alerts.push({
+          id: String(log.id ?? Math.random()),
+          target: `Unit ${log.vehicleId ?? "?"}`,
+          type: isIdleWaste ? "High Idle" : "Irregular Draw",
+          severity: cost > fuelCostThreshold ? "critical" : "warning",
+          description: isIdleWaste
+            ? `Idle route spill detected with ₱${Number(cost).toLocaleString()} in fuel draw.`
+            : `Unusually high fuel draw for route: ₱${Number(cost).toLocaleString()}.`,
+          metric: formatPeso(cost),
+        });
       }
     }
     return alerts;
@@ -117,54 +254,64 @@ export default function FuelConsumptionPage() {
 
   const recentEventsView = (() => {
     if (!hasData || !snapshot) return [] as any[];
-    const logs = (snapshot.fuelLogs || []).slice().sort((a: any, b: any) => new Date(b.loggedAt ?? b.logged_at ?? b.createdAt ?? b.created_at ?? 0).getTime() - new Date(a.loggedAt ?? a.logged_at ?? a.createdAt ?? a.created_at ?? 0).getTime());
+    const logs = filteredFuelLogs.slice().sort((a: any, b: any) => new Date(b.loggedAt ?? b.logged_at ?? b.createdAt ?? b.created_at ?? 0).getTime() - new Date(a.loggedAt ?? a.logged_at ?? a.createdAt ?? a.created_at ?? 0).getTime());
     const vehicles = snapshot.vehicles || [];
     return logs.slice(0, 8).map((l: any) => {
       const date = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? Date.now());
       const v = vehicles.find((x: any) => x.id === (l.vehicleId ?? l.vehicle_id));
       const vtype = String(v?.vehicle_type ?? v?.vehicleType ?? "").toLowerCase();
-      const unit = /ev|electric/.test(vtype) ? "kWh" : "Gal";
-      return { id: l.id ?? "-", type: /ev|electric/.test(vtype) ? "Electric" : "Diesel", location: l.station ?? "—", amount: `${Math.round(Number(l.liters ?? l.amount ?? 0) || 0)} ${unit}`, cost: l.cost ? `$${Number(l.cost).toFixed(2)}` : "—", time: date.toLocaleTimeString() };
+      const unit = /ev|electric/.test(vtype) ? "kWh" : "L";
+      const costValue = Number(l.cost ?? l.amount ?? 0) || 0;
+      return { id: l.id ?? "-", type: /ev|electric/.test(vtype) ? "Electric" : "Diesel", location: l.station ?? "—", amount: `${Math.round(Number(l.liters ?? l.amount ?? 0) || 0)} ${unit}`, cost: costValue ? `₱${Number(costValue).toLocaleString()}` : "—", time: date.toLocaleTimeString() };
     });
   })();
 
   // KPIs computed from snapshot (fallbacks when no data)
+  const handleKpiToggle = () => setShowMetricValues((current) => !current);
+
   const kpiTotalFuelUsage = (() => {
-    if (!hasData || !snapshot) return "—";
-    const totalLiters = (snapshot.fuelLogs || []).reduce((s: number, l: any) => s + Number(l.liters ?? l.amount ?? 0), 0);
-    return `${Math.round(totalLiters).toLocaleString()} kWh`;
+    const fallback = "₱0";
+    if (!hasData || !snapshot) return showMetricValues ? fallback : "***";
+    const totalCost = filteredFuelLogs.reduce((s: number, l: any) => s + Number(l.cost ?? l.amount ?? 0), 0);
+    const value = formatPeso(totalCost);
+    return showMetricValues ? value : "***";
   })();
 
   const kpiAvgEfficiency = (() => {
-    if (!hasData || !snapshot) return "—";
-    const logs = snapshot.fuelLogs || [];
-    const totalLiters = logs.reduce((s: number, l: any) => s + Number(l.liters ?? l.amount ?? 0), 0);
+    const fallback = "0 km/L";
+    if (!hasData || !snapshot) return showMetricValues ? fallback : "***";
+    const logs = filteredFuelLogs;
+    const totalLiters = logs.reduce((s: number, l: any) => s + Number(l.liters ?? 0), 0);
     const totalDistance = logs.reduce((s: number, l: any) => s + Number(l.distance ?? 0), 0);
     const eff = totalLiters > 0 ? (totalDistance / totalLiters) : 0;
-    return eff ? `${eff.toFixed(2)} mi/kWh` : "—";
+    const value = eff ? `${eff.toFixed(2)} km/L` : "0 km/L";
+    return showMetricValues ? value : "***";
   })();
 
   const kpiIdleWaste = (() => {
-    if (!hasData || !snapshot) return "—";
-    // simple estimate: sum of logs marked as idle or with very low distance
-    const logs = snapshot.fuelLogs || [];
-    const idleLiters = logs.filter((l: any) => (l.idle === true) || Number(l.distance ?? 0) < 1).reduce((s: number, l: any) => s + Number(l.liters ?? l.amount ?? 0), 0);
-    return `${Math.round(idleLiters).toLocaleString()} kWh`;
+    const fallback = "₱0";
+    if (!hasData || !snapshot) return showMetricValues ? fallback : "***";
+    const logs = filteredFuelLogs;
+    const idleCost = logs.filter((l: any) => (l.idle === true) || Number(l.distance ?? 0) < 1).reduce((s: number, l: any) => s + Number(l.cost ?? l.amount ?? 0), 0);
+    const value = formatPeso(idleCost);
+    return showMetricValues ? value : "***";
   })();
 
   const kpiDispatchEfficiency = (() => {
-    if (!hasData || !snapshot) return "—";
-    // heuristic: percent of trips with optimized=true
+    const fallback = "0%";
+    if (!hasData || !snapshot) return showMetricValues ? fallback : "***";
     const trips = snapshot.trips || [];
-    if (!trips.length) return "—";
+    if (!trips.length) return showMetricValues ? "0%" : "***";
     const optimized = trips.filter((t: any) => Boolean(t.optimized) || Boolean(t.isOptimized)).length;
     const pct = Math.round((optimized / trips.length) * 100);
-    return `${pct}%`;
+    const value = `${pct}%`;
+    return showMetricValues ? value : "***";
   })();
 
   // small helper to compute percent change between two numbers
   function percentChange(current: number, previous: number) {
-    if (previous === 0 || !isFinite(previous)) return "—";
+    if (previous === 0 && current === 0) return "0.0%";
+    if (previous === 0 || !isFinite(previous)) return "0.0%";
     const diff = current - previous;
     const pct = (diff / Math.abs(previous)) * 100;
     const sign = pct > 0 ? "+" : "";
@@ -174,7 +321,30 @@ export default function FuelConsumptionPage() {
   // compute deltas over the last 30 days vs previous 30 days
   const now = Date.now();
   const MS_DAY = 24 * 60 * 60 * 1000;
-  const windowDays = 30;
+
+  const getPeriodWindow = () => {
+    if (selectedPeriod === "This Week") {
+      const periodEnd = now;
+      const periodStart = now - 7 * MS_DAY;
+      const prevPeriodStart = periodStart - 7 * MS_DAY;
+      const prevPeriodEnd = periodStart - 1;
+      return { periodStart, periodEnd, prevPeriodStart, prevPeriodEnd };
+    }
+
+    if (selectedPeriod === "This Month") {
+      const periodEnd = now;
+      const periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+      const prevPeriodStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getTime();
+      const prevPeriodEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0, 23, 59, 59, 999).getTime();
+      return { periodStart, periodEnd, prevPeriodStart, prevPeriodEnd };
+    }
+
+    const periodEnd = now;
+    const periodStart = new Date(new Date().getFullYear(), 0, 1).getTime();
+    const prevPeriodStart = new Date(new Date().getFullYear() - 1, 0, 1).getTime();
+    const prevPeriodEnd = new Date(new Date().getFullYear() - 1, 11, 31, 23, 59, 59, 999).getTime();
+    return { periodStart, periodEnd, prevPeriodStart, prevPeriodEnd };
+  };
 
   function sumLogsInRange(startMs: number, endMs: number, predicate?: (l: any) => boolean) {
     if (!snapshot) return 0;
@@ -188,17 +358,28 @@ export default function FuelConsumptionPage() {
     }, 0);
   }
 
-  const periodEnd = now;
-  const periodStart = now - windowDays * MS_DAY;
-  const prevPeriodStart = periodStart - windowDays * MS_DAY;
-  const prevPeriodEnd = periodStart - 1;
+  const { periodStart, periodEnd, prevPeriodStart, prevPeriodEnd } = getPeriodWindow();
 
-  const totalCurrent = hasData && snapshot ? sumLogsInRange(periodStart, periodEnd) : 0;
-  const totalPrevious = hasData && snapshot ? sumLogsInRange(prevPeriodStart, prevPeriodEnd) : 0;
+  const totalCurrent = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => {
+    const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
+    return ts >= periodStart && ts <= periodEnd ? s + Number(l.cost ?? l.amount ?? 0) : s;
+  }, 0) : 0;
+  const totalPrevious = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => {
+    const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
+    return ts >= prevPeriodStart && ts <= prevPeriodEnd ? s + Number(l.cost ?? l.amount ?? 0) : s;
+  }, 0) : 0;
   const totalChange = percentChange(totalCurrent, totalPrevious);
 
-  const idleCurrent = hasData && snapshot ? sumLogsInRange(periodStart, periodEnd, (l) => Boolean(l.idle) || Number(l.distance ?? 0) < 1) : 0;
-  const idlePrevious = hasData && snapshot ? sumLogsInRange(prevPeriodStart, prevPeriodEnd, (l) => Boolean(l.idle) || Number(l.distance ?? 0) < 1) : 0;
+  const idleCurrent = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => {
+    const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
+    const isIdle = Boolean(l.idle) || Number(l.distance ?? 0) < 1;
+    return ts >= periodStart && ts <= periodEnd && isIdle ? s + Number(l.cost ?? l.amount ?? 0) : s;
+  }, 0) : 0;
+  const idlePrevious = hasData && snapshot ? (snapshot.fuelLogs || []).reduce((s: number, l: any) => {
+    const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
+    const isIdle = Boolean(l.idle) || Number(l.distance ?? 0) < 1;
+    return ts >= prevPeriodStart && ts <= prevPeriodEnd && isIdle ? s + Number(l.cost ?? l.amount ?? 0) : s;
+  }, 0) : 0;
   const idleChange = percentChange(idleCurrent, idlePrevious);
 
   // efficiency: distance / liters
@@ -215,9 +396,21 @@ export default function FuelConsumptionPage() {
   const distCurrent = hasData && snapshot ? sumDistanceInRange(periodStart, periodEnd) : 0;
   const distPrevious = hasData && snapshot ? sumDistanceInRange(prevPeriodStart, prevPeriodEnd) : 0;
 
-  const effCurrent = totalCurrent > 0 ? distCurrent / totalCurrent : 0;
-  const effPrevious = totalPrevious > 0 ? distPrevious / totalPrevious : 0;
-  const efficiencyChange = effPrevious > 0 ? percentChange(effCurrent, effPrevious) : "—";
+  function sumFuelLitersInRange(startMs: number, endMs: number) {
+    if (!snapshot) return 0;
+    const logs = snapshot.fuelLogs || [];
+    return logs.reduce((s: number, l: any) => {
+      const ts = new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? 0).getTime();
+      if (ts >= startMs && ts <= endMs) return s + Number(l.liters ?? l.amount ?? 0);
+      return s;
+    }, 0);
+  }
+
+  const litersCurrent = hasData && snapshot ? sumFuelLitersInRange(periodStart, periodEnd) : 0;
+  const litersPrevious = hasData && snapshot ? sumFuelLitersInRange(prevPeriodStart, prevPeriodEnd) : 0;
+  const effCurrent = litersCurrent > 0 ? distCurrent / litersCurrent : 0;
+  const effPrevious = litersPrevious > 0 ? distPrevious / litersPrevious : 0;
+  const efficiencyChange = effPrevious > 0 ? percentChange(effCurrent, effPrevious) : "0.0%";
 
   const tripsCurrent = hasData && snapshot ? (snapshot.trips || []).filter((t: any) => {
     const ts = new Date(t.createdAt ?? t.created_at ?? 0).getTime();
@@ -230,6 +423,140 @@ export default function FuelConsumptionPage() {
   const optCurrent = tripsCurrent.filter((t: any) => Boolean(t.optimized) || Boolean(t.isOptimized)).length;
   const optPrevious = tripsPrevious.filter((t: any) => Boolean(t.optimized) || Boolean(t.isOptimized)).length;
   const dispatchChange = percentChange(optCurrent, optPrevious);
+
+  const aiRecommendation = (() => {
+    if (!snapshot || !filteredFuelLogs.length) {
+      return "No fuel data available for AI recommendation.";
+    }
+
+    const totalFuelSpend = filteredFuelLogs.reduce((sum: number, log: any) => sum + Number(log.cost ?? log.amount ?? 0), 0);
+    const idleFuelSpend = filteredFuelLogs.filter((log: any) => (log.idle === true) || Number(log.distance ?? 0) < 1).reduce((sum: number, log: any) => sum + Number(log.cost ?? log.amount ?? 0), 0);
+    const dispatchRate = ((snapshot.trips || []).filter((t: any) => Boolean(t.optimized) || Boolean(t.isOptimized)).length / Math.max((snapshot.trips || []).length, 1)) * 100;
+
+    if (idleFuelSpend > totalFuelSpend * 0.2) {
+      return `Idle route waste is ${formatPeso(idleFuelSpend)}; reschedule depot idling to reduce unnecessary fuel spend.`;
+    }
+    if (dispatchRate < 70) {
+      return `Dispatch optimization is below target (${dispatchRate.toFixed(0)}%); re-balance routes to cut fuel cost.`;
+    }
+    return "Fleet performance is healthy. Keep current route mix and monitor spend trends for the next cycle.";
+  })();
+
+  const weeklyFuelTrend = (() => {
+    const labels = ["M", "T", "W", "T", "F", "S", "S"];
+    const buckets = labels.map((label) => ({ label, diesel: 0, ev: 0 }));
+
+    if (!snapshot || !filteredFuelLogs.length) return buckets;
+
+    const now = new Date();
+    const startOfWindow = new Date(now);
+    startOfWindow.setHours(0, 0, 0, 0);
+    startOfWindow.setDate(now.getDate() - 6);
+
+    for (const log of filteredFuelLogs) {
+      const date = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
+      if (Number.isNaN(date.getTime()) || date < startOfWindow) continue;
+
+      const index = Math.min(6, Math.max(0, Math.floor((date.getTime() - startOfWindow.getTime()) / (24 * 60 * 60 * 1000))));
+      const vehicle = (snapshot.vehicles || []).find((v: any) => v.id === (log.vehicleId ?? log.vehicle_id));
+      const isEv = /ev|electric/.test(String(vehicle?.vehicle_type ?? vehicle?.vehicleType ?? vehicle?.model ?? "").toLowerCase());
+      const cost = Number(log.cost ?? log.amount ?? 0) || 0;
+      if (activeTab === "all") {
+        if (isEv) buckets[index].ev += cost;
+        else buckets[index].diesel += cost;
+      } else if (activeTab === "ev" && isEv) {
+        buckets[index].ev += cost;
+      } else if (activeTab === "diesel" && !isEv) {
+        buckets[index].diesel += cost;
+      }
+    }
+
+    return buckets;
+  })();
+
+  const weeklyEfficiencyTrend = (() => {
+    const labels = ["M", "T", "W", "T", "F", "S", "S"];
+    const buckets = labels.map((label) => ({ label, value: 0 }));
+
+    if (!snapshot || !filteredFuelLogs.length) return buckets;
+
+    const now = new Date();
+    const startOfWindow = new Date(now);
+    startOfWindow.setHours(0, 0, 0, 0);
+    startOfWindow.setDate(now.getDate() - 6);
+
+    for (const log of filteredFuelLogs) {
+      const date = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
+      if (Number.isNaN(date.getTime()) || date < startOfWindow) continue;
+
+      const index = Math.min(6, Math.max(0, Math.floor((date.getTime() - startOfWindow.getTime()) / (24 * 60 * 60 * 1000))));
+      const liters = Number(log.liters ?? log.amount ?? 0) || 0;
+      const distance = Number(log.distance ?? 0) || 0;
+      const efficiency = liters > 0 ? distance / liters : 0;
+      buckets[index].value += efficiency;
+    }
+
+    return buckets.map((bucket) => ({ ...bucket, value: Number(bucket.value.toFixed(1)) }));
+  })();
+
+  const weeklyIdleTrend = (() => {
+    const labels = ["M", "T", "W", "T", "F", "S", "S"];
+    const buckets = labels.map((label) => ({ label, value: 0 }));
+
+    if (!snapshot || !filteredFuelLogs.length) return buckets;
+
+    const now = new Date();
+    const startOfWindow = new Date(now);
+    startOfWindow.setHours(0, 0, 0, 0);
+    startOfWindow.setDate(now.getDate() - 6);
+
+    for (const log of filteredFuelLogs) {
+      const date = new Date(log.loggedAt ?? log.logged_at ?? log.createdAt ?? log.created_at ?? Date.now());
+      if (Number.isNaN(date.getTime()) || date < startOfWindow) continue;
+
+      const index = Math.min(6, Math.max(0, Math.floor((date.getTime() - startOfWindow.getTime()) / (24 * 60 * 60 * 1000))));
+      const isIdle = Boolean(log.idle) || Number(log.distance ?? 0) < 1;
+      if (isIdle) buckets[index].value += Number(log.cost ?? log.amount ?? 0) || 0;
+    }
+
+    return buckets.map((bucket) => ({ ...bucket, value: Number(bucket.value.toFixed(0)) }));
+  })();
+
+  const analyticsCards = [
+    {
+      title: "Fuel Spend Trend",
+      subtitle: "Operational fuel draw by route segment",
+      colorA: "#ec2188",
+      colorB: "#b80049",
+      series: weeklyFuelTrend.map((item) => ({
+        label: item.label,
+        value: item.diesel + item.ev,
+        tooltip: `₱${(item.diesel + item.ev).toLocaleString()}`,
+      })),
+    },
+    {
+      title: "Route Efficiency",
+      subtitle: "Distance vs fuel draw efficiency",
+      colorA: "#f7b9d5",
+      colorB: "#ec2188",
+      series: weeklyEfficiencyTrend.map((item) => ({
+        label: item.label,
+        value: item.value || 0,
+        tooltip: `${item.value.toFixed(1)} km/L`,
+      })),
+    },
+    {
+      title: "Idle Waste",
+      subtitle: "Unplanned draw and non-productive use",
+      colorA: "#f5a9bc",
+      colorB: "#d7085a",
+      series: weeklyIdleTrend.map((item) => ({
+        label: item.label,
+        value: item.value || 0,
+        tooltip: `₱${(item.value || 0).toLocaleString()}`,
+      })),
+    },
+  ];
 
   const toggleHeatmapFilters = () => {
     setShowHeatmapFilters((prev) => !prev);
@@ -271,15 +598,15 @@ export default function FuelConsumptionPage() {
 
           {/* Timeframe & Category Switches */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center bg-[#f5eef2] p-1.5 rounded-2xl border border-[#b80049]/10">
+            <div className="flex items-center bg-[#f3e9ee] p-1 rounded-full border border-[#f1dfe7] overflow-hidden shadow-inner shadow-white/80">
               {(["This Week", "This Month", "YTD"] as Period[]).map((period) => (
                 <button
                   key={period}
                   onClick={() => setSelectedPeriod(period)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
+                  className={`px-5 py-2.5 rounded-full text-[15px] font-medium transition-all duration-200 ${
                     selectedPeriod === period
-                      ? "bg-[#b80049] text-white shadow-md shadow-[#b80049]/25 scale-[1.02]"
-                      : "text-[#6b5862] hover:text-[#b80049] hover:bg-[#b80049]/5"
+                      ? "bg-[#b80049] text-white shadow-[0_2px_10px_rgba(184,0,73,0.18)]"
+                      : "text-[#1e1a1c] hover:text-[#b80049]"
                   }`}
                 >
                   {period}
@@ -288,8 +615,8 @@ export default function FuelConsumptionPage() {
             </div>
 
             <button
-              onClick={() => triggerToast("Exporting Courier Fuel Report (CSV)...")}
-              className="px-4 py-2.5 bg-[#1e1a1c] hover:bg-[#b80049] text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+              onClick={exportFuelData}
+              className="px-4 py-2.5 bg-[#17191d] hover:bg-[#1c1f25] text-white rounded-full text-[15px] font-medium transition-all flex items-center gap-2 shadow-sm border border-[#0d0e10]"
             >
               <Icon name="download" className="text-base" /> Export Data
             </button>
@@ -297,42 +624,46 @@ export default function FuelConsumptionPage() {
         </div>
 
         {/* Top KPI Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard
-            title="Total Delivery Fuel Usage"
+            title="Total Fuel Usage"
             value={kpiTotalFuelUsage}
             change={totalChange}
             isIncreaseBad={true}
-            subtext={totalChange !== "—" ? `${totalChange} vs previous 30 days` : ""}
+            subtext={totalChange !== "—" ? `${totalChange} vs prev` : "0.0%"}
             icon="bolt"
             accent="pink"
+            onToggle={handleKpiToggle}
           />
           <KpiCard
-            title="Avg Delivery Efficiency"
+            title="Avg Fuel Efficiency"
             value={kpiAvgEfficiency}
             change={efficiencyChange}
             isIncreaseBad={false}
-            subtext={efficiencyChange !== "—" ? `${efficiencyChange} vs previous 30 days` : ""}
+            subtext={efficiencyChange !== "—" ? `${efficiencyChange} vs prev` : "0.0%"}
             icon="speed"
             accent="green"
+            onToggle={handleKpiToggle}
           />
           <KpiCard
             title="Idle Route Waste"
             value={kpiIdleWaste}
             change={idleChange}
             isIncreaseBad={false}
-            subtext={idleChange !== "—" ? `${idleChange} vs previous 30 days` : ""}
+            subtext={idleChange !== "—" ? `${idleChange} vs prev` : "0.0%"}
             icon="timer"
             accent="orange"
+            onToggle={handleKpiToggle}
           />
           <KpiCard
-            title="Dispatch Efficiency Progress"
+            title="Dispatch Efficiency"
             value={kpiDispatchEfficiency}
             change={dispatchChange}
             isIncreaseBad={false}
-            subtext={dispatchChange !== "—" ? `${dispatchChange} vs previous 30 days` : ""}
+            subtext={dispatchChange !== "—" ? `${dispatchChange} vs prev` : "0.0%"}
             icon="eco"
             accent="pink"
+            onToggle={handleKpiToggle}
           />
         </div>
 
@@ -517,156 +848,60 @@ export default function FuelConsumptionPage() {
                 <span>AI Recommendation</span>
               </div>
               <p className="text-xs text-[#52434a] leading-relaxed">
-                Shifting Depot 4 overnight charging schedules by 2 hours reduces peak utility charges by $4,200/mo.
+                {aiRecommendation}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Secondary Layout: Fleet Class Mix + Depot Interactive Map Matrix */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Class Breakdown (5 Cols) */}
-          <div className="lg:col-span-5 bg-white rounded-3xl p-6 lg:p-7 border border-[#b80049]/10 shadow-[0_8px_30px_rgba(184,0,73,0.04)] flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-lg font-bold text-[#1e1a1c]">Consumption by Delivery Unit Class</h3>
-                  <p className="text-xs text-[#706068]">Fuel distribution across delivery unit types</p>
-                </div>
-                <button className="text-xs font-bold text-[#b80049] hover:underline">Configure Mix</button>
-              </div>
+        {/* Secondary Layout: Fuel Analytics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {analyticsCards.map((chart) => {
+            const maxValue = Math.max(...chart.series.map((point) => point.value), 1);
 
-              <div className="space-y-5">
-                {classBreakdownView.map((item) => (
-                  <div key={item.label} className="group">
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-[#faf8f9] text-[#b80049] group-hover:bg-[#b80049] group-hover:text-white transition-colors">
-                          <Icon name={item.icon} className="text-lg" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-[#1e1a1c]">{item.label}</p>
-                          <p className="text-[10px] text-[#706068]">{item.count} Active Units</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-extrabold text-[#1e1a1c] block">{item.value}</span>
-                        <span className="text-[10px] text-green-600 font-medium">{item.efficiency}</span>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-[#faf8f9] rounded-full h-2.5 overflow-hidden p-0.5 border border-gray-100">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${item.bar}`}
-                        style={{ width: item.width }}
-                      />
-                    </div>
+            return (
+              <div key={chart.title} className="bg-white rounded-3xl p-5 border border-[#b80049]/10 shadow-[0_8px_30px_rgba(184,0,73,0.04)]">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-[#1e1a1c]">{chart.title}</h3>
+                    <p className="text-[11px] text-[#706068]">{chart.subtitle}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-8 pt-5 border-t border-gray-100 flex items-center justify-between text-xs">
-              <span className="text-[#706068]">Route efficiency program on track (+12% savings YoY)</span>
-              <button
-                onClick={() => triggerToast("Navigating to Route Configuration...")}
-                className="font-bold text-[#b80049] hover:underline flex items-center gap-1"
-              >
-                Route Config <Icon name="chevron_right" className="text-sm" />
-              </button>
-            </div>
-          </div>
-
-          {/* Depot Regional Heatmap Matrix (7 Cols) */}
-          <div className="lg:col-span-7 bg-white rounded-3xl p-6 lg:p-7 border border-[#b80049]/10 shadow-[0_8px_30px_rgba(184,0,73,0.04)] flex flex-col justify-between">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-[#1e1a1c]">Dispatch Hub Fuel Heatmap</h3>
-                <p className="text-xs text-[#706068]">Geographic grid draw and fuel storage monitoring</p>
-              </div>
-              <button
-                onClick={toggleHeatmapFilters}
-                className="p-2 rounded-xl bg-[#faf8f9] border border-gray-200 hover:border-[#b80049]/30 text-[#1e1a1c] transition-all flex items-center gap-1.5 text-xs font-bold"
-              >
-                <Icon name="filter_list" className="text-base" />
-                <span>Filters</span>
-              </button>
-            </div>
-
-            {/* Map Container */}
-            <div className="w-full h-[280px] bg-[#faf8f9] rounded-2xl border border-gray-200/70 relative overflow-hidden flex items-center justify-center">
-              {showHeatmapFilters && (
-                <div className="absolute top-3 right-3 z-20 bg-[#1e1a1c] text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg animate-fade-in flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#ec2188] animate-ping" />
-                  Showing High-Draw Depots Only
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-[#faf1f5] text-[#b80049]">Live</span>
                 </div>
-              )}
 
-              {/* Stylized Vector Map Grid */}
-              <svg viewBox="0 0 800 450" className="w-full h-full opacity-30 object-cover">
-                <path
-                  d="M 100,100 L 200,80 L 350,120 L 500,90 L 650,140 L 720,220 L 680,350 L 520,380 L 320,400 L 150,320 Z"
-                  fill="none"
-                  stroke="#b80049"
-                  strokeWidth="2"
-                  strokeDasharray="6 6"
-                />
-              </svg>
+                <div className="relative h-[170px] rounded-2xl bg-[#faf8f9] border border-gray-100 p-3">
+                  <div className="absolute inset-0 flex flex-col justify-between px-3 py-4 pointer-events-none">
+                    {[0, 25, 50, 75, 100].map((line) => (
+                      <div key={line} className="border-t border-dashed border-[#f0dfe8]" />
+                    ))}
+                  </div>
 
-              {/* Interactive Heatmap Nodes (derived from snapshot when available) */}
-              {(() => {
-                // build hubs view by grouping common hub/station fields in fuelLogs
-                const logs = (snapshot?.fuelLogs || []) as any[];
-                const hubKey = (l: any) => l.station || l.hub || l.depot || l.station_name || l.location || l.stationId || l.hub_name || null;
-                const grouped: Record<string, { name: string; usage: number; status: "normal" | "high" | "alert" }> = {};
-                for (const l of logs) {
-                  const key = String(hubKey(l) ?? "Unknown Hub");
-                  grouped[key] = grouped[key] || { name: key, usage: 0, status: "normal" };
-                  grouped[key].usage += Number(l.liters ?? l.amount ?? 0) || 0;
-                }
-                const hubs = Object.values(grouped).map((h) => ({ ...h, usageLabel: `${Math.round(h.usage)} kWh` }));
-                if (!hubs.length) {
-                  return (
-                    <div className="flex items-center justify-center w-full h-[220px]">
-                      <div className="text-center text-sm text-[#706068]">No hub telemetry available — waiting for live depot data.</div>
-                    </div>
-                  );
-                }
-
-                // If we have hubs but no coordinates, render them evenly across the map area
-                return hubs.map((h, i) => {
-                  const left = `${10 + (i * 80) / Math.max(1, hubs.length - 1)}%`;
-                  const top = `${20 + (i * 60) / Math.max(1, hubs.length - 1)}%`;
-                  const status: "normal" | "high" | "alert" = h.usage > 500 ? "alert" : h.usage > 200 ? "high" : "normal";
-                  return <DepotNode key={h.name} top={top} left={left} name={h.name} usage={h.usageLabel} status={status} />;
-                });
-              })()}
-            </div>
-
-            {/* Depot Status Legend Bar */}
-            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 text-[11px] text-[#706068]">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Optimal
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-[#706068]">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#ec2188]" /> Peak Draw
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-[#706068]">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Critical Alert
-                </span>
+                  <div className="relative z-10 h-full flex items-end justify-between gap-2">
+                    {chart.series.map((point) => {
+                      const height = Math.max(10, (point.value / maxValue) * 100);
+                      return (
+                        <div key={`${chart.title}-${point.label}`} className="group flex-1 flex flex-col items-center justify-end h-full gap-2">
+                          <div className="relative w-full h-full flex items-end justify-center">
+                            <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#1e1a1c] px-2 py-1 text-[9px] font-semibold text-white opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg">
+                              {point.tooltip}
+                            </div>
+                            <div
+                              className="w-full rounded-t-xl transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_8px_18px_rgba(184,0,73,0.20)]"
+                              style={{
+                                height: `${height}%`,
+                                background: `linear-gradient(180deg, ${chart.colorA} 0%, ${chart.colorB} 100%)`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-[9px] font-medium text-[#706068]">{point.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              {(() => {
-                const active = Object.keys((snapshot?.fuelLogs || []).reduce((acc: any, l: any) => {
-                  const key = String(l.station || l.hub || l.depot || l.station_name || l.location || "Unknown");
-                  acc[key] = true; return acc;
-                }, {})).length;
-                return <span className="text-[11px] text-[#706068] font-mono">{active} Active Hubs Online</span>;
-              })()}
-            </div>
-          </div>
+            );
+          })}
         </div>
 
         {/* Refueling & Grid Charge Log Table */}
@@ -742,6 +977,7 @@ function KpiCard({
   subtext,
   icon,
   accent,
+  onToggle,
 }: {
   title: string;
   value: string;
@@ -750,44 +986,76 @@ function KpiCard({
   subtext: string;
   icon: string;
   accent: "pink" | "green" | "orange";
+  onToggle?: () => void;
 }) {
+  const isHidden = value.includes("*");
   const isPositive = change.startsWith("+");
+  const isNegative = change.startsWith("-");
+  const isFlat = !isPositive && !isNegative;
   const isBad = isPositive ? isIncreaseBad : !isIncreaseBad;
 
   return (
-    <div className="bg-white rounded-3xl p-6 border border-[#b80049]/10 shadow-[0_4px_20px_rgba(184,0,73,0.03)] flex flex-col justify-between hover:shadow-lg transition-all duration-300">
-      <div className="flex justify-between items-start mb-4">
-        <span className="text-xs font-bold text-[#706068] tracking-wide">{title}</span>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onToggle?.();
+        }
+      }}
+      className="group bg-[#f6f5f6] border border-[#efdfe5] rounded-[28px] p-4 flex flex-col justify-between text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(184,0,73,0.06)] min-h-[130px] outline-none focus:ring-2 focus:ring-[#b80049]/20"
+    >
+      <div className="flex items-center justify-between gap-2">
         <div
-          className={`p-2 rounded-2xl ${
+          className={`flex h-10 w-10 items-center justify-center rounded-[16px] border ${
             accent === "pink"
-              ? "bg-[#b80049]/10 text-[#b80049]"
+              ? "bg-[#faedf3] border-[#f4dfe9] text-[#b80049]"
               : accent === "green"
-              ? "bg-emerald-50 text-emerald-600"
-              : "bg-amber-50 text-amber-600"
+              ? "bg-[#ebfaf2] border-[#d9f2e8] text-[#0d8b66]"
+              : "bg-[#fff1df] border-[#f5e1bc] text-[#d97b00]"
           }`}
         >
-          <Icon name={icon} className="text-xl" fill />
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-2xl lg:text-3xl font-extrabold text-[#1e1a1c] tracking-tight">{value}</span>
+          <Icon name={icon} className="text-[22px]" fill />
         </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 ${
-              isBad ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
-            }`}
-          >
-            <Icon name={isPositive ? "north_east" : "south_east"} className="text-xs" />
-            {change}
-          </span>
-          <span className="text-[11px] text-[#706068] truncate">{subtext}</span>
-        </div>
+        <span
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${
+            accent === "pink"
+              ? "border-[#f4dfe9] bg-[#fff5f9] text-[#b80049]"
+              : accent === "green"
+              ? "border-[#d9f2e8] bg-[#f2fff9] text-[#0d8b66]"
+              : "border-[#f5e1bc] bg-[#fffaf2] text-[#d97b00]"
+          }`}
+        >
+          {isPositive ? "Live" : isFlat ? "Stable" : "Watch"}
+        </span>
       </div>
+
+      <div className="mt-4 flex items-end justify-between gap-2">
+        <div className="text-[30px] font-black tracking-[-0.06em] text-[#1d1a1c] leading-none">
+          {value}
+        </div>
+
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[10px] font-bold ${
+            isFlat
+              ? "bg-slate-100 text-slate-600"
+              : isBad
+              ? "bg-red-50 text-red-600"
+              : "bg-emerald-50 text-emerald-600"
+          }`}
+        >
+          <Icon
+            name={isFlat ? "horizontal_rule" : isPositive ? "north_east" : "south_east"}
+            className="text-[12px]"
+          />
+          {change}
+        </span>
+      </div>
+
+      <div className="mt-2 text-[12px] font-medium text-[#50444a] leading-snug">{title}</div>
     </div>
   );
 }

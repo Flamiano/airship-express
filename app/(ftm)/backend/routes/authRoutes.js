@@ -5,6 +5,7 @@ const { healthCheck, registerDriver, loginDriver, getDriverProfile } = require('
 router.get('/health', healthCheck);
 router.post('/driver/register', registerDriver);
 router.post('/driver/login', loginDriver);
+router.post('/login', loginDriver);
 router.get('/driver/profile/:driverId', getDriverProfile);
 
 module.exports = router;

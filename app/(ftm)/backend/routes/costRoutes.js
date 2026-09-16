@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getServiceSupabase } = require('../config/db');
+const { attachCategoryCost, loadCategoryCosts } = require('../services/costCategoryService');
 
 const COST_CATEGORIES = new Set([
   'Fuel', 'Maintenance', 'Toll', 'Salary', 'Insurance', 'Other', 'Driver', 'Parking', 'Revenue',
@@ -48,7 +49,13 @@ router.get('/', async (_req, res) => {
     return res.status(500).json({ error: `Unable to load cost entries: ${message}` });
   }
 
-  return res.json((data || []).map(normalizeCostEntry));
+  const normalizedRows = (data || []).map(normalizeCostEntry);
+  try {
+    return res.json(await loadCategoryCosts(supabase, normalizedRows));
+  } catch (categoryError) {
+    console.error('Supabase category cost query error:', categoryError.message);
+    return res.status(500).json({ error: `Unable to load category costs: ${categoryError.message}` });
+  }
 });
 
 router.post('/', async (req, res) => {
@@ -88,6 +95,13 @@ router.post('/', async (req, res) => {
   if (result.error) {
     console.error('Supabase cost insert error:', result.error.message);
     return res.status(500).json({ error: `Unable to create cost entry: ${result.error.message}` });
+  }
+
+  try {
+    await attachCategoryCost(supabase, record.category, record, result.data.id);
+  } catch (categoryError) {
+    console.error('Supabase category cost insert error:', categoryError.message);
+    return res.status(500).json({ error: `Unable to create category cost: ${categoryError.message}` });
   }
 
   return res.status(201).json(normalizeCostEntry(result.data));

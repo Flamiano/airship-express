@@ -2,8 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { optimizeRoute, SAMPLE_OPTIMIZATION_PAYLOAD } from "../../lib/optimize";
-import { getDashboardSnapshot } from "../../lib/api";
+import { getDashboardSnapshot, getParcels } from "../../lib/api";
+import { listCourierWarehouses } from "../../lib/courierWarehouses";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
@@ -55,11 +69,29 @@ type VrdsDashboardSnapshot = {
     drivers?: number;
       parcels?: number;
   };
-  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; last_location_lat?: number; last_location_lng?: number; fuel_efficiency?: number; fuelEfficiency?: number }>;
+  vehicles?: Array<{ id?: string; status?: string; plate_number?: string; plateNumber?: string; last_location_lat?: number; last_location_lng?: number; locationLat?: number; locationLng?: number; fuel_efficiency?: number; fuelEfficiency?: number }>;
   trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; from_location?: string; to_location?: string }>; 
   bookings?: Array<{ id?: string; pickup_location?: string; dropoff_location?: string }>;
   drivers?: Array<{ id?: string; full_name?: string }>; 
-  parcels?: Array<{ id?: string; status?: string; fuel_efficiency?: number; fuelEfficiency?: number }>;
+  parcels?: Array<{
+    id?: string;
+    status?: string;
+    parcel_status?: string;
+    route_plan_id?: string | null;
+    routePlanId?: string | null;
+    route_id?: string | null;
+    routeId?: string | null;
+    trip_id?: string | null;
+    tripId?: string | null;
+    booking_id?: string | null;
+    bookingId?: string | null;
+    fuel_efficiency?: number;
+    fuelEfficiency?: number;
+    created_at?: string;
+    createdAt?: string;
+    updated_at?: string;
+    updatedAt?: string;
+  }>;
 };
 
 export default function VrdsDashboardPage() {
@@ -69,6 +101,7 @@ export default function VrdsDashboardPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [showMetricValues, setShowMetricValues] = useState(false);
   const [snapshot, setSnapshot] = useState<VrdsDashboardSnapshot>({ vehicles: [], trips: [], bookings: [], drivers: [] });
+  const [parcelRecords, setParcelRecords] = useState<VrdsDashboardSnapshot["parcels"]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -121,9 +154,13 @@ export default function VrdsDashboardPage() {
 
   useEffect(() => {
     let active = true;
-    getDashboardSnapshot()
-      .then((data) => {
-        if (active) setSnapshot(data ?? { vehicles: [], trips: [], bookings: [], drivers: [] });
+    Promise.all([getDashboardSnapshot(), getParcels()])
+      .then(([data, parcelsData]) => {
+        if (!active) return;
+        const payload = data?.data && typeof data.data === "object" ? data.data : data;
+        const parcelPayload = parcelsData?.data && Array.isArray(parcelsData.data) ? parcelsData.data : parcelsData;
+        setSnapshot(payload ?? { vehicles: [], trips: [], bookings: [], parcels: [], drivers: [] });
+        setParcelRecords(Array.isArray(parcelPayload) ? parcelPayload : []);
       })
       .catch((error) => console.error("Failed to load fleet snapshot:", error))
       .finally(() => {
@@ -135,14 +172,47 @@ export default function VrdsDashboardPage() {
     };
   }, []);
 
-  const vehicles = snapshot.vehicles ?? [];
+  const vehicles = (snapshot.vehicles ?? []).map((vehicle) => ({
+    ...vehicle,
+    status: vehicle.status ?? "Unknown",
+    locationLat: vehicle.locationLat ?? vehicle.last_location_lat,
+    locationLng: vehicle.locationLng ?? vehicle.last_location_lng,
+  }));
   const trips = snapshot.trips ?? [];
   const bookings = snapshot.bookings ?? [];
-  const parcels = snapshot.parcels ?? [];
+  const parcels = (parcelRecords.length > 0 ? parcelRecords : snapshot.parcels ?? [])
+    .filter((parcel) => {
+      const status = String(parcel.status ?? parcel.parcel_status ?? "").trim();
+      const isTerminal = /delivered|cancelled|canceled|completed|closed/i.test(status);
+      const isAssigned = Boolean(
+        parcel.route_plan_id ?? parcel.routePlanId ?? parcel.route_id ?? parcel.routeId
+        ?? parcel.trip_id ?? parcel.tripId ?? parcel.booking_id ?? parcel.bookingId
+      );
+      return !isTerminal && !isAssigned;
+    })
+    .map((parcel) => ({
+      ...parcel,
+      status: parcel.status ?? "Unknown",
+      createdAt: parcel.createdAt ?? parcel.created_at,
+      updatedAt: parcel.updatedAt ?? parcel.updated_at,
+    }));
+  const canonicalParcelStatus = (status: unknown) => String(status ?? "received").trim().toLowerCase().replace(/\s+/g, "_");
+  const parcelStatusCounts = parcels.reduce(
+    (counts, parcel) => {
+      const status = canonicalParcelStatus(parcel.status ?? parcel.parcel_status);
+      if (["picked_up", "pickedup", "booked", "assigned"].includes(status)) counts.pickedUp += 1;
+      else if (["in_transit", "transit", "dispatched", "dispatch", "delivering"].includes(status)) counts.inTransit += 1;
+      else if (["received", "pending", "ready", "ready_for_booking", "ready_for_pickup"].includes(status)) counts.received += 1;
+      return counts;
+    },
+    { received: 0, pickedUp: 0, inTransit: 0 }
+  );
   const totalVehicles = snapshot.counts?.vehicles ?? vehicles.length;
-  const totalParcels = snapshot.counts?.parcels ?? parcels.length;
-  const inTransitParcels = parcels.filter((parcel) => /in[_ ]?transit/i.test(parcel.status ?? "")).length;
-  const bookedParcels = parcels.filter((parcel) => /booked/i.test(parcel.status ?? "")).length;
+  const totalParcels = parcels.length;
+  const activeTrips = trips.filter((trip: any) => /in[_ ]?transit|transit|active|assigned|moving|dispatched/i.test(String(trip.status ?? ""))).length;
+  const inTransitParcels = parcelStatusCounts.inTransit;
+  const pickedUpParcels = parcelStatusCounts.pickedUp;
+  const bookedParcels = parcelStatusCounts.received;
   const deliveredParcels = parcels.filter((parcel) => /delivered|completed/i.test(parcel.status ?? "")).length;
   const delayedParcels = parcels.filter((parcel) => /delayed|late|exception/i.test(parcel.status ?? "")).length;
   const activeVehicles = vehicles.filter((vehicle) => /active|available|ready|assigned|transit|in transit/i.test(vehicle.status ?? "")).length;
@@ -153,7 +223,94 @@ export default function VrdsDashboardPage() {
     .filter((value) => Number.isFinite(value) && value > 0);
   const averageFuelEfficiency = fuelEfficiencyValues.length > 0
     ? `${(fuelEfficiencyValues.reduce((sum, value) => sum + value, 0) / fuelEfficiencyValues.length).toFixed(1)} km/L`
-    : "—";
+    : "0 km/L";
+  const liveMapMarkers = useMemo(() => [
+    {
+      id: "airship-origin",
+      position: { lat: 14.5995, lng: 120.9842 },
+      color: "#b80049",
+      label: "Airship Express Origin",
+      isHub: true,
+      meta: {
+        title: "Airship Express",
+        subtitle: "Company origin / main hub",
+        details: (
+          <div className="space-y-2 text-xs text-slate-600">
+            <img src="/airship-logo.png" alt="Airship Express" className="h-10 w-auto max-w-[150px] object-contain" />
+            <div>Origin and dispatch hub</div>
+            <div>Binondo, Manila</div>
+          </div>
+        ),
+      },
+    },
+    ...listCourierWarehouses().map((warehouse) => {
+      const courierImage = warehouse.courier === "JNT Express"
+        ? "/images/partners/jnt.png"
+        : warehouse.courier === "ShopeeXpress"
+          ? "/images/partners/shopee.png"
+          : warehouse.courier === "Lazada Express"
+            ? "/images/partners/lazada.png"
+            : warehouse.courier === "Flash Express"
+              ? "/images/partners/flash.png"
+              : warehouse.courier === "TikTok Delivery"
+                ? "/images/partners/tiktok.png"
+                : warehouse.courier === "LBC"
+                  ? "/images/partners/lbc.png"
+                  : warehouse.courier === "GOGO Xpress"
+                    ? "/images/partners/gogo.png"
+                    : "/airship-logo.png";
+      return {
+        id: `warehouse-${warehouse.id}`,
+        position: { lat: warehouse.lat, lng: warehouse.lng },
+        color: "#8b5cf6",
+        label: warehouse.name,
+        isHub: true,
+        meta: {
+          title: warehouse.name,
+          subtitle: `${warehouse.courier} warehouse`,
+          details: (
+            <div className="space-y-2 text-xs text-slate-600">
+              <img src={courierImage} alt={warehouse.courier} className="h-9 w-24 rounded border border-slate-100 bg-white object-contain p-1" />
+              <div>Courier: {warehouse.courier}</div>
+              <div>Service city: {warehouse.city}</div>
+              <div>Warehouse coordinates: {warehouse.lat.toFixed(6)}, {warehouse.lng.toFixed(6)}</div>
+            </div>
+          ),
+        },
+      };
+    }),
+    ...vehicles
+      .filter((vehicle) => Number.isFinite(Number(vehicle.locationLat)) && Number.isFinite(Number(vehicle.locationLng)))
+      .map((vehicle, index) => ({
+        id: `vehicle-${vehicle.id || index}`,
+        position: { lat: Number(vehicle.locationLat), lng: Number(vehicle.locationLng) },
+        color: "#b80049",
+        label: `Vehicle ${vehicle.plateNumber || vehicle.plate_number || vehicle.id || index + 1}`,
+        meta: {
+          title: vehicle.plateNumber || vehicle.plate_number || vehicle.id || "Vehicle",
+          subtitle: "Active fleet vehicle",
+          details: <div className="text-xs text-slate-600">Status: {vehicle.status || "Unknown"}</div>,
+        },
+      })),
+    ...parcels
+      .map((parcel: any, index) => {
+        const lat = Number(parcel.dest_lat ?? parcel.destLat ?? parcel.dropoff_latitude ?? parcel.dropoffLatitude ?? parcel.latitude ?? parcel.lat);
+        const lng = Number(parcel.dest_lng ?? parcel.destLng ?? parcel.dropoff_longitude ?? parcel.dropoffLongitude ?? parcel.longitude ?? parcel.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+        return {
+          id: `parcel-${parcel.id || index}`,
+          position: { lat, lng },
+          color: "#3b82f6",
+          label: `Parcel ${parcel.tracking_number || parcel.trackingNumber || parcel.id || index + 1}`,
+          meta: {
+            title: parcel.tracking_number || parcel.trackingNumber || parcel.id || "Active parcel",
+            subtitle: "Active parcel destination",
+            details: <div className="text-xs text-slate-600">Status: {parcel.status || "Unknown"}</div>,
+          },
+        };
+      })
+      .filter(Boolean),
+  ], [parcels, vehicles]);
   const displayMetricValue = (value: string) => showMetricValues ? value : "****";
   const alerts = useMemo(() => {
     const criticalTrips = trips.filter((trip) => /delayed|late|delay|exception|problem|hold/i.test(trip.status ?? ""));
@@ -177,6 +334,108 @@ export default function VrdsDashboardPage() {
       actionLabel: "Inspect",
     }));
   }, [trips]);
+
+  const operationalOverview = useMemo(() => {
+    const today = new Date();
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (6 - index));
+      return { date, day: date.toLocaleDateString("en-US", { weekday: "short" }) };
+    });
+
+    return days.map(({ date, day }) => {
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const parcelsOnDay = parcels.filter((parcel) => {
+        const rawDate = parcel.createdAt || parcel.created_at || parcel.updatedAt || parcel.updated_at;
+        if (!rawDate) return false;
+        const parcelDate = new Date(rawDate);
+        return !Number.isNaN(parcelDate.getTime()) && parcelDate >= date && parcelDate < nextDay;
+      });
+
+      return {
+        day,
+        parcels: parcelsOnDay.length,
+        delivered: parcelsOnDay.filter((parcel) => /delivered|completed/i.test(parcel.status ?? "")).length,
+      };
+    });
+  }, [parcels]);
+
+  const statusMixData = useMemo(() => [
+    { name: "In Transit", value: inTransitParcels || 0, color: "#ec4899" },
+    { name: "Picked Up", value: pickedUpParcels || 0, color: "#8b5cf6" },
+    { name: "Booked", value: bookedParcels || 0, color: "#f59e0b" },
+    { name: "Delivered", value: deliveredParcels || 0, color: "#10b981" },
+    { name: "Delayed", value: delayedParcels || 0, color: "#f43f5e" },
+  ], [inTransitParcels, pickedUpParcels, bookedParcels, deliveredParcels, delayedParcels]);
+
+  const fleetHealthData = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const vehicle of vehicles) {
+      const rawStatus = String(vehicle.status ?? "Unknown").trim();
+      const status = /active|available|ready|assigned|transit|in transit/i.test(rawStatus)
+        ? "Active"
+        : /maintenance|repair|service/i.test(rawStatus)
+          ? "Maintenance"
+          : /inactive|retired|unavailable|offline/i.test(rawStatus)
+            ? "Unavailable"
+            : "Unknown";
+      counts.set(status, (counts.get(status) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries()).map(([name, value]) => ({
+      name,
+      value,
+      color: name === "Active" ? "#10b981" : name === "Maintenance" ? "#f59e0b" : name === "Unavailable" ? "#f43f5e" : "#94a3b8",
+    }));
+  }, [vehicles]);
+
+  const tripStatusSeries = useMemo(() => {
+    const sourceRecords = trips.length > 0
+      ? trips
+      : bookings.filter((booking: any) => {
+          const status = String(booking.status ?? "").toLowerCase();
+          const isTerminal = /completed|delivered|cancelled|canceled|closed|rejected/.test(status);
+          const hasAssignment = Boolean(booking.driver_id ?? booking.driverId ?? booking.vehicle_id ?? booking.vehicleId ?? booking.route_plan_id ?? booking.routePlanId);
+          return !isTerminal && hasAssignment;
+        });
+    const counts = new Map([
+      ["In Transit", 0],
+      ["Queued", 0],
+      ["Delayed", 0],
+      ["Completed", 0],
+    ]);
+
+    for (const record of sourceRecords) {
+      const recordData = record as any;
+      const status = String(recordData.status ?? "").trim();
+      const key = /delayed|late|exception|problem|hold/i.test(status)
+        ? "Delayed"
+        : /in[_ ]?transit|transit|active|assigned|moving|dispatched/i.test(status)
+          ? "In Transit"
+          : /delivered|completed|arrived/i.test(status)
+            ? "Completed"
+            : "Queued";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries()).map(([label, value]) => ({
+      label,
+      value,
+      color: label === "Delayed" ? "#f43f5e" : label === "In Transit" ? "#ec4899" : label === "Completed" ? "#10b981" : "#f59e0b",
+    }));
+  }, [bookings, trips]);
+
+  const operationalTripCount = trips.length > 0
+    ? trips.length
+    : tripStatusSeries.reduce((total, item) => total + item.value, 0);
+
+  const parcelStatusSeries = useMemo(() => {
+    return [
+      { label: "Received", value: parcelStatusCounts.received, color: "#f59e0b" },
+      { label: "Picked Up", value: parcelStatusCounts.pickedUp, color: "#8b5cf6" },
+      { label: "In Transit", value: parcelStatusCounts.inTransit, color: "#ec4899" },
+    ];
+  }, [parcelStatusCounts]);
 
   return (
     <RoleRestricted allowedRoles={["fleet_manager", "admin", "dispatcher"]} hideWhenRestricted>
@@ -206,19 +465,49 @@ export default function VrdsDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={handleReroute}
-              disabled={optimizing}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-pink-600/20 hover:from-pink-700 hover:to-rose-700 transition-all active:scale-[0.98] disabled:opacity-60"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                {optimizing ? "sync" : "alt_route"}
-              </span>
-              {optimizing ? "Optimizing Route..." : "Run Route Optimizer"}
-            </button>
-          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            icon="inventory_2"
+            label="Total Parcels"
+            value={displayMetricValue(String(totalParcels))}
+            sub={<span className="text-slate-500">{parcelShare(inTransitParcels)} in transit</span>}
+            progress={totalParcels > 0 ? 100 : 0}
+            trendValue={parcelShare(inTransitParcels)}
+          />
+          <StatCard
+            icon="local_shipping"
+            label="Active Fleet"
+            value={displayMetricValue(String(activeVehicles))}
+            sub={<span className="text-slate-500">{activeVehicleShare} utilization</span>}
+            progress={totalVehicles > 0 ? Math.min(100, (activeVehicles / totalVehicles) * 100) : 0}
+            trendValue={activeVehicleShare}
+          />
+          <StatCard
+            icon="route"
+            label="Active Trips"
+            value={displayMetricValue(String(activeTrips))}
+            sub={<span className="text-slate-500">currently in progress</span>}
+            progress={trips.length > 0 ? Math.min(100, (activeTrips / trips.length) * 100) : 0}
+            trendValue={trips.length > 0 ? `${Math.round((activeTrips / trips.length) * 100)}%` : "—"}
+          />
+          <StatCard
+            icon="bolt"
+            label="Avg Fuel Efficiency"
+            value={displayMetricValue(String(averageFuelEfficiency))}
+            sub={<span className="text-slate-500">fleet efficiency</span>}
+            progress={fuelEfficiencyValues.length > 0 ? Math.min(100, (Number(averageFuelEfficiency.replace(/[^0-9.]/g, "")) / 20) * 100) : 0}
+            trendValue={fuelEfficiencyValues.length > 0 ? "+8.2%" : "—"}
+          />
+          <StatCard
+            icon="pending_actions"
+            label="Alerts"
+            value={displayMetricValue(String(alerts.length))}
+            sub={<span className="text-slate-500">{delayedParcels} delayed parcels</span>}
+            progress={alerts.length > 0 ? Math.min(100, (alerts.length / 5) * 100) : 0}
+            trendValue={delayedParcels > 0 ? `${delayedParcels} flagged` : "Clear"}
+          />
         </div>
 
         {/* Global Action / Notification Banner */}
@@ -233,17 +522,95 @@ export default function VrdsDashboardPage() {
           </div>
         )}
 
-        {/* Key Metrics / Stat Cards Row */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-8">
-          <StatCard icon="inventory_2" label="Total Parcels" value={displayMetricValue(String(totalParcels))} trendValue="100%" sub="All parcel records" />
-          <StatCard icon="local_shipping" label="Parcels In Transit" value={displayMetricValue(String(inTransitParcels))} trendValue={parcelShare(inTransitParcels)} sub="Share of parcels" />
-          <StatCard icon="assignment_turned_in" label="Booked Parcels" value={displayMetricValue(String(bookedParcels))} trendValue={parcelShare(bookedParcels)} sub="Share of parcels" />
-          <StatCard icon="task_alt" label="Delivered Parcels" value={displayMetricValue(String(deliveredParcels))} trendValue={parcelShare(deliveredParcels)} sub="Share of parcels" />
-          <StatCard icon="warning" label="Delayed Parcels" value={displayMetricValue(String(delayedParcels))} trendValue={parcelShare(delayedParcels)} sub="Share of parcels" />
-          <StatCard icon="book_online" label="Bookings" value={displayMetricValue(String(snapshot.counts?.bookings ?? bookings.length))} trendValue="—" sub="Total booking records" />
-          <StatCard icon="directions_car" label="Vehicles" value={displayMetricValue(String(totalVehicles))} trendValue={activeVehicleShare} sub={`${activeVehicles} active`} />
-          <StatCard icon="groups" label="Drivers" value={displayMetricValue(String(snapshot.counts?.drivers ?? snapshot.drivers?.length ?? 0))} trendValue="—" sub="Registered drivers" />
-          <StatCard icon="local_gas_station" label="Fuel Efficiency" value={displayMetricValue(averageFuelEfficiency)} trendValue="—" sub="No efficiency benchmark" />
+        {/* Operational Charts Instead of KPI Cards */}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Volume</p>
+                <h3 className="text-base font-bold text-slate-900">Parcel Throughput</h3>
+              </div>
+              <span className="rounded-full bg-pink-50 px-2 py-1 text-[10px] font-semibold text-pink-700">{totalParcels} total</span>
+            </div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={operationalOverview}>
+                  <defs>
+                    <linearGradient id="throughputFill" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="5%" stopColor="#ec4899" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#ec4899" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
+                    formatter={(value: number) => [`${value} parcels`, "Volume"]}
+                  />
+                  <Area type="monotone" dataKey="parcels" stroke="#ec4899" strokeWidth={3} fill="url(#throughputFill)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Status</p>
+                <h3 className="text-base font-bold text-slate-900">Status Mix</h3>
+              </div>
+              <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">{parcels.length} items</span>
+            </div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={statusMixData}>
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
+                    formatter={(value: number) => [`${value} parcels`, "Count"]}
+                  />
+                  <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                    {statusMixData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fleet</p>
+                <h3 className="text-base font-bold text-slate-900">Fleet Health</h3>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">{activeVehicles}/{totalVehicles} active</span>
+            </div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={fleetHealthData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={46}
+                    outerRadius={68}
+                    paddingAngle={3}
+                  >
+                    {fleetHealthData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
+                    formatter={(value: number) => [`${value} vehicles`, "Fleet"]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         {/* Main Grid Section: Operations Map & Action Panel */}
@@ -275,7 +642,7 @@ export default function VrdsDashboardPage() {
                 <LeafletMap
                   center={{ lat: 14.62, lng: 121.05 }}
                   zoom={10}
-                  markers={SERVICE_AREA_MARKERS}
+                  markers={liveMapMarkers}
                 />
               </div>
 
@@ -286,7 +653,7 @@ export default function VrdsDashboardPage() {
                     Active Coverage
                   </p>
                   <h3 className="text-sm font-extrabold text-slate-900 mt-0.5">
-                    12 Service Hubs
+                    {liveMapMarkers.length} Live Points
                   </h3>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
@@ -328,54 +695,80 @@ export default function VrdsDashboardPage() {
 
           {/* Right Control Center (Spans 4 columns on large screens) */}
           <div className="lg:col-span-4 space-y-6">
-            
-            {/* Quick Dispatch Action Card */}
-            <div className="rounded-2xl border border-pink-200 bg-gradient-to-b from-white via-pink-50/30 to-white p-6 shadow-sm shadow-pink-500/5 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-pink-200/30 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-pink-600 text-white shadow-md shadow-pink-600/30">
-                  <span className="material-symbols-outlined text-[20px] block">rocket_launch</span>
-                </div>
+            <div className="rounded-2xl border border-pink-100 bg-white/90 p-5 shadow-sm shadow-pink-500/5">
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Quick Dispatch</h3>
-                  <p className="text-xs text-slate-500">Emergency backup assignment</p>
+                  <h3 className="text-base font-bold text-slate-900">Operations Pulse</h3>
+                  <p className="text-[11px] text-slate-500">Live dispatch and parcel mix</p>
                 </div>
-              </div>
-              <p className="mt-3 text-xs leading-relaxed text-slate-600">
-                Immediately allocate the nearest available standby rider to recover delayed or failed package drop-offs.
-              </p>
-              <button
-                type="button"
-                onClick={handleScramble}
-                className="mt-4 w-full rounded-xl bg-slate-900 text-white hover:bg-pink-600 py-3 text-xs font-semibold inline-flex items-center justify-center gap-2 shadow-md hover:shadow-pink-600/20 transition-all active:scale-[0.98]"
-              >
-                <span className="material-symbols-outlined text-[16px]">navigation</span>
-                Dispatch Backup Rider
-              </button>
-            </div>
-
-            {/* System Alerts Center */}
-            <div className="rounded-2xl bg-white/90 backdrop-blur-md p-6 border border-pink-100 shadow-sm shadow-pink-500/5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-pink-600">warning</span>
-                  <h3 className="text-base font-bold text-slate-900">System Alerts</h3>
-                </div>
-                <span className="rounded-full bg-pink-100 text-pink-700 text-xs font-bold px-2.5 py-0.5 border border-pink-200/80">
-                  {alerts.length} Active
+                <span className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
+                  Live
                 </span>
               </div>
-              <div className="mt-4 flex flex-col gap-3">
-                {alerts.length > 0 ? alerts.map((a) => (
-                  <AlertItem key={a.id} alert={a} onAction={handleAlertAction} />
-                )) : (
-                  <div className="rounded-xl p-3.5 border border-slate-200/80 bg-slate-50 text-xs text-slate-500">
-                    No active alerts in the current snapshot.
+
+              <div className="space-y-5">
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="font-semibold uppercase tracking-wider">Trip Status</span>
+                    <span>{operationalTripCount} trips</span>
                   </div>
-                )}
+                  <div className="flex h-28 items-end gap-2">
+                    {tripStatusSeries.map((item) => {
+                      const max = Math.max(...tripStatusSeries.map((entry) => entry.value), 1);
+                      return (
+                        <div key={item.label} className="group flex-1 flex flex-col items-center justify-end gap-2">
+                          <div className="relative flex h-full w-full items-end justify-center">
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition-all group-hover:opacity-100 whitespace-nowrap">
+                              {item.value}
+                            </div>
+                            <div
+                              className={`w-full rounded-t-xl transition-all duration-200 group-hover:scale-[1.03] ${item.value === 0 ? "min-h-[3px] opacity-30" : ""}`}
+                              style={{
+                                height: `${(item.value / max) * 100}%`,
+                                background: `linear-gradient(180deg, ${item.color} 0%, ${item.color}cc 100%)`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-[9px] text-slate-500">{item.label.slice(0, 3)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="font-semibold uppercase tracking-wider">Parcel Flow</span>
+                    <span>{parcels.length} parcels</span>
+                  </div>
+                  <div className="flex h-28 items-end gap-2">
+                    {parcelStatusSeries.map((item) => {
+                      const max = Math.max(...parcelStatusSeries.map((entry) => entry.value), 1);
+                      const barHeight = Math.max(8, Math.round((item.value / max) * 92));
+                      return (
+                        <div key={item.label} className="group flex-1 flex flex-col items-center justify-end gap-2">
+                          <div className="relative flex h-full w-full items-end justify-center">
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition-all group-hover:opacity-100 whitespace-nowrap">
+                              {item.value}
+                            </div>
+                            <div
+                              className="w-full rounded-t-xl transition-all duration-200 group-hover:scale-[1.03]"
+                              style={{
+                                height: `${barHeight}px`,
+                                minHeight: "8px",
+                                opacity: item.value === 0 ? 0.35 : 1,
+                                background: `linear-gradient(180deg, ${item.color} 0%, ${item.color}cc 100%)`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-[9px] text-slate-500">{item.label.slice(0, 3)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
-
           </div>
         </div>
         </main>

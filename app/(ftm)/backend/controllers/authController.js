@@ -1,5 +1,8 @@
 const { getSupabase } = require('../config/db');
 const { normalizeUser } = require('../models/User');
+const failedLogins = new Map();
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
 
 function isPermissionError(error) {
   const message = (error?.message || error || '').toString().toLowerCase();
@@ -99,6 +102,12 @@ async function loginDriver(req, res) {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
+  const loginKey = String(email).trim().toLowerCase();
+  const lock = failedLogins.get(loginKey);
+  if (lock?.lockedUntil > Date.now()) {
+    return res.status(423).json({ error: 'Account temporarily locked after repeated failed login attempts.', retryAfterSeconds: Math.ceil((lock.lockedUntil - Date.now()) / 1000) });
+  }
+
   const supabase = getSupabase();
   if (!supabase) return res.status(501).json({ error: 'Auth not configured' });
 
@@ -109,8 +118,13 @@ async function loginDriver(req, res) {
       if (isPermissionError(error)) {
         return res.status(500).json({ error: 'Supabase auth permission denied. Configure Supabase auth and RLS policies.' });
       }
-      return res.status(401).json({ error: 'Invalid email or password' });
+      const next = { attempts: (lock?.attempts || 0) + 1, lockedUntil: 0 };
+      if (next.attempts >= MAX_FAILED_ATTEMPTS) next.lockedUntil = Date.now() + LOCKOUT_MS;
+      failedLogins.set(loginKey, next);
+      return res.status(next.lockedUntil ? 423 : 401).json({ error: next.lockedUntil ? 'Account temporarily locked after 5 failed login attempts.' : 'Invalid email or password' });
     }
+
+    failedLogins.delete(loginKey);
 
     if (!data?.user?.id) return res.status(401).json({ error: 'Authentication failed' });
 
@@ -160,6 +174,7 @@ async function loginDriver(req, res) {
     return res.status(500).json({ error: 'Login failed' });
   }
 }
+
 
 async function getDriverProfile(req, res) {
   const driverId = req.params.driverId;

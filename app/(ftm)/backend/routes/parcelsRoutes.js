@@ -38,11 +38,36 @@ function localParcelsClient() {
 // database constraint and cause insert/update failures (check constraint
 // "chk_status"). Instead fetch distinct status values from the parcels
 // table on demand so UI and validation match the DB.
-const EXTRA_PARCEL_STATUSES = ['received', 'picked_up'];
+const EXTRA_PARCEL_STATUSES = ['received', 'picked_up', 'delayed'];
+
+function normalizeParcelStatusForDatabase(status) {
+  if (status == null) return null;
+  const raw = String(status).trim();
+  if (!raw) return null;
+  const value = raw.toLowerCase();
+  const aliases = {
+    booked: 'picked_up',
+    assigned: 'picked_up',
+    ready_for_booking: 'picked_up',
+    ready: 'picked_up',
+    pending: 'received',
+    received: 'received',
+    picked_up: 'picked_up',
+    delayed: 'delayed',
+    late: 'delayed',
+    exception: 'delayed',
+  };
+  return aliases[value] || value;
+}
 
 function isPermissionDeniedError(error) {
   const msg = String(error?.message || error || '').toLowerCase();
   return /permission denied|not authorized|rls|role .* has no privilege|cannot access|query.*denied/i.test(msg);
+}
+
+function isUpstreamNetworkError(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  return /fetch failed|econnreset|enotfound|etimedout|network error|connection closed/i.test(msg);
 }
 
 function isParcelsTableError(error) {
@@ -109,7 +134,10 @@ router.get('/', async (req, res) => {
     const supabase = getParcelsSupabase() || getServiceSupabase() || getSupabase();
     if (!supabase) return res.status(503).json({ error: 'Database not configured' });
 
-    const { data, error } = await supabase.from('parcels').select('*').limit(1000);
+    const requestedStatus = String(req.query.status || '').trim();
+    let parcelQuery = supabase.from('parcels').select('*').limit(1000);
+    if (requestedStatus) parcelQuery = parcelQuery.ilike('status', requestedStatus);
+    const { data, error } = await parcelQuery;
     if (error) {
       console.error('Parcels query error:', error.message || error);
       const msg = String(error?.message || error || '');
@@ -118,7 +146,9 @@ router.get('/', async (req, res) => {
         console.warn('Supabase permission denied when querying parcels, retrying with service role access.');
         const fallbackSupabase = getServiceSupabase();
         if (fallbackSupabase && fallbackSupabase !== supabase) {
-          const retry = await fallbackSupabase.from('parcels').select('*').limit(1000);
+          let retryQuery = fallbackSupabase.from('parcels').select('*').limit(1000);
+          if (requestedStatus) retryQuery = retryQuery.ilike('status', requestedStatus);
+          const retry = await retryQuery;
           if (!retry.error) {
             const responseData = Array.isArray(retry.data) ? retry.data : [];
             const aliasedData = responseData.map((parcel) => ({
@@ -138,11 +168,17 @@ router.get('/', async (req, res) => {
         }
       }
 
+      if (isUpstreamNetworkError(error)) {
+        console.warn('Parcel data is temporarily unavailable upstream; returning an empty list.');
+        return res.json([]);
+      }
+
       return res.status(500).json({ error: error.message || 'Failed to fetch parcels' });
     }
 
     const responseData = Array.isArray(data) ? data : [];
-    const availableData = responseData.filter(isParcelAvailableForRoutePlanning);
+    const historyMode = String(req.query.history || '').toLowerCase() === 'true';
+    const availableData = historyMode ? responseData : responseData.filter(isParcelAvailableForRoutePlanning);
     const aliasedData = availableData.map((parcel) => ({
       ...parcel,
       courier: normalizeCourierName(parcel.courier),
@@ -242,14 +278,15 @@ router.patch('/:id', async (req, res) => {
       safeUpdate.trip_id = String(payload.trip_id);
     }
 
-    // validate status against allowed set
+    // validate status against allowed set while accepting the UI aliases
     if (payload.status != null) {
       const allowed = await getAllowedParcelStatuses(parcelsSupabase);
-      const statusVal = String(payload.status);
+      const requestStatus = normalizeParcelStatusForDatabase(payload.status);
+      const statusVal = requestStatus || String(payload.status);
       if (allowed.includes(statusVal)) {
         safeUpdate.status = statusVal;
       } else {
-        console.warn('Attempt to set unsupported parcel status:', statusVal, 'allowed:', allowed);
+        console.warn('Attempt to set unsupported parcel status:', payload.status, 'normalized:', statusVal, 'allowed:', allowed);
         // skip invalid status to avoid constraint violation
       }
     }
@@ -466,22 +503,38 @@ router.post('/bulk-booking', async (req, res) => {
     const attachPayload = {
       booking_id: bookingId,
       route_plan_id: persistedRoutePlanId || routePlanId || routePlan?.id || null,
-      status: 'picked_up',
+      status: 'booked',
     };
 
     try {
-      const batchUpdate = await parcelsSupabase
+      let batchUpdate = await parcelsSupabase
         .from('parcels')
         .update(attachPayload)
         .in('id', parcelIds.map((id) => String(id)));
       updateError = batchUpdate.error;
+      // Older parcel schemas use `picked_up` for the booked/staged state.
+      // Keep the public lifecycle as `booked` where supported, but remain
+      // compatible with those existing databases during migration.
+      if (updateError && /invalid input value|status.*constraint|check constraint/i.test(String(updateError.message || updateError))) {
+        batchUpdate = await parcelsSupabase
+          .from('parcels')
+          .update({ ...attachPayload, status: 'picked_up' })
+          .in('id', parcelIds.map((id) => String(id)));
+        updateError = batchUpdate.error;
+      }
       if (updateError && /invalid input syntax for type bigint|type bigint|column .* does not exist|could not match/i.test(String(updateError.message || updateError))) {
         updateError = null;
         for (const parcelId of parcelIds) {
-          const singleUpdate = await parcelsSupabase
+          let singleUpdate = await parcelsSupabase
             .from('parcels')
             .update(attachPayload)
             .eq('id', String(parcelId));
+          if (singleUpdate.error && /invalid input value|status.*constraint|check constraint/i.test(String(singleUpdate.error.message || singleUpdate.error))) {
+            singleUpdate = await parcelsSupabase
+              .from('parcels')
+              .update({ ...attachPayload, status: 'picked_up' })
+              .eq('id', String(parcelId));
+          }
           if (singleUpdate.error) {
             updateError = singleUpdate.error;
             break;

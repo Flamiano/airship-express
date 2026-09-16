@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { AppRole, getCurrentRole, hasRoleAccess } from "../lib/roleAccess";
 
 type RoleRestrictedProps = {
   allowedRoles: AppRole[];
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+  children: ReactNode;
+  fallback?: ReactNode;
   hideWhenRestricted?: boolean;
 };
 
-export default function RoleRestricted({ allowedRoles, children, fallback, hideWhenRestricted = false }: RoleRestrictedProps) {
+export default function RoleRestricted({ allowedRoles, children, fallback, hideWhenRestricted = false }: RoleRestrictedProps): ReactElement | null {
   const [isAllowed, setIsAllowed] = useState<boolean>(false);
   const [isReady, setIsReady] = useState(false);
 

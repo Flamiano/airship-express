@@ -21,11 +21,30 @@ type StoreState = {
   vehicles: Vehicle[];
 };
 
+// Default mock drivers for testing when backend is unavailable
+const DEFAULT_DRIVERS: Driver[] = [
+  { id: "drv-001", name: "Airship Express Driver 1", status: "Available" },
+  { id: "drv-002", name: "ShopeeXpress Driver 1", status: "Available" },
+  { id: "drv-003", name: "JNT Driver 1", status: "Available" },
+  { id: "drv-004", name: "Lazada Driver 1", status: "Available" },
+  { id: "drv-005", name: "Flash Driver 1", status: "Available" },
+  { id: "drv-006", name: "LBC Driver 1", status: "Available" },
+];
+
+// Default mock vehicles for testing when backend is unavailable
+const DEFAULT_VEHICLES: Vehicle[] = [
+  { id: "veh-001", plate: "ABC-1234", plateNumber: "ABC-1234", capacityKg: 500, status: "Available" },
+  { id: "veh-002", plate: "DEF-5678", plateNumber: "DEF-5678", capacityKg: 1000, status: "Available" },
+  { id: "veh-003", plate: "GHI-9012", plateNumber: "GHI-9012", capacityKg: 1500, status: "Available" },
+  { id: "veh-004", plate: "JKL-3456", plateNumber: "JKL-3456", capacityKg: 2000, status: "Available" },
+  { id: "veh-005", plate: "MNO-7890", plateNumber: "MNO-7890", capacityKg: 2500, status: "Available" },
+];
+
 const DEFAULT_STATE: StoreState = {
   parcels: [],
   bookings: [],
-  drivers: [],
-  vehicles: [],
+  drivers: DEFAULT_DRIVERS,
+  vehicles: DEFAULT_VEHICLES,
 };
 
 let state: StoreState = DEFAULT_STATE;
@@ -54,25 +73,46 @@ function normalizeBookingParcelIds(booking: any, fallbackIds: string[] = []): st
 }
 
 function bookingSignature(booking: Pick<Booking, "id" | "routePlanId" | "parcelIds">) {
-  const parcelIds = Array.isArray(booking.parcelIds) ? booking.parcelIds.map((id) => String(id)).sort() : [];
-  return booking.routePlanId
-    ? `route:${String(booking.routePlanId)}`
-    : `parcels:${parcelIds.join("|") || booking.id}`;
+  const parcelIds = Array.isArray(booking.parcelIds)
+    ? booking.parcelIds.map((id) => String(id)).filter(Boolean).sort()
+    : [];
+
+  if (booking.routePlanId) {
+    return `route:${String(booking.routePlanId)}`;
+  }
+
+  if (parcelIds.length > 0) {
+    return `parcels:${parcelIds.join("|")}`;
+  }
+
+  return `id:${booking.id}`;
 }
 
 function dedupeBookings(bookings: Booking[]) {
   const byKey = new Map<string, Booking>();
 
   for (const booking of bookings) {
-    const key = bookingSignature(booking);
-    const existing = byKey.get(key);
+    const normalizedParcelIds = Array.from(new Set((booking.parcelIds || []).map((id) => String(id)).filter(Boolean)));
+    const candidateKey = bookingSignature({ ...booking, parcelIds: normalizedParcelIds });
+    const existing = byKey.get(candidateKey);
+
     if (!existing) {
-      byKey.set(key, booking);
+      byKey.set(candidateKey, booking);
+      continue;
+    }
+
+    const existingParcelIds = new Set((existing.parcelIds || []).map((id) => String(id)));
+    const candidateParcelIds = new Set(normalizedParcelIds);
+    const hasSharedParcel = [...candidateParcelIds].some((id) => existingParcelIds.has(id));
+    const sameRoutePlan = Boolean(existing.routePlanId && booking.routePlanId && String(existing.routePlanId) === String(booking.routePlanId));
+
+    if (!hasSharedParcel && !sameRoutePlan) {
+      byKey.set(`${candidateKey}-alt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, booking);
       continue;
     }
 
     const candidate = new Date(booking.createdAt).getTime() >= new Date(existing.createdAt).getTime() ? booking : existing;
-    byKey.set(key, {
+    byKey.set(candidateKey, {
       ...existing,
       ...candidate,
       parcelIds: Array.from(new Set([...(existing.parcelIds || []), ...(candidate.parcelIds || [])].map((id) => String(id)))),
@@ -160,10 +200,13 @@ function normalizeParcelStatus(raw: unknown): Parcel["status"] {
     pending: "RECEIVED",
     ready: "RECEIVED",
     ready_for_booking: "RECEIVED",
-    picked_up: "BOOKED",
+    picked_up: "PICKED_UP",
     booked: "BOOKED",
     assigned: "BOOKED",
     in_transit: "IN_TRANSIT",
+    delayed: "DELAYED",
+    late: "DELAYED",
+    exception: "DELAYED",
     delivered: "DELIVERED",
     cancelled: "CANCELLED",
     canceled: "CANCELLED",
@@ -171,12 +214,14 @@ function normalizeParcelStatus(raw: unknown): Parcel["status"] {
   return statusMap[value] ?? "RECEIVED";
 }
 
-export function useParcelStore() {
-  const [snapshot, setSnapshot] = useState<StoreState>(state);
+export function useParcelStore(options: { status?: string; history?: boolean } = {}) {
+  const [snapshot, setSnapshot] = useState<StoreState>(
+    options.status ? { ...state, parcels: [] } : state
+  );
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const sync = () => setSnapshot({ ...state });
+    const sync = () => setSnapshot(options.status ? { ...state, parcels: [] } : { ...state });
     sync();
     setReady(true);
 
@@ -187,7 +232,7 @@ export function useParcelStore() {
           getBookings().catch(() => null),
           getDrivers().catch(() => null),
           getVehicles().catch(() => null),
-          getParcels().catch(() => null),
+          getParcels(options).catch(() => null),
         ]);
 
         const normalizedBookings = apiBookings === null
@@ -213,6 +258,7 @@ export function useParcelStore() {
               return {
                 id: String(booking.id),
                 parcelIds: finalParcelIds,
+                courier: booking.courier || undefined,
                 routePlanId: booking.route_plan_id ?? booking.routePlanId ?? undefined,
                 routeLabel: booking.route_label || booking.routeLabel || [booking.pickup_location, booking.dropoff_location].filter(Boolean).join(" → ") || `Booking ${booking.id}`,
                 totalWeightKg: Number(booking.total_weight_kg ?? booking.totalWeightKg ?? booking.load_kg ?? booking.cargo_weight ?? 0),
@@ -253,6 +299,8 @@ export function useParcelStore() {
               return {
                 id,
                 name: driver.full_name || driver.name || driver.email || `Driver ${driver.id}`,
+                vehicleId: driver.vehicle_id || driver.vehicleId || undefined,
+                courierId: driver.courier_id || driver.courierId || undefined,
                 status: assignedDriverIds.has(id)
                   ? 'Assigned'
                   : normalizeStatusToAvailability(
@@ -267,6 +315,8 @@ export function useParcelStore() {
               const id = String(vehicle.id);
               return {
                 id,
+                courierId: vehicle.courier_id || vehicle.courierId || undefined,
+                courier: normalizeCourierName(vehicle.courier || vehicle.courier_name || vehicle.courierName),
                 plate: vehicle.plate_number || vehicle.plate || vehicle.plateNumber || `VEH-${vehicle.id}`,
                 type: vehicle.vehicle_type || vehicle.type || vehicle.vehicleType || 'Unknown',
                 capacityKg: Number(vehicle.capacity_kg ?? vehicle.capacity ?? vehicle.capacityKg ?? 0),
@@ -292,6 +342,10 @@ export function useParcelStore() {
                 p.dropoff_location || p.dropoffLocation || p.destination || p.delivery_address || p.deliveryAddress || p.address || p.pickup_location || p.pickupLocation || "",
               bulk_qr_code: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
               bulkQrCode: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
+              bulk_parcel_count: Number(p.bulk_parcel_count ?? p.bulkParcelCount ?? 0) || null,
+              parcel_count: Number(p.parcel_count ?? p.parcelCount ?? 0) || null,
+              package_count: Number(p.package_count ?? p.packageCount ?? 0) || null,
+              quantity: Number(p.quantity ?? 0) || null,
               destLat: Number(
                 p.dest_lat ?? p.destLat ?? p.dropoff_latitude ?? p.dropoffLatitude ?? p.latitude ?? p.lat ?? 0
               ),
@@ -330,33 +384,43 @@ export function useParcelStore() {
 
         const nextState: StoreState = {
           bookings: Array.isArray(apiBookings) && apiBookings.length === 0 ? state.bookings : dedupeBookings(normalizedBookings),
-          drivers: finalDrivers,
-          vehicles: finalVehicles,
+          drivers: finalDrivers.length > 0 ? finalDrivers : DEFAULT_DRIVERS,
+          vehicles: finalVehicles.length > 0 ? finalVehicles : DEFAULT_VEHICLES,
           parcels: Array.isArray(apiParcels) && apiParcels.length === 0 ? state.parcels : mergedParcels,
         };
 
-        writeState(nextState);
-        sync();
+        if (options.status) {
+          // Filtered consumers, such as route planning, keep their result local
+          // so they do not replace the shared store used by other pages.
+          setSnapshot(nextState);
+        } else {
+          writeState(nextState);
+          sync();
+        }
       } catch (e) {
         // silently ignore hydrate errors in client
       }
     })();
 
-    window.addEventListener(CHANGE_EVENT, sync);
-    return () => window.removeEventListener(CHANGE_EVENT, sync);
+    if (!options.status) {
+      window.addEventListener(CHANGE_EVENT, sync);
+    }
+    return () => {
+      if (!options.status) window.removeEventListener(CHANGE_EVENT, sync);
+    };
   }, []);
 
   return { ...snapshot, ready };
 }
 
-export async function refreshStoreFromBackend() {
+export async function refreshStoreFromBackend(options: { status?: string; history?: boolean } = {}) {
   // Manually re-hydrate the store from backend APIs
   try {
     const [apiBookings, apiDrivers, apiVehicles, apiParcels] = await Promise.all([
       getBookings().catch(() => null),
       getDrivers().catch(() => null),
       getVehicles().catch(() => null),
-      getParcels().catch(() => null),
+      getParcels(options).catch(() => null),
     ]);
 
     console.log('[refreshStoreFromBackend] Raw API responses:', {
@@ -405,6 +469,7 @@ export async function refreshStoreFromBackend() {
           return {
             id: String(booking.id),
             parcelIds: finalParcelIds,
+                courier: booking.courier || undefined,
             routePlanId: booking.route_plan_id ?? booking.routePlanId ?? undefined,
             routeLabel: booking.route_label || booking.routeLabel || [booking.pickup_location, booking.dropoff_location].filter(Boolean).join(" → ") || `Booking ${booking.id}`,
             totalWeightKg: Number(booking.total_weight_kg ?? booking.totalWeightKg ?? booking.load_kg ?? booking.cargo_weight ?? 0),
@@ -483,6 +548,10 @@ export async function refreshStoreFromBackend() {
             p.dropoff_location || p.dropoffLocation || p.destination || p.delivery_address || p.deliveryAddress || p.address || p.pickup_location || p.pickupLocation || "",
           bulk_qr_code: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
           bulkQrCode: p.bulk_qr_code ?? p.qr_code ?? p.bulk_qr ?? p.bulkQrCode ?? p.qrCode ?? undefined,
+          bulk_parcel_count: Number(p.bulk_parcel_count ?? p.bulkParcelCount ?? 0) || null,
+          parcel_count: Number(p.parcel_count ?? p.parcelCount ?? 0) || null,
+          package_count: Number(p.package_count ?? p.packageCount ?? 0) || null,
+          quantity: Number(p.quantity ?? 0) || null,
           destLat: Number(
             p.dest_lat ?? p.destLat ?? p.dropoff_latitude ?? p.dropoffLatitude ?? p.latitude ?? p.lat ?? 0
           ),
@@ -516,8 +585,8 @@ export async function refreshStoreFromBackend() {
 
     const nextState: StoreState = {
       bookings: dedupeBookings(normalizedBookings),
-      drivers: finalDrivers,
-      vehicles: finalVehicles,
+      drivers: finalDrivers.length > 0 ? finalDrivers : DEFAULT_DRIVERS,
+      vehicles: finalVehicles.length > 0 ? finalVehicles : DEFAULT_VEHICLES,
       parcels: mergedParcels,
     };
 
@@ -525,6 +594,8 @@ export async function refreshStoreFromBackend() {
     console.log('[refreshStoreFromBackend] Store updated:', {
       bookingsCount: nextState.bookings.length,
       parcelsCount: nextState.parcels.length,
+      driversCount: nextState.drivers.length,
+      vehiclesCount: nextState.vehicles.length,
       parcelsStatuses: new Set(nextState.parcels.map((p) => p.status)),
       bookingParcelCounts: nextState.bookings.map((b) => ({ id: b.id, parcelCount: b.parcelIds?.length || 0 })),
     });
@@ -550,7 +621,7 @@ export function receiveParcel(input: Omit<Parcel, "id" | "trackingNumber" | "sta
 export function bulkDeliverParcels(parcelIds: string[]) {
   const selected = state.parcels.filter((parcel) => parcelIds.includes(parcel.id));
   const parcels = state.parcels.map((parcel) =>
-    parcelIds.includes(parcel.id) ? { ...parcel, status: "BOOKED" as const, bookingId: undefined } : parcel
+    parcelIds.includes(parcel.id) ? { ...parcel, status: "PICKED_UP" as const, bookingId: undefined } : parcel
   );
   writeState({ ...state, parcels });
   return selected;
@@ -564,10 +635,19 @@ export function createRouteBooking(
   routePlanId?: string,
   deliveryDestinations?: Array<{ name?: string; label?: string; lat?: number; lng?: number; latitude?: number; longitude?: number; status?: string }>
 ) {
-  const selected = state.parcels.filter((parcel) => parcelIds.includes(parcel.id));
+  const uniqueParcelIds = Array.from(new Set((parcelIds || []).map((id) => String(id)).filter(Boolean)));
+  const selected = state.parcels.filter((parcel) => uniqueParcelIds.includes(parcel.id));
+  const existingAssignments = new Map<string, string>();
+
+  state.parcels.forEach((parcel) => {
+    if (uniqueParcelIds.includes(parcel.id) && parcel.bookingId) {
+      existingAssignments.set(parcel.id, parcel.bookingId);
+    }
+  });
+
   const booking: Booking = {
     id: id || makeId("BKG"),
-    parcelIds,
+    parcelIds: uniqueParcelIds,
     routePlanId,
     deliveryDestinations,
     routeLabel: routeLabel || "Planned delivery route",
@@ -575,17 +655,40 @@ export function createRouteBooking(
     createdAt: new Date().toISOString(),
     status: "PENDING",
   };
-  const parcels = state.parcels.map((parcel) =>
-    parcelIds.includes(parcel.id)
-      ? { ...parcel, status: "BOOKED" as const, bookingId: booking.id, routePlanId: routePlanId ?? parcel.routePlanId }
-      : parcel
-  );
+
+  const parcels = state.parcels.map((parcel) => {
+    if (!uniqueParcelIds.includes(parcel.id)) return parcel;
+    const currentBookingId = parcel.bookingId;
+    if (currentBookingId && currentBookingId !== booking.id) {
+      return parcel;
+    }
+    return { ...parcel, status: "BOOKED" as const, bookingId: booking.id, routePlanId: routePlanId ?? parcel.routePlanId };
+  });
 
   const bookingKey = bookingSignature(booking);
-  const existingBookingIndex = state.bookings.findIndex((item) => bookingSignature(item) === bookingKey || item.id === booking.id);
+  const existingBookingIndex = state.bookings.findIndex((item) => {
+    const sameId = item.id === booking.id;
+    if (sameId) return true;
+    const sameBookingKey = bookingSignature(item) === bookingKey;
+    const hasParcelOverlap = (item.parcelIds || []).some((parcelId) => uniqueParcelIds.includes(String(parcelId)));
+    const sameRoutePlan = Boolean(item.routePlanId && booking.routePlanId && String(item.routePlanId) === String(booking.routePlanId));
+    return sameBookingKey || (sameRoutePlan && hasParcelOverlap);
+  });
+
   const bookings = existingBookingIndex >= 0
-    ? state.bookings.map((item, index) => index === existingBookingIndex ? { ...item, ...booking, parcelIds: Array.from(new Set([...(item.parcelIds || []), ...(booking.parcelIds || [])].map((id) => String(id)))) } : item)
+    ? state.bookings.map((item, index) => {
+        if (index !== existingBookingIndex) return item;
+        return {
+          ...item,
+          ...booking,
+          parcelIds: Array.from(new Set([...(item.parcelIds || []), ...(booking.parcelIds || [])].map((id) => String(id)))),
+          routePlanId: booking.routePlanId || item.routePlanId,
+          routeLabel: booking.routeLabel || item.routeLabel,
+          totalWeightKg: Number(booking.totalWeightKg || item.totalWeightKg || 0),
+        };
+      })
     : dedupeBookings([...state.bookings, booking]);
+
   writeState({ ...state, parcels, bookings });
   return booking;
 }
@@ -681,9 +784,9 @@ export function advanceDispatch(bookingId: string) {
       },
     };
   });
-  const completed = bookings.find((booking) => booking.id === bookingId)?.dispatch?.status === "COMPLETED";
-  const parcels = completed
-    ? state.parcels.map((parcel) => parcel.bookingId === bookingId ? { ...parcel, status: "DELIVERED" as const } : parcel)
-    : state.parcels;
+  // Reaching 100% in the local dispatch simulation means the route timeline
+  // is complete, not that delivery was confirmed. Keep parcels in transit;
+  // only an explicit completion/proof-of-delivery action may mark DELIVERED.
+  const parcels = state.parcels;
   writeState({ ...state, bookings, parcels });
 }

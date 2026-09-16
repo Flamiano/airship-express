@@ -22,7 +22,7 @@ export const COURIER_NAMES = [
   "Airship Express",
 ] as const;
 export type CourierName = (typeof COURIER_NAMES)[number];
-export type ParcelStatus = "RECEIVED" | "READY_FOR_BOOKING" | "BOOKED" | "IN_TRANSIT" | "DELIVERED" | "CANCELLED";
+export type ParcelStatus = "RECEIVED" | "READY_FOR_BOOKING" | "PICKED_UP" | "BOOKED" | "IN_TRANSIT" | "DELAYED" | "DELIVERED" | "CANCELLED";
 
 export type Parcel = {
   id: string;
@@ -34,6 +34,10 @@ export type Parcel = {
   destinationAddress: string;
   bulk_qr_code?: string;
   bulkQrCode?: string;
+  bulk_parcel_count?: number | null;
+  parcel_count?: number | null;
+  package_count?: number | null;
+  quantity?: number | null;
   destLat: number;
   destLng: number;
   parcelType: ParcelType;
@@ -66,6 +70,7 @@ export type Booking = {
   id: string;
   parcelIds: string[];
   parcelCount?: number;
+  courier?: CourierName | string;
   routeLabel: string;
   totalWeightKg: number;
   createdAt: string;
@@ -82,11 +87,15 @@ export type Booking = {
 export type Driver = {
   id: string;
   name: string;
+  vehicleId?: string;
+  courierId?: string;
   status: "Available" | "Assigned";
 };
 
 export type Vehicle = {
   id: string;
+  courierId?: string;
+  courier?: CourierName | string;
   plate: string;
   plateNumber?: string;
   type?: string;
@@ -98,8 +107,10 @@ export type Vehicle = {
 export const PARCEL_STATUS_LABEL: Record<ParcelStatus, string> = {
   RECEIVED: "Received",
   READY_FOR_BOOKING: "Ready for booking",
+  PICKED_UP: "Pick Up",
   BOOKED: "Booked",
   IN_TRANSIT: "In transit",
+  DELAYED: "Delayed",
   DELIVERED: "Delivered",
   CANCELLED: "Cancelled",
 };
