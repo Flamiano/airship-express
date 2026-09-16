@@ -13,7 +13,7 @@ export const ROLE_DASHBOARD_MAP = {
   [HR_ROLES.HR_PAYROLL_ADMIN]: "/payroll-benefits-dashboard",
   [HR_ROLES.HR_PERFORMANCE_ADMIN]: "/performance-development-dashboard",
   [HR_ROLES.HR_RECRUITMENT_ADMIN]: "/recruitment-dashboard",
-  [HR_ROLES.HR_WORKFORCE_ADMIN]: "/workforce-dashboard",
+  [HR_ROLES.HR_WORKFORCE_ADMIN]: "/workforce-management-dashboard",
 } as const;
 
 export const DASHBOARD_ACCESS: Record<string, string[]> = {
@@ -29,7 +29,7 @@ export const DASHBOARD_ACCESS: Record<string, string[]> = {
     HR_ROLES.SUPER_ADMIN,
     HR_ROLES.HR_RECRUITMENT_ADMIN,
   ],
-  "/workforce-dashboard": [HR_ROLES.SUPER_ADMIN, HR_ROLES.HR_WORKFORCE_ADMIN],
+  "/workforce-management-dashboard": [HR_ROLES.SUPER_ADMIN, HR_ROLES.HR_WORKFORCE_ADMIN],
 };
 
 export function getAllowedRolesForPath(pathname: string): string[] {

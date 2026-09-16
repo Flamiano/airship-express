@@ -1,0 +1,1 @@
+# This FOLDER is dedicated for Supabase Database Reference and it does not serve as the main database. this folder serves as a reference for agents to work faster and efficient without pinging and exporting the database time to time.

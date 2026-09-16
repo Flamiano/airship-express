@@ -2,7 +2,7 @@ export const HR_ROUTES = {
   PAYROLL_BENEFITS: "/payroll-benefits-dashboard",
   PERFORMANCE_DEVELOPMENT: "/performance-development-dashboard",
   RECRUITMENT: "/recruitment-dashboard",
-  WORKFORCE: "/workforce-dashboard",
+  WORKFORCE: "/workforce-management-dashboard",
 
   HR_AUTH: "/hrAuth",
   UNAUTHORIZED: "/unauthorized",

@@ -41,7 +41,7 @@ function HRLoginContent() {
                             hr_payroll_admin: '/payroll-benefits-dashboard',
                             hr_performance_admin: '/performance-development-dashboard',
                             hr_recruitment_admin: '/recruitment-dashboard',
-                            hr_workforce_admin: '/workforce-dashboard',
+                            hr_workforce_admin: '/workforce-management-dashboard',
                         };
                         const dashboard = dashboardMap[userRole.role as keyof typeof dashboardMap];
                         if (dashboard) {
