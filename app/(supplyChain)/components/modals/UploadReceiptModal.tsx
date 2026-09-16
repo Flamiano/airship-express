@@ -142,7 +142,10 @@ export function UploadReceiptModal({
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const currentUserRole = user.getRole();
-    const isAdminOrManager = currentUserRole === 'Admin' || currentUserRole === 'Manager';
+    const normalizedRole = (currentUserRole || '').toLowerCase().trim();
+    const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(normalizedRole) || currentUserRole === 'Admin';
+    const isManager = ['manager'].includes(normalizedRole) || currentUserRole === 'Manager';
+    const isAdminOrManager = isAdmin || isManager;
 
     const existingDbFileName = po?.document?.file_name || null;
 
@@ -424,8 +427,8 @@ export function UploadReceiptModal({
             return;
         }
 
-        if (!isAdminOrManager) {
-            toast.error('Force insert requires Admin or Manager authorization');
+        if (!isAdmin) {
+            toast.error('Permission denied: Force insert is disabled for Manager role and restricted to Administrators.');
             return;
         }
 
@@ -841,27 +844,46 @@ export function UploadReceiptModal({
                             {/* Admin Force Insert Section for Mismatches */}
                             {verificationState === 'mismatched' && isAdminOrManager && (
                                 <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
-                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
-                                        <i className="fas fa-shield-halved text-pink-500"></i>
-                                        <span>Authorize Administrative Force Insert</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                                            <i className="fas fa-shield-halved text-pink-500"></i>
+                                            <span>Authorize Administrative Force Insert</span>
+                                        </div>
+                                        {isAdmin ? (
+                                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                                Admin Authorized
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                                                <i className="fas fa-lock text-[9px]"></i> Admin Only
+                                            </span>
+                                        )}
                                     </div>
                                     <input
                                         type="text"
-                                        placeholder="Reason for manual approval (e.g. Authorized vendor fee variation)"
+                                        placeholder={isAdmin ? "Reason for manual approval (e.g. Authorized vendor fee variation)" : "Disabled for Manager role (Administrator access required)"}
                                         value={forceReason}
+                                        disabled={!isAdmin || isForcing}
                                         onChange={(e) => setForceReason(e.target.value)}
-                                        className="w-full bg-[#e4ebf5] dark:bg-[#111218] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.6)] rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-pink-500"
+                                        className={`w-full bg-[#e4ebf5] dark:bg-[#111218] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.6)] rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-pink-500 ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     />
+                                    {!isAdmin && (
+                                        <p className="text-[11px] text-amber-700 dark:text-amber-400/90 flex items-center gap-1.5 px-1 font-medium">
+                                            <i className="fas fa-circle-info text-amber-500 text-xs shrink-0"></i>
+                                            <span>Force insert is disabled for Manager role. Please contact an Administrator if this receipt requires manual override.</span>
+                                        </p>
+                                    )}
                                     <AppButton
                                         type="button"
                                         variant="danger"
                                         size="md"
-                                        disabled={isForcing}
+                                        disabled={!isAdmin || isForcing}
                                         onClick={handleForceInsert}
-                                        className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                                        title={!isAdmin ? 'Administrative Force Insert is disabled for Manager role. Only Administrators can authorize override.' : undefined}
+                                        className={`w-full ${isAdmin ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-slate-300 dark:bg-slate-800 text-slate-500 dark:text-slate-500 cursor-not-allowed opacity-60'}`}
                                     >
-                                        <i className="fas fa-shield-alt"></i>
-                                        <span>{isForcing ? 'Authorizing...' : 'Force Insert & Mark Paid'}</span>
+                                        <i className={`fas ${isAdmin ? 'fa-shield-alt' : 'fa-lock'}`}></i>
+                                        <span>{isForcing ? 'Authorizing...' : (!isAdmin ? 'Force Insert Disabled (Admin Only)' : 'Force Insert & Mark Paid')}</span>
                                     </AppButton>
                                 </div>
                             )}

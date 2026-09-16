@@ -208,7 +208,7 @@ export default function UserActivityContentWrapper() {
     const paginatedAppeals = getPaginatedData(appeals, appealPage);
     const paginatedActivities = getPaginatedData(filteredActivities, activityPage);
 
-    if (userRole && userRole !== 'Admin') {
+    if (userRole && !['Admin', 'Executive'].includes(userRole)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900">
                 <div className="text-center">

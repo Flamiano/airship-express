@@ -261,7 +261,7 @@ export async function POST(request: Request) {
 
         // determine redirect based on role
         const roleRedirects: Record<string, string> = {
-            'Admin': '/executive',
+            'Admin': '/user-activity',
             'Manager': '/warehousing?tab=incoming',
             'Employee': '/documents',
             'Operator': '/warehousing?tab=incoming',

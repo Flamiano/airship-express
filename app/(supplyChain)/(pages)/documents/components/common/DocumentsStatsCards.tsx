@@ -85,7 +85,7 @@ export function DocumentsStatsCards({
                 tooltipLink="/archive?tab=documents"
                 badge={`${archiveCount} archived`}
                 frontTextColor="text-amber-600 dark:text-amber-400"
-                descriptionTextColor="text-amber-600 dark:text-amber-400"
+                descriptionTextColor="text-slate-500 dark:text-slate-400"
             />
         </div>
     );

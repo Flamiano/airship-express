@@ -48,8 +48,9 @@ const getPOStatusColor = (status: string) => {
 import { PurchaseRequestModal } from "@/app/(supplyChain)/components/modals/PurchaseRequestModal";
 import { PurchaseOrderModal } from "@/app/(supplyChain)/components/modals/PurchaseOrderModal";
 import { ChartDetailModal } from "@/app/(supplyChain)/components/modals/ChartDetailModal";
+import { DigitalReceiptModal } from "@/app/(supplyChain)/components/modals/DigitalReceiptModal";
 // re-export modals
-export { PurchaseRequestModal, PurchaseOrderModal, ChartDetailModal };
+export { PurchaseRequestModal, PurchaseOrderModal, ChartDetailModal, DigitalReceiptModal };
 function EmptyState({ title, description, icon = "fas fa-inbox", actionText, onAction }: {
     title: string;
     description: string;
@@ -99,6 +100,8 @@ export default function Procurement() {
     const [isPurchaseRequestModalOpen, setIsPurchaseRequestModalOpen] = useState(false);
     const [isPurchaseOrderModalOpen, setIsPurchaseOrderModalOpen] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<PurchaseRequest | null>(null);
+    const [digitalReceiptPO, setDigitalReceiptPO] = useState<any | null>(null);
+    const [isDigitalReceiptModalOpen, setIsDigitalReceiptModalOpen] = useState(false);
     const [editData, setEditData] = useState<any>(null);
     const [isEditMode, setIsEditMode] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -417,7 +420,7 @@ export default function Procurement() {
 
             const initialStatus = orderData.status || "Draft";
 
-            const { error: orderError } = await supabase
+            const { data: insertedPO, error: orderError } = await supabase
                 .from('purchase_orders')
                 .insert({
                     po_number: orderData.po_number,
@@ -432,14 +435,37 @@ export default function Procurement() {
                     paid: orderData.paid ?? false,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
-                });
+                })
+                .select()
+                .single();
             if (orderError)
                 throw orderError;
-            setPurchaseOrders(prev => [...prev, { ...orderData, items: sanitizedItems, status: initialStatus, id: Date.now().toString() }]);
+
+            // Generate official digital receipt document
+            try {
+                await supabase.from('documents').insert({
+                    title: `Digital Receipt - PO #${orderData.po_number}`,
+                    file_name: `Receipt-PO-${orderData.po_number}.pdf`,
+                    file_type: 'receipt',
+                    file_size: 'Digital PDF Voucher',
+                    file_path: `/procurement/receipts/PO-${orderData.po_number}`,
+                    supplier_id: orderData.supplier_id || null,
+                    purchase_id: insertedPO?.id || orderData.id || null,
+                    uploaded_by: 'System (Procurement Auto-Receipt)',
+                    created_at: new Date().toISOString()
+                });
+            } catch (docErr) {
+                console.warn('Failed to insert receipt document log:', docErr);
+            }
+
+            const createdPO = { ...orderData, ...(insertedPO || {}), items: sanitizedItems, status: initialStatus, id: insertedPO?.id || Date.now().toString() };
+            setPurchaseOrders(prev => [...prev, createdPO]);
             setRequests(prev => prev.map(r => r.id === orderData.request_id ? { ...r, status: "Approved" } : r));
-            toast.success("Purchase Order created successfully!");
+            toast.success("Purchase Order created successfully! Digital receipt generated.");
             setIsPurchaseOrderModalOpen(false);
             setSelectedRequest(null);
+            setDigitalReceiptPO(createdPO);
+            setIsDigitalReceiptModalOpen(true);
             await updateCounts();
         }
         catch (error) {
@@ -932,13 +958,13 @@ export default function Procurement() {
 
             {/* cards */}
             {loading ? (<CardsSkeleton count={4} />) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Cards frontIcon="fa-solid fa-file-invoice" header="Total Requests" data={String(totalCounts.all)} arrow="fa-solid fa-arrow-up" description={`${totalCounts.pending} pending`} backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total purchase requests: ${totalCounts.all}\nPending approvals: ${totalCounts.pending}\nApproved: ${totalCounts.approved}\n${totalCounts.pending} requests awaiting review`} tooltip="View all requests" tooltipLink="/procurement?tab=all" badge={totalCounts.pending > 0 ? `${totalCounts.pending} pending` : undefined} frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-emerald-600 dark:text-emerald-400" />
+                <Cards frontIcon="fa-solid fa-file-invoice" header="Total Requests" data={String(totalCounts.all)} arrow="fa-solid fa-arrow-up" description={`${totalCounts.pending} pending`} backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total purchase requests: ${totalCounts.all}\nPending approvals: ${totalCounts.pending}\nApproved: ${totalCounts.approved}\n${totalCounts.pending} requests awaiting review`} tooltip="View all requests" tooltipLink="/procurement?tab=all" badge={totalCounts.pending > 0 ? `${totalCounts.pending} pending` : undefined} frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-clock" header="Pending Approvals" data={String(totalCounts.pending)} arrow="fa-solid fa-hourglass-half" description="Awaiting review" backBg="bg-ink dark:bg-ink/90" backHeader="Approval Status" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending requests: ${totalCounts.pending}\nNeed your attention\n${totalCounts.pending > 0 ? 'Review and approve to proceed' : 'No pending approvals'}`} tooltip="Review pending requests" tooltipLink="/procurement?tab=pending" badge={totalCounts.pending > 0 ? `${totalCounts.pending} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-amber-600 dark:text-amber-400" />
+                <Cards frontIcon="fa-solid fa-clock" header="Pending Approvals" data={String(totalCounts.pending)} arrow="fa-solid fa-hourglass-half" description="Awaiting review" backBg="bg-ink dark:bg-ink/90" backHeader="Approval Status" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending requests: ${totalCounts.pending}\nNeed your attention\n${totalCounts.pending > 0 ? 'Review and approve to proceed' : 'No pending approvals'}`} tooltip="Review pending requests" tooltipLink="/procurement?tab=pending" badge={totalCounts.pending > 0 ? `${totalCounts.pending} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-circle-check" header="Approved" data={String(totalCounts.approved)} arrow="fa-solid fa-check-double" description="Ready for PO" backBg="bg-ink dark:bg-ink/90" backHeader="Approved Requests" headerTextColor="text-muted dark:text-white/80" backDescription={`Approved: ${totalCounts.approved}\nReady for Purchase Order\n${totalCounts.approved} requests approved\n${totalCounts.approved > 0 ? 'Proceed to create POs' : 'No approved requests yet'}`} tooltip="View approved requests" tooltipLink="/procurement?tab=approved" badge={totalCounts.approved > 0 ? `${totalCounts.approved} ready` : undefined} frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-emerald-600 dark:text-emerald-400" />
+                <Cards frontIcon="fa-solid fa-circle-check" header="Approved" data={String(totalCounts.approved)} arrow="fa-solid fa-check-double" description="Ready for PO" backBg="bg-ink dark:bg-ink/90" backHeader="Approved Requests" headerTextColor="text-muted dark:text-white/80" backDescription={`Approved: ${totalCounts.approved}\nReady for Purchase Order\n${totalCounts.approved} requests approved\n${totalCounts.approved > 0 ? 'Proceed to create POs' : 'No approved requests yet'}`} tooltip="View approved requests" tooltipLink="/procurement?tab=approved" badge={totalCounts.approved > 0 ? `${totalCounts.approved} ready` : undefined} frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-coins" header="Total Spend" data={`₱${totalSpend.toLocaleString()}`} arrow="fa-solid fa-chart-line" description="Completed orders" backBg="bg-ink dark:bg-ink/90" backHeader="Financial Summary" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\nCompleted orders: ${purchaseOrders.filter(o => o.status === 'Delivered' || o.status === 'Confirmed').length}\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No completed orders yet'}`} tooltip="View financial details" tooltipLink="/procurement?tab=approved" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-blue-600 dark:text-blue-400" />
+                <Cards frontIcon="fa-solid fa-coins" header="Total Spend" data={`₱${totalSpend.toLocaleString()}`} arrow="fa-solid fa-chart-line" description="Completed orders" backBg="bg-ink dark:bg-ink/90" backHeader="Financial Summary" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\nCompleted orders: ${purchaseOrders.filter(o => o.status === 'Delivered' || o.status === 'Confirmed').length}\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No completed orders yet'}`} tooltip="View financial details" tooltipLink="/procurement?tab=approved" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
             </div>)}
 
             {/* charts */}
@@ -1293,6 +1319,11 @@ export default function Procurement() {
                 setIsPurchaseOrderModalOpen(false);
                 setSelectedRequest(null);
             }} request={selectedRequest} suppliers={suppliers} onOrderCreated={handleOrderCreated} />
+
+            <DigitalReceiptModal isOpen={isDigitalReceiptModalOpen} onClose={() => {
+                setIsDigitalReceiptModalOpen(false);
+                setDigitalReceiptPO(null);
+            }} purchaseOrder={digitalReceiptPO} />
 
             <ChartDetailModal isOpen={chartDetailModal.isOpen} onClose={() => setChartDetailModal(prev => ({ ...prev, isOpen: false }))} month={chartDetailModal.month} monthIndex={chartDetailModal.monthIndex} orders={chartDetailModal.orders} totalAmount={chartDetailModal.totalAmount} />
         </div>

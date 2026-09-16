@@ -448,7 +448,7 @@ export function DocumentsTab() {
                         backDescription={`Total Archived: ${archivedDocuments.length} document(s)\nStorage size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}`}
                         tooltip="View document details"
                         frontTextColor="text-pink-500 dark:text-pink-400"
-                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -463,7 +463,7 @@ export function DocumentsTab() {
                         backDescription={`Types: ${docTypes.filter(t => t !== 'all').join(', ') || 'None'}`}
                         tooltip="View document categories"
                         frontTextColor="text-indigo-500 dark:text-indigo-400"
-                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -478,7 +478,7 @@ export function DocumentsTab() {
                         backDescription={`Total Size: ${formatFileSize(archivedDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0))}\nAcross ${archivedDocuments.length} files`}
                         tooltip="View storage allocation"
                         frontTextColor="text-blue-500 dark:text-blue-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -493,7 +493,7 @@ export function DocumentsTab() {
                         backDescription={`Suppliers: ${Array.from(new Set(archivedDocuments.map(d => d.supplier).filter(Boolean))).join(', ') || 'None'}`}
                         tooltip="View associated suppliers"
                         frontTextColor="text-amber-500 dark:text-amber-400"
-                        descriptionTextColor="text-amber-600 dark:text-amber-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
                 </div>
             )}

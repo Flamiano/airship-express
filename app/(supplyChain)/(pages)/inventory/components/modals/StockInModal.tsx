@@ -51,7 +51,10 @@ export function StockInModal({
     const [submitting, setSubmitting] = useState<boolean>(false);
 
     const currentUserRole = user.getRole();
-    const isAdminOrManager = currentUserRole === 'Admin' || currentUserRole === 'Manager';
+    const normalizedRole = (currentUserRole || '').toLowerCase().trim();
+    const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(normalizedRole) || currentUserRole === 'Admin';
+    const isManager = ['manager'].includes(normalizedRole) || currentUserRole === 'Manager';
+    const isAdminOrManager = isAdmin || isManager;
 
     useEffect(() => {
         if (isOpen && currentItem) {
@@ -69,7 +72,7 @@ export function StockInModal({
     const diffExceeded = exceedsLimit ? quantity - remainingQty : 0;
     const isMissingDeliveredPo = !isPoDelivered;
 
-    const cannotSubmit = (exceedsLimit || isMissingDeliveredPo) && (!isAdminOrManager || !isForced || (isForced && !forceReason.trim()));
+    const cannotSubmit = (exceedsLimit || isMissingDeliveredPo) && (!isAdmin || !isForced || (isForced && !forceReason.trim()));
 
     const projectedStock = useMemo(() => {
         const base = currentItem?.current_stock ?? 0;
@@ -94,10 +97,10 @@ export function StockInModal({
         }
 
         if (cannotSubmit) {
-            if (isMissingDeliveredPo && !isAdminOrManager) {
-                toast.error('Stock-in requires a Delivered Purchase Order. Please contact Admin/Manager to force.');
-            } else if (exceedsLimit && !isAdminOrManager) {
-                toast.error(`Quantity exceeds delivered remainder by ${diffExceeded}. Admin/Manager approval needed.`);
+            if (isMissingDeliveredPo && !isAdmin) {
+                toast.error('Stock-in requires a Delivered Purchase Order. Administrator authorization is required.');
+            } else if (exceedsLimit && !isAdmin) {
+                toast.error(`Quantity exceeds delivered remainder by ${diffExceeded}. Administrator approval needed.`);
             } else if (isForced && !forceReason.trim()) {
                 toast.warning('Please enter a reason for the override.');
             }
@@ -314,29 +317,48 @@ export function StockInModal({
                                     No delivered Purchase Order found for this item.
                                 </p>
                                 <p className="text-[11px] text-rose-700/80 dark:text-rose-400 mt-0.5">
-                                    Stock-in requires a confirmed & delivered PO. Admin/Manager override is required to force.
+                                    Stock-in requires a confirmed & delivered PO. Administrator override is required to force.
                                 </p>
                             </div>
                         </div>
                     )}
 
                     {/* Force Stock In for Admin/Manager */}
-                    {(exceedsLimit || isMissingDeliveredPo) && isAdminOrManager && (
+                    {(exceedsLimit || isMissingDeliveredPo) && (
                         <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
-                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                                <input
-                                    type="checkbox"
-                                    checked={isForced}
-                                    onChange={(e) => setIsForced(e.target.checked)}
-                                    className="w-4 h-4 rounded text-pink-600 accent-pink-600 focus:ring-pink-500 cursor-pointer"
-                                />
-                                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                                    <i className="fas fa-shield-halved text-pink-500"></i>
-                                    Force Stock In (Admin Override)
-                                </span>
-                            </label>
+                            <div className="flex items-center justify-between gap-2">
+                                <label className={`flex items-center gap-2.5 select-none ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isAdmin && isForced}
+                                        disabled={!isAdmin}
+                                        onChange={(e) => isAdmin && setIsForced(e.target.checked)}
+                                        className="w-4 h-4 rounded text-pink-600 accent-pink-600 focus:ring-pink-500 cursor-pointer disabled:cursor-not-allowed"
+                                    />
+                                    <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                        <i className="fas fa-shield-halved text-pink-500"></i>
+                                        Force Stock In (Admin Override)
+                                    </span>
+                                </label>
+                                {isAdmin ? (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                        Admin Authorized
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                                        <i className="fas fa-lock text-[9px]"></i> Admin Only
+                                    </span>
+                                )}
+                            </div>
 
-                            {isForced && (
+                            {!isAdmin && (
+                                <p className="text-[11px] text-amber-700 dark:text-amber-400/90 flex items-center gap-1.5 px-1 font-medium">
+                                    <i className="fas fa-circle-info text-amber-500 text-xs shrink-0"></i>
+                                    <span>Force stock-in override is disabled for Manager role. Please contact an Administrator to authorize this stock-in.</span>
+                                </p>
+                            )}
+
+                            {isAdmin && isForced && (
                                 <div className="space-y-1.5 pt-1 animate-in fade-in">
                                     <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                         Override Justification / Reason <span className="text-pink-500">*</span>
@@ -414,9 +436,14 @@ export function StockInModal({
                             size="md"
                             disabled={submitting || cannotSubmit}
                             loading={submitting}
+                            title={
+                                cannotSubmit && !isAdmin
+                                    ? 'Stock-in requires Administrator override when exceeding delivered quantity or without a delivered PO.'
+                                    : undefined
+                            }
                         >
-                            {!submitting && <i className="fas fa-plus text-xs"></i>}
-                            <span>Confirm Stock In</span>
+                            {!submitting && <i className={`fas ${cannotSubmit && !isAdmin ? 'fa-lock' : 'fa-plus'} text-xs`}></i>}
+                            <span>{cannotSubmit && !isAdmin ? 'Stock In Disabled (Admin Only)' : 'Confirm Stock In'}</span>
                         </AppButton>
                     </div>
                 </form>

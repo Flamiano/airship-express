@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import Loader from '../../components/global/Loader';
 import Custom404 from '../global/Custom404';
-import { WifiOff, RefreshCw } from 'lucide-react';
+import { WifiOff, RefreshCw, Clock } from 'lucide-react';
 interface SessionGuardProps {
     children: React.ReactNode;
     requiredRole?: string[];
@@ -20,6 +20,10 @@ const VALID_ROLES = ['Admin', 'Manager', 'Employee', 'Operator', 'Executive'];
 const CACHE_DURATION = 60 * 1000;
 const TAMPER_POLL_INTERVAL = 30 * 1000;
 const OFFLINE_RETRY_DELAY = 5000;
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of total inactivity
+const INACTIVITY_WARNING_MS = 10 * 1000; // 10 seconds warning countdown before auto-logout
+const ACTIVITY_THROTTLE_MS = 1000; // 1 second throttle for activity storage sync
+const INACTIVITY_STORAGE_KEY = 'sc_last_activity_time';
 const BACKUP_KEYS = {
     PRIMARY: 'session_backup',
 };
@@ -314,6 +318,12 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         show: boolean;
         countdown: number;
     }>({ show: false, countdown: 5 });
+    const [inactivityWarning, setInactivityWarning] = useState<{
+        show: boolean;
+        remainingSeconds: number;
+    }>({ show: false, remainingSeconds: 10 });
+    const lastActivityRef = useRef<number>(Date.now());
+    const lastThrottleRef = useRef<number>(0);
     const [showLoader, setShowLoader] = useState(true);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const blockedTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -478,18 +488,28 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             }
         };
     }, [guardState]);
-    const deactivateSession = useCallback(async (sessionToken: string | null) => {
+    const deactivateSession = useCallback(async (sessionToken: string | null, reason?: string, action?: string) => {
         try {
             const userAgent = navigator.userAgent;
+            const isInactive = reason === 'user_inactive' || action === 'INACTIVITY_TIMEOUT';
+            const payload = {
+                session_token: sessionToken,
+                reason: reason || 'User logged out',
+                action: action || (isInactive ? 'INACTIVITY_TIMEOUT' : 'LOGOUT'),
+                description: isInactive ? 'Session ended: user inactive' : 'User logged out',
+            };
+
             if (sessionToken) {
                 await deactivateSessionInDB(sessionToken);
                 await fetch('/api/supplyChain/logout', {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
+                        'Content-Type': 'application/json',
                         'x-session-token': sessionToken,
                         'User-Agent': userAgent,
                     },
+                    body: JSON.stringify(payload),
                 });
                 return;
             }
@@ -498,14 +518,17 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 .find(row => row.startsWith('session_token='))
                 ?.split('=')[1];
             if (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' && cookieToken !== '') {
+                payload.session_token = cookieToken;
                 await deactivateSessionInDB(cookieToken);
                 await fetch('/api/supplyChain/logout', {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
+                        'Content-Type': 'application/json',
                         'x-session-token': cookieToken,
                         'User-Agent': userAgent,
                     },
+                    body: JSON.stringify(payload),
                 });
                 return;
             }
@@ -513,8 +536,10 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
+                    'Content-Type': 'application/json',
                     'User-Agent': userAgent,
                 },
+                body: JSON.stringify(payload),
             });
         }
         catch (error) {
@@ -536,6 +561,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         localStorage.removeItem('session_expires');
         localStorage.removeItem('logged_in_email');
         localStorage.removeItem('user_id');
+        localStorage.removeItem(INACTIVITY_STORAGE_KEY);
         Object.values(BACKUP_KEYS).forEach(key => {
             localStorage.removeItem(key);
         });
@@ -590,6 +616,144 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             }
         }
     }, [getSessionToken, deactivateSession, clearSessionData, router]);
+
+    const handleInactivityLogout = useCallback(async () => {
+        if (isLoggingOutRef.current) return;
+        isLoggingOutRef.current = true;
+
+        setInactivityWarning({ show: false, remainingSeconds: 0 });
+
+        const token = getSessionToken();
+        try {
+            await deactivateSession(token, 'user_inactive', 'INACTIVITY_TIMEOUT');
+        } catch (e) {
+            console.error('Error during inactivity logout:', e);
+        }
+
+        clearSessionData();
+        try {
+            sessionStorage.setItem('sc_inactive_logout', 'true');
+        } catch (e) {}
+
+        toast.error('Session ended, user inactive', {
+            duration: 5000,
+            position: 'top-center',
+            id: 'session-ended-inactive',
+        });
+
+        if (isMountedRef.current) {
+            setGuardState('denied');
+            setTimeout(() => {
+                router.push('/scAuth?reason=inactive');
+                setTimeout(() => {
+                    isLoggingOutRef.current = false;
+                }, 100);
+            }, 300);
+        }
+    }, [getSessionToken, deactivateSession, clearSessionData, router]);
+
+    const recordUserActivity = useCallback(() => {
+        const now = Date.now();
+        lastActivityRef.current = now;
+
+        setInactivityWarning(prev => {
+            if (prev.show) {
+                return { show: false, remainingSeconds: 10 };
+            }
+            return prev;
+        });
+
+        if (now - lastThrottleRef.current > ACTIVITY_THROTTLE_MS) {
+            lastThrottleRef.current = now;
+            try {
+                localStorage.setItem(INACTIVITY_STORAGE_KEY, now.toString());
+            } catch (e) {}
+        }
+    }, []);
+
+    // set initial activity time
+    useEffect(() => {
+        const now = Date.now();
+        lastActivityRef.current = now;
+        try {
+            const stored = localStorage.getItem(INACTIVITY_STORAGE_KEY);
+            if (!stored) {
+                localStorage.setItem(INACTIVITY_STORAGE_KEY, now.toString());
+            }
+        } catch (e) {}
+    }, []);
+
+    // activity listeners and inactivity checker
+    useEffect(() => {
+        if (guardState !== 'authorized') return;
+
+        const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'];
+        const handleEvent = () => recordUserActivity();
+
+        events.forEach(event => {
+            window.addEventListener(event, handleEvent, { passive: true });
+        });
+
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === INACTIVITY_STORAGE_KEY && e.newValue) {
+                const remoteTime = parseInt(e.newValue, 10);
+                if (!isNaN(remoteTime) && remoteTime > lastActivityRef.current) {
+                    lastActivityRef.current = remoteTime;
+                    setInactivityWarning(prev => {
+                        if (prev.show) {
+                            return { show: false, remainingSeconds: 10 };
+                        }
+                        return prev;
+                    });
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+
+        const checkInterval = setInterval(() => {
+            if (isBlockedRef.current || isLoggingOutRef.current || guardState !== 'authorized') {
+                return;
+            }
+
+            let latestActivity = lastActivityRef.current;
+            try {
+                const stored = localStorage.getItem(INACTIVITY_STORAGE_KEY);
+                if (stored) {
+                    const parsed = parseInt(stored, 10);
+                    if (!isNaN(parsed) && parsed > latestActivity) {
+                        latestActivity = parsed;
+                        lastActivityRef.current = parsed;
+                    }
+                }
+            } catch (e) {}
+
+            const elapsed = Date.now() - latestActivity;
+            const remainingMs = INACTIVITY_TIMEOUT_MS - elapsed;
+
+            if (remainingMs <= 0) {
+                handleInactivityLogout();
+            } else if (remainingMs <= INACTIVITY_WARNING_MS) {
+                const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+                setInactivityWarning({
+                    show: true,
+                    remainingSeconds: remainingSec,
+                });
+            } else {
+                setInactivityWarning(prev => {
+                    if (prev.show) return { show: false, remainingSeconds: 10 };
+                    return prev;
+                });
+            }
+        }, 1000);
+
+        return () => {
+            events.forEach(event => {
+                window.removeEventListener(event, handleEvent);
+            });
+            window.removeEventListener('storage', handleStorage);
+            clearInterval(checkInterval);
+        };
+    }, [guardState, recordUserActivity, handleInactivityLogout]);
     const handleDeviceBlocked = useCallback(async (userId: string, userAgent: string, reason?: string) => {
         if (isBlockedRef.current || isLoggingOutRef.current)
             return;
@@ -872,6 +1036,54 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     }
     if (guardState === 'checking') {
         return (<Loader onComplete={handleLoaderComplete}/>);
+    }
+    if (inactivityWarning.show) {
+        return (
+            <>
+                <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+                    <div className="max-w-md w-full bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl shadow-[12px_12px_32px_rgba(166,175,195,0.45),-12px_-12px_32px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_38px_rgba(0,0,0,0.85)] p-8 text-center border border-white/80 dark:border-white/[0.08] animate-in fade-in zoom-in duration-200">
+                        <div className="relative w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center bg-[#ebf0f7] dark:bg-[#14151c] text-amber-500 shadow-[inset_3px_3px_6px_rgba(166,175,195,0.35),inset_-3px_-3px_6px_rgba(255,255,255,0.9)] dark:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.6)]">
+                            <Clock className="w-8 h-8 animate-pulse" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight mb-2">
+                            You are inactive
+                        </h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+                            You are inactive, automatic logout in <span className="text-amber-600 dark:text-amber-400 font-bold font-mono text-base">{inactivityWarning.remainingSeconds}s</span>
+                        </p>
+                        <div className="bg-[#ebf0f7] dark:bg-[#14151c] rounded-2xl p-4 border border-white/60 dark:border-white/[0.04] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] mb-6 space-y-2">
+                            <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+                                <span>Automatic logout in</span>
+                                <span className="text-amber-600 dark:text-amber-400 font-bold font-mono text-sm">
+                                    {inactivityWarning.remainingSeconds}s
+                                </span>
+                            </div>
+                            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                    className="bg-amber-500 h-2 rounded-full transition-all duration-1000 ease-linear"
+                                    style={{ width: `${((10 - inactivityWarning.remainingSeconds) / 10) * 100}%` }}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <button
+                                onClick={recordUserActivity}
+                                className="flex-1 py-3 px-5 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-pink-200 dark:shadow-none cursor-pointer"
+                            >
+                                Stay Logged In
+                            </button>
+                            <button
+                                onClick={handleInactivityLogout}
+                                className="py-3 px-5 bg-[#ebf0f7] dark:bg-[#181926] hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
+                            >
+                                Logout Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div style={{ display: 'none' }}>{children}</div>
+            </>
+        );
     }
     if (blockedWarning.show) {
         return (<>

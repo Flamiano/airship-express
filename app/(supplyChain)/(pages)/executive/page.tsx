@@ -3,7 +3,7 @@ import ExecutiveClientPage from './components/ExecutiveClientPage';
 
 export default function Home() {
   return (
-    <SessionGuard requiredRole={['Admin', 'Executive']}>
+    <SessionGuard requiredRole={['Executive']}>
       <ExecutiveClientPage />
     </SessionGuard>
   );

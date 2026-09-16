@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
@@ -63,6 +63,7 @@ export function ParcelsTab() {
     const [parcelTotalPages, setParcelTotalPages] = useState(1);
     const [isMounted, setIsMounted] = useState(false);
 
+    const searchInputRef = useRef<HTMLInputElement>(null);
     const debouncedParcelSearchTerm = useDebounce(parcelSearchTerm, 300);
 
     const fetchArchivedParcels = useCallback(async (force = false) => {
@@ -380,6 +381,90 @@ export function ParcelsTab() {
         }
     }, [filteredParcels.length, parcelPage]);
 
+    // Global Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            const isTyping =
+                target?.tagName === 'INPUT' ||
+                target?.tagName === 'TEXTAREA' ||
+                target?.tagName === 'SELECT' ||
+                target?.isContentEditable;
+
+            // '/' or 'Ctrl+K' / 'Cmd+K' to focus search
+            if ((e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) && !isTyping) {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+                searchInputRef.current?.select();
+                return;
+            }
+
+            // 'Escape' to clear search or selection
+            if (e.key === 'Escape') {
+                if (selectedParcelIds.size > 0) {
+                    e.preventDefault();
+                    setSelectedParcelIds(new Set());
+                } else if (parcelSearchTerm || parcelStatusFilter !== 'all') {
+                    e.preventDefault();
+                    setParcelSearchTerm('');
+                    setParcelStatusFilter('all');
+                }
+                searchInputRef.current?.blur();
+                return;
+            }
+
+            // 'Ctrl+A' or 'Cmd+A' outside inputs to toggle select all
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !isTyping) {
+                e.preventDefault();
+                if (isAllParcelsSelected) {
+                    setSelectedParcelIds(new Set());
+                } else {
+                    setSelectedParcelIds(new Set(filteredParcels.map(p => p.id)));
+                }
+                return;
+            }
+
+            // 'Delete' or 'Backspace' outside inputs to delete selected
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !isTyping && selectedParcelIds.size > 0) {
+                e.preventDefault();
+                handleBulkDeleteParcels();
+                return;
+            }
+
+            // 'Alt+R' to restore selected
+            if (e.altKey && e.key.toLowerCase() === 'r' && !isTyping && selectedParcelIds.size > 0) {
+                e.preventDefault();
+                handleBulkRestoreParcels();
+                return;
+            }
+
+            // 'Alt+ArrowLeft' / 'Alt+ArrowRight' for pagination
+            if (e.altKey && e.key === 'ArrowLeft' && !isTyping && parcelPage > 1) {
+                e.preventDefault();
+                setParcelPage(p => Math.max(1, p - 1));
+                return;
+            }
+            if (e.altKey && e.key === 'ArrowRight' && !isTyping && parcelPage < parcelTotalPages) {
+                e.preventDefault();
+                setParcelPage(p => Math.min(parcelTotalPages, p + 1));
+                return;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [
+        filteredParcels,
+        isAllParcelsSelected,
+        selectedParcelIds,
+        parcelSearchTerm,
+        parcelStatusFilter,
+        parcelPage,
+        parcelTotalPages,
+        handleBulkDeleteParcels,
+        handleBulkRestoreParcels,
+    ]);
+
     useEffect(() => {
         setIsMounted(true);
         fetchArchivedParcels();
@@ -420,7 +505,7 @@ export function ParcelsTab() {
                         backDescription={`Total Archived: ${archivedParcels.length} parcel(s)`}
                         tooltip="View parcel details"
                         frontTextColor="text-pink-500 dark:text-pink-400"
-                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -435,7 +520,7 @@ export function ParcelsTab() {
                         backDescription={`Couriers: ${Array.from(new Set(archivedParcels.map(p => p.courier))).join(', ') || 'None'}`}
                         tooltip="View courier details"
                         frontTextColor="text-indigo-500 dark:text-indigo-400"
-                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -450,7 +535,7 @@ export function ParcelsTab() {
                         backDescription={`Destinations: ${Array.from(new Set(archivedParcels.map(p => p.city || p.destination).filter(Boolean))).join(', ') || 'None'}`}
                         tooltip="View destinations"
                         frontTextColor="text-blue-500 dark:text-blue-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -465,7 +550,7 @@ export function ParcelsTab() {
                         backDescription={`Statuses: ${parcelStatuses.filter(s => s !== 'all').join(', ') || 'None'}`}
                         tooltip="View status categories"
                         frontTextColor="text-purple-500 dark:text-purple-400"
-                        descriptionTextColor="text-purple-600 dark:text-purple-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
                 </div>
             )}
@@ -476,11 +561,30 @@ export function ParcelsTab() {
                     <div className="relative flex-1 min-w-[220px]">
                         <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
                         <input
-                            className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+                            ref={searchInputRef}
+                            className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl pl-9 pr-14 py-2.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
                             placeholder="Search barcode, tracking, sender, or courier..."
                             value={parcelSearchTerm}
                             onChange={handleSearchChange}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    searchInputRef.current?.blur();
+                                    if (filteredParcels.length > 0) {
+                                        toast.info(`Found ${filteredParcels.length} matching parcel(s)`, { duration: 1500 });
+                                    }
+                                } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setParcelSearchTerm('');
+                                    searchInputRef.current?.blur();
+                                }
+                            }}
                         />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 pointer-events-none">
+                            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700 select-none">
+                                /
+                            </kbd>
+                        </div>
                     </div>
                     <div className="relative min-w-[150px]">
                         <select

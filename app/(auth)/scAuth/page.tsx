@@ -111,6 +111,27 @@ export default function SupplyChainLoginPage() {
     const checkCacheDuration = 60 * 1000;
     const { confirm } = useConfirm();
 
+    // check for inactivity logout toast
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const urlParams = new URLSearchParams(window.location.search);
+            const isInactiveParam = urlParams.get('reason') === 'inactive';
+            const isInactiveStorage = sessionStorage.getItem('sc_inactive_logout') === 'true';
+
+            if (isInactiveParam || isInactiveStorage) {
+                sessionStorage.removeItem('sc_inactive_logout');
+                toast.error('Session ended, user inactive', {
+                    id: 'session-ended-inactive',
+                    duration: 5000,
+                    position: 'top-center',
+                });
+                if (isInactiveParam) {
+                    window.history.replaceState({}, '', '/scAuth');
+                }
+            }
+        }
+    }, []);
+
     // fetch existing appeal when device is blocked
     useEffect(() => {
         if (isDeviceBlocked && blockedDeviceId) {
@@ -654,6 +675,13 @@ export default function SupplyChainLoginPage() {
         if (otpString.length !== 6) {
             toast.error('Please enter all 6 digits');
             setOtpError('Please enter all 6 digits');
+            return;
+        }
+
+        if (countdown === 0) {
+            const errorMsg = 'The inputted OTP is already expired. Please click Resend Code to receive a new OTP.';
+            toast.error(errorMsg);
+            setOtpError(errorMsg);
             return;
         }
 

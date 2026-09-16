@@ -7,7 +7,7 @@ export const NAV = [
                 label: "Executive Overview",
                 href: "/executive",
                 icon: "fa-solid fa-grip",
-                roles: ["Executive", "Admin"],
+                roles: ["Executive"],
             },
             {
                 id: "warehouse",

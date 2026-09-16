@@ -278,7 +278,7 @@ export function InventoryTab() {
                     backDescription={`Total Archived: ${archivedItems.length} item(s)\nTotal Stock: ${archivedItems.reduce((sum, item) => sum + item.current_stock, 0)} units`}
                     tooltip="View inventory archive"
                     frontTextColor="text-pink-500 dark:text-pink-400"
-                    descriptionTextColor="text-pink-600 dark:text-pink-400"
+                    descriptionTextColor="text-slate-500 dark:text-slate-400"
                 />
 
                 <Cards
@@ -293,7 +293,7 @@ export function InventoryTab() {
                     backDescription={`Categories: ${itemCategories.filter(c => c !== 'all').join(', ') || 'None'}`}
                     tooltip="View item categories"
                     frontTextColor="text-indigo-500 dark:text-indigo-400"
-                    descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                    descriptionTextColor="text-slate-500 dark:text-slate-400"
                 />
 
                 <Cards
@@ -308,7 +308,7 @@ export function InventoryTab() {
                     backDescription={`Cumulative stock volume across all ${archivedItems.length} archived items`}
                     tooltip="View stock details"
                     frontTextColor="text-emerald-500 dark:text-emerald-400"
-                    descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                    descriptionTextColor="text-slate-500 dark:text-slate-400"
                 />
 
                 <Cards
@@ -323,7 +323,7 @@ export function InventoryTab() {
                     backDescription={`Units: ${Array.from(new Set(archivedItems.map(item => item.unit).filter(Boolean))).join(', ') || 'None'}`}
                     tooltip="View unit types"
                     frontTextColor="text-blue-500 dark:text-blue-400"
-                    descriptionTextColor="text-blue-600 dark:text-blue-400"
+                    descriptionTextColor="text-slate-500 dark:text-slate-400"
                 />
             </div>
 

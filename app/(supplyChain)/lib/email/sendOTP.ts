@@ -29,7 +29,7 @@ export interface SendOTPEmailOptions {
     to: string;
     otp: string;
     userName?: string;
-    expiresIn?: number;
+    expiresIn?: number | string;
 }
 
 export async function sendOTPEmail(
@@ -37,10 +37,16 @@ export async function sendOTPEmail(
     legacyOtp?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-        const { to, otp, userName, expiresIn = 5 } =
+        const { to, otp, userName, expiresIn = '30 seconds' } =
             typeof optionsOrTo === 'string'
-                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: 5 }
+                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: '30 seconds' }
                 : optionsOrTo;
+
+        const expiryDisplay = typeof expiresIn === 'number'
+            ? (expiresIn < 1 ? `${Math.round(expiresIn * 60)} seconds` : `${expiresIn} minute${expiresIn === 1 ? '' : 's'}`)
+            : expiresIn.toString().includes('minute') || expiresIn.toString().includes('second')
+                ? expiresIn
+                : `${expiresIn} minutes`;
 
         if (!to || !to.includes('@')) {
             throw new Error('Invalid email address format');
@@ -134,7 +140,7 @@ export async function sendOTPEmail(
                         <div class="otp-box">
                             <div class="otp-code">${otp}</div>
                             <p style="margin: 10px 0 0; font-size: 14px; color: #6c757d;">
-                                This code will expire in <strong>${expiresIn} minutes</strong>
+                                This code will expire in <strong>${expiryDisplay}</strong>
                             </p>
                         </div>
                         

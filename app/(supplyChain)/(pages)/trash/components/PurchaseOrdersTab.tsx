@@ -388,7 +388,7 @@ export function PurchaseOrdersTab() {
                         backDescription={`Total Archived: ${archivedPurchaseOrders.length} PO(s)\nTotal value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}`}
                         tooltip="View PO details"
                         frontTextColor="text-pink-500 dark:text-pink-400"
-                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -403,7 +403,7 @@ export function PurchaseOrdersTab() {
                         backDescription={`Combined Value: ${formatCurrency(archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0))}\nAcross ${archivedPurchaseOrders.length} orders`}
                         tooltip="View total amount"
                         frontTextColor="text-emerald-500 dark:text-emerald-400"
-                        descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -418,7 +418,7 @@ export function PurchaseOrdersTab() {
                         backDescription={`Suppliers: ${Array.from(new Set(archivedPurchaseOrders.map(p => p.supplier_name))).join(', ') || 'None'}`}
                         tooltip="View suppliers involved"
                         frontTextColor="text-indigo-500 dark:text-indigo-400"
-                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -433,7 +433,7 @@ export function PurchaseOrdersTab() {
                         backDescription={`Average Order Value: ${formatCurrency(archivedPurchaseOrders.length > 0 ? archivedPurchaseOrders.reduce((sum, p) => sum + (p.total_amount || 0), 0) / archivedPurchaseOrders.length : 0)}`}
                         tooltip="View averages"
                         frontTextColor="text-blue-500 dark:text-blue-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
                 </div>
             )}

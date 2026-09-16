@@ -36,7 +36,7 @@ export default function Cards({
     badge,
     backIcon = "fas fa-circle-info",
     frontTextColor = "text-slate-500 dark:text-slate-400",
-    descriptionTextColor = "text-emerald-600 dark:text-emerald-400"
+    descriptionTextColor = "text-slate-500 dark:text-slate-400"
 }: CardsProps) {
     const [flipped, setFlipped] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);

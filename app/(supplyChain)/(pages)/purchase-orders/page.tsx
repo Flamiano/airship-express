@@ -30,7 +30,7 @@ import { uploadReceiptAndVerifyAction } from "@/app/(supplyChain)/(pages)/purcha
 import { ReceiptProcessingIndicator } from "@/app/(supplyChain)/components/global/ReceiptProcessingIndicator";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { FileText, MoreHorizontal } from "lucide-react";
+import { FileText, MoreHorizontal, Receipt } from "lucide-react";
 import type { ViewDocumentData } from "@/app/(supplyChain)/components/modals/DocumentViewerModal";
 import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
@@ -58,6 +58,10 @@ const DocumentViewerModal = dynamic(
 );
 const UploadReceiptModal = dynamic(
     () => import("@/app/(supplyChain)/components/modals/UploadReceiptModal").then(m => m.UploadReceiptModal),
+    { ssr: false }
+);
+const DigitalReceiptModal = dynamic(
+    () => import("@/app/(supplyChain)/components/modals/DigitalReceiptModal").then(m => m.DigitalReceiptModal),
     { ssr: false }
 );
 // types
@@ -109,7 +113,7 @@ interface Supplier {
 // utilities
 const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 // empty state
-function EmptyState({ title, description, icon = "fas fa-file-invoice", actionText, onAction, onClearSearch, isFilterActive = false, }: {
+function EmptyState({ title, description, icon = "fas fa-file-invoice", actionText, onAction, onClearSearch, isFilterActive = false, badgeCount }: {
     title?: string;
     description?: string;
     icon?: string;
@@ -117,6 +121,7 @@ function EmptyState({ title, description, icon = "fas fa-file-invoice", actionTe
     onAction?: () => void;
     onClearSearch?: () => void;
     isFilterActive?: boolean;
+    badgeCount?: number;
 }) {
     const displayTitle = title || (isFilterActive ? "No Purchase Orders Found" : "No Purchase Orders Yet");
     const displayDescription = description || (isFilterActive
@@ -136,6 +141,11 @@ function EmptyState({ title, description, icon = "fas fa-file-invoice", actionTe
             {actionText && onAction && (<button onClick={onAction} className="px-4 py-2 text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.4)] rounded-2xl transition-all flex items-center gap-2 cursor-pointer active:scale-95">
                 <i className="fas fa-plus text-[10px]" />
                 <span>{actionText}</span>
+                {typeof badgeCount === 'number' && badgeCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-black text-pink-700 dark:text-pink-300 bg-white dark:bg-[#181924] border border-pink-200 dark:border-pink-800/80 rounded-full shadow-xs animate-pulse">
+                        {badgeCount}
+                    </span>
+                )}
             </button>)}
             {isFilterActive && onClearSearch && (<button onClick={onClearSearch} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#f0f3f8] dark:bg-[#1d1e28] hover:bg-white dark:hover:bg-slate-800 border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] rounded-2xl transition-all cursor-pointer active:scale-95">
                 Clear Filters
@@ -170,15 +180,42 @@ export default function PurchaseOrders() {
     const [isApprovedRequestsModalOpen, setIsApprovedRequestsModalOpen] = useState(false);
     const [isPurchaseRequestModalOpen, setIsPurchaseRequestModalOpen] = useState(false);
     const [selectedRequestForPO, setSelectedRequestForPO] = useState<any>(null);
+    const [approvedRequestsCount, setApprovedRequestsCount] = useState<number>(0);
+    const [digitalReceiptPO, setDigitalReceiptPO] = useState<any | null>(null);
+    const [isDigitalReceiptModalOpen, setIsDigitalReceiptModalOpen] = useState(false);
+
+    const fetchApprovedRequestsCount = useCallback(async () => {
+        try {
+            const { data: requestsData, error: reqError } = await supabase
+                .from('purchase_requests')
+                .select('id')
+                .in('status', ['Approved', 'Completed']);
+
+            if (reqError) throw reqError;
+
+            const { data: poData, error: poError } = await supabase
+                .from('purchase_orders')
+                .select('request_id');
+
+            if (poError) throw poError;
+
+            const existingPoRequestIds = new Set((poData || []).map((po: any) => po.request_id));
+            const available = (requestsData || []).filter((req: any) => !existingPoRequestIds.has(req.id));
+            setApprovedRequestsCount(available.length);
+        } catch (err) {
+            console.error('Error fetching approved requests count:', err);
+        }
+    }, []);
+
     // bulk actions
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isSelectAll, setIsSelectAll] = useState(false);
     // action modal
     const [actionModalOrder, setActionModalOrder] = useState<PurchaseOrder | null>(null);
+    const [actionEmailMode, setActionEmailMode] = useState<'standard' | 'ai'>('standard');
     const [actionModalAiMessage, setActionModalAiMessage] = useState('');
     const [isGeneratingActionAI, setIsGeneratingActionAI] = useState(false);
     const [actionSupplierEmail, setActionSupplierEmail] = useState('');
-    const [actionSupplierMessenger, setActionSupplierMessenger] = useState('');
     const [isSendingActionComm, setIsSendingActionComm] = useState(false);
     // ocr states
     const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -353,36 +390,41 @@ export default function PurchaseOrders() {
             setIsReceiptModalOpen(true);
         }
     }, [searchParams, purchaseOrders, allOrders]);
-    // fetch supplier
+    // fetch supplier and load cached AI message
     useEffect(() => {
         if (actionModalOrder) {
-            setActionModalAiMessage('');
+            const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
+            const cachedAi = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+            if (cachedAi) {
+                setActionModalAiMessage(cachedAi);
+                setActionEmailMode('ai');
+            } else {
+                setActionModalAiMessage('');
+                setActionEmailMode('standard');
+            }
             setActionSupplierEmail('');
-            setActionSupplierMessenger('');
             const fetchSupplierDetails = async () => {
                 try {
                     let supplierId = actionModalOrder.supplier_id;
                     if (!supplierId && actionModalOrder.supplier_name) {
                         const { data } = await supabase
                             .from('suppliers')
-                            .select('id, email, fb_link')
+                            .select('id, email')
                             .eq('name', actionModalOrder.supplier_name)
                             .maybeSingle();
                         if (data) {
                             setActionSupplierEmail(data.email || '');
-                            setActionSupplierMessenger(data.fb_link || '');
                         }
                         return;
                     }
                     if (supplierId) {
                         const { data, error } = await supabase
                             .from('suppliers')
-                            .select('email, fb_link')
+                            .select('email')
                             .eq('id', supplierId)
                             .maybeSingle();
                         if (!error && data) {
                             setActionSupplierEmail(data.email || '');
-                            setActionSupplierMessenger(data.fb_link || '');
                         }
                     }
                 }
@@ -533,10 +575,13 @@ export default function PurchaseOrders() {
             if (!suppliersError && suppliersData) {
                 setSuppliers(suppliersData);
             }
+
+            // fetch available approved requests count for the button badge
+            await fetchApprovedRequestsCount();
         } catch (err) {
             console.error('Error fetching overview data:', err);
         }
-    }, []);
+    }, [fetchApprovedRequestsCount]);
 
     // 2. Fetch paginated table data (only 15 rows for current view)
     const fetchPaginatedOrders = useCallback(async (opts?: { silent?: boolean }) => {
@@ -655,18 +700,23 @@ export default function PurchaseOrders() {
         fetchOverviewData();
     }, [fetchOverviewData]);
 
-    // Stable realtime subscription: remains open without thrashing on every keystroke
+    // Stable realtime subscription: listens to changes on purchase_orders and purchase_requests in realtime
     useEffect(() => {
-        const ordersSubscription = supabase
-            .channel('purchase_orders_changes')
+        fetchApprovedRequestsCount();
+        const realtimeChannel = supabase
+            .channel('purchase_orders_realtime_channel')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => {
                 fetchDataRef.current({ silent: true, refreshAll: true });
+                fetchApprovedRequestsCount();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, () => {
+                fetchApprovedRequestsCount();
             })
             .subscribe();
         return () => {
-            ordersSubscription.unsubscribe();
+            realtimeChannel.unsubscribe();
         };
-    }, []);
+    }, [fetchApprovedRequestsCount]);
 
     // Receipt OCR background queue processor
     useEffect(() => {
@@ -787,7 +837,7 @@ export default function PurchaseOrders() {
 
             const initialStatus = orderData.status || 'Draft';
 
-            const { error: orderError } = await supabase
+            const { data: insertedPO, error: orderError } = await supabase
                 .from('purchase_orders')
                 .insert({
                     po_number: orderData.po_number,
@@ -800,20 +850,52 @@ export default function PurchaseOrders() {
                     notes: orderData.notes || '',
                     items: sanitizedItems,
                     paid: false,
+                })
+                .select()
+                .single();
+
+            if (orderError) throw orderError;
+
+            const newPoRecord = insertedPO || {
+                ...orderData,
+                items: sanitizedItems,
+                id: Date.now().toString(),
+                paid: false,
+                status: initialStatus,
+                created_at: new Date().toISOString(),
+            };
+
+            // Auto-create digital receipt in documents tracking
+            try {
+                await supabase.from('documents').insert({
+                    title: `Digital Receipt - PO #${orderData.po_number}`,
+                    file_name: `digital_receipt_${orderData.po_number}.pdf`,
+                    file_type: 'receipt',
+                    purchase_id: newPoRecord.id,
+                    notes: 'Official Digital Receipt generated at PO creation',
+                    uploaded_by: user.getName() || 'System',
                 });
-            if (orderError)
-                throw orderError;
-            setPurchaseOrders(prev => [{ ...orderData, items: sanitizedItems, id: Date.now().toString(), paid: false, status: initialStatus }, ...prev]);
+            } catch (docErr) {
+                console.warn('Could not record digital receipt document:', docErr);
+            }
+
+            setPurchaseOrders(prev => [newPoRecord, ...prev]);
+            setAllOrders(prev => [newPoRecord, ...prev]);
             setTotalItems(prev => prev + 1);
+            fetchApprovedRequestsCount();
             toast.success("Purchase Order created successfully!");
             setIsPurchaseOrderModalOpen(false);
             setSelectedRequestForPO(null);
+
+            // Pop up digital printable receipt modal
+            setDigitalReceiptPO(newPoRecord);
+            setIsDigitalReceiptModalOpen(true);
         }
         catch (error) {
             console.error('Error creating purchase order:', error);
             toast.error('Failed to create purchase order');
         }
-    }, []);
+    }, [fetchApprovedRequestsCount]);
     const handleRequestSubmitted = async (newRequest: any) => {
         try {
             const createPayload = {
@@ -831,6 +913,7 @@ export default function PurchaseOrders() {
                 reason: newRequest.reason,
             };
             await createPurchaseRequest(createPayload);
+            fetchApprovedRequestsCount();
             toast.success("Purchase request submitted successfully!");
             setIsPurchaseRequestModalOpen(false);
         }
@@ -1053,12 +1136,15 @@ export default function PurchaseOrders() {
         }
     };
     const getActionModalFullMessage = () => {
-        if (!actionModalAiMessage || !actionModalOrder)
-            return '';
+        if (!actionModalOrder) return '';
         const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
         const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
         const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${actionModalOrder.po_number}`;
-        return `${actionModalAiMessage}\n\n---\n\n📋 **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
+
+        if (actionEmailMode === 'ai' && actionModalAiMessage) {
+            return `${actionModalAiMessage}\n\n---\n\n📋 **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
+        }
+        return `Hello ${actionModalOrder.supplier_name},\n\nPlease review Purchase Order #${actionModalOrder.po_number} for total of ₱${actionModalOrder.total_amount?.toLocaleString()}.\nConfirm this order: ${confirmLink}`;
     };
     const handleGenerateActionAIMessage = async () => {
         if (!actionModalOrder)
@@ -1066,7 +1152,7 @@ export default function PurchaseOrders() {
         setIsGeneratingActionAI(true);
         try {
             const formattedItems = (actionModalOrder.items || []).map((item: any) => ({
-                name: item.name || "Item",
+                name: item.name || item.item_name || "Item",
                 quantity: Number(item.quantity) || 1,
                 unit_price: Number(item.unit_price) || 0,
                 total: (Number(item.quantity) || 1) * (Number(item.unit_price) || 0),
@@ -1088,7 +1174,12 @@ export default function PurchaseOrders() {
             const data = await response.json();
             if (data.success) {
                 setActionModalAiMessage(data.message);
-                toast.success('AI message generated!');
+                setActionEmailMode('ai');
+                const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem(cacheKey, data.message);
+                }
+                toast.success('AI message generated and saved to cache!');
             }
             else {
                 toast.error('Failed to generate AI message');
@@ -1105,13 +1196,9 @@ export default function PurchaseOrders() {
     const handleActionEmail = async () => {
         if (!actionModalOrder)
             return;
-        if (!actionModalAiMessage) {
-            toast.warning('Please generate an AI message first');
-            return;
-        }
         if (isSendingActionComm)
             return;
-        const emailTo = actionSupplierEmail || '';
+        const emailTo = (actionSupplierEmail || '').trim();
         if (!emailTo) {
             toast.warning('No email found for this supplier. Please configure their email first.');
             return;
@@ -1123,13 +1210,16 @@ export default function PurchaseOrders() {
         setIsSendingActionComm(true);
         try {
             const formattedItems = (actionModalOrder.items || []).map((item: any) => ({
-                name: item.name || "Item",
+                name: item.name || item.item_name || "Item",
                 quantity: Number(item.quantity) || 1,
                 unit_price: Number(item.unit_price) || 0,
                 total: (Number(item.quantity) || 1) * (Number(item.unit_price) || 0),
             }));
             const confirmLink = `${window.location.origin}/procurement/confirm?po=${actionModalOrder.po_number}`;
             const fullMessage = getActionModalFullMessage();
+
+            const activeCustomText = (actionEmailMode === 'ai' && actionModalAiMessage.trim()) ? actionModalAiMessage.trim() : undefined;
+
             const emailHtml = buildEmailTemplate({
                 poNumber: actionModalOrder.po_number,
                 supplierName: actionModalOrder.supplier_name,
@@ -1138,6 +1228,7 @@ export default function PurchaseOrders() {
                 deliveryDate: actionModalOrder.delivery_date || 'TBD',
                 notes: actionModalOrder.notes || '',
                 confirmLink: confirmLink,
+                customBodyText: activeCustomText,
                 senderName: user.getName(),
                 senderPosition: user.getRole(),
                 senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER || '',
@@ -1176,58 +1267,6 @@ export default function PurchaseOrders() {
         catch (error: any) {
             console.error('Error sending email from manage modal:', error);
             toast.error(error.message || 'Failed to send email. Please try again.', {
-                id: toastId,
-                duration: 8000,
-            });
-        }
-        finally {
-            setIsSendingActionComm(false);
-        }
-    };
-    const handleActionMessenger = async () => {
-        if (!actionModalOrder)
-            return;
-        if (!actionModalAiMessage) {
-            toast.warning('Please generate an AI message first');
-            return;
-        }
-        if (isSendingActionComm)
-            return;
-        const toastId = toast.loading('Preparing Messenger message...', {
-            duration: Infinity,
-            position: 'top-center',
-        });
-        setIsSendingActionComm(true);
-        try {
-            const confirmLink = `${window.location.origin}/procurement/confirm?po=${actionModalOrder.po_number}`;
-            const message = `${actionModalAiMessage}\n\n---\nConfirm this order: ${confirmLink}`;
-            try {
-                await navigator.clipboard.writeText(message);
-            }
-            catch (clipError) {
-                console.warn('Could not copy to clipboard:', clipError);
-            }
-            // update status
-            await handleUpdateStatus(actionModalOrder.id, 'Sent', { skipConfirm: true });
-            if (actionSupplierMessenger) {
-                window.open(actionSupplierMessenger, '_blank');
-                toast.success(`Messenger opened and status updated to Sent!`, {
-                    id: toastId,
-                    duration: 5000,
-                });
-            }
-            else {
-                const messengerUrl = `https://m.me/?text=${encodeURIComponent(message)}`;
-                window.open(messengerUrl, '_blank');
-                toast.success('Message copied to clipboard, Messenger opened and status updated to Sent!', {
-                    id: toastId,
-                    duration: 5000,
-                });
-            }
-        }
-        catch (error) {
-            console.error('Error sending messenger from manage modal:', error);
-            toast.error('Failed to prepare Messenger. Please try again.', {
                 id: toastId,
                 duration: 8000,
             });
@@ -1477,6 +1516,11 @@ export default function PurchaseOrders() {
                     <AppButton type="button" variant="primary" size="md" onClick={handleOpenApprovedRequests}>
                         <i className="fas fa-clipboard-check text-xs" />
                         <span>Create PO from Request</span>
+                        {approvedRequestsCount > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-black leading-none text-pink-700 dark:text-pink-300 bg-white dark:bg-[#181924] border border-pink-200 dark:border-pink-800/80 rounded-full shadow-xs animate-pulse ml-0.5">
+                                {approvedRequestsCount}
+                            </span>
+                        )}
                     </AppButton>
                 </div>
             </div>
@@ -1503,13 +1547,13 @@ export default function PurchaseOrders() {
 
             {/* stats */}
             {loading ? (<CardsSkeleton count={4} className="grid-cols-2 lg:grid-cols-4" />) : (<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Cards frontIcon="fa-solid fa-file-invoice" header="Total POs" data={String(totalOrders)} arrow="fa-solid fa-arrow-up" description="All orders" backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`} tooltip="View all POs" tooltipLink="/purchase-orders" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-emerald-600 dark:text-emerald-400" />
+                <Cards frontIcon="fa-solid fa-file-invoice" header="Total POs" data={String(totalOrders)} arrow="fa-solid fa-arrow-up" description="All orders" backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`} tooltip="View all POs" tooltipLink="/purchase-orders" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-clock" header="Pending" data={String(pendingConfirmation)} arrow="fa-solid fa-hourglass-half" description="Awaiting confirmation" backBg="bg-ink dark:bg-ink/90" backHeader="Pending Orders" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting supplier confirmation' : 'No pending orders'}`} tooltip="View pending orders" tooltipLink="/purchase-orders?status=Sent" badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-amber-600 dark:text-amber-400" />
+                <Cards frontIcon="fa-solid fa-clock" header="Pending" data={String(pendingConfirmation)} arrow="fa-solid fa-hourglass-half" description="Awaiting confirmation" backBg="bg-ink dark:bg-ink/90" backHeader="Pending Orders" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting supplier confirmation' : 'No pending orders'}`} tooltip="View pending orders" tooltipLink="/purchase-orders?status=Sent" badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-circle-check" header="Completed" data={String(completed)} arrow="fa-solid fa-check-double" description="Delivered" backBg="bg-ink dark:bg-ink/90" backHeader="Completed" headerTextColor="text-muted dark:text-white/80" backDescription={`Completed: ${completed}\n${completed > 0 ? 'Orders successfully delivered' : 'No completed orders'}`} tooltip="View completed orders" tooltipLink="/purchase-orders?status=Delivered" frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-emerald-600 dark:text-emerald-400" />
+                <Cards frontIcon="fa-solid fa-circle-check" header="Completed" data={String(completed)} arrow="fa-solid fa-check-double" description="Delivered" backBg="bg-ink dark:bg-ink/90" backHeader="Completed" headerTextColor="text-muted dark:text-white/80" backDescription={`Completed: ${completed}\n${completed > 0 ? 'Orders successfully delivered' : 'No completed orders'}`} tooltip="View completed orders" tooltipLink="/purchase-orders?status=Delivered" frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-coins" header="Total Spend" data={`₱${totalSpend.toLocaleString()}`} arrow="fa-solid fa-chart-line" description="Paid orders" backBg="bg-ink dark:bg-ink/90" backHeader="Financial Summary" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\n${purchaseOrders.filter(o => o.paid).length} paid orders\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No paid orders yet'}`} tooltip="View financial details" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-blue-600 dark:text-blue-400" />
+                <Cards frontIcon="fa-solid fa-coins" header="Total Spend" data={`₱${totalSpend.toLocaleString()}`} arrow="fa-solid fa-chart-line" description="Paid orders" backBg="bg-ink dark:bg-ink/90" backHeader="Financial Summary" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\n${purchaseOrders.filter(o => o.paid).length} paid orders\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No paid orders yet'}`} tooltip="View financial details" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
             </div>)}
 
             {/* charts */}
@@ -1794,7 +1838,7 @@ export default function PurchaseOrders() {
                                         <td colSpan={10} className="py-12">
                                             <EmptyState title="No purchase orders found" description={activeStatusFilter !== 'all'
                                                 ? `There are no orders with status "${activeStatusFilter}".`
-                                                : "Select an approved purchase request to generate a purchase order."} icon="fas fa-file-invoice" actionText="Create PO from Request" onAction={handleOpenApprovedRequests} />
+                                                : "Select an approved purchase request to generate a purchase order."} icon="fas fa-file-invoice" actionText="Create PO from Request" badgeCount={approvedRequestsCount} onAction={handleOpenApprovedRequests} />
                                         </td>
                                     </tr>) : (filteredOrders.map((order: PurchaseOrder) => {
                                         const isRowVerifying = verifyingPoIds.has(order.id);
@@ -1919,6 +1963,20 @@ export default function PurchaseOrders() {
                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                     </svg>)}
+
+                                                    {/* digital receipt */}
+                                                    <CrudActionButton
+                                                        action="custom"
+                                                        label="Receipt"
+                                                        icon={Receipt}
+                                                        disabled={rowBusy}
+                                                        ariaLabel="View & Print Digital Receipt"
+                                                        title="View & Print Digital Receipt"
+                                                        onClick={() => {
+                                                            setDigitalReceiptPO(order);
+                                                            setIsDigitalReceiptModalOpen(true);
+                                                        }}
+                                                    />
 
                                                     {/* view doc */}
                                                     {(order.verification?.uploaded_file_url || order.document?.storage_path) && (<CrudActionButton action="custom" label="Doc" icon={FileText} disabled={rowBusy} ariaLabel="View Receipt Document" title="View Receipt Document" onClick={() => {
@@ -2106,7 +2164,7 @@ export default function PurchaseOrders() {
                                 {/* send options (for draft orders) */}
                                 {actionModalOrder.status === 'Draft' && (
                                     <div className="bg-[#ebf0f7] dark:bg-[#14151e] rounded-2xl p-4 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
                                             <div className="flex items-center gap-2">
                                                 <span className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/50 border border-pink-200/60 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 text-[10px]">
                                                     <i className="fas fa-paper-plane" />
@@ -2116,62 +2174,136 @@ export default function PurchaseOrders() {
                                                         Send PO to Supplier
                                                     </h3>
                                                     <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 block">
-                                                        Generates dispatch email or message & marks as Sent
+                                                        Select template mode & dispatch via Gmail
                                                     </span>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleGenerateActionAIMessage}
-                                                    disabled={isGeneratingActionAI || isSendingActionComm}
-                                                    className="px-2.5 py-1 text-[11px] font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 bg-[#f0f3f8] dark:bg-[#1d1e28] rounded-xl shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] border border-white/80 dark:border-[#2a2b38] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
-                                                >
-                                                    {isGeneratingActionAI ? (
-                                                        <i className="fas fa-spinner fa-spin text-[10px]" />
-                                                    ) : (
-                                                        <i className="fas fa-wand-magic-sparkles text-[10px]" />
-                                                    )}
-                                                    <span>{isGeneratingActionAI ? 'Generating...' : 'AI Compose'}</span>
-                                                </button>
-                                                {actionModalAiMessage && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleActionCopyOnly}
-                                                        disabled={isSendingActionComm}
-                                                        className="w-7 h-7 rounded-xl bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 flex items-center justify-center border border-white/80 dark:border-[#2a2b38] shadow-[2px_2px_4px_rgba(166,175,195,0.3),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] transition-all cursor-pointer disabled:opacity-50 active:scale-95"
-                                                        title="Copy Message"
-                                                    >
-                                                        <i className="fas fa-copy text-[10px]" />
-                                                    </button>
+
+                                            {/* Minimalist Mode Indicator Pill */}
+                                            <div>
+                                                {actionEmailMode === 'ai' ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/40">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                                        <span>AI Content Active</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                                        <span>Standard Template</span>
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
 
-                                        {/* ai message preview well */}
-                                        <div className="bg-[#e2e8f0]/60 dark:bg-[#101118] rounded-xl p-3 border border-white/60 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.6)] text-xs text-slate-800 dark:text-slate-200 leading-relaxed min-h-[70px] max-h-[130px] overflow-y-auto">
-                                            {isGeneratingActionAI ? (
-                                                <div className="flex items-center justify-center h-14">
-                                                    <div className="flex items-center gap-2 text-pink-600 dark:text-pink-400 text-xs font-semibold">
-                                                        <i className="fas fa-spinner fa-spin" />
-                                                        <span>Drafting professional supplier message...</span>
+                                        {/* Minimalist Mode Switcher Tabs */}
+                                        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-200/60 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                                            <button
+                                                type="button"
+                                                onClick={() => setActionEmailMode('standard')}
+                                                className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                    actionEmailMode === 'standard'
+                                                        ? 'bg-white dark:bg-[#1c1e2b] text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700'
+                                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                                                }`}
+                                            >
+                                                <span>Standard</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setActionEmailMode('ai');
+                                                    if (!actionModalAiMessage && !isGeneratingActionAI) {
+                                                        handleGenerateActionAIMessage();
+                                                    }
+                                                }}
+                                                className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                    actionEmailMode === 'ai'
+                                                        ? 'bg-white dark:bg-[#1c1e2b] text-indigo-600 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800/40'
+                                                        : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                                }`}
+                                            >
+                                                <span>AI Compose</span>
+                                            </button>
+                                        </div>
+
+                                        {/* Content Preview & AI Compose */}
+                                        {actionEmailMode === 'standard' ? (
+                                            <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-white/60 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-700 dark:text-slate-300">
+                                                <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                    "Hello <strong>{actionModalOrder.supplier_name}</strong>, please review and accept this official purchase order for the listed items. Confirm availability at your earliest convenience."
+                                                </p>
+                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1 font-medium">
+                                                    <i className="fas fa-check-circle text-emerald-500 text-[9px]" />
+                                                    Includes minimalist breakdown table & confirmation link.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-indigo-100/80 dark:border-indigo-900/40 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+                                                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-300/60 dark:border-white/[0.06]">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                                                            <i className="fas fa-robot text-[9px]" /> AI Explanation
+                                                        </span>
+                                                        {actionModalAiMessage && (
+                                                            <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                                                                (Saved in storage)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleGenerateActionAIMessage}
+                                                            disabled={isGeneratingActionAI || isSendingActionComm}
+                                                            className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-[#1c1e2b] rounded-lg border border-indigo-200 dark:border-indigo-800/40 cursor-pointer disabled:opacity-50"
+                                                        >
+                                                            {isGeneratingActionAI ? <i className="fas fa-spinner fa-spin mr-1" /> : <i className="fas fa-arrows-rotate mr-1" />}
+                                                            {isGeneratingActionAI ? 'Generating...' : 'Regenerate'}
+                                                        </button>
+                                                        {actionModalAiMessage && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleActionCopyOnly}
+                                                                disabled={isSendingActionComm}
+                                                                className="w-5 h-5 rounded-md bg-white dark:bg-[#1c1e2b] text-slate-600 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-800 cursor-pointer"
+                                                                title="Copy"
+                                                            >
+                                                                <i className="fas fa-copy text-[9px]" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            ) : actionModalAiMessage ? (
-                                                <div>
-                                                    <p className="whitespace-pre-wrap">{actionModalAiMessage}</p>
-                                                    <div className="mt-2 pt-2 border-t border-slate-300/40 dark:border-slate-800">
-                                                        <p className="text-[10px] text-pink-600 dark:text-pink-400 font-bold flex items-center gap-1">
-                                                            <i className="fas fa-link text-[9px]" /> Confirmation link is automatically included
+
+                                                {isGeneratingActionAI ? (
+                                                    <div className="flex items-center justify-center h-16 text-indigo-600 dark:text-indigo-400 gap-1.5 font-semibold text-xs">
+                                                        <i className="fas fa-spinner fa-spin" />
+                                                        <span>Drafting tailored supplier message...</span>
+                                                    </div>
+                                                ) : actionModalAiMessage ? (
+                                                    <div className="space-y-1.5">
+                                                        <textarea
+                                                            value={actionModalAiMessage}
+                                                            onChange={(e) => {
+                                                                setActionModalAiMessage(e.target.value);
+                                                                const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
+                                                                if (typeof window !== 'undefined') {
+                                                                    localStorage.setItem(cacheKey, e.target.value);
+                                                                }
+                                                            }}
+                                                            rows={4}
+                                                            className="w-full bg-white dark:bg-[#181924] p-2.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/50 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-sans transition-all resize-y leading-relaxed"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center py-3">
+                                                        <p className="text-slate-400 dark:text-slate-500 italic text-[11px] mb-1">
+                                                            Click AI Compose to generate custom notes.
                                                         </p>
                                                     </div>
-                                                </div>
-                                            ) : (
-                                                <p className="text-slate-400 dark:text-slate-500 italic text-center py-2.5">
-                                                    Click "AI Compose" to generate a tailored message for {actionModalOrder.supplier_name}
-                                                </p>
-                                            )}
-                                        </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {/* supplier contact & buttons */}
                                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
@@ -2194,34 +2326,35 @@ export default function PurchaseOrders() {
                                                     type="button"
                                                     onClick={handleActionEmail}
                                                     title="Send Email via Gmail"
-                                                    disabled={!actionModalAiMessage || isSendingActionComm || !actionSupplierEmail}
-                                                    className="px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#f0f3f8] dark:bg-[#1d1e28] hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                                                    disabled={isSendingActionComm || !actionSupplierEmail}
+                                                    className="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 border border-pink-400/80 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.35)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
                                                 >
                                                     {isSendingActionComm ? (
-                                                        <i className="fas fa-spinner fa-spin text-pink-500" />
+                                                        <i className="fas fa-spinner fa-spin text-white" />
                                                     ) : (
-                                                        <i className="fas fa-envelope text-pink-500 dark:text-pink-400 text-[11px]" />
+                                                        <i className="fas fa-paper-plane text-white text-[11px]" />
                                                     )}
-                                                    <span>Email</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleActionMessenger}
-                                                    title="Send via Messenger"
-                                                    disabled={!actionModalAiMessage || isSendingActionComm}
-                                                    className="px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#f0f3f8] dark:bg-[#1d1e28] hover:text-sky-600 dark:hover:text-sky-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-                                                >
-                                                    {isSendingActionComm ? (
-                                                        <i className="fas fa-spinner fa-spin text-sky-500" />
-                                                    ) : (
-                                                        <i className="fab fa-facebook-messenger text-sky-500 dark:text-sky-400 text-[11px]" />
-                                                    )}
-                                                    <span>Messenger</span>
+                                                    <span>{isSendingActionComm ? 'Sending...' : 'Send via Gmail'}</span>
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Digital Receipt Print Quick Button */}
+                                <div className="pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDigitalReceiptPO(actionModalOrder);
+                                            setIsDigitalReceiptModalOpen(true);
+                                        }}
+                                        className="w-full py-2 px-4 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#f0f3f8] dark:bg-[#1a1b26] hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                    >
+                                        <i className="fas fa-receipt text-pink-500 dark:text-pink-400 text-xs" />
+                                        <span>View & Print Official Digital Receipt</span>
+                                    </button>
+                                </div>
 
                                 {/* status transition section */}
                                 <div className={`space-y-2.5 transition-opacity duration-200 ${isSendingActionComm ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -2328,6 +2461,16 @@ export default function PurchaseOrders() {
                     </div>
                 </Portal>
             )}
+
+            {/* digital receipt modal */}
+            <DigitalReceiptModal
+                isOpen={isDigitalReceiptModalOpen}
+                onClose={() => {
+                    setIsDigitalReceiptModalOpen(false);
+                    setDigitalReceiptPO(null);
+                }}
+                order={digitalReceiptPO}
+            />
 
             {/* ocr modal */}
             {isReceiptModalOpen && receiptModalPO && (<UploadReceiptModal

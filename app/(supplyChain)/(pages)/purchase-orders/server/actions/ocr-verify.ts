@@ -583,12 +583,13 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             reason = 'Authorized administrative override',
         } = input;
 
-        // auth guard
-        const isAdminOrManager = userRole === 'Admin' || userRole === 'Manager';
-        if (!isAdminOrManager) {
+        // auth guard - strictly Administrator only (disabled for Manager and other roles)
+        const role = (userRole || '').toLowerCase().trim();
+        const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(role) || userRole === 'Admin';
+        if (!isAdmin) {
             return {
                 success: false,
-                error: 'Forbidden: Force insert requires Admin or Manager authorization.',
+                error: 'Forbidden: Force insert requires Administrator authorization (disabled for Manager role).',
                 status: 403,
             };
         }

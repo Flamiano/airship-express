@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, createContext, useContext, ReactNode } from "react";
+import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
 
@@ -40,6 +40,26 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         if (resolve) resolve(false);
         setIsOpen(false);
     };
+
+    // Keyboard shortcuts: Enter to confirm, Escape to cancel
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCancel();
+            } else if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                handleConfirm();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isOpen, resolve]);
 
     const variantColors = {
         pink: {

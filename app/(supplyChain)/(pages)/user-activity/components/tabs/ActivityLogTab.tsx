@@ -26,7 +26,8 @@ interface ActivityLogTabProps {
 
 const getActionBadgeTone = (action: string) => {
     if (action?.includes('LOGIN') || action?.includes('VERIFIED')) return 'emerald';
-    if (action?.includes('FAILED') || action?.includes('ERROR') || action?.includes('BLOCKED')) return 'rose';
+    if (action?.includes('FAILED') || action?.includes('ERROR') || action?.includes('BLOCKED') || action?.includes('TIMEOUT') || action?.includes('INACTIVE')) return 'rose';
+    if (action?.includes('LOGOUT') || action?.includes('DEACTIVATED')) return 'amber';
     return 'pink';
 };
 

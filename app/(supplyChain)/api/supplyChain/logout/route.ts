@@ -7,14 +7,14 @@ export async function POST(request: Request) {
         const userAgent = request.headers.get('user-agent') || 'Unknown';
         const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'Unknown';
 
-        // try body if header missing
-        if (!sessionToken) {
-            try {
-                const body = await request.json();
+        let body: any = {};
+        try {
+            body = await request.json();
+            if (!sessionToken && body?.session_token) {
                 sessionToken = body.session_token;
-            } catch (e) {
-                // no body or invalid json
             }
+        } catch (e) {
+            // no body or invalid json
         }
 
         if (!sessionToken) {
@@ -55,15 +55,21 @@ export async function POST(request: Request) {
             );
         }
 
+        const isInactive = body?.reason === 'user_inactive' || body?.action === 'INACTIVITY_TIMEOUT';
+        const action = body?.action || (isInactive ? 'INACTIVITY_TIMEOUT' : 'LOGOUT');
+        const description = body?.description || (isInactive
+            ? `Session ended: user inactive${session.hr_employee_name ? ` (${session.hr_employee_name})` : ''}`
+            : `User logged out${session.hr_employee_name ? ` (${session.hr_employee_name})` : ''}`);
+
         // log activity
         try {
             await supabase
                 .from('user_activity')
                 .insert({
                     user_id: session.user_id,
-                    action: 'LOGOUT',
+                    action: action,
                     module: 'Authentication',
-                    description: `User logged out${session.hr_employee_name ? ` (${session.hr_employee_name})` : ''}`,
+                    description: description,
                     ip_address: ipAddress,
                     user_agent: userAgent,
                 });

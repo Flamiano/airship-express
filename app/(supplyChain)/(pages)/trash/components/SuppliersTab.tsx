@@ -391,7 +391,7 @@ export function SuppliersTab() {
                         backDescription={`Total Archived: ${archivedSuppliers.length} supplier(s)`}
                         tooltip="View supplier archive"
                         frontTextColor="text-pink-500 dark:text-pink-400"
-                        descriptionTextColor="text-pink-600 dark:text-pink-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -406,7 +406,7 @@ export function SuppliersTab() {
                         backDescription={`Categories: ${supplierCategories.filter(c => c !== 'all').join(', ') || 'None'}`}
                         tooltip="View supplier categories"
                         frontTextColor="text-indigo-500 dark:text-indigo-400"
-                        descriptionTextColor="text-indigo-600 dark:text-indigo-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -421,7 +421,7 @@ export function SuppliersTab() {
                         backDescription="All archived suppliers are marked as inactive until restored."
                         tooltip="View status explanation"
                         frontTextColor="text-amber-500 dark:text-amber-400"
-                        descriptionTextColor="text-amber-600 dark:text-amber-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
 
                     <Cards
@@ -436,7 +436,7 @@ export function SuppliersTab() {
                         backDescription={`Locations: ${Array.from(new Set(archivedSuppliers.map(s => s.location).filter(Boolean))).join(', ') || 'None'}`}
                         tooltip="View location details"
                         frontTextColor="text-blue-500 dark:text-blue-400"
-                        descriptionTextColor="text-blue-600 dark:text-blue-400"
+                        descriptionTextColor="text-slate-500 dark:text-slate-400"
                     />
                 </div>
             )}

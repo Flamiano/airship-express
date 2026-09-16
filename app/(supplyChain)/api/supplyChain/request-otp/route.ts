@@ -88,10 +88,10 @@ export async function POST(request: Request) {
             );
         }
 
-        // generate otp
+        // generate otp (valid for 30 seconds)
         const otp = generateOTP();
         const hashedOTP = hashOTP(otp);
-        const expiresAt = new Date(Date.now() + 5 * 60000);
+        const expiresAt = new Date(Date.now() + 30 * 1000);
 
         // store otp
         const { error: insertError } = await supabase
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
                 to: email,
                 otp: otp,
                 userName: employeeName || 'HR Employee',
-                expiresIn: 5,
+                expiresIn: '30 seconds',
             });
         } catch (emailError: any) {
             console.error('Email sending failed:', emailError.message);

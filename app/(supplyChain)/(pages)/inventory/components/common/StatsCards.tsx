@@ -26,6 +26,7 @@ export function StatsCards({ totalItems, availableItems, lowStockItems, outOfSto
                 headerTextColor="text-muted dark:text-white/80"
                 backDescription={`Total of ${totalItems} items in inventory.\n\n📦 All items across all categories and statuses.`}
                 tooltip="Click the card to see more details"
+                descriptionTextColor="text-slate-500 dark:text-slate-400"
             />
 
             <Cards
@@ -41,7 +42,7 @@ export function StatsCards({ totalItems, availableItems, lowStockItems, outOfSto
                 backDescription={`${safeAvailableItems} items are adequately stocked.\n\n Ready for fulfillment and operations.`}
                 tooltip="Click the card to see more details"
                 frontTextColor="text-emerald-600 dark:text-emerald-400"
-                descriptionTextColor="text-emerald-600 dark:text-emerald-400"
+                descriptionTextColor="text-slate-500 dark:text-slate-400"
             />
 
             <Cards
@@ -57,7 +58,7 @@ export function StatsCards({ totalItems, availableItems, lowStockItems, outOfSto
                 backDescription={`${lowStockItems} items are below minimum stock levels.\n\n⚠️ These items need immediate attention.\n\n🔍 Check inventory to review stock levels.`}
                 tooltip="Click the card to see more details"
                 frontTextColor="text-amber-600 dark:text-amber-400"
-                descriptionTextColor="text-amber-600 dark:text-amber-400"
+                descriptionTextColor="text-slate-500 dark:text-slate-400"
             />
 
             <Cards
@@ -73,7 +74,7 @@ export function StatsCards({ totalItems, availableItems, lowStockItems, outOfSto
                 backDescription={`${outOfStockItems} items are currently out of stock.\n\n🛑 These items need restocking immediately.\n\n🔍 Check inventory to reorder.`}
                 tooltip="Click the card to see more details"
                 frontTextColor="text-red-600 dark:text-red-400"
-                descriptionTextColor="text-red-600 dark:text-red-400"
+                descriptionTextColor="text-slate-500 dark:text-slate-400"
             />
         </div>
     );

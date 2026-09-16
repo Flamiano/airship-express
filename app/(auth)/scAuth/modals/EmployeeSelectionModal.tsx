@@ -491,9 +491,16 @@ export default function EmployeeSelectionModal({
                                     )}
 
                                     {otpError && (
-                                        <div className="mb-3 text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center justify-center gap-1.5 text-center">
+                                        <div className="mb-3 text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center justify-center gap-1.5 text-center bg-rose-50/70 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200/80 dark:border-rose-900/40">
                                             <AlertCircle size={14} className="shrink-0" />
                                             <span>{otpError}</span>
+                                        </div>
+                                    )}
+
+                                    {countdown === 0 && otpCode.some(d => d) && !otpError && (
+                                        <div className="mb-3 text-xs text-rose-600 dark:text-rose-400 font-semibold flex items-center justify-center gap-1.5 text-center bg-rose-50/70 dark:bg-rose-950/40 p-2 rounded-xl border border-rose-200/80 dark:border-rose-900/40 animate-pulse">
+                                            <AlertCircle size={14} className="shrink-0" />
+                                            <span>Inputted OTP is already expired. Please click Resend Code.</span>
                                         </div>
                                     )}
 
@@ -510,7 +517,7 @@ export default function EmployeeSelectionModal({
                                                 onKeyDown={(e) => handleOtpKeyDown(index, e)}
                                                 onPaste={index === 0 ? handleOtpPaste : undefined}
                                                 className={`w-10 h-12 sm:w-13 sm:h-14 text-center text-lg sm:text-2xl font-bold rounded-2xl transition-all duration-150 outline-none
-                                                    ${otpError
+                                                    ${otpError || (countdown === 0 && digit)
                                                         ? 'bg-rose-50/50 dark:bg-rose-950/30 border-2 border-rose-400 dark:border-rose-500 text-rose-600 dark:text-rose-400'
                                                         : digit
                                                             ? 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_6px_#d1dbe7,-3px_-3px_6px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] border-2 border-accent text-slate-900 dark:text-white'
@@ -541,10 +548,15 @@ export default function EmployeeSelectionModal({
                                         </span>
                                     </div>
 
-                                    {countdown > 0 && (
+                                    {countdown > 0 ? (
                                         <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">
-                                            <Clock size={14} className="text-slate-500 dark:text-slate-400" />
-                                            <span>Resend available in <strong className="text-slate-900 dark:text-white font-bold">{countdown}s</strong></span>
+                                            <Clock size={14} className="text-amber-500 dark:text-amber-400 animate-pulse" />
+                                            <span>Code expires in <strong className="text-amber-600 dark:text-amber-400 font-bold">{countdown}s</strong></span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-3">
+                                            <Clock size={14} />
+                                            <span>OTP has expired. Please click <strong>Resend Code</strong>.</span>
                                         </div>
                                     )}
                                 </div>
@@ -593,6 +605,8 @@ export default function EmployeeSelectionModal({
                                                     <Loader2 className="animate-spin" size={14} />
                                                     <span>Verifying...</span>
                                                 </>
+                                            ) : countdown === 0 ? (
+                                                <span>Code Expired</span>
                                             ) : (
                                                 <span>Verify OTP</span>
                                             )}

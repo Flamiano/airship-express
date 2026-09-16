@@ -44,8 +44,49 @@ export async function POST(request: Request) {
             .limit(1);
 
         if (otpError || !otpRecords || otpRecords.length === 0) {
+            // check if the specific inputted OTP was issued and is now expired
+            const { data: matchingExpired } = await supabase
+                .from('otp_codes')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('code_hash', hashedInputOTP)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (matchingExpired && matchingExpired.length > 0) {
+                return NextResponse.json(
+                    {
+                        expired: true,
+                        message: 'The inputted OTP is already expired. Please click Resend Code for a new OTP.'
+                    },
+                    { status: 400 }
+                );
+            }
+
+            // check if any recent unused OTP is expired
+            const { data: recentRecords } = await supabase
+                .from('otp_codes')
+                .select('*')
+                .eq('user_id', userId)
+                .is('used_at', null)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (recentRecords && recentRecords.length > 0) {
+                const latest = recentRecords[0];
+                if (new Date(latest.expires_at) < new Date()) {
+                    return NextResponse.json(
+                        {
+                            expired: true,
+                            message: 'The inputted OTP is already expired (30s limit reached). Please click Resend Code.'
+                        },
+                        { status: 400 }
+                    );
+                }
+            }
+
             return NextResponse.json(
-                { message: 'No valid OTP found' },
+                { message: 'Invalid or expired OTP. Please request a new code.' },
                 { status: 400 }
             );
         }
@@ -172,7 +213,7 @@ export async function POST(request: Request) {
             }
 
             const roleRedirects: Record<string, string> = {
-                'Admin': '/executive',
+                'Admin': '/user-activity',
                 'Manager': '/warehousing?tab=incoming',
                 'Employee': '/documents',
                 'Operator': '/warehousing?tab=incoming',
