@@ -18,6 +18,7 @@ import ThemeToggle from "@/app/components/ThemeToggle";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { ChangePasswordModal } from "@/app/(supplyChain)/components/modals/ChangePasswordModal";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import '@fortawesome/fontawesome-free/css/all.min.css';
 interface NavItem {
     id: string;
@@ -55,9 +56,9 @@ export function AceternityNavbar() {
     };
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            const role = localStorage.getItem('user_role');
-            const employeeName = localStorage.getItem('user_name');
-            const email = localStorage.getItem('user_email') || localStorage.getItem('logged_in_email');
+            const role = user.getRole();
+            const employeeName = user.getName();
+            const email = user.getEmail();
             if (role) {
                 setUserRole(role);
                 filterNavigation(role);
@@ -150,24 +151,15 @@ export function AceternityNavbar() {
         }
         setIsLoggingOut(true);
         try {
-            const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
+            const sessionToken = user.getSessionToken();
             if (sessionToken) {
                 await fetch('/api/supplyChain/logout', {
                     method: 'POST',
                     headers: { 'x-session-token': sessionToken }
                 });
             }
+            user.clearUser();
             if (typeof window !== 'undefined') {
-                // clear session and storage data
-                localStorage.removeItem('session_token');
-                localStorage.removeItem('user_role');
-                localStorage.removeItem('session_expires');
-                localStorage.removeItem('user_name');
-                localStorage.removeItem('user_email');
-                localStorage.removeItem('logged_in_email');
-                localStorage.removeItem('user_agent');
-                localStorage.removeItem('user_ip');
-                localStorage.removeItem('user_id');
                 localStorage.removeItem('session_backup');
                 localStorage.removeItem('session_backup_2');
                 localStorage.removeItem('session_backup_3');
@@ -176,8 +168,6 @@ export function AceternityNavbar() {
                 }
                 catch (e) {
                 }
-                // clear cookie backups
-                document.cookie = 'session_token=; path=/; max-age=0';
                 document.cookie = 'session_backup=; path=/; max-age=0';
                 document.cookie = 'session_backup_2=; path=/; max-age=0';
                 document.cookie = 'session_backup_3=; path=/; max-age=0';
@@ -188,16 +178,8 @@ export function AceternityNavbar() {
         }
         catch (error) {
             console.error('Logout error:', error);
+            user.clearUser();
             if (typeof window !== 'undefined') {
-                localStorage.removeItem('session_token');
-                localStorage.removeItem('user_role');
-                localStorage.removeItem('session_expires');
-                localStorage.removeItem('user_name');
-                localStorage.removeItem('user_email');
-                localStorage.removeItem('logged_in_email');
-                localStorage.removeItem('user_agent');
-                localStorage.removeItem('user_ip');
-                localStorage.removeItem('user_id');
                 localStorage.removeItem('session_backup');
                 localStorage.removeItem('session_backup_2');
                 localStorage.removeItem('session_backup_3');
@@ -206,7 +188,6 @@ export function AceternityNavbar() {
                 }
                 catch (e) {
                 }
-                document.cookie = 'session_token=; path=/; max-age=0';
                 document.cookie = 'session_backup=; path=/; max-age=0';
                 document.cookie = 'session_backup_2=; path=/; max-age=0';
                 document.cookie = 'session_backup_3=; path=/; max-age=0';

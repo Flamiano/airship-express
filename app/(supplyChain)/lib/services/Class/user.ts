@@ -43,19 +43,16 @@ class UserService {
         localStorage.setItem('user_role', data.role);
         localStorage.setItem('user_email', data.email);
         localStorage.setItem('session_token', data.sessionToken);
+        localStorage.setItem('sc_session_token', data.sessionToken);
         localStorage.setItem('session_expires', data.expiresAt);
         localStorage.setItem('logged_in_email', data.email);
         localStorage.setItem('user_agent', userAgent);
         localStorage.setItem('user_ip', ipAddress);
         localStorage.setItem('user_id', data.userId || '');
 
-        if (data.rememberMe) {
-            const maxAge = 15 * 24 * 60 * 60;
-            document.cookie = `session_token=${data.sessionToken}; path=/; max-age=${maxAge}`;
-        } else {
-            const maxAge = 8 * 60 * 60;
-            document.cookie = `session_token=${data.sessionToken}; path=/; max-age=${maxAge}`;
-        }
+        const maxAge = data.rememberMe ? 15 * 24 * 60 * 60 : 8 * 60 * 60;
+        document.cookie = `session_token=${data.sessionToken}; path=/; max-age=${maxAge}`;
+        document.cookie = `sc_session_token=${data.sessionToken}; path=/; max-age=${maxAge}`;
     }
 
     getUser(): UserData {
@@ -76,7 +73,7 @@ class UserService {
             name: localStorage.getItem('user_name') || 'User',
             role: localStorage.getItem('user_role') || 'User',
             email: localStorage.getItem('user_email') || '',
-            sessionToken: localStorage.getItem('session_token'),
+            sessionToken: localStorage.getItem('session_token') || localStorage.getItem('sc_session_token') || null,
             expiresAt: localStorage.getItem('session_expires'),
             userAgent: localStorage.getItem('user_agent') || '',
             ipAddress: localStorage.getItem('user_ip') || '',
@@ -106,7 +103,7 @@ class UserService {
 
     getSessionToken(): string | null {
         if (typeof window === 'undefined') return null;
-        return localStorage.getItem('session_token');
+        return localStorage.getItem('session_token') || localStorage.getItem('sc_session_token') || null;
     }
 
     getUserAgent(): string {
@@ -121,7 +118,7 @@ class UserService {
 
     isLoggedIn(): boolean {
         if (typeof window === 'undefined') return false;
-        return !!localStorage.getItem('session_token');
+        return !!(localStorage.getItem('session_token') || localStorage.getItem('sc_session_token'));
     }
 
     hasRole(role: string | string[]): boolean {
@@ -139,12 +136,14 @@ class UserService {
         localStorage.removeItem('user_role');
         localStorage.removeItem('user_email');
         localStorage.removeItem('session_token');
+        localStorage.removeItem('sc_session_token');
         localStorage.removeItem('session_expires');
         localStorage.removeItem('logged_in_email');
         localStorage.removeItem('user_agent');
         localStorage.removeItem('user_ip');
         localStorage.removeItem('user_id');
         document.cookie = 'session_token=; path=/; max-age=0';
+        document.cookie = 'sc_session_token=; path=/; max-age=0';
     }
 
     updateUser(data: Partial<{ name: string; role: string; email: string; userAgent: string; ipAddress: string; userId: string }>) {

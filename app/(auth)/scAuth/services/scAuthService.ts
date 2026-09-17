@@ -1,4 +1,5 @@
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 
 export interface RequestOtpParams {
     userId: string;
@@ -30,7 +31,7 @@ export interface CreateAuthUserParams {
 
 // clear session tokens and logout
 export async function clearUserSession(): Promise<void> {
-    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
+    const sessionToken = user.getSessionToken();
 
     if (sessionToken) {
         try {
@@ -45,18 +46,10 @@ export async function clearUserSession(): Promise<void> {
 
     await supabase.auth.signOut();
 
+    user.clearUser();
     if (typeof window !== 'undefined') {
-        localStorage.removeItem('session_token');
-        localStorage.removeItem('user_role');
-        localStorage.removeItem('user_name');
-        localStorage.removeItem('user_email');
-        localStorage.removeItem('session_expires');
-        localStorage.removeItem('logged_in_email');
-        localStorage.removeItem('user_agent');
-        localStorage.removeItem('user_id');
         localStorage.removeItem('session_backup');
-        document.cookie = 'session_token=; path=/; max-age=0';
-        document.cookie = 'sc_session_token=; path=/; max-age=0';
+        document.cookie = 'session_backup=; path=/; max-age=0';
     }
 }
 

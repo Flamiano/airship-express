@@ -1,5 +1,7 @@
 // app/(supplyChain)/utils/procurementApi.ts
 
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+
 interface FetchProcurementParams {
     page?: number;
     limit?: number;
@@ -47,7 +49,7 @@ interface PatchRequestData {
 }
 
 function getAuthHeaders(): Record<string, string> {
-    const role = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '';
+    const role = user.getRole() || '';
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
@@ -88,7 +90,7 @@ export async function fetchProcurementData(params: FetchProcurementParams = {}) 
  * Create a new purchase request
  */
 export async function createPurchaseRequest(data: CreateRequestData) {
-    const role = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '';
+    const role = user.getRole() || '';
     const response = await fetch('/procurement/api', {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -108,7 +110,7 @@ export async function createPurchaseRequest(data: CreateRequestData) {
  * Update an existing purchase request
  */
 export async function updatePurchaseRequest(data: UpdateRequestData) {
-    const role = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '';
+    const role = user.getRole() || '';
     const response = await fetch('/procurement/api', {
         method: 'PUT',
         headers: getAuthHeaders(),
@@ -164,7 +166,7 @@ export async function deleteMultiplePurchaseRequests(ids: string[]) {
  * Approve or reject a purchase request
  */
 export async function patchPurchaseRequest(data: PatchRequestData) {
-    const role = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '';
+    const role = user.getRole() || '';
     const response = await fetch('/procurement/api', {
         method: 'PATCH',
         headers: getAuthHeaders(),

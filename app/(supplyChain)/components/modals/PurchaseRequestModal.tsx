@@ -31,9 +31,7 @@ export function PurchaseRequestModal({
 
     useEffect(() => {
         if (isOpen) {
-            const currentUserName = typeof window !== 'undefined'
-                ? (localStorage.getItem('user_name') || user.getName() || '')
-                : '';
+            const currentUserName = user.getName() || '';
 
             if ((isEdit || readOnly) && editData) {
                 const loadedItems = editData.items?.length

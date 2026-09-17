@@ -213,7 +213,7 @@ export async function POST(request: Request) {
             }
 
             const roleRedirects: Record<string, string> = {
-                'Admin': '/user-activity',
+                'Admin': '/procurement',
                 'Manager': '/warehousing?tab=incoming',
                 'Employee': '/documents',
                 'Operator': '/warehousing?tab=incoming',

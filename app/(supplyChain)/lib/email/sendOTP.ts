@@ -128,7 +128,7 @@ export async function sendOTPEmail(
                 </head>
                 <body>
                     <div class="header">
-                        <h1>📦 Supply Chain Management</h1>
+                        <h1>Supply Chain Management</h1>
                         <p style="margin: 5px 0 0; opacity: 0.8; font-size: 14px;">Secure Access Verification</p>
                     </div>
                     
@@ -145,7 +145,7 @@ export async function sendOTPEmail(
                         </div>
                         
                         <div class="info-box">
-                            <strong>📌 Security Notice:</strong>
+                            <strong>Security Notice:</strong>
                             <ul style="margin: 10px 0 0; padding-left: 20px;">
                                 <li>This OTP is valid for one-time use only</li>
                                 <li>Do not share this code with anyone</li>

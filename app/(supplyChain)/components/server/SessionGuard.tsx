@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import Loader from '../../components/global/Loader';
 import Custom404 from '../global/Custom404';
 import { WifiOff, RefreshCw, Clock } from 'lucide-react';
+import { user } from '../../lib/services/Class/user';
 interface SessionGuardProps {
     children: React.ReactNode;
     requiredRole?: string[];
@@ -20,9 +21,9 @@ const VALID_ROLES = ['Admin', 'Manager', 'Employee', 'Operator', 'Executive'];
 const CACHE_DURATION = 60 * 1000;
 const TAMPER_POLL_INTERVAL = 30 * 1000;
 const OFFLINE_RETRY_DELAY = 5000;
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of total inactivity
-const INACTIVITY_WARNING_MS = 10 * 1000; // 10 seconds warning countdown before auto-logout
-const ACTIVITY_THROTTLE_MS = 1000; // 1 second throttle for activity storage sync
+const INACTIVITY_TIMEOUT_MS = 60 * 1000;
+const INACTIVITY_WARNING_MS = 10 * 1000;
+const ACTIVITY_THROTTLE_MS = 1000;
 const INACTIVITY_STORAGE_KEY = 'sc_last_activity_time';
 const BACKUP_KEYS = {
     PRIMARY: 'session_backup',
@@ -31,21 +32,22 @@ type GuardState = 'loading' | 'checking' | 'authorized' | 'denied' | 'offline';
 // backup current session data
 const backupSessionData = () => {
     try {
-        const sessionToken = localStorage.getItem('session_token');
+        const sessionToken = user.getSessionToken();
         if (!sessionToken || sessionToken === 'null' || sessionToken === 'undefined' || sessionToken === '') {
             return;
         }
+        const currentUser = user.getUser();
         const backup = {
             session_token: sessionToken,
-            user_role: localStorage.getItem('user_role') || '',
-            user_name: localStorage.getItem('user_name') || '',
-            user_email: localStorage.getItem('user_email') || '',
-            user_agent: localStorage.getItem('user_agent') || '',
-            user_ip: localStorage.getItem('user_ip') || '',
-            session_expires: localStorage.getItem('session_expires') || '',
-            user_id: localStorage.getItem('user_id') || '',
+            user_role: currentUser.role || '',
+            user_name: currentUser.name || '',
+            user_email: currentUser.email || '',
+            user_agent: currentUser.userAgent || '',
+            user_ip: currentUser.ipAddress || '',
+            session_expires: currentUser.expiresAt || '',
+            user_id: currentUser.userId || '',
             backed_up_at: new Date().toISOString(),
-            checksum: btoa(sessionToken + (localStorage.getItem('user_role') || '') + (localStorage.getItem('user_email') || '')),
+            checksum: btoa(sessionToken + (currentUser.role || '') + (currentUser.email || '')),
         };
         localStorage.setItem(BACKUP_KEYS.PRIMARY, JSON.stringify(backup));
         try {
@@ -102,27 +104,22 @@ const restoreSessionFromBackup = (): boolean => {
             }
         }
         let restored = false;
-        const currentToken = localStorage.getItem('session_token');
+        const currentToken = user.getSessionToken();
         if (!currentToken || currentToken === 'null' || currentToken === 'undefined' || currentToken === '') {
             if (backup.session_token) {
-                localStorage.setItem('session_token', backup.session_token);
+                user.setUser({
+                    name: backup.user_name || '',
+                    role: backup.user_role || '',
+                    email: backup.user_email || '',
+                    sessionToken: backup.session_token,
+                    expiresAt: backup.session_expires || '',
+                    userAgent: backup.user_agent || '',
+                    ipAddress: backup.user_ip || '',
+                    userId: backup.user_id || '',
+                    rememberMe: true,
+                });
                 restored = true;
             }
-            if (backup.user_role)
-                localStorage.setItem('user_role', backup.user_role);
-            if (backup.user_name)
-                localStorage.setItem('user_name', backup.user_name);
-            if (backup.user_email)
-                localStorage.setItem('user_email', backup.user_email);
-            if (backup.user_agent)
-                localStorage.setItem('user_agent', backup.user_agent);
-            if (backup.user_ip)
-                localStorage.setItem('user_ip', backup.user_ip);
-            if (backup.session_expires)
-                localStorage.setItem('session_expires', backup.session_expires);
-            if (backup.user_id)
-                localStorage.setItem('user_id', backup.user_id);
-            document.cookie = `session_token=${backup.session_token}; path=/; max-age=${15 * 24 * 60 * 60}`;
             if (restored) {
                 console.log('Session restored from backup');
                 backupSessionData();
@@ -149,7 +146,7 @@ const cleanupBackups = () => {
             if (data) {
                 try {
                     const parsed = JSON.parse(data);
-                    const currentToken = localStorage.getItem('session_token');
+                    const currentToken = user.getSessionToken();
                     if (currentToken && parsed.session_token !== currentToken) {
                         localStorage.removeItem(key);
                     }
@@ -237,7 +234,6 @@ function OfflinePage() {
     return (
         <div className="min-h-screen flex items-center justify-center px-4 bg-[#f0f3f8] dark:bg-[#14151c] transition-colors">
             <div className="max-w-md w-full p-8 sm:p-10 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-white/[0.08] shadow-[12px_12px_32px_rgba(166,175,195,0.45),-12px_-12px_32px_rgba(255,255,255,0.95),inset_0_1px_2px_rgba(255,255,255,0.9)] dark:shadow-[14px_14px_38px_rgba(0,0,0,0.85),-6px_-6px_22px_rgba(255,255,255,0.03),inset_0_1px_1.5px_rgba(255,255,255,0.06)] text-center relative overflow-hidden">
-                {/* Neumorphic Inset Well for Icon */}
                 <div className="relative w-20 h-20 mx-auto mb-6 rounded-3xl flex items-center justify-center bg-[#ebf0f7] dark:bg-[#14151c] border border-rose-200/80 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 shadow-[inset_3px_3px_7px_rgba(166,175,195,0.4),inset_-3px_-3px_7px_rgba(255,255,255,0.95)] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.7),inset_-1px_-1px_4px_rgba(255,255,255,0.04)]">
                     <div className="absolute -inset-1 rounded-3xl blur-xs bg-rose-500/20 dark:bg-rose-500/10 animate-pulse pointer-events-none" />
                     <WifiOff className="w-9 h-9 stroke-[2.2] relative z-10" />
@@ -386,7 +382,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     }, []);
     // try restore on mount if needed
     useEffect(() => {
-        const currentToken = localStorage.getItem('session_token');
+        const currentToken = user.getSessionToken();
         if (!currentToken || currentToken === 'null' || currentToken === 'undefined' || currentToken === '') {
             const restored = restoreSessionFromBackup();
             if (restored) {
@@ -425,7 +421,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         };
         window.addEventListener('storage', handleStorageClear);
         const checkInterval = setInterval(() => {
-            const token = localStorage.getItem('session_token');
+            const token = user.getSessionToken();
             if (!token || token === 'null' || token === 'undefined' || token === '') {
                 const restored = restoreSessionFromBackup();
                 if (restored) {
@@ -547,36 +543,27 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         }
     }, []);
     const hasValidLocalStorage = useCallback(() => {
-        const sessionToken = localStorage.getItem('session_token');
+        const sessionToken = user.getSessionToken();
         return !!(sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined' && sessionToken !== '');
     }, []);
     const clearSessionData = useCallback(() => {
         backupSessionData();
-        localStorage.removeItem('session_token');
-        localStorage.removeItem('user_role');
-        localStorage.removeItem('user_name');
-        localStorage.removeItem('user_email');
-        localStorage.removeItem('user_agent');
-        localStorage.removeItem('user_ip');
-        localStorage.removeItem('session_expires');
-        localStorage.removeItem('logged_in_email');
-        localStorage.removeItem('user_id');
+        user.clearUser();
         localStorage.removeItem(INACTIVITY_STORAGE_KEY);
         Object.values(BACKUP_KEYS).forEach(key => {
             localStorage.removeItem(key);
         });
         sessionStorage.removeItem('session_backup');
         document.cookie = 'session_backup=; path=/; max-age=0';
-        document.cookie = 'session_token=; path=/; max-age=0';
     }, []);
     const getSessionToken = useCallback(() => {
-        let token = localStorage.getItem('session_token');
+        let token = user.getSessionToken();
         if (token && token !== 'null' && token !== 'undefined' && token !== '') {
             return token;
         }
         const restored = restoreSessionFromBackup();
         if (restored) {
-            return localStorage.getItem('session_token');
+            return user.getSessionToken();
         }
         const cookieToken = document.cookie
             .split('; ')
@@ -633,7 +620,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         clearSessionData();
         try {
             sessionStorage.setItem('sc_inactive_logout', 'true');
-        } catch (e) {}
+        } catch (e) { }
 
         toast.error('Session ended, user inactive', {
             duration: 5000,
@@ -667,7 +654,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             lastThrottleRef.current = now;
             try {
                 localStorage.setItem(INACTIVITY_STORAGE_KEY, now.toString());
-            } catch (e) {}
+            } catch (e) { }
         }
     }, []);
 
@@ -680,7 +667,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             if (!stored) {
                 localStorage.setItem(INACTIVITY_STORAGE_KEY, now.toString());
             }
-        } catch (e) {}
+        } catch (e) { }
     }, []);
 
     // activity listeners and inactivity checker
@@ -725,7 +712,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                         lastActivityRef.current = parsed;
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             const elapsed = Date.now() - latestActivity;
             const remainingMs = INACTIVITY_TIMEOUT_MS - elapsed;
@@ -854,7 +841,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 if (!cookieToken || cookieToken === 'null' || cookieToken === 'undefined' || cookieToken === '') {
                     const restored = restoreSessionFromBackup();
                     if (restored) {
-                        const restoredToken = localStorage.getItem('session_token');
+                        const restoredToken = user.getSessionToken();
                         if (restoredToken) {
                             lastCheckRef.current = 0;
                             isCheckingRef.current = false;
@@ -875,7 +862,14 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                     return;
                 }
                 if (cookieToken) {
-                    localStorage.setItem('session_token', cookieToken);
+                    user.setUser({
+                        name: user.getName(),
+                        role: user.getRole(),
+                        email: user.getEmail(),
+                        sessionToken: cookieToken,
+                        expiresAt: user.getUser().expiresAt || '',
+                        rememberMe: true,
+                    });
                     backupSessionData();
                 }
             }
@@ -924,7 +918,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 }
                 const data: AuthResponse = await res.json();
                 const userAgent = navigator.userAgent;
-                const userId = data.user?.id || localStorage.getItem('user_id');
+                const userId = data.user?.id || user.getUserId();
                 if (userId && !isBlockedRef.current && !isLoggingOutRef.current) {
                     const blockedResult = await checkDeviceBlocked(userId, userAgent, sessionToken);
                     if (blockedResult.blocked) {
@@ -932,13 +926,13 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                         return;
                     }
                 }
-                const userRole = data.user?.role || localStorage.getItem('user_role');
+                const userRole = data.user?.role || user.getRole();
                 if (!userRole || !VALID_ROLES.includes(userRole)) {
                     await handleInvalidSession('Invalid user role. Please contact support.', true);
                     return;
                 }
                 if (data.user?.role) {
-                    localStorage.setItem('user_role', data.user.role);
+                    user.updateUser({ role: data.user.role });
                 }
                 if (requiredRole && requiredRole.length > 0 && !requiredRole.includes(userRole)) {
                     setGuardState('denied');
@@ -994,8 +988,10 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             }
         };
         const interval = setInterval(revalidate, TAMPER_POLL_INTERVAL);
-        const onVisibility = () => { if (document.visibilityState === 'visible')
-            revalidate(); };
+        const onVisibility = () => {
+            if (document.visibilityState === 'visible')
+                revalidate();
+        };
         window.addEventListener('storage', revalidate);
         document.addEventListener('visibilitychange', onVisibility);
         window.addEventListener('focus', revalidate);
@@ -1032,10 +1028,10 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         return <OfflinePage />;
     }
     if (showLoader && guardState === 'loading') {
-        return <Loader onComplete={handleLoaderComplete}/>;
+        return <Loader onComplete={handleLoaderComplete} />;
     }
     if (guardState === 'checking') {
-        return (<Loader onComplete={handleLoaderComplete}/>);
+        return (<Loader onComplete={handleLoaderComplete} />);
     }
     if (inactivityWarning.show) {
         return (
@@ -1087,60 +1083,60 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     }
     if (blockedWarning.show) {
         return (<>
-                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center border border-red-100 animate-in fade-in zoom-in duration-200">
-                        <div className="relative flex items-center justify-center w-16 h-16 bg-red-100/80 text-red-600 rounded-2xl mx-auto mb-6 ring-8 ring-red-50">
-                            <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                            </svg>
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+                <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center border border-red-100 animate-in fade-in zoom-in duration-200">
+                    <div className="relative flex items-center justify-center w-16 h-16 bg-red-100/80 text-red-600 rounded-2xl mx-auto mb-6 ring-8 ring-red-50">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Device Blocked</h2>
+                    <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                        This device has been restricted by an administrator. You will be automatically signed out shortly.
+                    </p>
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6 space-y-2">
+                        <div className="flex justify-between items-center text-xs font-semibold text-slate-500">
+                            <span>Auto logout in</span>
+                            <span className="text-red-600 font-bold font-mono text-sm">{blockedWarning.countdown}s</span>
                         </div>
-                        <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Device Blocked</h2>
-                        <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                            This device has been restricted by an administrator. You will be automatically signed out shortly.
-                        </p>
-                        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6 space-y-2">
-                            <div className="flex justify-between items-center text-xs font-semibold text-slate-500">
-                                <span>Auto logout in</span>
-                                <span className="text-red-600 font-bold font-mono text-sm">{blockedWarning.countdown}s</span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                                <div className="bg-red-600 h-2 rounded-full transition-all duration-1000 ease-linear" style={{ width: `${((5 - blockedWarning.countdown) / 5) * 100}%` }}/>
-                            </div>
-                        </div>
-                        <div className="space-y-3">
-                            <button onClick={() => {
-                if (blockedTimerRef.current) {
-                    clearInterval(blockedTimerRef.current);
-                    blockedTimerRef.current = null;
-                }
-                const token = getSessionToken();
-                deactivateSession(token);
-                clearSessionData();
-                router.push('/scAuth');
-                setBlockedWarning({ show: false, countdown: 5 });
-                isBlockedRef.current = false;
-                hasShownBlockedToastRef.current = false;
-                hasShownLogoutToastRef.current = false;
-                isLoggingOutRef.current = false;
-            }} className="w-full py-3 px-5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-red-200">
-                                Logout Now
-                            </button>
+                        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                            <div className="bg-red-600 h-2 rounded-full transition-all duration-1000 ease-linear" style={{ width: `${((5 - blockedWarning.countdown) / 5) * 100}%` }} />
                         </div>
                     </div>
+                    <div className="space-y-3">
+                        <button onClick={() => {
+                            if (blockedTimerRef.current) {
+                                clearInterval(blockedTimerRef.current);
+                                blockedTimerRef.current = null;
+                            }
+                            const token = getSessionToken();
+                            deactivateSession(token);
+                            clearSessionData();
+                            router.push('/scAuth');
+                            setBlockedWarning({ show: false, countdown: 5 });
+                            isBlockedRef.current = false;
+                            hasShownBlockedToastRef.current = false;
+                            hasShownLogoutToastRef.current = false;
+                            isLoggingOutRef.current = false;
+                        }} className="w-full py-3 px-5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-red-200">
+                            Logout Now
+                        </button>
+                    </div>
                 </div>
-                <div style={{ display: 'none' }}>{children}</div>
-            </>);
+            </div>
+            <div style={{ display: 'none' }}>{children}</div>
+        </>);
     }
     if (guardState === 'denied') {
         return <NotFoundPage />;
     }
     if (guardState !== 'authorized') {
         return (<div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
-                    <p className="mt-2 text-sm text-slate-600">Loading...</p>
-                </div>
-            </div>);
+            <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+                <p className="mt-2 text-sm text-slate-600">Loading...</p>
+            </div>
+        </div>);
     }
     return <>{children}</>;
 }

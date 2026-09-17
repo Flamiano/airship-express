@@ -1,7 +1,16 @@
-// app/(supplyChain)/api/auth/supplyChain/route.ts
 
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { NextResponse } from 'next/server';
+
+interface RateLimitEntry {
+    attempts: number;
+    lockoutUntil?: number;
+}
+
+// In-memory rate limiting map for login attempts
+const loginRateLimits = new Map<string, RateLimitEntry>();
+const MAX_LOGIN_ATTEMPTS = 3;
+const LOCKOUT_DURATION_MS = 60 * 1000;
 
 export async function POST(request: Request) {
     try {
@@ -14,6 +23,59 @@ export async function POST(request: Request) {
             );
         }
 
+        const ip = (request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown').split(',')[0].trim();
+        const clientKey = `${ip}_${(email || '').toLowerCase().trim()}`;
+        const now = Date.now();
+        const rateEntry = loginRateLimits.get(clientKey);
+
+        // Check if currently locked out
+        if (rateEntry && rateEntry.lockoutUntil && rateEntry.lockoutUntil > now) {
+            const remainingSeconds = Math.ceil((rateEntry.lockoutUntil - now) / 1000);
+            return NextResponse.json(
+                {
+                    message: `Rate limit reached (3 failed attempts). Please wait ${remainingSeconds}s before trying again.`,
+                    locked: true,
+                    retryAfter: remainingSeconds,
+                    attempts: rateEntry.attempts,
+                },
+                { status: 429 }
+            );
+        }
+
+        // Helper to register a failed attempt
+        const recordFailedAttempt = (customMessage?: string) => {
+            const currentAttempts = (rateEntry && (!rateEntry.lockoutUntil || rateEntry.lockoutUntil <= now))
+                ? (rateEntry.attempts || 0) + 1
+                : 1;
+
+            if (currentAttempts >= MAX_LOGIN_ATTEMPTS) {
+                loginRateLimits.set(clientKey, {
+                    attempts: currentAttempts,
+                    lockoutUntil: now + LOCKOUT_DURATION_MS,
+                });
+                return NextResponse.json(
+                    {
+                        message: `Rate limit reached (3 failed attempts). Login locked. You can continue in 1 minute (60s).`,
+                        locked: true,
+                        retryAfter: 60,
+                        attemptsRemaining: 0,
+                    },
+                    { status: 429 }
+                );
+            } else {
+                loginRateLimits.set(clientKey, { attempts: currentAttempts });
+                const remaining = MAX_LOGIN_ATTEMPTS - currentAttempts;
+                return NextResponse.json(
+                    {
+                        message: customMessage || `Invalid email or password. (${remaining} attempt${remaining === 1 ? '' : 's'} remaining)`,
+                        attemptsRemaining: remaining,
+                        attempts: currentAttempts,
+                    },
+                    { status: 401 }
+                );
+            }
+        };
+
         // Check credentials against role_based_accounts table
         const { data: userData, error: userError } = await supabase
             .from('role_based_accounts')
@@ -22,10 +84,7 @@ export async function POST(request: Request) {
             .single();
 
         if (userError || !userData) {
-            return NextResponse.json(
-                { message: 'Invalid email or password' },
-                { status: 401 }
-            );
+            return recordFailedAttempt();
         }
 
         // Check if account is active
@@ -38,11 +97,11 @@ export async function POST(request: Request) {
 
         // Compare password (plain text for now)
         if (userData.password_hash !== password) {
-            return NextResponse.json(
-                { message: 'Invalid email or password' },
-                { status: 401 }
-            );
+            return recordFailedAttempt();
         }
+
+        // Reset rate limit on successful credentials match
+        loginRateLimits.delete(clientKey);
 
         // Log login attempt
         await supabase

@@ -18,6 +18,7 @@ import { FileText, Check, X } from "lucide-react";
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { fetchProcurementData, createPurchaseRequest, updatePurchaseRequest, deletePurchaseRequest, deleteMultiplePurchaseRequests, patchPurchaseRequest } from '@/app/(supplyChain)/(pages)/procurement/utils/procurementApi';
 import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import Link from "next/link";
 const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 const getPriorityColor = (priority: string) => {
@@ -130,15 +131,12 @@ export default function Procurement() {
     const [isTabTransitioning, setIsTabTransitioning] = useState(false);
     const [isReadOnly, setIsReadOnly] = useState(false);
     const [userRole, setUserRole] = useState<string>(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('user_role') || 'Admin';
-        }
-        return 'Admin';
+        return user.getRole() || 'Admin';
     });
 
     useEffect(() => {
         const handleStorageChange = () => {
-            const storedRole = localStorage.getItem('user_role');
+            const storedRole = user.getRole();
             if (storedRole) setUserRole(storedRole);
         };
         window.addEventListener('storage', handleStorageChange);

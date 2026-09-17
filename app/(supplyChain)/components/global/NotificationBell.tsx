@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
 import Portal from '../client/Portal';
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 
 
 interface Notification {
@@ -178,9 +179,9 @@ export function NotificationBell() {
                     localStorage.removeItem(LEGACY_CACHE_KEY);
                 }
 
-                const role = localStorage.getItem('user_role') || 'User';
-                const email = localStorage.getItem('user_email') || localStorage.getItem('logged_in_email') || '';
-                const name = localStorage.getItem('user_name') || '';
+                const role = user.getRole() || 'User';
+                const email = user.getEmail() || '';
+                const name = user.getName() || '';
                 setUserRole(role);
                 setUserEmail(email);
                 setUserName(name);

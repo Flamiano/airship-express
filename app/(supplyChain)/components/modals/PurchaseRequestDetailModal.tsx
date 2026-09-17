@@ -9,6 +9,7 @@ import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import Portal from '@/app/(supplyChain)/components/client/Portal';
 import { deletePurchaseRequest, updatePurchaseRequest } from '@/app/(supplyChain)/(pages)/procurement/utils/procurementApi';
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 
 interface PurchaseRequestDetailModalProps {
     isOpen: boolean;
@@ -39,10 +40,7 @@ export function PurchaseRequestDetailModal({
 
     const currentUserRole = useMemo(() => {
         if (propUserRole) return propUserRole.trim().toLowerCase();
-        if (typeof window !== 'undefined') {
-            return (localStorage.getItem('user_role') || 'User').trim().toLowerCase();
-        }
-        return 'user';
+        return (user.getRole() || 'User').trim().toLowerCase();
     }, [propUserRole]);
 
     const fetchRequestDetails = useCallback(async () => {

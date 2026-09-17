@@ -8,6 +8,7 @@ import {
     Eye,
     EyeOff,
     Loader2,
+    Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
@@ -18,6 +19,7 @@ import {
     RememberedPasswordModal,
     AppealModal,
 } from './modals';
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 import {
     clearUserSession,
     checkRememberedSessionApi,
@@ -39,7 +41,7 @@ import {
 } from './services';
 
 const ROLE_REDIRECTS: Record<string, string> = {
-    'Admin': '/executive',
+    'Admin': '/procurement',
     'Executive': '/executive',
     'Manager': '/warehousing?tab=incoming',
     'Operator': '/warehousing?tab=incoming',
@@ -57,6 +59,11 @@ export default function SupplyChainLoginPage() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [loginError, setLoginError] = useState<string | null>(null);
     const [loggedInUser, setLoggedInUser] = useState<any>(null);
+
+    // rate limiting (3 failed attempts -> 1 min lockout)
+    const [loginAttempts, setLoginAttempts] = useState<number>(0);
+    const [loginLockoutSeconds, setLoginLockoutSeconds] = useState<number>(0);
+    const MAX_LOGIN_ATTEMPTS = 3;
 
     // employee selection
     const [employees, setEmployees] = useState<any[]>([]);
@@ -110,6 +117,57 @@ export default function SupplyChainLoginPage() {
     const isCheckingRef = useRef<boolean>(false);
     const checkCacheDuration = 60 * 1000;
     const { confirm } = useConfirm();
+
+    // helper keys for login rate limiting
+    const getLoginLockoutKey = () => 'sc_login_lockout_until';
+    const getLoginAttemptsKey = () => 'sc_login_attempts';
+
+    const getRemainingLoginLockout = (): number => {
+        if (typeof window === 'undefined') return 0;
+        const lockoutUntilStr = localStorage.getItem(getLoginLockoutKey());
+        if (!lockoutUntilStr) return 0;
+
+        const lockoutUntil = parseInt(lockoutUntilStr, 10);
+        const now = Date.now();
+        if (lockoutUntil > now) {
+            return Math.ceil((lockoutUntil - now) / 1000);
+        }
+
+        localStorage.removeItem(getLoginLockoutKey());
+        localStorage.removeItem(getLoginAttemptsKey());
+        return 0;
+    };
+
+    // initialize login rate limit on mount
+    useEffect(() => {
+        const remaining = getRemainingLoginLockout();
+        if (remaining > 0) {
+            setLoginLockoutSeconds(remaining);
+            const storedAttempts = parseInt(localStorage.getItem(getLoginAttemptsKey()) || '0', 10);
+            setLoginAttempts(storedAttempts || MAX_LOGIN_ATTEMPTS);
+        } else {
+            const storedAttempts = parseInt(localStorage.getItem(getLoginAttemptsKey()) || '0', 10);
+            setLoginAttempts(storedAttempts || 0);
+        }
+    }, []);
+
+    // countdown interval for login lockout
+    useEffect(() => {
+        if (loginLockoutSeconds > 0) {
+            const timer = setTimeout(() => {
+                const nextSec = loginLockoutSeconds - 1;
+                setLoginLockoutSeconds(nextSec);
+                if (nextSec <= 0) {
+                    localStorage.removeItem(getLoginLockoutKey());
+                    localStorage.removeItem(getLoginAttemptsKey());
+                    setLoginAttempts(0);
+                    setLoginError(null);
+                    toast.success('Lockout expired. You may now sign in.');
+                }
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [loginLockoutSeconds]);
 
     // check for inactivity logout toast
     useEffect(() => {
@@ -264,7 +322,7 @@ export default function SupplyChainLoginPage() {
     // check for existing session on load
     useEffect(() => {
         const checkExistingSession = async () => {
-            const sessionToken = localStorage.getItem('session_token');
+            const sessionToken = user.getSessionToken();
 
             if (!sessionToken) {
                 setIsLoading(false);
@@ -293,7 +351,7 @@ export default function SupplyChainLoginPage() {
                         return;
                     }
 
-                    const userAgent = localStorage.getItem('user_agent') || navigator.userAgent;
+                    const userAgent = user.getUserAgent() || navigator.userAgent;
                     const blockedDevice = await checkIfDeviceBlocked(data.user?.id, userAgent);
 
                     if (blockedDevice) {
@@ -304,7 +362,7 @@ export default function SupplyChainLoginPage() {
                         return;
                     }
 
-                    localStorage.setItem('user_role', data.user.role);
+                    user.updateUser({ role: data.user.role });
 
                     await restoreSupabaseSession();
 
@@ -346,7 +404,7 @@ export default function SupplyChainLoginPage() {
         setIsSelectionLocked(true);
 
         try {
-            const storedUserAgent = localStorage.getItem('user_agent');
+            const storedUserAgent = user.getUserAgent();
             const data = await checkEmployeeSessionApi(employee.email);
 
             if (data.found && data.user_id) {
@@ -420,10 +478,10 @@ export default function SupplyChainLoginPage() {
         try {
             const userRole = rememberedData?.role ||
                 loggedInUser?.role ||
-                localStorage.getItem('user_role') ||
+                user.getRole() ||
                 'Employee';
 
-            const sessionToken = rememberedData?.session_token || localStorage.getItem('session_token');
+            const sessionToken = rememberedData?.session_token || user.getSessionToken();
 
             // verify password with supabase
             try {
@@ -468,28 +526,32 @@ export default function SupplyChainLoginPage() {
                     return false;
                 }
 
-                localStorage.setItem('session_token', sessionToken);
-                localStorage.setItem('sc_session_token', sessionToken);
+                user.setUser({
+                    name: selectedEmployee.display_name,
+                    role: userRole,
+                    email: selectedEmployee.email,
+                    sessionToken: sessionToken,
+                    expiresAt: '',
+                    rememberMe: rememberMe,
+                    userId: rememberedData?.user_id || loggedInUser?.id,
+                });
             } else {
-                const existingToken = localStorage.getItem('session_token');
+                const existingToken = user.getSessionToken();
                 if (!existingToken) {
                     toast.error('No session found. Please login with OTP.');
                     setIsLoggingInWithRemembered(false);
                     setShowRememberedPasswordModal(false);
                     return false;
                 }
-            }
-
-            // store user data
-            localStorage.setItem('user_role', userRole);
-            localStorage.setItem('user_name', selectedEmployee.display_name);
-            localStorage.setItem('user_email', selectedEmployee.email);
-
-            const effectiveToken = sessionToken || (typeof window !== 'undefined' ? (localStorage.getItem('sc_session_token') || localStorage.getItem('session_token')) : null);
-            if (effectiveToken) {
-                const maxAge = rememberMe ? 15 * 24 * 60 * 60 : 8 * 60 * 60;
-                document.cookie = `sc_session_token=${effectiveToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
-                document.cookie = `session_token=${effectiveToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
+                user.setUser({
+                    name: selectedEmployee.display_name,
+                    role: userRole,
+                    email: selectedEmployee.email,
+                    sessionToken: existingToken,
+                    expiresAt: '',
+                    rememberMe: rememberMe,
+                    userId: rememberedData?.user_id || loggedInUser?.id,
+                });
             }
 
             toast.success('Login successful!');
@@ -512,6 +574,15 @@ export default function SupplyChainLoginPage() {
         e.preventDefault();
         setLoginError(null);
 
+        const remaining = getRemainingLoginLockout();
+        if (remaining > 0) {
+            setLoginLockoutSeconds(remaining);
+            const lockMsg = `Rate limit reached (3 failed attempts). Please wait ${remaining}s before trying again.`;
+            toast.error(lockMsg);
+            setLoginError(lockMsg);
+            return;
+        }
+
         if (!email || !password) {
             setLoginError('Please enter your email and password.');
             return;
@@ -522,20 +593,46 @@ export default function SupplyChainLoginPage() {
             await clearUserSession();
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            const { ok, data } = await loginSupplyChainApi(email, password);
+            const { ok, status, data } = await loginSupplyChainApi(email, password);
 
             if (!ok) {
-                setLoginError(data.message || 'Invalid email or password.');
+                const nextAttempts = (loginAttempts || 0) + 1;
+                setLoginAttempts(nextAttempts);
+                localStorage.setItem(getLoginAttemptsKey(), nextAttempts.toString());
+
+                if (status === 429 || nextAttempts >= MAX_LOGIN_ATTEMPTS || data?.locked) {
+                    const lockoutSeconds = data?.retryAfter || 60;
+                    const lockoutUntil = Date.now() + lockoutSeconds * 1000;
+                    localStorage.setItem(getLoginLockoutKey(), lockoutUntil.toString());
+                    setLoginLockoutSeconds(lockoutSeconds);
+
+                    const lockMsg = 'Rate limit reached (3 failed attempts). Login locked. You can continue in 1 minute (60s).';
+                    toast.error(lockMsg);
+                    setLoginError(lockMsg);
+                } else {
+                    const remainingAttempts = Math.max(0, MAX_LOGIN_ATTEMPTS - nextAttempts);
+                    const errMsg = data?.message || `Invalid email or password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`;
+                    setLoginError(errMsg);
+                    toast.error(errMsg);
+                }
                 return;
             }
 
+            // Reset rate limit tracking on success
+            localStorage.removeItem(getLoginLockoutKey());
+            localStorage.removeItem(getLoginAttemptsKey());
+            setLoginAttempts(0);
+            setLoginLockoutSeconds(0);
+
             setLoggedInUser(data.user);
 
-            localStorage.setItem('user_agent', navigator.userAgent);
-            localStorage.setItem('logged_in_email', data.user.email);
-            localStorage.setItem('user_role', data.user.role);
-            localStorage.setItem('user_name', data.user.display_name || 'User');
-            localStorage.setItem('user_id', data.user.id);
+            user.updateUser({
+                name: data.user.display_name || 'User',
+                role: data.user.role,
+                email: data.user.email,
+                userId: data.user.id,
+                userAgent: navigator.userAgent,
+            });
 
             await loadEmployeesFromHR(data.user.role);
             setShowEmployeeModal(true);
@@ -719,10 +816,15 @@ export default function SupplyChainLoginPage() {
             }
 
             if (data.userExists) {
-                localStorage.setItem('session_token', data.session_token);
-                localStorage.setItem('user_role', data.role);
-                localStorage.setItem('user_name', data.employee.display_name);
-                localStorage.setItem('user_email', data.employee.email);
+                user.setUser({
+                    name: data.employee.display_name,
+                    role: data.role,
+                    email: data.employee.email,
+                    sessionToken: data.session_token,
+                    expiresAt: '',
+                    rememberMe: rememberMe,
+                    userId: data.userId,
+                });
 
                 setSelectedEmployee({
                     id: data.employee.id || selectedEmployee.id,
@@ -835,18 +937,14 @@ export default function SupplyChainLoginPage() {
                     }
                 }
 
-                localStorage.setItem('session_token', data.session_token);
-                localStorage.setItem('sc_session_token', data.session_token);
-                localStorage.setItem('user_role', data.role);
-                localStorage.setItem('user_name', selectedEmployeeForPassword.display_name);
-                localStorage.setItem('user_email', selectedEmployeeForPassword.email);
-                if (data.remember_me) {
-                    localStorage.setItem('session_expires', data.expires_at);
-                }
-
-                const maxAge = data.remember_me ? 15 * 24 * 60 * 60 : 8 * 60 * 60;
-                document.cookie = `sc_session_token=${data.session_token}; path=/; max-age=${maxAge}; SameSite=Lax`;
-                document.cookie = `session_token=${data.session_token}; path=/; max-age=${maxAge}; SameSite=Lax`;
+                user.setUser({
+                    name: selectedEmployeeForPassword.display_name,
+                    role: data.role,
+                    email: selectedEmployeeForPassword.email,
+                    sessionToken: data.session_token,
+                    expiresAt: data.expires_at || '',
+                    rememberMe: data.remember_me || rememberMe,
+                });
 
                 setShowPasswordModal(false);
                 setShowEmployeeModal(false);
@@ -1039,9 +1137,10 @@ export default function SupplyChainLoginPage() {
                                         type="email"
                                         autoComplete="email"
                                         value={email}
+                                        disabled={isLoggingIn || loginLockoutSeconds > 0}
                                         onChange={(e) => setEmail(e.target.value)}
                                         placeholder="you@company.com"
-                                        className="mt-2 block w-full border-0 border-b border-line dark:border-paper/20 bg-transparent px-0 py-2 text-[14px] sm:text-[15px] text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40 outline-none transition focus:border-accent dark:focus:border-accent"
+                                        className="mt-2 block w-full border-0 border-b border-line dark:border-paper/20 bg-transparent px-0 py-2 text-[14px] sm:text-[15px] text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40 outline-none transition focus:border-accent dark:focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                 </div>
 
@@ -1060,14 +1159,16 @@ export default function SupplyChainLoginPage() {
                                             type={showPassword ? 'text' : 'password'}
                                             autoComplete="current-password"
                                             value={password}
+                                            disabled={isLoggingIn || loginLockoutSeconds > 0}
                                             onChange={(e) => setPassword(e.target.value)}
                                             placeholder="••••••••"
-                                            className="mt-2 block w-full border-0 border-b border-line dark:border-paper/20 bg-transparent px-0 py-2 pr-12 text-[14px] sm:text-[15px] text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40 outline-none transition focus:border-accent dark:focus:border-accent"
+                                            className="mt-2 block w-full border-0 border-b border-line dark:border-paper/20 bg-transparent px-0 py-2 pr-12 text-[14px] sm:text-[15px] text-ink dark:text-paper placeholder:text-muted/40 dark:placeholder:text-paper/40 outline-none transition focus:border-accent dark:focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <button
                                             type="button"
+                                            disabled={loginLockoutSeconds > 0}
                                             onClick={() => setShowPassword((v) => !v)}
-                                            className="absolute bottom-1.5 right-0 text-muted dark:text-paper/60 transition-colors hover:text-ink dark:hover:text-paper cursor-pointer"
+                                            className="absolute bottom-1.5 right-0 text-muted dark:text-paper/60 transition-colors hover:text-ink dark:hover:text-paper cursor-pointer disabled:opacity-40"
                                             aria-label={showPassword ? 'Hide password' : 'Show password'}
                                         >
                                             {showPassword ? (
@@ -1079,7 +1180,22 @@ export default function SupplyChainLoginPage() {
                                     </div>
                                 </div>
 
-                                {loginError && (
+                                {/* Rate limit lockout banner */}
+                                {loginLockoutSeconds > 0 && (
+                                    <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 flex items-center gap-3 text-xs text-amber-700 dark:text-amber-300 animate-in fade-in">
+                                        <div className="w-8 h-8 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-amber-600 dark:text-amber-400">
+                                            <Lock className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="font-bold">Login Locked (3 failed attempts)</p>
+                                            <p className="text-[11.5px] text-amber-700/80 dark:text-amber-400 mt-0.5">
+                                                Rate limit reached. You can continue in <span className="font-mono font-bold text-amber-600 dark:text-amber-300">{loginLockoutSeconds}s</span>.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {loginError && loginLockoutSeconds <= 0 && (
                                     <div role="alert" className="border-l-2 border-accent pl-3 text-[13px] text-accent">
                                         {loginError}
                                     </div>
@@ -1087,13 +1203,22 @@ export default function SupplyChainLoginPage() {
 
                                 <button
                                     type="submit"
-                                    disabled={isLoggingIn}
-                                    className="w-full bg-ink dark:bg-paper px-4 py-3.5 text-[14px] font-medium tracking-wide text-paper dark:text-ink transition-colors duration-200 hover:bg-accent dark:hover:bg-accent dark:hover:text-paper disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
+                                    disabled={isLoggingIn || loginLockoutSeconds > 0}
+                                    className={`w-full px-4 py-3.5 text-[14px] font-medium tracking-wide transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer ${
+                                        loginLockoutSeconds > 0
+                                            ? 'bg-amber-600 dark:bg-amber-700 text-white cursor-not-allowed opacity-85'
+                                            : 'bg-ink dark:bg-paper text-paper dark:text-ink hover:bg-accent dark:hover:bg-accent dark:hover:text-paper disabled:cursor-not-allowed disabled:opacity-60'
+                                    }`}
                                 >
                                     {isLoggingIn ? (
                                         <>
                                             <Loader2 className="animate-spin" size={18} />
                                             Signing in…
+                                        </>
+                                    ) : loginLockoutSeconds > 0 ? (
+                                        <>
+                                            <Lock size={16} />
+                                            Continue in {loginLockoutSeconds}s
                                         </>
                                     ) : (
                                         'Sign in'

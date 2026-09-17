@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Eye, EyeOff, CheckCircle2, X, Loader2, LogOut, ShieldCheck, KeyRound, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 interface UserProfileMenuProps {
     className?: string;
 }
@@ -23,12 +24,12 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
     const [isSuccessState, setIsSuccessState] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
-    // Read user details from localStorage
+    // Read user details from user service
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            const role = localStorage.getItem('user_role');
-            const name = localStorage.getItem('user_name');
-            const email = localStorage.getItem('user_email') || localStorage.getItem('logged_in_email');
+            const role = user.getRole();
+            const name = user.getName();
+            const email = user.getEmail();
             if (role)
                 setUserRole(role);
             if (name)
@@ -113,7 +114,7 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
         setIsOpen(false);
     };
     const performClientLogout = async () => {
-        const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
+        const sessionToken = user.getSessionToken();
         if (sessionToken) {
             try {
                 await fetch('/api/supplyChain/logout', {
@@ -125,16 +126,8 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
                 // non-critical
             }
         }
+        user.clearUser();
         if (typeof window !== 'undefined') {
-            localStorage.removeItem('session_token');
-            localStorage.removeItem('user_role');
-            localStorage.removeItem('session_expires');
-            localStorage.removeItem('user_name');
-            localStorage.removeItem('user_email');
-            localStorage.removeItem('logged_in_email');
-            localStorage.removeItem('user_agent');
-            localStorage.removeItem('user_ip');
-            localStorage.removeItem('user_id');
             localStorage.removeItem('session_backup');
             localStorage.removeItem('session_backup_2');
             localStorage.removeItem('session_backup_3');
@@ -142,7 +135,6 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
                 sessionStorage.removeItem('session_backup');
             }
             catch (e) { }
-            document.cookie = 'session_token=; path=/; max-age=0';
             document.cookie = 'session_backup=; path=/; max-age=0';
             document.cookie = 'session_backup_2=; path=/; max-age=0';
             document.cookie = 'session_backup_3=; path=/; max-age=0';
@@ -182,10 +174,10 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
         setIsSubmitting(true);
         setSubmitMode(logoutAfter ? 'save_logout' : 'save');
         try {
-            const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
-            const email = userEmail || (typeof window !== 'undefined' ? localStorage.getItem('user_email') || localStorage.getItem('logged_in_email') : '');
-            const name = userName || (typeof window !== 'undefined' ? localStorage.getItem('user_name') : '');
-            const role = userRole || (typeof window !== 'undefined' ? localStorage.getItem('user_role') : '');
+            const sessionToken = user.getSessionToken();
+            const email = userEmail || user.getEmail();
+            const name = userName || user.getName();
+            const role = userRole || user.getRole();
             const response = await fetch('/api/supplyChain/change-password', {
                 method: 'POST',
                 headers: {

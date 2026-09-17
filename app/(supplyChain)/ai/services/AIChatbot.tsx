@@ -818,9 +818,9 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         // If an attachment is present, route to multimodal document analysis API
         if (currentFile) {
             try {
-                const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'User') : 'User';
-                const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('user_name') || 'User') : 'User';
-                const currentUserEmail = typeof window !== 'undefined' ? (localStorage.getItem('user_email') || '') : '';
+                const currentRole = user.getRole() || 'User';
+                const currentUserName = user.getName() || 'User';
+                const currentUserEmail = user.getEmail() || '';
                 const docRes = await fetch('/ai/api/analyze-document', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1158,8 +1158,8 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         setIsCreatingPO(true);
         setActionFeedback(sendEmail ? "Creating Purchase Orders and sending emails..." : "Creating Draft Purchase Orders...");
         try {
-            const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'Manager') : 'Manager';
-            const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('user_name') || 'Procurement Team') : 'Procurement Team';
+            const currentRole = user.getRole() || 'Manager';
+            const currentUserName = user.getName() || 'Procurement Team';
             const res = await fetch('/ai/api/create-pos-from-requests', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1230,9 +1230,9 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 ...item,
                 quantity: lowStockQuantities[item.id] || item.suggested_quantity || 10,
             }));
-            const currentRole = typeof window !== 'undefined' ? (localStorage.getItem('user_role') || 'Manager') : 'Manager';
-            const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('user_name') || 'Inventory Officer') : 'Inventory Officer';
-            const currentUserEmail = typeof window !== 'undefined' ? (localStorage.getItem('user_email') || '') : '';
+            const currentRole = user.getRole() || 'Manager';
+            const currentUserName = user.getName() || 'Inventory Officer';
+            const currentUserEmail = user.getEmail() || '';
             const res = await fetch('/ai/api/create-prs-from-low-stock', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1288,7 +1288,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const renderPendingRequestsWidget = (msg: Message) => {
         if (!msg.pendingRequests || msg.pendingRequests.length === 0)
             return null;
-        const currentRole = (typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '').toLowerCase();
+        const currentRole = user.getRole().toLowerCase();
         const canManagePOs = ['admin', 'manager', 'executive', 'employee', 'user'].includes(currentRole);
         const allSelected = msg.pendingRequests.length > 0 && msg.pendingRequests.every(pr => selectedPRIds.has(pr.id));
         return (<div className="mt-3.5 pt-3 border-t border-slate-200/90 dark:border-[#353746] space-y-3">
@@ -1387,7 +1387,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const renderLowStockWidget = (msg: Message) => {
         if (!msg.lowStockItems || msg.lowStockItems.length === 0)
             return null;
-        const currentRole = (typeof window !== 'undefined' ? (localStorage.getItem('user_role') || '') : '').toLowerCase();
+        const currentRole = user.getRole().toLowerCase();
         const canManagePRs = ['admin', 'executive', 'manager'].includes(currentRole);
         const outOfStockCount = msg.lowStockItems.filter(it => it.current_stock === 0).length;
         const lowStockCount = msg.lowStockItems.filter(it => it.current_stock > 0).length;

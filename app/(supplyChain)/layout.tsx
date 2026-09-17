@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Lenis from "lenis";
 import CustomCursor from "./components/global/CustomCursor";
 import SupplyChainFooter from "./components/global/SupplyChainFooter";
+import { user } from "./lib/services/Class/user";
 
 export const NavVisibilityContext = createContext<{
     isNavHidden: boolean;
@@ -99,7 +100,7 @@ function LayoutContent({ children }: {
 
     // check for active session token
     useEffect(() => {
-        const sessionToken = localStorage.getItem('session_token') || localStorage.getItem('sc_session_token');
+        const sessionToken = user.getSessionToken();
         if (!sessionToken) {
             router.push('/scAuth');
             return;

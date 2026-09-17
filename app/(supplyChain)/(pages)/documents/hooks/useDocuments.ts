@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import { Document, Supplier, Activity, DEFAULT_USER } from "../types";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 
 export function useDocuments() {
     const searchParams = useSearchParams();
@@ -104,7 +105,7 @@ export function useDocuments() {
                     setUserRole(userData.role || '');
                     setUserSessionId(userData.session_id || null);
                     if (userData.role) {
-                        localStorage.setItem('user_role', userData.role);
+                        user.updateUser({ role: userData.role });
                     }
                 }
             } else {

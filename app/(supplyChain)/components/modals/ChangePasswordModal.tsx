@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 
 interface ChangePasswordModalProps {
     isOpen: boolean;
@@ -98,7 +99,7 @@ export function ChangePasswordModal({
     };
 
     const performClientLogout = async () => {
-        const sessionToken = typeof window !== "undefined" ? localStorage.getItem("session_token") : null;
+        const sessionToken = user.getSessionToken();
         if (sessionToken) {
             try {
                 await fetch("/api/supplyChain/logout", {
@@ -110,16 +111,8 @@ export function ChangePasswordModal({
             }
         }
 
+        user.clearUser();
         if (typeof window !== "undefined") {
-            localStorage.removeItem("session_token");
-            localStorage.removeItem("user_role");
-            localStorage.removeItem("session_expires");
-            localStorage.removeItem("user_name");
-            localStorage.removeItem("user_email");
-            localStorage.removeItem("logged_in_email");
-            localStorage.removeItem("user_agent");
-            localStorage.removeItem("user_ip");
-            localStorage.removeItem("user_id");
             localStorage.removeItem("session_backup");
             localStorage.removeItem("session_backup_2");
             localStorage.removeItem("session_backup_3");
@@ -128,7 +121,6 @@ export function ChangePasswordModal({
                 sessionStorage.removeItem("session_backup");
             } catch (e) {}
 
-            document.cookie = "session_token=; path=/; max-age=0";
             document.cookie = "session_backup=; path=/; max-age=0";
             document.cookie = "session_backup_2=; path=/; max-age=0";
             document.cookie = "session_backup_3=; path=/; max-age=0";
@@ -173,10 +165,10 @@ export function ChangePasswordModal({
         setSubmitMode(logoutAfter ? "save_logout" : "save");
 
         try {
-            const sessionToken = typeof window !== "undefined" ? localStorage.getItem("session_token") : null;
-            const email = userEmail || (typeof window !== "undefined" ? localStorage.getItem("user_email") || localStorage.getItem("logged_in_email") : "");
-            const name = userName || (typeof window !== "undefined" ? localStorage.getItem("user_name") : "");
-            const role = userRole || (typeof window !== "undefined" ? localStorage.getItem("user_role") : "");
+            const sessionToken = user.getSessionToken();
+            const email = userEmail || user.getEmail();
+            const name = userName || user.getName();
+            const role = userRole || user.getRole();
 
             const response = await fetch("/api/supplyChain/change-password", {
                 method: "POST",
@@ -221,9 +213,9 @@ export function ChangePasswordModal({
         }
     };
 
-    const effectiveEmail = userEmail || (typeof window !== "undefined" ? localStorage.getItem("user_email") || localStorage.getItem("logged_in_email") || "" : "");
-    const effectiveName = userName || (typeof window !== "undefined" ? localStorage.getItem("user_name") || "User" : "User");
-    const effectiveRole = userRole || (typeof window !== "undefined" ? localStorage.getItem("user_role") || "Employee" : "Employee");
+    const effectiveEmail = userEmail || user.getEmail() || "";
+    const effectiveName = userName || user.getName() || "User";
+    const effectiveRole = userRole || user.getRole() || "Employee";
 
     if (!isOpen) return null;
 

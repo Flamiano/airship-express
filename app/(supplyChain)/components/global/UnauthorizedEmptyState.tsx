@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Lock, ShieldAlert } from 'lucide-react';
+import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 
 export const isPrivilegedRole = (role?: string | null): boolean => {
     if (!role) return false;
@@ -14,13 +15,13 @@ export function useUserRole() {
     const [isLoaded, setIsLoaded] = React.useState(false);
 
     React.useEffect(() => {
-        const storedRole = localStorage.getItem('user_role') || '';
+        const storedRole = user.getRole();
         setRole(storedRole);
         setIsLoaded(true);
 
         const handleStorage = (e: StorageEvent) => {
             if (e.key === 'user_role') {
-                setRole(e.newValue || '');
+                setRole(e.newValue || user.getRole());
             }
         };
         window.addEventListener('storage', handleStorage);
@@ -49,7 +50,7 @@ export default function UnauthorizedEmptyState({
     requiredRoles = ["Admin", "Manager", "Executive"],
     className = "",
 }: UnauthorizedEmptyStateProps) {
-    const role = currentRole || (typeof window !== 'undefined' ? localStorage.getItem('user_role') : '') || 'User';
+    const role = currentRole || user.getRole() || 'User';
 
     return (
         <div
