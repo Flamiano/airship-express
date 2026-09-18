@@ -17,8 +17,8 @@ import {
   Search,
   Eye,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
-import PageHeader from "@/components/PageHeader";
+import { useShell } from "../../components/ShellContext";
+import PageHeader from "../../components/PageHeader";
 
 const CHARGE_TYPE_OPTIONS = ["per_kg", "per_container", "per_km", "flat", "per_pallet"];
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "JPY", "CNY"];
@@ -452,7 +452,7 @@ export default function RatesPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => router.push(`/rates/${r.id}`)}
+                                    onClick={() => router.push(`/app/rates/${r.id}`)}
                                     aria-label={`View ${r.rate_code}`}
                                     title="View rate details"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md transition ${

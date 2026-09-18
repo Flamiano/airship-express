@@ -11,15 +11,15 @@ import {
   Calendar,
   LogOut,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
+import { useShell } from "../components/ShellContext";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Service Providers", href: "/service-providers", icon: Building2 },
-  { label: "Network & Routes", href: "/routes", icon: Map },
-  { label: "Rates & Tariffs", href: "/rates", icon: DollarSign },
-  { label: "SOPs", href: "/sops", icon: ClipboardList },
-  { label: "Schedules", href: "/schedules", icon: Calendar },
+  { label: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
+  { label: "Service Providers", href: "/app/service-providers", icon: Building2 },
+  { label: "Network & Routes", href: "/app/routes", icon: Map },
+  { label: "Rates & Tariffs", href: "/app/rates", icon: DollarSign },
+  { label: "SOPs", href: "/app/sops", icon: ClipboardList },
+  { label: "Schedules", href: "/app/schedules", icon: Calendar },
 ];
 
 export default function Sidebar() {
@@ -42,7 +42,7 @@ export default function Sidebar() {
       <div className={`flex h-full flex-col overflow-hidden ${sidebarOpen ? "px-4 py-6" : "px-0 py-6"}`}>
         {/* Brand — pinned, never scrolls */}
         <div className="mb-8 flex shrink-0 items-center gap-3 px-2 whitespace-nowrap">
-          <img src="/logo.png" alt="Airship Express" className="h-10 w-10 shrink-0 rounded-md object-contain" />
+          <img src="/logo.png" alt="Airship Express" className="h-12 w-12 shrink-0 rounded-md object-contain" />
           <div>
             <p className="text-[15px] font-semibold text-[#F2F1EC]" style={{ fontFamily: "var(--font-display)" }}>
               Airship Express

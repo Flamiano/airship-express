@@ -11,8 +11,8 @@ import {
   Calendar,
   Loader2,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
-import PageHeader from "@/components/PageHeader";
+import { useShell } from "../../components/ShellContext";
+import PageHeader from "../../components/PageHeader";
 
 const modules = [
   { title: "Service Providers", desc: "Carriers, forwarders & vendors", icon: Building2, bg: "bg-[#12203A]", color: "text-[#5B8CF2]", lightBg: "bg-[#E4ECFC]", lightColor: "text-[#3B6BE0]", href: "/service-providers" },

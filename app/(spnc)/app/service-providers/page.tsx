@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Search,
   Eye,
+  Check,
 } from "lucide-react";
 import { useShell } from "@/components/ShellContext";
 import PageHeader from "@/components/PageHeader";
@@ -28,6 +29,7 @@ const TYPES: { label: string; value: string }[] = [
   { label: "Customs Broker", value: "customs_broker" },
   { label: "Warehouse", value: "warehouse" },
   { label: "3PL", value: "3pl" },
+  { label: "Other", value: "other" },
 ];
 
 const MODES = ["Road", "Rail", "Air", "Sea", "Multimodal"];
@@ -63,6 +65,11 @@ const COUNTRIES = [
   "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
 ];
 
+type ProviderAttachment = {
+  name: string;
+  dataUrl: string;
+};
+
 type Provider = {
   id: string;
   name: string;
@@ -77,22 +84,25 @@ type Provider = {
   rating: number;
   contract_ref: string | null;
   notes: string | null;
+  attachments?: ProviderAttachment[];
 };
 
-const emptyForm = {
-  name: "",
-  type: TYPES[0].value,
-  contact_person: "",
-  email: "",
-  phone: "",
-  address: "",
-  country: "",
-  service_modes: [] as string[],
-  status: STATUSES[0].value, // "active"
-  rating: 3,
-  contract_ref: "",
-  notes: "",
-};
+function createEmptyForm() {
+  return {
+    name: "",
+    type: TYPES[0].value,
+    contact_person: "",
+    email: "",
+    phone: "",
+    address: "",
+    country: "",
+    service_modes: [] as string[],
+    status: STATUSES[0].value,
+    rating: 3,
+    contract_ref: "",
+    notes: "",
+  };
+}
 
 function typeLabel(value: string) {
   return TYPES.find((t) => t.value === value)?.label || value;
@@ -102,16 +112,29 @@ function statusLabel(value: string) {
   return STATUSES.find((s) => s.value === value)?.label || value;
 }
 
-function getMissingFieldsMessage(form: typeof emptyForm) {
+function asString(value: string | null | undefined) {
+  return value ?? "";
+}
+
+function getStep1MissingFieldsMessage(form: ReturnType<typeof createEmptyForm>, customType: string) {
   const missing: string[] = [];
 
   if (form.name.trim() === "") missing.push("Company Name");
+  if (form.type === "other" && customType.trim() === "") missing.push("Custom type");
+  if (form.service_modes.length === 0) missing.push("Service Modes");
+
+  if (missing.length === 0) return null;
+  return `Please fill in: ${missing.join(", ")}.`;
+}
+
+function getStep2MissingFieldsMessage(form: ReturnType<typeof createEmptyForm>) {
+  const missing: string[] = [];
+
   if (form.contact_person.trim() === "") missing.push("Contact Person");
   if (form.email.trim() === "") missing.push("Email");
   if (form.phone.trim() === "") missing.push("Phone");
   if (form.address.trim() === "") missing.push("Address");
   if (form.country.trim() === "") missing.push("Country");
-  if (form.service_modes.length === 0) missing.push("Service Modes");
 
   if (missing.length === 0) return null;
   return `Please fill in: ${missing.join(", ")}.`;
@@ -128,7 +151,7 @@ export default function ServiceProvidersPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showFieldErrors, setShowFieldErrors] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(() => createEmptyForm());
   const [page, setPage] = useState(1);
   const [pageLoading, setPageLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -137,8 +160,15 @@ export default function ServiceProvidersPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Multi-step form state
+  const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
+  const [customType, setCustomType] = useState("");
+  const [pdfFiles, setPdfFiles] = useState<Array<{ name: string; dataUrl: string }>>([]);
+
   const [countryOpen, setCountryOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
+  const [typeOpen, setTypeOpen] = useState(false);
+  const [modesOpen, setModesOpen] = useState(false);
 
   const filteredProviders = providers.filter((provider) => {
     const query = searchTerm.trim().toLowerCase();
@@ -207,19 +237,22 @@ export default function ServiceProvidersPage() {
     setEditingId(p.id);
     setSaveError(null);
     setShowFieldErrors(false);
+    setFormStep(1);
+    const detectedType = TYPES.some((t) => t.value === p.type) ? p.type : "other";
+    setCustomType(detectedType === "other" ? asString(p.type) : "");
     setForm({
-      name: p.name || "",
-      type: p.type || TYPES[0].value,
-      contact_person: p.contact_person || "",
-      email: p.email || "",
-      phone: p.phone || "",
-      address: p.address || "",
-      country: p.country || "",
+      name: asString(p.name),
+      type: detectedType,
+      contact_person: asString(p.contact_person),
+      email: asString(p.email),
+      phone: asString(p.phone),
+      address: asString(p.address),
+      country: asString(p.country),
       service_modes: p.service_modes || [],
       status: p.status || STATUSES[0].value,
       rating: p.rating ?? 3,
-      contract_ref: p.contract_ref || "",
-      notes: p.notes || "",
+      contract_ref: asString(p.contract_ref),
+      notes: asString(p.notes),
     });
     setShowForm(true);
   }
@@ -228,7 +261,10 @@ export default function ServiceProvidersPage() {
     setEditingId(null);
     setSaveError(null);
     setShowFieldErrors(false);
-    setForm(emptyForm);
+    setFormStep(1);
+    setCustomType("");
+    setPdfFiles([]);
+    setForm(createEmptyForm());
     setShowForm(true);
   }
 
@@ -237,9 +273,14 @@ export default function ServiceProvidersPage() {
     setEditingId(null);
     setSaveError(null);
     setShowFieldErrors(false);
-    setForm(emptyForm);
+    setFormStep(1);
+    setCustomType("");
+    setPdfFiles([]);
+    setForm(createEmptyForm());
     setCountryOpen(false);
     setCountrySearch("");
+    setTypeOpen(false);
+    setModesOpen(false);
   }
 
   function selectCountry(country: string) {
@@ -248,19 +289,63 @@ export default function ServiceProvidersPage() {
     setCountrySearch("");
   }
 
+  function selectType(value: string) {
+    setForm((f) => ({ ...f, type: value }));
+    setCustomType(value === "other" ? customType : "");
+    setTypeOpen(false);
+  }
+
   const filteredCountries = COUNTRIES.filter((c) =>
     c.toLowerCase().includes(countrySearch.toLowerCase())
   );
 
-  function fieldBorderClass(value: string) {
-    if (showFieldErrors && !value.trim()) {
+  function fieldBorderClass(value: string | null | undefined) {
+    const safeValue = value ?? "";
+    if (showFieldErrors && !safeValue.trim()) {
       return "border-[#E2685A] focus:border-[#E2685A]";
     }
     return isDark ? "border-[#2C4356] focus:border-[#F2419B]" : "border-gray-300 focus:border-[#F2419B]";
   }
 
+  function handleNext() {
+    const missingMessage = getStep1MissingFieldsMessage(form, customType);
+
+    if (missingMessage) {
+      setSaveError(missingMessage);
+      setShowFieldErrors(true);
+      return;
+    }
+
+    setSaveError(null);
+    setShowFieldErrors(false);
+    setTypeOpen(false);
+    setModesOpen(false);
+    setFormStep(2);
+  }
+
+  function handleBack() {
+    setSaveError(null);
+    setShowFieldErrors(false);
+    setCountryOpen(false);
+    setFormStep((current) => (current === 1 ? 1 : ((current - 1) as 1 | 2 | 3)));
+  }
+
+  function handleToStatusStep() {
+    const missingMessage = getStep2MissingFieldsMessage(form);
+
+    if (missingMessage) {
+      setSaveError(missingMessage);
+      setShowFieldErrors(true);
+      return;
+    }
+
+    setSaveError(null);
+    setShowFieldErrors(false);
+    setFormStep(3);
+  }
+
   async function handleSave() {
-    const missingMessage = getMissingFieldsMessage(form);
+    const missingMessage = getStep2MissingFieldsMessage(form);
 
     if (missingMessage) {
       setSaveError(missingMessage);
@@ -271,13 +356,20 @@ export default function ServiceProvidersPage() {
     setSaving(true);
     setSaveError(null);
     try {
+      const finalType = form.type === "other" ? customType.trim() || "Other" : form.type;
+      const attachments = await Promise.all(
+        pdfFiles.map(async (file) => {
+          if (file.dataUrl) return file;
+          return { name: file.name, dataUrl: "" };
+        })
+      );
       const url = editingId ? `/api/service-providers/${editingId}` : "/api/service-providers";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, type: finalType, attachments }),
       });
 
       if (!res.ok) {
@@ -485,7 +577,7 @@ export default function ServiceProvidersPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => router.push(`/service-providers/${p.id}`)}
+                                  onClick={() => router.push(`/app/service-providers/${p.id}`)}
                                   aria-label={`View ${p.name}`}
                                   title="View provider details"
                                   className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
@@ -582,7 +674,7 @@ export default function ServiceProvidersPage() {
               isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"
             }`}
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between">
               <h2
                 className={`text-xl font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
                 style={{ fontFamily: "var(--font-display)" }}
@@ -598,305 +690,504 @@ export default function ServiceProvidersPage() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Company Name *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Company name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.name)} ${
-                    isDark
-                      ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "bg-white text-gray-900 placeholder:text-gray-400"
-                  }`}
-                />
-              </div>
-
-              <div>
-                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Type
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {TYPES.map((t) => (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => setForm({ ...form, type: t.value })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.type === t.value
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Status
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s.value}
-                      type="button"
-                      onClick={() => setForm({ ...form, status: s.value })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.status === s.value
-                          ? s.value === "active"
-                            ? "bg-[#3BD68A] text-[#0B1220]"
-                            : "bg-[#E2685A] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Service Modes *
-                </p>
-                <div className={`flex flex-wrap gap-2 rounded-md ${showFieldErrors && form.service_modes.length === 0 ? "border border-[#E2685A] p-1" : ""}`}>
-                  {MODES.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => toggleMode(m)}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.service_modes.includes(m)
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Rating
-                </p>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button key={n} type="button" onClick={() => setForm({ ...form, rating: n })}>
-                      <Star
-                        size={22}
-                        className={n <= form.rating ? "fill-[#F2A23B] text-[#F2A23B]" : "text-[#4B5A68]"}
-                      />
-                    </button>
-                  ))}
-                  <span className={`ml-2 text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>{form.rating}/5</span>
-                </div>
-              </div>
-
-              <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Contact Person *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contact person"
-                  value={form.contact_person}
-                  onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.contact_person)} ${
-                    isDark
-                      ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "bg-white text-gray-900 placeholder:text-gray-400"
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Email *
-                </label>
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.email)} ${
-                    isDark
-                      ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "bg-white text-gray-900 placeholder:text-gray-400"
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Phone *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Phone"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.phone)} ${
-                    isDark
-                      ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "bg-white text-gray-900 placeholder:text-gray-400"
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Address *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Address"
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.address)} ${
-                    isDark
-                      ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "bg-white text-gray-900 placeholder:text-gray-400"
-                  }`}
-                />
-              </div>
-
-              {/* Searchable Country dropdown */}
-              <div className="relative">
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Country *
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setCountryOpen((prev) => !prev)}
-                  className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left outline-none ${fieldBorderClass(form.country)} ${
-                    isDark
-                      ? "bg-[#0B1220] text-[#F2F1EC]"
-                      : "bg-white text-gray-900"
-                  }`}
-                >
-                  <span className={form.country ? "" : isDark ? "text-[#4B5A68]" : "text-gray-400"}>
-                    {form.country || "Select a country"}
+            <div className="mb-5 flex items-center gap-2">
+              {[1, 2, 3].map((step) => (
+                <div key={step} className="flex flex-1 items-center gap-1.5">
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+                      formStep === step
+                        ? "bg-[#F2419B] text-white"
+                        : isDark
+                        ? "bg-[#1A2530] text-[#8FA0AF]"
+                        : "bg-gray-200 text-gray-500"
+                    }`}
+                  >
+                    {step}
                   </span>
-                  <ChevronDown size={16} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
-                </button>
-
-                {countryOpen && (
-                  <>
-                    {/* Click-away backdrop */}
-                    <div className="fixed inset-0 z-10" onClick={() => setCountryOpen(false)} />
-
-                    <div
-                      className={`absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg ${
-                        isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
-                      }`}
-                    >
-                      <div
-                        className={`flex items-center gap-2 border-b px-3 py-2 ${
-                          isDark ? "border-[#2C4356]" : "border-gray-200"
-                        }`}
-                      >
-                        <Search size={15} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
-                        <input
-                          type="text"
-                          autoFocus
-                          placeholder="Search countries…"
-                          value={countrySearch}
-                          onChange={(e) => setCountrySearch(e.target.value)}
-                          className={`w-full bg-transparent text-sm outline-none ${
-                            isDark ? "text-[#F2F1EC] placeholder:text-[#4B5A68]" : "text-gray-900 placeholder:text-gray-400"
-                          }`}
-                        />
-                      </div>
-
-                      <div className="max-h-56 overflow-y-auto">
-                        {filteredCountries.length === 0 ? (
-                          <p className={`px-3 py-3 text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                            No countries found.
-                          </p>
-                        ) : (
-                          filteredCountries.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => selectCountry(c)}
-                              className={`block w-full px-3 py-2 text-left text-sm transition ${
-                                form.country === c
-                                  ? "bg-[#F2419B] text-white"
-                                  : isDark
-                                  ? "text-[#C7D1DA] hover:bg-[#1A2530]"
-                                  : "text-gray-700 hover:bg-gray-100"
-                              }`}
-                            >
-                              {c}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Contract Ref
-                </label>
-                <input
-                  type="text"
-                  placeholder="DHL-SP-001"
-                  value={form.contract_ref}
-                  onChange={(e) => setForm({ ...form, contract_ref: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none focus:border-[#F2419B] ${
-                    isDark
-                      ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
-                  }`}
-                />
-              </div>
-
-              {saveError && (
-                <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
-                  {saveError}
+                  <span className={`text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    {step === 1 ? "Basics" : step === 2 ? "Details" : "Status"}
+                  </span>
                 </div>
-              )}
+              ))}
             </div>
 
+            {formStep === 1 ? (
+              <div className="space-y-4">
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Company Name *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Company name"
+                    value={asString(form.name)}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.name)} ${
+                      isDark
+                        ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                </div>
+
+                <div className="relative">
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Type *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModesOpen(false);
+                      setTypeOpen((prev) => !prev);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left outline-none ${
+                      isDark ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC]" : "border-gray-300 bg-white text-gray-900"
+                    }`}
+                  >
+                    <span>{typeLabel(form.type)}</span>
+                    <ChevronDown size={16} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
+                  </button>
+
+                  {typeOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setTypeOpen(false)} />
+                      <div
+                        className={`absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg ${
+                          isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
+                        }`}
+                      >
+                        {TYPES.map((t) => (
+                          <button
+                            key={t.value}
+                            type="button"
+                            onClick={() => {
+                              setForm((f) => ({ ...f, type: t.value }));
+                              if (t.value !== "other") {
+                                setCustomType("");
+                              }
+                              setTypeOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                              form.type === t.value
+                                ? "bg-[#F2419B] text-white"
+                                : isDark
+                                ? "text-[#C7D1DA] hover:bg-[#1A2530]"
+                                : "text-gray-700 hover:bg-gray-100"
+                            }`}
+                          >
+                            {t.label}
+                            {form.type === t.value && <Check size={14} />}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {form.type === "other" && (
+                  <div>
+                    <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                      Other Type *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Enter custom type"
+                      value={asString(customType)}
+                      onChange={(e) => setCustomType(e.target.value)}
+                      className={`w-full rounded-md border px-3 py-2.5 outline-none ${
+                        isDark
+                          ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                          : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+                      }`}
+                    />
+                  </div>
+                )}
+
+                <div className="relative">
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Service Modes *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTypeOpen(false);
+                      setModesOpen((prev) => !prev);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left outline-none ${
+                      showFieldErrors && form.service_modes.length === 0
+                        ? "border-[#E2685A]"
+                        : isDark
+                        ? "border-[#2C4356]"
+                        : "border-gray-300"
+                    } ${isDark ? "bg-[#0B1220] text-[#F2F1EC]" : "bg-white text-gray-900"}`}
+                  >
+                    <span className={form.service_modes.length > 0 ? "" : isDark ? "text-[#4B5A68]" : "text-gray-400"}>
+                      {form.service_modes.length > 0 ? form.service_modes.join(", ") : "Select service modes"}
+                    </span>
+                    <ChevronDown size={16} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
+                  </button>
+
+                  {modesOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setModesOpen(false)} />
+                      <div
+                        className={`absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg ${
+                          isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
+                        }`}
+                      >
+                        {MODES.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => toggleMode(m)}
+                            className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                              form.service_modes.includes(m)
+                                ? isDark
+                                  ? "bg-[#1A2530] text-[#F2F1EC]"
+                                  : "bg-gray-100 text-gray-900"
+                                : isDark
+                                ? "text-[#C7D1DA] hover:bg-[#1A2530]"
+                                : "text-gray-700 hover:bg-gray-100"
+                            }`}
+                          >
+                            {m}
+                            {form.service_modes.includes(m) && <Check size={14} className="text-[#F2419B]" />}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {saveError && (
+                  <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
+                    {saveError}
+                  </div>
+                )}
+              </div>
+            ) : formStep === 2 ? (
+              <div className="space-y-4">
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Contact Person *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contact person"
+                    value={asString(form.contact_person)}
+                    onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.contact_person)} ${
+                      isDark
+                        ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={asString(form.email)}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.email)} ${
+                      isDark
+                        ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Phone *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Phone"
+                    value={asString(form.phone)}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.phone)} ${
+                      isDark
+                        ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Address *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={asString(form.address)}
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.address)} ${
+                      isDark
+                        ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                </div>
+
+                <div className="relative">
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Country *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setCountryOpen((prev) => !prev)}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left outline-none ${fieldBorderClass(form.country)} ${
+                      isDark ? "bg-[#0B1220] text-[#F2F1EC]" : "bg-white text-gray-900"
+                    }`}
+                  >
+                    <span className={form.country ? "" : isDark ? "text-[#4B5A68]" : "text-gray-400"}>
+                      {form.country || "Select a country"}
+                    </span>
+                    <ChevronDown size={16} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
+                  </button>
+
+                  {countryOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setCountryOpen(false)} />
+                      <div
+                        className={`absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg ${
+                          isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
+                        }`}
+                      >
+                        <div
+                          className={`flex items-center gap-2 border-b px-3 py-2 ${
+                            isDark ? "border-[#2C4356]" : "border-gray-200"
+                          }`}
+                        >
+                          <Search size={15} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Search countries…"
+                            value={asString(countrySearch)}
+                            onChange={(e) => setCountrySearch(e.target.value)}
+                            className={`w-full bg-transparent text-sm outline-none ${
+                              isDark ? "text-[#F2F1EC] placeholder:text-[#4B5A68]" : "text-gray-900 placeholder:text-gray-400"
+                            }`}
+                          />
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto">
+                          {COUNTRIES.filter((c) => c.toLowerCase().includes(countrySearch.toLowerCase())).length === 0 ? (
+                            <p className={`px-3 py-3 text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                              No countries found.
+                            </p>
+                          ) : (
+                            COUNTRIES.filter((c) => c.toLowerCase().includes(countrySearch.toLowerCase())).map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => selectCountry(c)}
+                                className={`block w-full px-3 py-2 text-left text-sm transition ${
+                                  form.country === c
+                                    ? "bg-[#F2419B] text-white"
+                                    : isDark
+                                    ? "text-[#C7D1DA] hover:bg-[#1A2530]"
+                                    : "text-gray-700 hover:bg-gray-100"
+                                }`}
+                              >
+                                {c}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Contract Ref
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="DHL-SP-001"
+                    value={asString(form.contract_ref)}
+                    onChange={(e) => setForm({ ...form, contract_ref: e.target.value })}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none focus:border-[#F2419B] ${
+                      isDark
+                        ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                </div>
+
+                {saveError && (
+                  <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
+                    {saveError}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Status
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {STATUSES.map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        onClick={() => setForm({ ...form, status: s.value })}
+                        className={`rounded-full px-4 py-1.5 text-sm transition ${
+                          form.status === s.value
+                            ? s.value === "active"
+                              ? "bg-[#3BD68A] text-[#0B1220]"
+                              : "bg-[#E2685A] text-white"
+                            : isDark
+                            ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
+                            : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Rating
+                  </p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button key={n} type="button" onClick={() => setForm({ ...form, rating: n })}>
+                        <Star
+                          size={22}
+                          className={n <= form.rating ? "fill-[#F2A23B] text-[#F2A23B]" : "text-[#4B5A68]"}
+                        />
+                      </button>
+                    ))}
+                    <span className={`ml-2 text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>{form.rating}/5</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Attach PDF files
+                  </label>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    onChange={async (event) => {
+                      const files = Array.from(event.target.files || []);
+                      const dataUrls = await Promise.all(
+                        files.map(
+                          (file) =>
+                            new Promise<{ name: string; dataUrl: string }>((resolve, reject) => {
+                              const reader = new FileReader();
+                              reader.onload = () => resolve({ name: file.name, dataUrl: String(reader.result || "") });
+                              reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+                              reader.readAsDataURL(file);
+                            })
+                        )
+                      );
+                      setPdfFiles(dataUrls);
+                    }}
+                    className={`w-full rounded-md border px-3 py-2.5 outline-none ${
+                      isDark
+                        ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC]"
+                        : "border-gray-300 bg-white text-gray-900"
+                    }`}
+                  />
+                  {pdfFiles.length > 0 && (
+                    <ul className={`mt-2 space-y-1 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                      {pdfFiles.map((file) => (
+                        <li key={file.name}>• {file.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {saveError && (
+                  <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
+                    {saveError}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={closeForm}
-                className={`flex-1 rounded-md border py-2.5 text-sm font-medium transition ${
-                  isDark
-                    ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB] disabled:cursor-not-allowed disabled:bg-[#4B5A68]"
-              >
-                {saving && <Loader2 size={16} className="animate-spin" />}
-                {saving ? (editingId ? "Updating…" : "Saving…") : editingId ? "Update" : "Save"}
-              </button>
+              {formStep === 1 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={closeForm}
+                    className={`flex-1 rounded-md border py-2.5 text-sm font-medium transition ${
+                      isDark
+                        ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]"
+                        : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="flex-1 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB]"
+                  >
+                    Next
+                  </button>
+                </>
+              ) : formStep === 2 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className={`flex-1 rounded-md border py-2.5 text-sm font-medium transition ${
+                      isDark
+                        ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]"
+                        : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleToStatusStep}
+                    className="flex-1 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB]"
+                  >
+                    Next
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className={`flex-1 rounded-md border py-2.5 text-sm font-medium transition ${
+                      isDark
+                        ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]"
+                        : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB] disabled:cursor-not-allowed disabled:bg-[#4B5A68]"
+                  >
+                    {saving && <Loader2 size={16} className="animate-spin" />}
+                    {saving ? (editingId ? "Updating…" : "Saving…") : editingId ? "Update" : "Save"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

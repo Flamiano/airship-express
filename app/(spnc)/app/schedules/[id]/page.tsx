@@ -74,7 +74,7 @@ export default function ScheduleDetailPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">
         <p className="text-sm text-gray-500">Schedule not found.</p>
-        <button onClick={() => router.push("/schedules")} className="text-sm text-[#F2419B] hover:underline">
+        <button onClick={() => router.push("/app/schedules")} className="text-sm text-[#F2419B] hover:underline">
           Back to Schedules
         </button>
       </div>
@@ -87,7 +87,7 @@ export default function ScheduleDetailPage() {
   return (
     <div className="min-h-screen bg-white px-8 py-10">
       <div className="print-hidden mb-8 flex items-center justify-between">
-        <button type="button" onClick={() => router.push("/schedules")} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
+        <button type="button" onClick={() => router.push("/app/schedules")} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
           <ArrowLeft size={16} />
           Back to Schedules
         </button>
