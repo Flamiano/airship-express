@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24" width="36" height="24">
+  <defs>
+    <clipPath id="ph-clip">
+      <rect width="36" height="24"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#ph-clip)">
+    <rect width="36" height="12" fill="#0032A0"/>
+    <rect y="12" width="36" height="12" fill="#CE1126"/>
+    <polygon points="0,24 18,12 36,24" fill="#FCD116"/>
+    <polygon points="0,0 18,12 36,0" fill="#FCD116"/>
+  </g>
+</svg>

@@ -15,7 +15,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find the admin by employee_id
     const { data: admin, error: lookupError } = await supabaseAdmin
       .from("hr_admin")
       .select("id, email, full_name, role")

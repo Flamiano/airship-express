@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { requireAdmin } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/auth/requireAdmin";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 function extractIdFromUrl(url: string): string | null {
   const parts = url.split("/");
   return parts[parts.length - 2] || null;
@@ -35,7 +39,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the payroll run
     const { data: run, error: runError } = await supabaseAdmin
       .from("hr4_payroll_runs")
       .select("*")
@@ -58,9 +61,118 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: employeesWithPayroll, error: empError } = await supabaseAdmin
+      .from("hr4_employee_payroll_info")
+      .select(
+        `
+        employee_id,
+        hr1_employees (
+          id,
+          first_name,
+          last_name,
+          employee_id_number,
+          status
+        )
+      `
+      )
+      .eq("is_active", true);
+
+    if (empError) {
+      return NextResponse.json({ error: empError.message }, { status: 500 });
+    }
+
+    const activeEmployees = (employeesWithPayroll || []).filter(
+      (info: any) => info.hr1_employees?.status === "active"
+    );
+
+    if (activeEmployees.length === 0) {
+      return NextResponse.json(
+        { error: "No active employees with payroll info found." },
+        { status: 400 }
+      );
+    }
+
+    const employeeIds = activeEmployees.map((e: any) => e.employee_id);
+
+    const { data: bankAccounts, error: bankError } = await supabaseAdmin
+      .from("hr4_bank_accounts")
+      .select(
+        "employee_id, account_number, account_name, bank_type_id, is_active"
+      )
+      .in("employee_id", employeeIds);
+
+    if (bankError) {
+      console.error("Error fetching bank accounts:", bankError);
+      return NextResponse.json({ error: bankError.message }, { status: 500 });
+    }
+
+    const bankMap = new Map();
+    (bankAccounts || []).forEach((account: any) => {
+      bankMap.set(account.employee_id, account);
+    });
+
+    const employeesWithIncompleteBank: {
+      employee_id: string;
+      employee_name: string;
+      employee_id_number: string;
+      missing: string[];
+    }[] = [];
+
+    for (const info of activeEmployees) {
+      const emp = info.hr1_employees;
+      const bank = bankMap.get(info.employee_id);
+
+      const missing: string[] = [];
+
+      if (!bank) {
+        missing.push("No bank account on file");
+      } else {
+        if (bank.is_active === false) {
+          missing.push("Bank account is inactive");
+        }
+        if (!bank.account_number) {
+          missing.push("Account number missing");
+        }
+        if (!bank.account_name) {
+          missing.push("Account name missing");
+        }
+        if (!bank.bank_type_id) {
+          missing.push("Bank type missing");
+        }
+      }
+
+      if (missing.length > 0) {
+        employeesWithIncompleteBank.push({
+          employee_id: info.employee_id,
+          employee_name: `${emp.first_name} ${emp.last_name}`,
+          employee_id_number: emp.employee_id_number,
+          missing,
+        });
+      }
+    }
+
+    if (employeesWithIncompleteBank.length > 0) {
+      const count = employeesWithIncompleteBank.length;
+      const names = employeesWithIncompleteBank
+        .slice(0, 5)
+        .map((e) => e.employee_name)
+        .join(", ");
+      const more = count > 5 ? ` and ${count - 5} more` : "";
+
+      return NextResponse.json(
+        {
+          error: `Cannot process payroll: ${count} employee${
+            count === 1 ? "" : "s"
+          } have incomplete bank details.`,
+          details: `Please complete bank details for: ${names}${more}.`,
+          employees_with_incomplete_bank: employeesWithIncompleteBank,
+        },
+        { status: 400 }
+      );
+    }
+
     const asOfDate = run.period_end;
 
-    // Fetch all required data in parallel
     const [
       { data: payrollInfos, error: infoError },
       { data: sssBrackets },
@@ -119,7 +231,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create maps for quick lookup
     const settingsMap = new Map();
     (jobSettings || []).forEach((setting: any) => {
       settingsMap.set(setting.job_position_id, setting);
@@ -130,14 +241,12 @@ export async function POST(request: NextRequest) {
       positionMap.set(pos.id, pos);
     });
 
-    // Get attendance for the period
     const { data: attendanceLogs } = await supabaseAdmin
       .from("hr2_attendance_logs")
       .select("employee_id, status, shift_start, shift_end, created_at")
       .gte("created_at", `${run.period_start}T00:00:00`)
       .lte("created_at", `${run.period_end}T23:59:59`);
 
-    // Group attendance by employee
     const attendanceByEmployee = new Map();
     (attendanceLogs || []).forEach((log: any) => {
       if (!attendanceByEmployee.has(log.employee_id)) {
@@ -164,12 +273,10 @@ export async function POST(request: NextRequest) {
       const employeeAttendance =
         attendanceByEmployee.get(info.employee_id) || [];
 
-      // Calculate days worked from attendance
       const daysWorked = employeeAttendance.filter(
         (log: any) => log.status === "On-Shift"
       ).length;
 
-      // Calculate hours worked
       const totalHours = employeeAttendance.reduce(
         (total: number, log: any) => {
           if (log.status === "On-Shift") {
@@ -183,28 +290,30 @@ export async function POST(request: NextRequest) {
         0
       );
 
-      // Calculate daily rate from job settings or from basic salary
-      const dailyRate = Number(settings.daily_rate) || salary / 30;
+      const customDailyRate = info.custom_daily_rate
+        ? Number(info.custom_daily_rate)
+        : null;
+      const positionDailyRate = Number(settings.daily_rate) || salary / 30;
+      const dailyRate =
+        customDailyRate && customDailyRate > 0
+          ? customDailyRate
+          : positionDailyRate;
       const hoursPerDay = Number(settings.hours_per_day) || 8;
       const breakHours = Number(settings.break_hours) || 1;
       const overtimeRate = Number(settings.overtime_rate) || 1.25;
 
-      // Calculate hourly rate
       const hourlyRate = dailyRate / hoursPerDay;
 
-      // Calculate regular hours (max hours per day, minus break)
       const regularHours = Math.min(
         totalHours,
         daysWorked * (hoursPerDay - breakHours)
       );
       const overtimeHours = Math.max(0, totalHours - regularHours);
 
-      // Calculate pay
       const regularPay = regularHours * hourlyRate;
       const overtimePay = overtimeHours * hourlyRate * overtimeRate;
       const basicPay = round2(regularPay + overtimePay);
 
-      // Find SSS bracket based on salary
       const sssBracket = (sssBrackets || []).find(
         (b) =>
           isEffective(b) &&
@@ -219,7 +328,6 @@ export async function POST(request: NextRequest) {
         ? Number(sssBracket.employer_share) + Number(sssBracket.ec_share ?? 0)
         : 0;
 
-      // Find PhilHealth rate
       const philhealthRate = (philhealthRates || []).find(
         (r) => isEffective(r) && salary >= Number(r.base_min_salary)
       );
@@ -238,7 +346,6 @@ export async function POST(request: NextRequest) {
         philEmployerMonthly = rawEmployer * scale;
       }
 
-      // Find Pag-IBIG tier
       const pagibigTier = (pagibigTiers || []).find(
         (t) =>
           isEffective(t) &&
@@ -267,11 +374,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Pro-rate deductions based on days worked
-      const daysInMonth = 30; // Simplified
+      const daysInMonth = 30;
       const prorationFactor = Math.min(1, daysWorked / daysInMonth);
 
-      // Compute employee shares (shown in payslip)
       const sssEmployeeShare = round2(
         (sssEmployeeMonthly / periodsPerMonth) * prorationFactor
       );
@@ -282,7 +387,6 @@ export async function POST(request: NextRequest) {
         (pagibigEmployeeMonthly / periodsPerMonth) * prorationFactor
       );
 
-      // Compute employer shares (for admin reference, not shown in payslip)
       const sssEmployerShare = round2(
         (sssEmployerMonthly / periodsPerMonth) * prorationFactor
       );
@@ -293,7 +397,7 @@ export async function POST(request: NextRequest) {
         (pagibigEmployerMonthly / periodsPerMonth) * prorationFactor
       );
 
-      const withholdingTax = 0; // TODO: BIR withholding tax computation
+      const withholdingTax = 0;
       const otherDeductions = 0;
 
       const totalDeductions = round2(
@@ -329,7 +433,6 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Clear existing payslips
     const { error: clearError } = await supabaseAdmin
       .from("hr4_payslips")
       .delete()
@@ -339,7 +442,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: clearError.message }, { status: 500 });
     }
 
-    // Insert new payslips
     const { error: insertError } = await supabaseAdmin
       .from("hr4_payslips")
       .insert(payslips);
@@ -349,7 +451,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    // Update run status
     const { data: updatedRun, error: statusError } = await supabaseAdmin
       .from("hr4_payroll_runs")
       .update({

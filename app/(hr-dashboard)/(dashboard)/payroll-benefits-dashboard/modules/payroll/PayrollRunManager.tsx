@@ -3,13 +3,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { Plus, Eye, PlayCircle, Ban, Loader2, ClipboardList, AlertTriangle, Trash2 } from 'lucide-react';
+import {
+    Plus,
+    Eye,
+    PlayCircle,
+    Ban,
+    Loader2,
+    ClipboardList,
+    AlertTriangle,
+    Trash2,
+} from 'lucide-react';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
 import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
-import { useApi } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
+import { useApi, ApiError } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
 
 const PAGE_SIZE = 8;
 
@@ -34,17 +43,31 @@ const EMPTY_FORM = { period_start: '', period_end: '', pay_schedule: 'semi_month
 const formatDate = (value: string) => {
     if (!value) return '';
     try {
-        return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        return new Date(value).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+        });
     } catch {
         return value;
     }
 };
 
-interface PayrollRunManagerProps {
-    onViewPayslips: (run: any) => void;
+interface BankStatusProp {
+    total_affected: number;
 }
 
-const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
+interface PayrollRunManagerProps {
+    onViewPayslips: (run: any) => void;
+    bankStatus?: BankStatusProp | null;
+    onOpenBankModal?: () => void;
+}
+
+const PayrollRunManager = ({
+    onViewPayslips,
+    bankStatus,
+    onOpenBankModal,
+}: PayrollRunManagerProps) => {
     const [runs, setRuns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,7 +80,10 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
     const [deleteTarget, setDeleteTarget] = useState<any>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const { fetchData, postData, putData, deleteData } = useApi('/payroll-benefits-dashboard/api/payroll/runs');
+
+    const { fetchData, postData, putData, deleteData } = useApi(
+        '/payroll-benefits-dashboard/api/payroll/runs'
+    );
 
     useEffect(() => {
         loadRuns();
@@ -70,34 +96,52 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
             setRuns(data || []);
             setCurrentPage(1);
         } catch (error: any) {
-            console.error("Load runs error:", error);
-            toast.error(error?.message || 'Failed to load payroll runs');
+            console.error('Load runs error:', error);
+            toast.error(
+                error?.message || 'Unable to load payroll runs. Please try again.'
+            );
         } finally {
             setLoading(false);
         }
     };
 
+    const handleNewRunClick = () => {
+        const affected = bankStatus?.total_affected ?? 0;
+        if (affected > 0) {
+            if (onOpenBankModal) {
+                onOpenBankModal();
+            }
+            return;
+        }
+        setForm(EMPTY_FORM);
+        setIsModalOpen(true);
+    };
+
     const handleCreate = async () => {
         if (!form.period_start || !form.period_end) {
-            toast.error('Set both a period start and end date');
+            toast.error('Please select both a period start and end date.');
             return;
         }
 
         if (new Date(form.period_start) > new Date(form.period_end)) {
-            toast.error('Period start must be before period end');
+            toast.error(
+                'The period start date must be earlier than the period end date.'
+            );
             return;
         }
 
         setIsSaving(true);
         try {
             await postData('', form);
-            toast.success('Payroll run created as draft');
+            toast.success('Payroll run has been created as a draft.');
             setIsModalOpen(false);
             setForm(EMPTY_FORM);
             loadRuns();
         } catch (error: any) {
-            console.error("Create error:", error);
-            toast.error(error?.message || 'Failed to create payroll run');
+            console.error('Create error:', error);
+            toast.error(
+                error?.message || 'Unable to create the payroll run. Please try again.'
+            );
         } finally {
             setIsSaving(false);
         }
@@ -108,12 +152,34 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
         setIsProcessing(true);
         try {
             await postData(`/${processingTarget.id}/process`, {});
-            toast.success('Payroll run processed — payslips generated');
+            toast.success('Payroll run processed successfully. Payslips have been generated.');
             setProcessingTarget(null);
             loadRuns();
         } catch (error: any) {
-            console.error("Process error:", error);
-            toast.error(error?.message || 'Failed to process payroll run');
+            console.error('Process error:', error);
+
+            if (
+                error instanceof ApiError &&
+                error.response?.employees_with_incomplete_bank
+            ) {
+                const incomplete = error.response.employees_with_incomplete_bank;
+                const count = incomplete.length;
+                const names = incomplete
+                    .slice(0, 3)
+                    .map((e: any) => e.employee_name)
+                    .join(', ');
+                const more = count > 3 ? ` and ${count - 3} more` : '';
+
+                toast.error(
+                    `Payroll processing is unavailable: ${count} employee${count === 1 ? ' has' : 's have'
+                    } incomplete bank information (${names}${more}). Please update the affected records in the Bank Accounts module before proceeding.`,
+                    { duration: 8000 }
+                );
+            } else {
+                toast.error(
+                    error?.message || 'Unable to process the payroll run. Please try again.'
+                );
+            }
         } finally {
             setIsProcessing(false);
         }
@@ -124,12 +190,14 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
         setIsVoiding(true);
         try {
             await putData(`/${voidTarget.id}`, { status: 'voided' });
-            toast.success('Payroll run voided');
+            toast.success('Payroll run has been voided.');
             setVoidTarget(null);
             loadRuns();
         } catch (error: any) {
-            console.error("Void error:", error);
-            toast.error(error?.message || 'Failed to void payroll run');
+            console.error('Void error:', error);
+            toast.error(
+                error?.message || 'Unable to void the payroll run. Please try again.'
+            );
         } finally {
             setIsVoiding(false);
         }
@@ -139,21 +207,18 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
         if (!deleteTarget) return;
         setIsDeleting(true);
         try {
-            // Just call DELETE - backend will handle voiding if needed
             await deleteData(`/${deleteTarget.id}`);
-            toast.success('Payroll run deleted successfully');
+            toast.success('Payroll run has been deleted successfully.');
             setDeleteTarget(null);
             loadRuns();
         } catch (error: any) {
-            console.error("Delete error:", error);
-            toast.error(error?.message || 'Failed to delete payroll run');
+            console.error('Delete error:', error);
+            toast.error(
+                error?.message || 'Unable to delete the payroll run. Please try again.'
+            );
         } finally {
             setIsDeleting(false);
         }
-    };
-
-    const handleDeleteClick = (run: any) => {
-        setDeleteTarget(run);
     };
 
     const sortedRuns = useMemo(() => {
@@ -174,9 +239,8 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
         if (currentPage > totalPages) setCurrentPage(totalPages);
     }, [totalPages, currentPage]);
 
-    const formatCurrency = (amount: number) => {
-        return `₱${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-    };
+    const formatCurrency = (amount: number) =>
+        `₱${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
     return (
         <div className="space-y-5">
@@ -186,15 +250,22 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                         <ClipboardList className="h-4.5 w-4.5 text-accent" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="text-base font-semibold font-bricolage text-ink leading-tight">Payroll Runs</h3>
+                        <h3 className="text-base font-semibold font-bricolage text-ink leading-tight">
+                            Payroll Runs
+                        </h3>
                         <p className="text-xs text-muted font-rethink">
                             {runs.length} run{runs.length === 1 ? '' : 's'} on record
                         </p>
                     </div>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="shrink-0 font-rethink">
-                    <Plus className="h-4 w-4 mr-1.5" />
-                    New Payroll Run
+                <Button
+                    onClick={handleNewRunClick}
+                    className="shrink-0 font-rethink"
+                >
+                    <span className="inline-flex flex-row items-center gap-1.5 whitespace-nowrap">
+                        <Plus className="h-4 w-4 shrink-0" />
+                        <span>New Payroll Run</span>
+                    </span>
                 </Button>
             </div>
 
@@ -206,7 +277,7 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                     </div>
                 ) : runs.length === 0 ? (
                     <CardBody className="p-6 sm:p-8">
-                        <Alert variant="info" message="No payroll runs yet. Create one to start processing payslips." />
+                        <Alert variant="info" message="No payroll runs have been created yet. Create one to begin processing payslips." />
                     </CardBody>
                 ) : (
                     <>
@@ -214,24 +285,12 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="border-b-2 border-line bg-paper dark:border-line/30">
-                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Period
-                                        </th>
-                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Schedule
-                                        </th>
-                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Status
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Payslips
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Total Net Pay
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Actions
-                                        </th>
+                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Period</th>
+                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Schedule</th>
+                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Status</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Payslips</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Total Net Pay</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -255,8 +314,7 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                                                     {PAY_SCHEDULE_LABELS[run.pay_schedule] || run.pay_schedule}
                                                 </td>
                                                 <td className="px-5 py-3.5 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize font-rethink ${STATUS_STYLES[run.status] || 'bg-ink/5 text-ink/70 border-line dark:bg-ink/10 dark:border-line/30'
-                                                        }`}>
+                                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize font-rethink ${STATUS_STYLES[run.status] || 'bg-ink/5 text-ink/70 border-line dark:bg-ink/10 dark:border-line/30'}`}>
                                                         {run.status}
                                                     </span>
                                                 </td>
@@ -293,9 +351,8 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                                                                 <Ban className="h-3.5 w-3.5" />
                                                             </button>
                                                         )}
-                                                        {/* Delete button for ALL runs */}
                                                         <button
-                                                            onClick={() => handleDeleteClick(run)}
+                                                            onClick={() => setDeleteTarget(run)}
                                                             className="flex h-7 w-7 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-300 transition-colors dark:border-red-800/30 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
                                                             aria-label="Delete payroll run"
                                                         >
@@ -327,8 +384,7 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                                                 <p className="text-sm font-medium text-ink font-rethink">
                                                     {formatDate(run.period_start)} – {formatDate(run.period_end)}
                                                 </p>
-                                                <span className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize font-rethink ${STATUS_STYLES[run.status] || 'bg-ink/5 text-ink/70 border-line dark:bg-ink/10 dark:border-line/30'
-                                                    }`}>
+                                                <span className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize font-rethink ${STATUS_STYLES[run.status] || 'bg-ink/5 text-ink/70 border-line dark:bg-ink/10 dark:border-line/30'}`}>
                                                     {run.status}
                                                 </span>
                                             </div>
@@ -366,7 +422,7 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                onClick={() => handleDeleteClick(run)}
+                                                onClick={() => setDeleteTarget(run)}
                                                 className="flex-1 min-w-[60px] border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800/30 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
                                             >
                                                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
@@ -387,9 +443,8 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                 )}
             </Card>
 
-            {/* Create Modal */}
             {isModalOpen && (
-                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Payroll Run" className="max-w-lg">
+                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Payroll Run" className="max-w-lg" accent="blue" icon={ClipboardList}>
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
                             <div>
@@ -444,22 +499,28 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                 </Modal>
             )}
 
-            {/* Process Confirmation Modal */}
             {processingTarget && (
-                <Modal isOpen={!!processingTarget} onClose={() => setProcessingTarget(null)} title="Process Payroll Run" className="max-w-md">
+                <Modal isOpen={!!processingTarget} onClose={() => setProcessingTarget(null)} title="Process Payroll Run" className="max-w-md" accent="green" icon={PlayCircle}>
                     <div className="space-y-5">
                         <div className="flex items-start gap-4 rounded-xl border border-emerald-200/60 bg-emerald-50/50 px-4 py-4 dark:border-emerald-800/30 dark:bg-emerald-950/30">
                             <PlayCircle className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5 dark:text-emerald-400" />
                             <p className="text-sm text-emerald-800/90 font-rethink leading-relaxed dark:text-emerald-300/90">
-                                Generate payslips for {formatDate(processingTarget.period_start)} – {formatDate(processingTarget.period_end)}?
-                                This computes SSS, PhilHealth, and Pag-IBIG shares for every active employee based on their attendance.
+                                Generate payslips for {formatDate(processingTarget.period_start)} – {formatDate(processingTarget.period_end)}? This computes SSS, PhilHealth, and Pag-IBIG contributions for every active employee based on their attendance.
                             </p>
                         </div>
+
+                        <div className="flex items-start gap-3 rounded-lg border border-amber-200/60 bg-amber-50/50 px-3 py-2.5 dark:border-amber-800/30 dark:bg-amber-950/30">
+                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
+                            <p className="text-xs text-amber-800/90 dark:text-amber-300/90 font-rethink leading-snug">
+                                All active employees are required to have complete bank information on file before this payroll run can be processed.
+                            </p>
+                        </div>
+
                         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5">
                             <Button type="button" variant="outline" onClick={() => setProcessingTarget(null)} disabled={isProcessing} className="w-full sm:w-auto font-rethink">
                                 Cancel
                             </Button>
-                            <Button type="button" onClick={confirmProcess} disabled={isProcessing} className="w-full sm:w-auto font-rethink shadow-sm">
+                            <Button type="button" onClick={confirmProcess} disabled={isProcessing} className="w-full sm:w-auto font-rethink">
                                 {isProcessing ? 'Processing…' : 'Process Run'}
                             </Button>
                         </div>
@@ -467,22 +528,20 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                 </Modal>
             )}
 
-            {/* Void Confirmation Modal */}
             {voidTarget && (
-                <Modal isOpen={!!voidTarget} onClose={() => setVoidTarget(null)} title="Void Payroll Run" className="max-w-md">
+                <Modal isOpen={!!voidTarget} onClose={() => setVoidTarget(null)} title="Void Payroll Run" className="max-w-md" accent="red" icon={AlertTriangle}>
                     <div className="space-y-5">
                         <div className="flex items-start gap-4 rounded-xl border border-red-200/60 bg-red-50/50 px-4 py-4 dark:border-red-800/30 dark:bg-red-950/30">
                             <AlertTriangle className="h-5 w-5 shrink-0 text-red-500 mt-0.5" />
                             <p className="text-sm text-red-800/90 font-rethink leading-relaxed dark:text-red-300/90">
-                                Void the run for {formatDate(voidTarget.period_start)} – {formatDate(voidTarget.period_end)}?
-                                This will mark the run as voided and cannot be undone.
+                                Void the run for {formatDate(voidTarget.period_start)} – {formatDate(voidTarget.period_end)}? This action will mark the run as voided and cannot be undone.
                             </p>
                         </div>
                         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5">
                             <Button type="button" variant="outline" onClick={() => setVoidTarget(null)} disabled={isVoiding} className="w-full sm:w-auto font-rethink">
                                 Cancel
                             </Button>
-                            <Button type="button" variant="destructive" onClick={confirmVoid} disabled={isVoiding} className="w-full sm:w-auto font-rethink shadow-sm">
+                            <Button type="button" variant="danger" onClick={confirmVoid} disabled={isVoiding} className="w-full sm:w-auto font-rethink">
                                 {isVoiding ? 'Voiding…' : 'Void Run'}
                             </Button>
                         </div>
@@ -490,9 +549,8 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                 </Modal>
             )}
 
-            {/* Delete Confirmation Modal */}
             {deleteTarget && (
-                <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Payroll Run" className="max-w-md">
+                <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Payroll Run" className="max-w-md" accent="red" icon={AlertTriangle}>
                     <div className="space-y-5">
                         <div className="flex items-start gap-4 rounded-xl border border-red-200/60 bg-red-50/50 px-4 py-4 dark:border-red-800/30 dark:bg-red-950/30">
                             <AlertTriangle className="h-5 w-5 shrink-0 text-red-500 mt-0.5" />
@@ -502,7 +560,7 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                                 </p>
                                 {deleteTarget.status !== 'draft' && (
                                     <p className="text-xs text-amber-600/80 dark:text-amber-400/80 font-rethink">
-                                        ⚠️ This run is <strong>{deleteTarget.status}</strong>. It will be voided first, then permanently deleted.
+                                        This run is currently marked as <strong>{deleteTarget.status}</strong>. It will be voided first, then permanently deleted.
                                     </p>
                                 )}
                                 <p className="text-xs text-red-600/80 dark:text-red-400/80 font-rethink">
@@ -514,7 +572,7 @@ const PayrollRunManager = ({ onViewPayslips }: PayrollRunManagerProps) => {
                             <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="w-full sm:w-auto font-rethink">
                                 Cancel
                             </Button>
-                            <Button type="button" variant="destructive" onClick={confirmDelete} disabled={isDeleting} className="w-full sm:w-auto font-rethink shadow-sm">
+                            <Button type="button" variant="danger" onClick={confirmDelete} disabled={isDeleting} className="w-full sm:w-auto font-rethink">
                                 {isDeleting ? (
                                     <>
                                         <span className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white/30 border-t-white" />

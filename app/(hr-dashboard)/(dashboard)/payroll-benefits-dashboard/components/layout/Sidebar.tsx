@@ -8,9 +8,11 @@ import { useEffect, useState } from 'react';
 import {
     LayoutDashboard,
     Wallet,
+    Settings2,
     TrendingUp,
     Receipt,
     HeartPulse,
+    Building2,
     BarChart3,
     Bot,
     X,
@@ -23,32 +25,43 @@ const MODULES = [
         icon: Wallet,
         label: 'Payroll',
         full: 'Payroll Management',
-        href: '/payroll-benefits-dashboard/payroll'
+        href: '/payroll-benefits-dashboard/payroll',
+    },
+    {
+        icon: Settings2,
+        label: 'Job Settings',
+        full: 'Job Position Rates & Settings',
+        href: '/payroll-benefits-dashboard/job-settings',
+    },
+    {
+        icon: Building2,
+        label: 'Bank Details',
+        full: 'Employee Bank Accounts',
+        href: '/payroll-benefits-dashboard/bank',
     },
     {
         icon: TrendingUp,
         label: 'Compensation',
         full: 'Compensation Planning',
-        href: '/payroll-benefits-dashboard/compensation-planning'
+        href: '/payroll-benefits-dashboard/compensation',
     },
     {
         icon: Receipt,
         label: 'Claims',
         full: 'Claims and Reimbursement',
-        href: '/payroll-benefits-dashboard/claims-and-reimbursement'
+        href: '/payroll-benefits-dashboard/claims',
     },
     {
-        // UPDATED: Now points to your new Government Contributions dashboard
         icon: HeartPulse,
         label: 'Benefits',
-        full: 'Benefits & Gov\'t Contributions',
-        href: '/payroll-benefits-dashboard/benefits'
+        full: "Benefits & Gov't Contributions",
+        href: '/payroll-benefits-dashboard/benefits',
     },
     {
         icon: BarChart3,
         label: 'Analytics',
         full: 'HR Analytics Dashboard',
-        href: '/payroll-benefits-dashboard/hr-analytics-dashboard'
+        href: '/payroll-benefits-dashboard/hr-analytics-dashboard',
     },
 ];
 
@@ -104,7 +117,6 @@ export default function Sidebar() {
                     className={`flex h-full w-72 flex-col transition-[width] duration-300 ease-out sm:w-64 ${isCollapsed ? 'sm:w-[76px]' : 'sm:w-64'
                         }`}
                 >
-                    {/* mobile close */}
                     <div className="flex items-center justify-between px-5 pt-5 sm:hidden">
                         <span className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-accent">
                             Menu
@@ -119,7 +131,6 @@ export default function Sidebar() {
                         </button>
                     </div>
 
-                    {/* brand header */}
                     <div
                         className={`flex h-16 items-center border-b border-line px-5 dark:border-line ${isCollapsed ? 'sm:justify-center sm:px-3' : ''
                             }`}
@@ -157,7 +168,6 @@ export default function Sidebar() {
                         </motion.div>
                     </div>
 
-                    {/* nav */}
                     <nav className="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-6">
                         <div>
                             {!isCollapsed && (
@@ -276,7 +286,6 @@ export default function Sidebar() {
                         </div>
                     </nav>
 
-                    {/* footer identity */}
                     {user && (
                         <div className={`mt-auto border-t border-line px-4 py-4 dark:border-line ${isCollapsed ? 'sm:px-2' : ''}`}>
                             <div className={`flex items-center gap-2.5 ${isCollapsed ? 'sm:justify-center' : ''}`}>

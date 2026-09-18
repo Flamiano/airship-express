@@ -141,6 +141,13 @@ export interface HR4EmployeePayrollInfo {
   bank_name: string | null;
   bank_account_no: string | null;
   is_active: boolean | null;
+  custom_daily_rate: number | null;
+  salary_adjustment_reason: string | null;
+  incentives: number | null;
+  incentive_description: string | null;
+  last_modified_by: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -155,6 +162,11 @@ export interface HR4PayrollRun {
   created_by: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface HR4PayrollRunWithTotals extends HR4PayrollRun {
+  payslip_count: number;
+  total_net_pay: number;
 }
 
 export interface HR4Payslip {
@@ -179,6 +191,11 @@ export interface HR4Payslip {
   regular_hours: number | null;
   overtime_hours: number | null;
   created_at: string | null;
+}
+
+export interface HR4PayslipWithEmployee extends HR4Payslip {
+  employee_name: string | null;
+  employee_id_number: string | null;
 }
 
 export interface PayrollComputationResult {
@@ -206,4 +223,248 @@ export interface PayrollComputationResult {
   other_deductions: number;
   total_deductions: number;
   net_pay: number;
+}
+
+export type HR4BankTypeCategory = "traditional" | "digital" | "e_wallet";
+
+export interface HR4BankType {
+  id: number;
+  bank_code: string;
+  bank_name: string;
+  bank_type: HR4BankTypeCategory;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface HR4BankAccount {
+  id: number;
+  employee_id: string;
+  bank_type_id: number;
+  account_number: string;
+  account_name: string;
+  is_primary: boolean;
+  is_active: boolean | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
+  last_modified_by: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface HR4BankAccountWithType extends HR4BankAccount {
+  hr4_bank_types: HR4BankType | null;
+}
+
+export interface HR4BankAccountFormatted {
+  id: number;
+  employee_id: string;
+  employee_name: string;
+  employee_id_number: string | null;
+  bank_type_id: number;
+  bank_type_name: string | null;
+  bank_type_code: string | null;
+  bank_type_category: HR4BankTypeCategory | null;
+  account_number: string;
+  account_name: string;
+  is_primary: boolean;
+  is_active: boolean | null;
+  verified_at: string | null;
+  verified_by_name: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type HR4BankHistoryAction =
+  | "created"
+  | "updated"
+  | "deleted"
+  | "verified"
+  | "unverified";
+
+export interface HR4BankHistory {
+  id: number;
+  employee_id: string;
+  previous_bank_type_id: number | null;
+  new_bank_type_id: number | null;
+  previous_account_number: string | null;
+  new_account_number: string | null;
+  previous_account_name: string | null;
+  new_account_name: string | null;
+  action: HR4BankHistoryAction;
+  performed_by: string | null;
+  performed_by_name: string | null;
+  performed_by_email: string | null;
+  created_at: string | null;
+}
+
+export interface HR4BankPassAttempt {
+  id: string;
+  admin_id: string;
+  attempts: number;
+  last_attempt_at: string | null;
+  locked_until: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BankRevealStatus {
+  success: boolean;
+  attempts: number;
+  remaining: number;
+  locked: boolean;
+  minutesLeft: number;
+  maxAttempts: number;
+}
+
+export interface BankRevealPasswordResponse {
+  success: boolean;
+  expiresIn: number;
+  admin: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: AppRole;
+  };
+}
+
+export interface EmployeeBankDetails {
+  employee_id: string;
+  employee_name: string;
+  employee_id_number: string;
+  bank_account: {
+    id: number;
+    bank_type_id: number;
+    bank_code: string | null;
+    bank_name: string | null;
+    bank_type: HR4BankTypeCategory | null;
+    account_number: string;
+    account_name: string;
+    is_primary: boolean;
+    is_active: boolean | null;
+    verified_at: string | null;
+    verified_by_name: string | null;
+  } | null;
+  has_complete_bank: boolean;
+}
+
+export interface HR4EmployeeIncentive {
+  id: string;
+  employee_id: string;
+  payroll_run_id: number;
+  amount: number;
+  description: string | null;
+  admin_id: string | null;
+  admin_name: string | null;
+  admin_email: string | null;
+  created_at: string;
+}
+
+export interface HR4EmployeeIncentiveFormatted extends HR4EmployeeIncentive {
+  employee_name: string;
+  employee_id_number: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  pay_schedule: HR4PaySchedule | null;
+  run_status: HR4PayrollRunStatus | null;
+  is_active_now: boolean;
+}
+
+export type HR4RateChangeScope = "employee" | "position";
+
+export interface HR4RateChangeLog {
+  id: string;
+  scope: HR4RateChangeScope;
+  employee_id: string | null;
+  job_position_id: string | null;
+  admin_id: string | null;
+  admin_name: string | null;
+  admin_email: string | null;
+  action: string;
+  previous_daily_rate: number | null;
+  new_daily_rate: number | null;
+  previous_incentives: number | null;
+  new_incentives: number | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface EmployeePayrollInfoRow {
+  id: number | null;
+  employee_id: string;
+  employee_name: string;
+  employee_id_number: string;
+  job_title: string | null;
+  department: string | null;
+  position_daily_rate: number;
+  effective_daily_rate: number;
+  custom_daily_rate: number | null;
+  has_custom_rate: boolean;
+  salary_adjustment_reason: string | null;
+  daily_rate: number;
+  hours_per_day: number;
+  break_hours: number;
+  overtime_rate: number;
+  basic_salary: number | null;
+  pay_schedule: HR4PaySchedule | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+  has_complete_bank: boolean;
+  is_active: boolean;
+  attendance_status: string;
+  attendance_count: number;
+  date_hired: string | null;
+  incentives: number;
+  edited_by?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface JobPositionSettingsRow {
+  id: string;
+  job_position_id: string;
+  title: string;
+  department: string;
+  daily_rate: number;
+  basic_salary: number;
+  hours_per_day: number;
+  break_hours: number;
+  overtime_rate: number;
+  is_active: boolean;
+  last_modified_by: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+  edited_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HR2AttendanceLogRow {
+  id: string;
+  employee_id: string;
+  status: HR2AttendanceStatus;
+  shift_start: string;
+  shift_end: string;
+  terminal: string;
+  created_at: string | null;
+}
+
+export interface PayrollSummary {
+  active_employees: number;
+  today_attendance: number;
+  open_runs: number;
+  last_run_net_pay: number;
+  ytd_net_pay: number;
+}
+
+export interface IncompleteBankEmployee {
+  employee_id: string;
+  employee_name: string;
+  employee_id_number: string;
+  missing: string[];
 }

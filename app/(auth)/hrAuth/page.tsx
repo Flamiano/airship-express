@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff } from "lucide-react";
-import { createClient } from "@/app/(hr-dashboard)/supabase/client";
+import { supabase } from "@/app/(hr-dashboard)/supabase/client";
 import ToastProvider, {
     useToast,
 } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Toast";
@@ -14,8 +14,6 @@ import Loader from "@/app/components/Loader";
 function HRLoginContent() {
     const router = useRouter();
     const toast = useToast();
-    const supabase = createClient();
-
     const [employeeId, setEmployeeId] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);

@@ -4,11 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import { SkeletonTable } from "../../components/PageSkeleton";
-import { useParcelStore, receiveParcel, bulkDeliverParcels } from "@/app/lib/parcelStore";
-import { updateParcelStatus } from "@/app/lib/api";
-import { COURIER_NAMES, CourierName, Parcel, ParcelType, PARCEL_STATUS_LABEL } from "@/app/lib/parcelTypes";
+import { useParcelStore, receiveParcel, bulkDeliverParcels } from "../../lib/parcelStore";
+import { updateParcelStatus } from "../../lib/api";
+import { COURIER_NAMES, CourierName, Parcel, ParcelType, PARCEL_STATUS_LABEL } from "../../lib/parcelTypes";
 import { QRCodeSVG } from "qrcode.react";
-import { getParcelGroupKey } from "@/app/lib/parcelGrouping";
+import { getParcelGroupKey } from "../../lib/parcelGrouping";
 
 const PARCEL_TYPES: ParcelType[] = [
   "Document",
@@ -35,7 +35,7 @@ const COURIER_BRANDING: Record<CourierName, { label: string; badge: string; acce
 const STATUS_FILTERS = ["All", "RECEIVED", "PICKED_UP", "BOOKED", "IN_TRANSIT", "DELAYED", "DELIVERED"] as const;
 const SORT_OPTIONS = ["Newest", "Weight", "Destination"] as const;
 const STORAGE_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
-import { PERSISTED_SERVICE_AREA_KEY, ALL_SERVICE_AREA_SENTINEL, SERVICE_AREA_CITIES, SERVICE_CITY_BOUNDS, inferCityFromCoordinates } from "@/app/lib/serviceAreas";
+import { PERSISTED_SERVICE_AREA_KEY, ALL_SERVICE_AREA_SENTINEL, SERVICE_AREA_CITIES, SERVICE_CITY_BOUNDS, inferCityFromCoordinates } from "../../lib/serviceAreas";
 
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 type SortOption = (typeof SORT_OPTIONS)[number];
