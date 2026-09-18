@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import { Menu, Sun, Moon } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
+import { useShell } from "../../components/ShellContext";
 
 type PageHeaderProps = {
   icon: ReactNode;

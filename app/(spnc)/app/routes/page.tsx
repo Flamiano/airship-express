@@ -16,9 +16,9 @@ import {
   Search,
   Eye,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
-import PageHeader from "@/components/PageHeader";
-import LocationPicker from "@/components/LocationPicker";
+import { useShell } from "../../components/ShellContext";
+import PageHeader from "../../components/PageHeader";
+import LocationPicker from "../../components/LocationPicker";
 
 const MODES = ["Road", "Rail", "Air", "Sea", "Multimodal"];
 const STATUSES = ["Active", "Planned", "Discontinued"];

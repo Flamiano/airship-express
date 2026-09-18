@@ -20,8 +20,8 @@ import {
   Eye,
   Check,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
-import PageHeader from "@/components/PageHeader";
+import { useShell } from "../../components/ShellContext";
+import PageHeader from "../../components/PageHeader";
 
 const TYPES: { label: string; value: string }[] = [
   { label: "Carrier", value: "carrier" },

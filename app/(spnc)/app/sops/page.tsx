@@ -17,8 +17,8 @@ import {
   Search,
   Eye,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
-import PageHeader from "@/components/PageHeader";
+import { useShell } from "../../components/ShellContext";
+import PageHeader from "../../components/PageHeader";
 
 const CATEGORY_OPTIONS = ["handling", "documentation", "customs", "safety", "storage", "transport", "general"];
 const STATUS_OPTIONS = ["draft", "published", "under_review", "archived"];

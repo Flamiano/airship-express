@@ -1,5 +1,5 @@
 import { Oswald, IBM_Plex_Mono, Inter } from "next/font/google";
-import RegisterForm from "@/app/components/RegisterForm";
+import RegisterForm from "../../components/RegisterForm";
 
 const display = Oswald({
   subsets: ["latin"],

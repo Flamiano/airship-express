@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
-import DocumentLogo from "@/components/DocumentLogo";
+import DocumentLogo from "../../../components/DocumentLogo";
 
 type SOP = {
   id: string;
