@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import DocumentLogo from "@/components/DocumentLogo";
+import DocumentLogo from "../../../components/DocumentLogo";
 
 type Rate = {
   rate_code: string;
