@@ -54,7 +54,7 @@ export default function SOPDetailPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">
         <p className="text-sm text-gray-500">SOP not found.</p>
-        <button onClick={() => router.push("/sops")} className="text-sm text-[#F2419B] hover:underline">
+        <button onClick={() => router.push("/app/sops")} className="text-sm text-[#F2419B] hover:underline">
           Back to SOPs
         </button>
       </div>
@@ -66,7 +66,7 @@ export default function SOPDetailPage() {
       <div className="print-hidden mb-8 flex items-center justify-between">
         <button
           type="button"
-          onClick={() => router.push("/sops")}
+          onClick={() => router.push("/app/sops")}
           className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
         >
           <ArrowLeft size={16} />

@@ -472,7 +472,7 @@ export default function RoutesPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => router.push(`/routes/${r.id}`)}
+                                  onClick={() => router.push(`/app/routes/${r.id}`)}
                                   aria-label={`View ${r.route_code || r.route_name}`}
                                   title="View route details"
                                   className={`flex h-8 w-8 items-center justify-center rounded-md transition ${

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Calendar,
@@ -15,8 +15,8 @@ import {
   Search,
   Eye,
 } from "lucide-react";
-import { useShell } from "@/components/ShellContext";
-import PageHeader from "@/components/PageHeader";
+import { useShell } from "../../components/ShellContext";
+import PageHeader from "../../components/PageHeader";
 
 const FREQUENCY_OPTIONS = ["daily", "weekly", "bi_weekly", "monthly", "on_demand"];
 const UNIT_OPTIONS = ["kg", "container", "pallet", "teu"];
@@ -24,6 +24,8 @@ const STATUS_OPTIONS = ["scheduled", "delayed", "cancelled", "completed"];
 const FILTERS = ["All", ...STATUS_OPTIONS];
 const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const PAGE_SIZE = 5;
+const RECENT_SEARCHES_KEY = "schedules_recent_searches";
+const MAX_RECENT_SEARCHES = 5;
 
 type Provider = { id: string; name: string };
 
@@ -133,6 +135,9 @@ export default function SchedulesPage() {
 
   const [filter, setFilter] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   const [page, setPage] = useState(1);
   const [pageLoading, setPageLoading] = useState(false);
@@ -147,6 +152,57 @@ export default function SchedulesPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [form, setForm] = useState(emptyForm);
+
+  // Load recent searches once on mount.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {
+      // ignore malformed/unavailable storage
+    }
+  }, []);
+
+  // Close the recent-searches dropdown on outside click.
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target as Node)) {
+        setShowRecentSearches(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function persistRecentSearches(next: string[]) {
+    setRecentSearches(next);
+    try {
+      window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }
+
+  function commitSearch(term: string) {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    const deduped = [trimmed, ...recentSearches.filter((t) => t.toLowerCase() !== trimmed.toLowerCase())];
+    persistRecentSearches(deduped.slice(0, MAX_RECENT_SEARCHES));
+  }
+
+  function selectRecentSearch(term: string) {
+    setSearchTerm(term);
+    commitSearch(term);
+    setShowRecentSearches(false);
+  }
+
+  function removeRecentSearch(term: string) {
+    persistRecentSearches(recentSearches.filter((t) => t !== term));
+  }
+
+  function clearRecentSearches() {
+    persistRecentSearches([]);
+  }
 
   function statusColor(s: string) {
     switch (s) {
@@ -423,7 +479,7 @@ export default function SchedulesPage() {
             <Loader2 size={32} className="animate-spin text-[#F2419B]" />
             <p className="text-sm font-semibold text-[#F2419B]">Loading</p>
           </div>
-        ) : filteredSchedules.length === 0 ? (
+        ) : schedules.length === 0 ? (
           <p className={`text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>No schedules found.</p>
         ) : pageLoading ? (
           <div className="flex flex-col items-center gap-3 py-16">
@@ -434,7 +490,7 @@ export default function SchedulesPage() {
           <>
             <div className="space-y-4">
               <div className="flex justify-end">
-                <div className="relative w-full max-w-md">
+                <div className="relative w-full max-w-md" ref={searchWrapperRef}>
                   <Search
                     size={16}
                     className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${
@@ -445,6 +501,15 @@ export default function SchedulesPage() {
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => setShowRecentSearches(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        commitSearch(searchTerm);
+                        setShowRecentSearches(false);
+                      } else if (e.key === "Escape") {
+                        setShowRecentSearches(false);
+                      }
+                    }}
                     placeholder="Search schedule, route, provider..."
                     className={`w-full rounded-md border py-2.5 pl-10 pr-3 text-sm outline-none ${
                       isDark
@@ -452,6 +517,65 @@ export default function SchedulesPage() {
                         : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#F2419B]"
                     }`}
                   />
+
+                  {showRecentSearches && recentSearches.length > 0 && (
+                    <div
+                      className={`absolute left-0 right-0 top-full z-10 mt-1.5 overflow-hidden rounded-md border shadow-lg ${
+                        isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      <div
+                        className={`flex items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wide ${
+                          isDark ? "text-[#8FA0AF]" : "text-gray-500"
+                        }`}
+                      >
+                        <span>Recent searches</span>
+                        <button
+                          type="button"
+                          onClick={clearRecentSearches}
+                          className={`normal-case ${isDark ? "text-[#8FA0AF] hover:text-[#F2F1EC]" : "text-gray-400 hover:text-gray-700"}`}
+                        >
+                          Clear
+                        </button>
+                      </div>
+
+                      <ul>
+                        {recentSearches.map((term) => (
+                          <li key={term}>
+                            <div
+                              className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${
+                                isDark ? "text-[#C7D1DA] hover:bg-[#182230]" : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                              onMouseDown={(e) => {
+                                // onMouseDown fires before the input's onBlur/outside-click handler
+                                e.preventDefault();
+                                selectRecentSearch(term);
+                              }}
+                            >
+                              <span className="flex items-center gap-2">
+                                <Clock size={13} className={isDark ? "text-[#4B5A68]" : "text-gray-400"} />
+                                {term}
+                              </span>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  removeRecentSearch(term);
+                                }}
+                                aria-label={`Remove "${term}" from recent searches`}
+                                className={`opacity-0 transition group-hover:opacity-100 ${
+                                  isDark ? "text-[#4B5A68] hover:text-[#F2F1EC]" : "text-gray-300 hover:text-gray-600"
+                                }`}
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -515,7 +639,7 @@ export default function SchedulesPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => router.push(`/schedules/${s.id}`)}
+                                    onClick={() => router.push(`/app/schedules/${s.id}`)}
                                     aria-label={`View ${s.schedule_code}`}
                                     title="View schedule details"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md transition ${

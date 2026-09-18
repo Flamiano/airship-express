@@ -399,7 +399,7 @@ export default function SOPsPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => router.push(`/sops/${s.id}`)}
+                                    onClick={() => router.push(`/app/sops/${s.id}`)}
                                     aria-label={`View ${s.title}`}
                                     title="View SOP details"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
