@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
+import { supabase } from '@/app/(fms)/lib/supabase';
+import Loader from '@/app/components/Loader';
 
 export default function fmsAuth() {
     const router = useRouter();
@@ -24,37 +26,55 @@ export default function fmsAuth() {
         }
 
         setIsSubmitting(true);
+
         try {
-            const res = await fetch('/api/auth/payroll-login', {
+            const res = await fetch('/api/auth/fms-login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ employeeId, password }),
             });
 
+            const data = await res.json().catch(() => null);
+
             if (!res.ok) {
-                const data = await res.json().catch(() => null);
                 setError(data?.message ?? 'Employee ID or password is incorrect.');
+                setIsSubmitting(false);
                 return;
             }
 
-            router.push('/payroll');
+            if (data?.session) {
+                const { error: sessionError } = await supabase.auth.setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                });
+
+                if (sessionError) {
+                    console.error('Session sync error:', sessionError);
+                    setError('Login succeeded, but your session could not be established.');
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            router.push(data?.redirectTo || '/dashboard');
+            router.refresh();
         } catch {
             setError('Something went wrong. Try again.');
-        } finally {
             setIsSubmitting(false);
         }
     }
 
     return (
         <div className="h-dvh w-full bg-paper text-ink font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px]">
+            {isSubmitting && <Loader />}
+
             {/* Left: editorial panel */}
             <div className="relative hidden lg:flex flex-col justify-between border-r border-line px-16 py-14 overflow-hidden">
-                {/* Signature: a small rotated access tag, kept quiet so the logo leads */}
                 <div className="absolute bottom-14 right-14 rotate-[-6deg] select-none">
                     <div className="flex items-center gap-2 rounded-full border border-line px-4 py-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                         <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
-                            HR Access
+                            FMS Access
                         </span>
                     </div>
                 </div>
@@ -81,24 +101,24 @@ export default function fmsAuth() {
                     transition={{ duration: 0.55, ease: 'easeOut', delay: 0.1 }}
                 >
                     <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
-                        HR &amp; Payroll
+                        Financial Management
                     </p>
                     <h1 className="mt-5 font-bricolage text-[44px] font-medium leading-[1.05] tracking-tight">
-                        Every route starts
+                        Every transaction
                         <br />
-                        with the crew
+                        starts with the
                         <br />
-                        behind it.
+                        ledger behind it.
                     </h1>
                     <p className="mt-5 text-[15px] leading-relaxed text-muted">
-                        Sign in to process payslips, review attendance, and keep the
-                        people who move every package, moving.
+                        Sign in to process general ledgers, monitor collections, track cash flows,
+                        and ensure seamless financial operations.
                     </p>
                 </motion.div>
 
                 <div className="flex items-center gap-2 text-[12px] text-muted">
                     <span className="h-1 w-1 rounded-full bg-accent" />
-                    Internal use only &middot; Airship Express Payroll System
+                    Internal use only &middot; Airship Express Financial Management System
                 </div>
             </div>
 
@@ -125,10 +145,10 @@ export default function fmsAuth() {
                         Welcome back
                     </p>
                     <h2 className="mt-2 sm:mt-3 font-bricolage text-[24px] sm:text-[28px] lg:text-[30px] font-medium tracking-tight">
-                        Sign in to Payroll
+                        Sign in to Transaction Core
                     </h2>
                     <p className="mt-2 sm:mt-2.5 text-[13.5px] sm:text-[14.5px] leading-relaxed text-muted">
-                        Use the employee ID and password issued by HR.
+                        Use the employee ID and password issued for financial access.
                     </p>
 
                     <form
@@ -215,12 +235,12 @@ export default function fmsAuth() {
                     </form>
 
                     <p className="mt-6 sm:mt-9 lg:mt-12 text-center text-[12px] sm:text-[12.5px] text-muted">
-                        Trouble accessing your account? Contact HR at{' '}
+                        Trouble accessing your account? Contact Finance at{' '}
                         <a
-                            href="mailto:hr@airshipexpress.com"
+                            href="mailto:finance@airshipexpress.com"
                             className="font-medium text-accent transition-colors hover:text-accent-dark"
                         >
-                            hr@airshipexpress.com
+                            finance@airshipexpress.com
                         </a>
                     </p>
                 </motion.div>
