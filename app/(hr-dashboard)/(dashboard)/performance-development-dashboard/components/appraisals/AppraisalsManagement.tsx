@@ -1,0 +1,413 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ClipboardList, Plus, RefreshCw, Search } from "lucide-react";
+import type {
+  AppraisalCreateInput,
+  AppraisalGoalRatingInput,
+  AppraisalCompetencyRatingInput,
+  AppraisalScoringInputs,
+  CurrentPerDevUser,
+  EmployeeOption,
+  PerformanceAppraisal,
+  PerformanceCycle,
+} from "@/performance-development-dashboard/types";
+import { useAppraisalApi } from "@/performance-development-dashboard/hooks/useAppraisalApi";
+import { SkeletonList } from "@/performance-development-dashboard/components/ui/Skeleton";
+import { AppraisalCard } from "@/performance-development-dashboard/components/appraisals/AppraisalCard";
+import { AppraisalDetailModal } from "@/performance-development-dashboard/components/appraisals/AppraisalDetailModal";
+import { CreateAppraisalModal } from "@/performance-development-dashboard/components/appraisals/CreateAppraisalModal";
+
+type Props = {
+  serverUser: CurrentPerDevUser;
+  isHrAdmin: boolean;
+  isManager: boolean;
+  initialAppraisals: PerformanceAppraisal[];
+  initialError?: string;
+  employees: EmployeeOption[];
+  cycles: PerformanceCycle[];
+  employeeNamesById: Record<string, string>;
+  reviewerByAccountNameById: Record<string, string | null>;
+  currentUserEmployeeId: string | null;
+  defaultEmployeeId?: string | null;
+};
+
+export function AppraisalsManagement({
+  serverUser,
+  isHrAdmin,
+  isManager,
+  initialAppraisals,
+  initialError,
+  employees,
+  cycles,
+  employeeNamesById,
+  currentUserEmployeeId,
+  defaultEmployeeId,
+}: Props) {
+  const api = useAppraisalApi();
+
+  const [appraisals, setAppraisals] =
+    useState<PerformanceAppraisal[]>(initialAppraisals);
+  const [error, setError] = useState<string | null>(initialError ?? null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selected, setSelected] = useState<PerformanceAppraisal | null>(null);
+  const [scoringInputs, setScoringInputs] = useState<AppraisalScoringInputs | null>(
+    null
+  );
+  const [scoringLoading, setScoringLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const modalOpenRef = useRef(false);
+
+  const resolvedEmployeeNamesById = useMemo(() => {
+    const names = { ...employeeNamesById };
+    for (const employee of employees) {
+      names[employee.id] = employee.name;
+    }
+    return names;
+  }, [employeeNamesById, employees]);
+
+  const cycleNamesById = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const cycle of cycles) {
+      names[cycle.id] = cycle.name;
+    }
+    return names;
+  }, [cycles]);
+
+  function resolveEmployeeName(
+    employeeId: string | null | undefined
+  ): string {
+    if (!employeeId) return "Unknown employee";
+    return resolvedEmployeeNamesById[employeeId] ?? "Unknown employee";
+  }
+
+  const firstName = serverUser.fullName.split(" ")[0] || "there";
+
+  const displayed = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return appraisals;
+    return appraisals.filter((appraisal) => {
+      const employeeName = (
+        resolvedEmployeeNamesById[appraisal.employee_id] ?? ""
+      ).toLowerCase();
+      const reviewerName = (
+        resolvedEmployeeNamesById[appraisal.reviewer_id] ?? ""
+      ).toLowerCase();
+      return (
+        appraisal.review_period.toLowerCase().includes(query) ||
+        employeeName.includes(query) ||
+        reviewerName.includes(query)
+      );
+    });
+  }, [appraisals, search, resolvedEmployeeNamesById]);
+
+  async function replaceAndRefresh(updatedRow: PerformanceAppraisal) {
+    const refreshed = await api.list();
+    setAppraisals(refreshed);
+    if (!modalOpenRef.current) return;
+    try {
+      const full = await api.getOne(updatedRow.id);
+      if (modalOpenRef.current) setSelected(full);
+    } catch {
+      if (modalOpenRef.current) {
+        setSelected(
+          refreshed.find((appraisal) => appraisal.id === updatedRow.id) ??
+            updatedRow
+        );
+      }
+    }
+    setError(null);
+  }
+
+  async function handleOpen(appraisal: PerformanceAppraisal) {
+    modalOpenRef.current = true;
+    setSelected(appraisal);
+    setScoringInputs(null);
+    setScoringLoading(true);
+    try {
+      const full = await api.getOne(appraisal.id);
+      if (modalOpenRef.current) setSelected(full);
+    } catch {
+      if (modalOpenRef.current) setSelected(appraisal);
+    } finally {
+      if (modalOpenRef.current) setScoringLoading(false);
+    }
+
+    if (
+      (appraisal.status === "manager_assessment" &&
+        !!appraisal.currentUserIsEvaluator) ||
+      (isHrAdmin &&
+        appraisal.status === "manager_assessment" &&
+        !!appraisal.currentUserIsHrReviewer)
+    ) {
+      setScoringLoading(true);
+      try {
+        setScoringInputs(await api.getScoringInputs(appraisal.id));
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load scoring inputs for this appraisal."
+        );
+      } finally {
+        if (modalOpenRef.current) setScoringLoading(false);
+      }
+    }
+  }
+
+  async function handleCreate(input: Record<string, unknown>) {
+    setCreating(true);
+    await api
+      .runCreate({
+        employee_id: String(input.employee_id ?? ""),
+        cycle_id: String(input.cycle_id ?? ""),
+        review_period: String(input.review_period ?? ""),
+      } satisfies AppraisalCreateInput)
+      .then((created) => {
+        setAppraisals((previous) => [created, ...previous]);
+        setCreateOpen(false);
+        toast.success("Appraisal created.");
+      })
+      .finally(() => setCreating(false));
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      const list = await api.list();
+      setAppraisals(list);
+      setError(null);
+      toast.success("Appraisals refreshed.");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to refresh appraisals."
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function handleSelfAssessment(input: {
+    strengths?: string;
+    improvements?: string;
+  }) {
+    if (!selected) return;
+    const updated = await api.runSubmitSelfAssessment(selected.id, input);
+    await replaceAndRefresh(updated);
+    toast.success("Self assessment submitted.");
+  }
+
+  async function handleManagerAssessment(input: {
+    goalRatings: AppraisalGoalRatingInput[];
+    competencyRatings: AppraisalCompetencyRatingInput[];
+    comments: string;
+  }) {
+    if (!selected) return;
+    const updated = await api.runSubmitManagerAssessment(selected.id, input);
+    await replaceAndRefresh(updated);
+    toast.success("Manager assessment submitted.");
+    // Re-fetch scoring inputs so the read-only submitted view shows persisted
+    // result rows (existing_goal_ratings / existing_competency_ratings).
+    if (modalOpenRef.current) {
+      try {
+        setScoringInputs(await api.getScoringInputs(updated.id));
+      } catch {
+        // Best-effort: if scoring re-fetch fails, the modal still works
+      }
+    }
+  }
+
+  async function handleFinalize() {
+    if (!selected) return;
+    const updated = await api.runFinalize(selected.id);
+    await replaceAndRefresh(updated);
+    setScoringInputs(null);
+    toast.success("Appraisal finalized.");
+  }
+
+  async function handleAcknowledge() {
+    if (!selected) return;
+    const updated = await api.runAcknowledge(selected.id);
+    await replaceAndRefresh(updated);
+    toast.success("Appraisal acknowledged.");
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
+            Appraisals
+          </h1>
+          <p className="mt-2 max-w-xl text-[13px] text-muted">
+            {isHrAdmin
+              ? `Hello ${firstName}. Initiate formal evaluations and move each appraisal through its stages: self assessment, manager assessment, finalized, acknowledged.`
+              : isManager
+                ? `Hello ${firstName}. Evaluate your direct reports by rating their Goals/KPI and Competencies and submitting the Manager Assessment.`
+                : `Hello ${firstName}. Your formal appraisal record, from your self assessment through final acknowledgement.`}
+          </p>
+        </div>
+
+        {(isHrAdmin || isManager) && (
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
+            >
+              <RefreshCw
+                size={14}
+                strokeWidth={1.75}
+                className={refreshing ? "animate-spin" : ""}
+              />
+              Refresh
+            </button>
+            {isHrAdmin && (
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                disabled={creating}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus size={15} strokeWidth={2} />
+                Add appraisal
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-paper px-4 py-4 dark:border-paper/10">
+        <label className="relative block w-full sm:max-w-[320px]">
+          <span className="sr-only">Search appraisals</span>
+          <Search
+            size={14}
+            strokeWidth={1.75}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search review periods or people..."
+            className="w-full rounded-lg border border-line bg-paper py-2 pl-9 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+          />
+        </label>
+      </div>
+
+      {error && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
+          <p className="text-[13px] font-medium text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="text-[12.5px] font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {refreshing ? (
+        <div aria-busy="true" role="status">
+          <SkeletonList rows={3} />
+        </div>
+      ) : displayed.length === 0 && !error ? (
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
+          <ClipboardList size={22} strokeWidth={1.5} className="text-muted" />
+          <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
+            {isHrAdmin
+              ? search
+                ? "No matching appraisals"
+                : "No appraisals yet"
+              : search
+                ? "No matching appraisals"
+                : "No appraisals yet"}
+          </p>
+          <p className="max-w-sm text-[13px] text-muted">
+            {search
+              ? "Try a different search term."
+              : isHrAdmin
+                ? "Initiate the first appraisal to start a formal evaluation cycle."
+                : isManager
+                  ? "No direct reports have appraisals assigned yet."
+                  : "Your performance team has not initiated an appraisal for you yet."}
+          </p>
+          {isHrAdmin && !search && (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
+            >
+              <Plus size={15} strokeWidth={2} />
+              Add your first appraisal
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {displayed.map((appraisal) => (
+            <AppraisalCard
+              key={appraisal.id}
+              appraisal={appraisal}
+              employeeName={resolveEmployeeName(appraisal.employee_id)}
+              evaluatorName={resolveEmployeeName(appraisal.evaluator_id)}
+              reviewerByAccountName={appraisal.reviewerByAccountName}
+              cycleName={
+                appraisal.cycleName ??
+                (appraisal.cycle_id
+                  ? (cycleNamesById[appraisal.cycle_id] ?? null)
+                  : null)
+              }
+              onOpen={() => handleOpen(appraisal)}
+            />
+          ))}
+        </div>
+      )}
+
+      {createOpen && (
+        <CreateAppraisalModal
+          employees={employees}
+          cycles={cycles}
+          defaultEmployeeId={defaultEmployeeId}
+          submitting={creating}
+          onSubmit={handleCreate}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
+
+      {selected && (
+          <AppraisalDetailModal
+            appraisal={selected}
+            isHrAdmin={isHrAdmin}
+            currentUserEmployeeId={currentUserEmployeeId}
+            employeeName={resolveEmployeeName(selected.employee_id)}
+            evaluatorName={resolveEmployeeName(selected.evaluator_id)}
+            reviewerByAccountName={selected.reviewerByAccountName ?? null}
+            cycleName={
+              selected.cycleName ??
+              (selected.cycle_id
+                ? (cycleNamesById[selected.cycle_id] ?? null)
+                : null)
+            }
+            submitting={api.busy}
+          scoringInputs={scoringInputs}
+          scoringLoading={scoringLoading}
+          onSelfAssessment={handleSelfAssessment}
+          onManagerAssessment={handleManagerAssessment}
+          onFinalize={handleFinalize}
+          onAcknowledge={handleAcknowledge}
+          onClose={() => {
+            modalOpenRef.current = false;
+            setSelected(null);
+            setScoringInputs(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}

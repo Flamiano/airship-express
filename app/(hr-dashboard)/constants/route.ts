@@ -3,12 +3,15 @@ export const HR_ROUTES = {
   PERFORMANCE_DEVELOPMENT: "/performance-development-dashboard",
   RECRUITMENT: "/recruitment-dashboard",
   WORKFORCE: "/workforce-management-dashboard",
+  EMPLOYEE_DASHBOARD: "/employee-dashboard",
 
   HR_AUTH: "/hrAuth",
+  EMPLOYEE_AUTH: "/employeeAuth",
   UNAUTHORIZED: "/unauthorized",
 
   API_AUTH_ROLE: "/api/auth/role",
   API_AUTH_HR: "/api/auth/hrAuth",
+  API_AUTH_EMPLOYEE: "/api/auth/employeeAuth",
 } as const;
 
 export const PROTECTED_HR_ROUTES = [
@@ -16,9 +19,10 @@ export const PROTECTED_HR_ROUTES = [
   HR_ROUTES.PERFORMANCE_DEVELOPMENT,
   HR_ROUTES.RECRUITMENT,
   HR_ROUTES.WORKFORCE,
+  HR_ROUTES.EMPLOYEE_DASHBOARD,
 ] as const;
 
-export const AUTH_ROUTES = [HR_ROUTES.HR_AUTH] as const;
+export const AUTH_ROUTES = [HR_ROUTES.HR_AUTH, HR_ROUTES.EMPLOYEE_AUTH] as const;
 
 export const DASHBOARD_NAMES: Record<string, string> = {
   [HR_ROUTES.PAYROLL_BENEFITS]: "Payroll & Benefits",

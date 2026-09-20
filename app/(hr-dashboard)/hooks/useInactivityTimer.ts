@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "../supabase/client";
+import { loginRouteForAccountType } from "@/performance-development-dashboard/lib/auth/redirect";
 
 interface UseInactivityTimerOptions {
   timeoutMinutes?: number;
@@ -47,7 +48,9 @@ export function useInactivityTimer({
         onLogout();
       }
 
-      router.push("/hrAuth");
+      // Account-aware: Manager/Employee sessions in PerDev return to
+      // /employeeAuth; HR Admin contexts keep returning to /hrAuth.
+      router.push(loginRouteForAccountType());
       router.refresh();
     } catch (error) {
       console.error("Error during auto-logout:", error);

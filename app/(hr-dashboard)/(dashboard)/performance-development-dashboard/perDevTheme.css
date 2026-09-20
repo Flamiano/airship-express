@@ -1,0 +1,46 @@
+.perdev-scope {
+  --line: #d8d6de;
+  --color-line: #d8d6de;
+}
+
+.dark .perdev-scope {
+  --background: #131217;
+  --foreground: #f4f3f6;
+
+  --ink: #f4f3f6;
+  --paper: #1c1b22;
+  --muted: #9a98a3;
+  --accent: #ff4d9b;
+  --accent-dark: #e5167e;
+  --line: #3a3944;
+
+  --color-background: #131217;
+  --color-foreground: #f4f3f6;
+  --color-paper: #1c1b22;
+  --color-ink: #f4f3f6;
+  --color-muted: #9a98a3;
+  --color-accent: #ff4d9b;
+  --color-accent-dark: #e5167e;
+  --color-line: #3a3944;
+}
+
+.dark .perdev-scope .dark\:border-paper\/10,
+.dark .perdev-scope .dark\:border-paper\/15 {
+  border-color: var(--color-line);
+}
+
+.dark .perdev-scope .dark\:divide-paper\/10 > :not(:last-child) {
+  border-color: var(--color-line);
+}
+
+.dark .perdev-scope .hover\:border-accent\/40:hover {
+  border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
+}
+
+.dark .perdev-scope .hover\:border-accent:hover {
+  border-color: var(--color-accent);
+}
+
+.dark .perdev-scope .focus\:border-accent:focus {
+  border-color: var(--color-accent);
+}

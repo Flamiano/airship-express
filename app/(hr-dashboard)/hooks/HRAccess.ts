@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "../supabase/client";
-import { validateHRRole, ROLE_DASHBOARD_MAP } from "../utils/roleValidation";
+import {
+  validateHRRole,
+  ROLE_DASHBOARD_MAP,
+  EMPLOYEE_ACCESS_ROUTES,
+} from "../utils/roleValidation";
 
 export function useHRAccess() {
   const [isLoading, setIsLoading] = useState(true);
@@ -29,31 +33,70 @@ export function useHRAccess() {
         return;
       }
 
-      const { data: userRoleData, error } = await supabase
+      // --- HR Admin lookup ---
+      const { data: userRoleData } = await supabase
         .from("hr_admin")
         .select("id, role, full_name, email, employee_id")
         .eq("id", session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (error || !userRoleData) {
-        console.error("Error fetching user role:", error);
+      if (userRoleData) {
+        setUserRole(userRoleData.role);
+        setUserData(userRoleData);
+
+        const validation = await validateHRRole(userRoleData.role, pathname);
+
+        if (!validation.isValid) {
+          console.warn(
+            `User with role "${userRoleData.role}" tried to access "${pathname}"`
+          );
+          router.push(validation.redirectTo || "/hrAuth");
+          return;
+        }
+
+        setIsAuthorized(true);
+        return;
+      }
+
+      // --- Employee / Manager fallback ---
+      const { data: employee } = await supabase
+        .from("hr1_employees")
+        .select("id, employee_id_number, first_name, last_name, email, status")
+        .eq("auth_user_id", session.user.id)
+        .maybeSingle();
+
+      if (!employee || employee.status !== "active") {
+        console.error("useHRAccess: no linked active employee found for session");
         router.push("/hrAuth");
         return;
       }
 
-      setUserRole(userRoleData.role);
-      setUserData(userRoleData);
+      const mayAccess = EMPLOYEE_ACCESS_ROUTES.some(
+        (route) => pathname === route || pathname.startsWith(route + "/")
+      );
 
-      const validation = await validateHRRole(userRoleData.role, pathname);
-
-      if (!validation.isValid) {
+      if (!mayAccess) {
         console.warn(
-          `User with role "${userRoleData.role}" tried to access "${pathname}"`
+          `Employee account attempted to access unauthorized path: "${pathname}"`
         );
-        router.push(validation.redirectTo || "/hrAuth");
+        router.push("/employee-dashboard");
         return;
       }
 
+      const fullName =
+        [employee.first_name, employee.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || employee.email || "Employee";
+
+      setUserRole("employee");
+      setUserData({
+        id: employee.id,
+        role: "employee",
+        full_name: fullName,
+        email: employee.email,
+        employee_id: employee.employee_id_number,
+      });
       setIsAuthorized(true);
     } catch (error) {
       console.error("Error checking HR access:", error);
@@ -73,7 +116,7 @@ export function useHRAccess() {
       if (!roleToUse) return "/hrAuth";
       return (
         ROLE_DASHBOARD_MAP[roleToUse as keyof typeof ROLE_DASHBOARD_MAP] ||
-        "/hrAuth"
+        "/employee-dashboard"
       );
     },
   };

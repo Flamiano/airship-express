@@ -1,5 +1,23 @@
 import { AppRole } from "../(dashboard)/payroll-benefits-dashboard/types";
 
+// Account types — distinct from HR admin roles.
+// Authentication produces an account type; module authorization checks
+// whether that account type may access a given dashboard.
+export type AccountType = "hr_admin" | "manager" | "employee";
+
+export const ACCOUNT_TYPE = {
+  HR_ADMIN: "hr_admin",
+  MANAGER: "manager",
+  EMPLOYEE: "employee",
+} as const;
+
+// Routes that authenticated Manager / Employee accounts may access.
+// This list grows as new HR modules are wired for non-admin access.
+export const EMPLOYEE_ACCESS_ROUTES = [
+  "/employee-dashboard",
+  "/performance-development-dashboard",
+] as const;
+
 export const HR_ROLES = {
   SUPER_ADMIN: "super_admin",
   HR_PAYROLL_ADMIN: "hr_payroll_admin",
