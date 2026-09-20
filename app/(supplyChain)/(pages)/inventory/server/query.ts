@@ -1,8 +1,21 @@
-'use server';
+"use server";
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
 import { isRateLimited } from '@/app/(supplyChain)/components/global/rateLimit';
 import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const dbClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 export interface LatestPOInfo {
     poi_id?: string;
     purchase_order_id?: string;
@@ -56,10 +69,22 @@ export interface Parcel {
     region: string | null;
     courier: string | null;
     scanned_by: string | null;
+    scanner_name?: string | null;
+    scanner_email?: string | null;
+    scanner_role?: string | null;
     scanned_at: string;
     status: string;
     created_at: string;
     updated_at: string;
+}
+export interface ScannerUser {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    scanned_count: number;
+    status_counts: Record<string, number>;
+    last_scanned_at: string | null;
 }
 export interface Supplier {
     id: number;
@@ -273,6 +298,161 @@ async function attachLatestPOToItems(items: any[]) {
         return items;
     }
 }
+// In-memory cache for resolved user profiles (5 minutes TTL)
+const userProfileCache = new Map<string, { data: { name: string; email: string; role: string }; expiresAt: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getCachedUser(id: string) {
+    const cached = userProfileCache.get(id);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.data;
+    }
+    if (cached) {
+        userProfileCache.delete(id);
+    }
+    return null;
+}
+
+function setCachedUser(id: string, data: { name: string; email: string; role: string }) {
+    userProfileCache.set(id, {
+        data,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+    });
+}
+
+/**
+ * Highly optimized scanner user resolver with memory caching & parallel queries
+ */
+async function resolveScannerUsers(userIds: string[]): Promise<Map<string, { name: string; email: string; role: string }>> {
+    const resultMap = new Map<string, { name: string; email: string; role: string }>();
+    if (!userIds || userIds.length === 0) return resultMap;
+
+    const cleanedIds = Array.from(new Set(userIds.map(id => String(id).trim()).filter(Boolean)));
+    if (cleanedIds.length === 0) return resultMap;
+
+    // 1. Check memory cache first (0ms latency for repeated lookups)
+    const uncachedIds: string[] = [];
+    cleanedIds.forEach(id => {
+        const cached = getCachedUser(id);
+        if (cached) {
+            resultMap.set(id, cached);
+        } else {
+            uncachedIds.push(id);
+        }
+    });
+
+    if (uncachedIds.length === 0) {
+        return resultMap;
+    }
+
+    const extractName = (record: any): string => {
+        if (!record) return '';
+        if (typeof record.display_name === 'string' && record.display_name.trim()) return record.display_name.trim();
+        if (typeof record.full_name === 'string' && record.full_name.trim()) return record.full_name.trim();
+        if (typeof record.name === 'string' && record.name.trim()) return record.name.trim();
+        if (typeof record.hr_employee_name === 'string' && record.hr_employee_name.trim()) return record.hr_employee_name.trim();
+        if (record.first_name || record.last_name) {
+            const combined = [record.first_name, record.last_name].filter(Boolean).join(' ').trim();
+            if (combined) return combined;
+        }
+        if (record.raw_user_meta_data) {
+            const meta = record.raw_user_meta_data;
+            const metaName = meta.display_name || meta.full_name || meta.name;
+            if (metaName && typeof metaName === 'string' && metaName.trim()) return metaName.trim();
+        }
+        if (record.user_metadata) {
+            const meta = record.user_metadata;
+            const metaName = meta.display_name || meta.full_name || meta.name;
+            if (metaName && typeof metaName === 'string' && metaName.trim()) return metaName.trim();
+        }
+        if (typeof record.email === 'string' && record.email.includes('@')) {
+            const prefix = record.email.split('@')[0];
+            if (prefix) return prefix;
+        }
+        return '';
+    };
+
+    const extractRole = (record: any): string => {
+        if (!record) return 'Operator';
+        return record.role || record.position || record.department || record.user_metadata?.role || 'Operator';
+    };
+
+    try {
+        // 2. Query users and mock_employees in PARALLEL in a single roundtrip
+        const [usersResult, empResult] = await Promise.all([
+            dbClient
+                .from('users')
+                .select('id, display_name, name, full_name, first_name, last_name, email, role, position, department')
+                .in('id', uncachedIds),
+            dbClient
+                .from('mock_employees')
+                .select('id, display_name, full_name, name, first_name, last_name, email, role, position')
+                .in('id', uncachedIds),
+        ]);
+
+        if (usersResult.data && usersResult.data.length > 0) {
+            usersResult.data.forEach((u: any) => {
+                const name = extractName(u) || 'Unknown';
+                const email = u.email || '';
+                const role = extractRole(u);
+                const info = { name, email, role };
+                const uid = String(u.id).trim();
+                resultMap.set(uid, info);
+                setCachedUser(uid, info);
+            });
+        }
+
+        if (empResult.data && empResult.data.length > 0) {
+            empResult.data.forEach((e: any) => {
+                const uid = String(e.id).trim();
+                if (!resultMap.has(uid)) {
+                    const name = extractName(e) || 'Unknown';
+                    const email = e.email || '';
+                    const role = extractRole(e);
+                    const info = { name, email, role };
+                    resultMap.set(uid, info);
+                    setCachedUser(uid, info);
+                }
+            });
+        }
+
+        // 3. For any remaining IDs (rare), check sessions & auth in parallel
+        const stillMissing = uncachedIds.filter(id => !resultMap.has(id));
+        if (stillMissing.length > 0) {
+            const [sessionResult] = await Promise.all([
+                dbClient
+                    .from('sessions')
+                    .select('user_id, hr_employee_name, email')
+                    .in('user_id', stillMissing),
+            ]);
+
+            if (sessionResult.data && sessionResult.data.length > 0) {
+                sessionResult.data.forEach((s: any) => {
+                    const sid = s.user_id ? String(s.user_id).trim() : '';
+                    if (sid && !resultMap.has(sid)) {
+                        const name = s.hr_employee_name || (s.email ? s.email.split('@')[0] : '') || 'Unknown';
+                        const info = { name, email: s.email || '', role: 'Operator' };
+                        resultMap.set(sid, info);
+                        setCachedUser(sid, info);
+                    }
+                });
+            }
+
+            // Cache remaining unresolved IDs as 'Unknown' so they don't re-query on every request
+            const unresolved = uncachedIds.filter(id => !resultMap.has(id));
+            unresolved.forEach(id => {
+                const fallbackInfo = { name: 'Unknown', email: '', role: 'Unknown' };
+                resultMap.set(id, fallbackInfo);
+                setCachedUser(id, fallbackInfo);
+            });
+        }
+    } catch (e) {
+        console.error('Error resolving scanner users:', e);
+    }
+
+    return resultMap;
+}
+
 /**
  * Attaches the display name/email of the user who performed a force update
  */
@@ -285,19 +465,10 @@ async function attachForceUpdateDetails(items: any[]) {
     if (userIds.length === 0)
         return items;
     try {
-        const { data: usersData } = await supabase
-            .from('users')
-            .select('id, display_name, email, role')
-            .in('id', userIds);
-        const userMap = new Map<string, string>();
-        if (usersData) {
-            for (const u of usersData) {
-                userMap.set(u.id, u.display_name || u.email || 'Admin');
-            }
-        }
+        const userMap = await resolveScannerUsers(userIds);
         return items.map(item => ({
             ...item,
-            force_updated_by_name: item.force_updated_by ? (userMap.get(item.force_updated_by) || 'Admin') : null,
+            force_updated_by_name: item.force_updated_by ? (userMap.get(item.force_updated_by)?.name || 'Admin') : null,
         }));
     }
     catch (err) {
@@ -326,7 +497,7 @@ export async function fetchInventoryItems(params: {
         const { page = 1, limit = 30, search = '', category = 'all', status = 'all' } = params;
         const from = (page - 1) * limit;
         const to = from + limit - 1;
-        let query = supabase
+        let query = dbClient
             .from('inventory_items')
             .select('*', { count: 'exact' });
         if (search) {
@@ -369,6 +540,105 @@ export async function fetchInventoryItems(params: {
         };
     }
 }
+// Attach scanner information to parcels
+async function attachScannerDetails(parcels: any[]) {
+    if (!parcels || parcels.length === 0) return parcels;
+    const userIds = Array.from(new Set(parcels.map(p => p.scanned_by).filter(Boolean))) as string[];
+    if (userIds.length === 0) return parcels;
+
+    try {
+        const userMap = await resolveScannerUsers(userIds);
+
+        return parcels.map(p => {
+            if (!p.scanned_by) return p;
+            const scanner = userMap.get(String(p.scanned_by).trim());
+            return {
+                ...p,
+                scanner_name: scanner?.name || 'Unknown',
+                scanner_email: scanner?.email || null,
+                scanner_role: scanner?.role || 'Unknown',
+            };
+        });
+    } catch (e) {
+        console.warn('Error attaching scanner details:', e);
+        return parcels;
+    }
+}
+
+// get scanners summary with total scans and status counts
+export async function fetchScannersSummary(): Promise<{ success: boolean; data: ScannerUser[]; error?: string }> {
+    try {
+        const { data: parcelsData, error: parcelsError } = await dbClient
+            .from('parcels')
+            .select('id, status, scanned_by, created_at');
+
+        if (parcelsError) throw parcelsError;
+
+        const uniqueUserIds = Array.from(
+            new Set((parcelsData || []).map((p: any) => p.scanned_by).filter(Boolean))
+        ) as string[];
+
+        const userMap = await resolveScannerUsers(uniqueUserIds);
+
+        const statsMap = new Map<string, ScannerUser>();
+
+        (parcelsData || []).forEach((p: any) => {
+            const rawId = p.scanned_by ? String(p.scanned_by).trim() : 'unassigned';
+            const scannerId = rawId || 'unassigned';
+            if (!statsMap.has(scannerId)) {
+                if (scannerId === 'unassigned') {
+                    statsMap.set(scannerId, {
+                        id: 'unassigned',
+                        name: 'Unassigned / System',
+                        email: 'Automated or legacy scan',
+                        role: 'System / Legacy',
+                        scanned_count: 0,
+                        status_counts: {},
+                        last_scanned_at: null,
+                    });
+                } else {
+                    const userInfo = userMap.get(scannerId) || {
+                        name: 'Unknown',
+                        email: '',
+                        role: 'Unknown',
+                    };
+                    statsMap.set(scannerId, {
+                        id: scannerId,
+                        name: userInfo.name,
+                        email: userInfo.email,
+                        role: userInfo.role,
+                        scanned_count: 0,
+                        status_counts: {},
+                        last_scanned_at: null,
+                    });
+                }
+            }
+
+            const item = statsMap.get(scannerId)!;
+            item.scanned_count += 1;
+            const statusKey = p.status || 'received';
+            item.status_counts[statusKey] = (item.status_counts[statusKey] || 0) + 1;
+            if (!item.last_scanned_at || (p.created_at && new Date(p.created_at) > new Date(item.last_scanned_at))) {
+                item.last_scanned_at = p.created_at;
+            }
+        });
+
+        const list = Array.from(statsMap.values()).sort((a, b) => b.scanned_count - a.scanned_count);
+
+        return {
+            success: true,
+            data: list,
+        };
+    } catch (error: any) {
+        console.error('Error fetching scanners summary:', error);
+        return {
+            success: false,
+            data: [],
+            error: error?.message || 'Failed to fetch scanner stats',
+        };
+    }
+}
+
 // get parcels with pagination and filters
 export async function fetchParcels(params: {
     page?: number;
@@ -377,6 +647,7 @@ export async function fetchParcels(params: {
     status?: string;
     dateFrom?: string;
     dateTo?: string;
+    scannedBy?: string;
 }) {
     try {
         const headersList = await headers();
@@ -388,10 +659,10 @@ export async function fetchParcels(params: {
                 status: 429,
             };
         }
-        const { page = 1, limit = 15, search = '', status = '', dateFrom = '', dateTo = '' } = params;
+        const { page = 1, limit = 15, search = '', status = '', dateFrom = '', dateTo = '', scannedBy = '' } = params;
         const from = (page - 1) * limit;
         const to = from + limit - 1;
-        let query = supabase
+        let query = dbClient
             .from('parcels')
             .select('*', { count: 'exact' });
         if (search) {
@@ -402,6 +673,13 @@ export async function fetchParcels(params: {
         }
         if (status) {
             query = query.eq('status', status);
+        }
+        if (scannedBy) {
+            if (scannedBy === 'unassigned') {
+                query = query.is('scanned_by', null);
+            } else {
+                query = query.eq('scanned_by', scannedBy);
+            }
         }
         if (dateFrom) {
             query = query.gte('created_at', dateFrom);
@@ -414,10 +692,13 @@ export async function fetchParcels(params: {
             .range(from, to);
         if (error)
             throw error;
+
+        const enrichedParcels = await attachScannerDetails(data || []);
+
         return {
             success: true,
             data: {
-                parcels: data || [],
+                parcels: enrichedParcels,
                 totalItems: totalCount || 0,
                 page,
                 limit,
@@ -549,6 +830,7 @@ export async function fetchInventoryPageData(params: {
     parcelStatus?: string;
     parcelDateFrom?: string;
     parcelDateTo?: string;
+    parcelScannedBy?: string;
 }) {
     try {
         const headersList = await headers();
@@ -561,7 +843,7 @@ export async function fetchInventoryPageData(params: {
             };
         }
         // run all queries at the same time so it don't wait for each one to finish before starting the next
-        const [inventoryResult, parcelsResult, suppliersResult, statsResult,] = await Promise.all([
+        const [inventoryResult, parcelsResult, suppliersResult, statsResult, scannersResult] = await Promise.all([
             fetchInventoryItems({
                 page: params.inventoryPage || 1,
                 limit: params.inventoryLimit || 15,
@@ -576,9 +858,11 @@ export async function fetchInventoryPageData(params: {
                 status: params.parcelStatus || '',
                 dateFrom: params.parcelDateFrom || '',
                 dateTo: params.parcelDateTo || '',
+                scannedBy: params.parcelScannedBy || '',
             }),
             fetchSuppliers(),
             fetchDashboardStats(),
+            fetchScannersSummary(),
         ]);
         return {
             success: true,
@@ -587,6 +871,7 @@ export async function fetchInventoryPageData(params: {
                 parcels: parcelsResult.success ? parcelsResult.data : null,
                 suppliers: suppliersResult.success ? suppliersResult.data : [],
                 stats: statsResult.success ? statsResult.data : null,
+                scanners: scannersResult.success ? scannersResult.data : [],
             },
             status: 200,
         };

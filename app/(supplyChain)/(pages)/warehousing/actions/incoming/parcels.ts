@@ -3,7 +3,7 @@
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { ftmSupabase } from '@/app/(supplyChain)/lib/services/client/ftmSupabase';
 import { revalidatePath } from 'next/cache';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { sanitizeBarcode, sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
 import { isRateLimited } from '@/app/(supplyChain)/components/global/rateLimit';
 
@@ -20,9 +20,42 @@ const generateTrackingNumber = () => {
     return `TRK-${dateStr}-${randomStr}`;
 };
 
+async function resolveUserId(providedUserId?: string | null): Promise<string | null> {
+    if (providedUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(providedUserId.trim())) {
+        return providedUserId.trim();
+    }
+    try {
+        const cookieStore = await cookies();
+        const token = cookieStore.get('session_token')?.value || cookieStore.get('sc_session_token')?.value;
+        if (token) {
+            const { data } = await supabase
+                .from('sessions')
+                .select('user_id')
+                .eq('session_token', token)
+                .maybeSingle();
+            if (data?.user_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.user_id.trim())) {
+                return data.user_id.trim();
+            }
+        }
+    } catch {
+        // cookies lookup fallback
+    }
+
+    try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.id) {
+            return authUser.id;
+        }
+    } catch {
+        // auth.getUser fallback
+    }
+
+    return null;
+}
+
 // receive all parcels
 
-export async function receiveAllParcels() {
+export async function receiveAllParcels(userId?: string) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
@@ -34,6 +67,8 @@ export async function receiveAllParcels() {
                 status: 429,
             };
         }
+
+        const scannedBy = await resolveUserId(userId);
 
         const { data: parcels, error: fetchError } = await supabase
             .from('receiving_queue')
@@ -68,6 +103,7 @@ export async function receiveAllParcels() {
             courier: p.courier || 'Unknown Courier',
             courier_id: p.courier_id || null,
             status: 'received',
+            scanned_by: p.scanned_by || scannedBy || null,
             created_at: p.scanned_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
         }));
@@ -396,7 +432,7 @@ export async function deleteMultipleParcels(parcelIds: number[]) {
 
 // receive multiple parcels
 
-export async function receiveMultipleParcels(parcelIds: number[]) {
+export async function receiveMultipleParcels(parcelIds: number[], userId?: string) {
     try {
         const headersList = await headers();
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
@@ -425,6 +461,8 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
                 status: 400,
             };
         }
+
+        const scannedBy = await resolveUserId(userId);
 
         // fetch parcels
         const { data: parcels, error: fetchError } = await supabase
@@ -483,6 +521,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
                 courier: p.courier || 'Unknown Courier',
                 courier_id: p.courier_id || null,
                 status: 'received',
+                scanned_by: p.scanned_by || scannedBy || null,
                 created_at: p.scanned_at || new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             }));
@@ -556,6 +595,7 @@ export async function receiveMultipleParcels(parcelIds: number[]) {
             courier: p.courier || 'Unknown Courier',
             courier_id: p.courier_id || null,
             status: 'received',
+            scanned_by: p.scanned_by || scannedBy || null,
             created_at: p.scanned_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
         }));
@@ -635,6 +675,7 @@ export async function addManualParcel(data: {
     courier_id?: number;
     customer_name?: string;
     customer_number?: string;
+    scanned_by?: string;
 }) {
     try {
         const headersList = await headers();
@@ -646,6 +687,26 @@ export async function addManualParcel(data: {
                 error: 'Too many requests. Please wait.',
                 status: 429,
             };
+        }
+
+        let finalScannedBy = data.scanned_by?.trim() || null;
+        if (!finalScannedBy) {
+            try {
+                const cookieStore = await cookies();
+                const token = cookieStore.get('session_token')?.value || cookieStore.get('sc_session_token')?.value;
+                if (token) {
+                    const { data: sessData } = await supabase
+                        .from('sessions')
+                        .select('user_id')
+                        .eq('session_token', token)
+                        .maybeSingle();
+                    if (sessData?.user_id) {
+                        finalScannedBy = sessData.user_id;
+                    }
+                }
+            } catch {
+                // Ignore cookie lookup error
+            }
         }
 
         const trimmedBarcode = sanitizeBarcode(data.barcode);
@@ -688,6 +749,23 @@ export async function addManualParcel(data: {
             return {
                 success: false,
                 error: 'City is required and must be at least 2 characters',
+                status: 400,
+            };
+        }
+
+        // validate optional fields
+        if (trimmedSender && trimmedSender.length < 2) {
+            return {
+                success: false,
+                error: 'Sender name must be at least 2 characters',
+                status: 400,
+            };
+        }
+
+        if (trimmedCustomerName && trimmedCustomerName.length < 2) {
+            return {
+                success: false,
+                error: 'Customer name must be at least 2 characters',
                 status: 400,
             };
         }
@@ -786,6 +864,7 @@ export async function addManualParcel(data: {
                     customer_name: trimmedCustomerName || null,
                     customer_number: trimmedCustomerNumber || null,
                     status: 'pending',
+                    scanned_by: finalScannedBy || null,
                     scanned_at: new Date().toISOString(),
                 }
             ])

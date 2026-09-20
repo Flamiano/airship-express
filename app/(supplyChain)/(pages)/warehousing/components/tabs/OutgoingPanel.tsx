@@ -7,6 +7,7 @@ import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { sanitizeBarcode } from "@/app/(supplyChain)/components/global/sanitize";
 import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
 import BarcodeScanner from "@/app/(supplyChain)/(pages)/warehousing/components/client/outgoing/BarcodeScanner";
+import { useUserRole } from "@/app/(supplyChain)/components/global/UnauthorizedEmptyState";
 import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
@@ -27,6 +28,7 @@ interface Parcel {
     created_at: string;
     bulk_qr_code?: string | null;
     driver_name?: string | null;
+    scanned_by?: string | null;
 }
 
 interface Courier {
@@ -49,6 +51,7 @@ const DRIVERS = [
 export default function OutgoingPanel({ isVisible = true }) {
     const searchParams = useSearchParams();
     const currentTab = searchParams.get('tab');
+    const { role: userRole, userId: currentUserId, isPrivileged, isLoaded } = useUserRole();
     const [parcels, setParcels] = useState<Parcel[]>([]);
     const [loading, setLoading] = useState(true);
     const [barcode, setBarcode] = useState("");
@@ -94,9 +97,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                 const res = await fetch('/api/couriers');
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data)) {
-                        setCouriers(data.filter((c: any) => c.is_active !== false));
-                    }
+                    setCouriers(data);
                 }
             } catch (err) {
                 console.warn('Failed to load couriers from /api/couriers:', err);
@@ -140,6 +141,10 @@ export default function OutgoingPanel({ isVisible = true }) {
                 .eq('status', 'ready_for_pickup')
                 .order('created_at', { ascending: false });
 
+            if (!isPrivileged && currentUserId) {
+                query = query.eq('scanned_by', currentUserId);
+            }
+
             if (bulkQrCode) {
                 query = query.eq('bulk_qr_code', bulkQrCode);
             }
@@ -171,7 +176,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                 setLoading(false);
             }
         }
-    }, [bulkQrCode, selectedDriver, page, limit]);
+    }, [bulkQrCode, selectedDriver, page, limit, isPrivileged, currentUserId]);
 
     useEffect(() => {
         fetchParcels(true);
@@ -190,7 +195,7 @@ export default function OutgoingPanel({ isVisible = true }) {
         return () => {
             subscription.unsubscribe();
         };
-    }, [fetchParcels]);
+    }, [fetchParcels, isLoaded]);
 
     const processBarcode = async (barcodeValue: string) => {
         const sanitized = sanitizeBarcode(barcodeValue);

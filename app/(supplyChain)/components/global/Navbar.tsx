@@ -19,6 +19,7 @@ import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
 import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { ChangePasswordModal } from "@/app/(supplyChain)/components/modals/ChangePasswordModal";
 import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { settingsService } from "@/app/(supplyChain)/lib/services/settingsService";
 import '@fortawesome/fontawesome-free/css/all.min.css';
 interface NavItem {
     id: string;
@@ -69,6 +70,12 @@ export function AceternityNavbar() {
             if (email) {
                 setUserEmail(email);
             }
+
+            const unsubscribe = settingsService.subscribe(() => {
+                const currentRole = user.getRole() || 'User';
+                filterNavigation(currentRole);
+            });
+            return () => unsubscribe();
         }
     }, []);
     // close dropdown on outside click
@@ -84,7 +91,7 @@ export function AceternityNavbar() {
     const filterNavigation = (role: string) => {
         const filtered = (NAV as NavGroup[]).map((group: NavGroup) => {
             const items = group.items.map((item: NavItem) => {
-                const isAuthorized = !item.roles || item.roles.length === 0 || item.roles.includes(role);
+                const isAuthorized = settingsService.canAccessPage(role, item.href, item.roles);
                 return {
                     ...item,
                     isAuthorized,

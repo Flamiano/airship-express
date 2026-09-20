@@ -39,14 +39,7 @@ import {
     updateAppeal,
     deleteAppeal,
 } from './services';
-
-const ROLE_REDIRECTS: Record<string, string> = {
-    'Admin': '/procurement',
-    'Executive': '/executive',
-    'Manager': '/warehousing?tab=incoming',
-    'Operator': '/warehousing?tab=incoming',
-    'Employee': '/documents',
-};
+import { settingsService } from '@/app/(supplyChain)/lib/services/settingsService';
 
 export default function SupplyChainLoginPage() {
     const router = useRouter();
@@ -79,7 +72,8 @@ export default function SupplyChainLoginPage() {
     const [otpSent, setOtpSent] = useState(false);
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
     const [isVerifying, setIsVerifying] = useState(false);
-    const [countdown, setCountdown] = useState(0);
+    const [countdown, setCountdown] = useState(0); // Resend button cooldown (30s)
+    const [otpExpiresIn, setOtpExpiresIn] = useState(0); // OTP code lifespan (300s = 5m)
     const [otpError, setOtpError] = useState<string | null>(null);
     const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
     const [rememberMe, setRememberMe] = useState(false);
@@ -104,9 +98,6 @@ export default function SupplyChainLoginPage() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isCreatingUser, setIsCreatingUser] = useState(false);
-    const [useHrPassword, setUseHrPassword] = useState(false);
-    const [hrPassword, setHrPassword] = useState('');
-    const [hrHasPassword, setHrHasPassword] = useState(false);
     const [selectedEmployeeForPassword, setSelectedEmployeeForPassword] = useState<any>(null);
 
     // remembered password modal
@@ -366,7 +357,7 @@ export default function SupplyChainLoginPage() {
 
                     await restoreSupabaseSession();
 
-                    const redirectPath = ROLE_REDIRECTS[data.user.role] || '/warehousing';
+                    const redirectPath = settingsService.getRoleRedirect(data.user.role);
                     window.location.href = redirectPath;
                     return;
                 }
@@ -391,6 +382,14 @@ export default function SupplyChainLoginPage() {
             return () => clearTimeout(timer);
         }
     }, [countdown]);
+
+    // countdown timer for otp expiration (5 minutes = 300s)
+    useEffect(() => {
+        if (otpExpiresIn > 0) {
+            const timer = setTimeout(() => setOtpExpiresIn(otpExpiresIn - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [otpExpiresIn]);
 
     // handle employee selection
     const handleEmployeeSelect = async (employee: any) => {
@@ -436,7 +435,8 @@ export default function SupplyChainLoginPage() {
                     setIsRemembered(true);
                     setRememberedData({
                         ...data,
-                        user: { role: data.role || 'Employee' },
+                        role: data.role || employee.role || 'Employee',
+                        user: { role: data.role || employee.role || 'Employee' },
                     });
                     toast.success(`${employee.display_name} is remembered on this device`);
                 } else {
@@ -477,6 +477,7 @@ export default function SupplyChainLoginPage() {
 
         try {
             const userRole = rememberedData?.role ||
+                selectedEmployee?.role ||
                 loggedInUser?.role ||
                 user.getRole() ||
                 'Employee';
@@ -557,7 +558,7 @@ export default function SupplyChainLoginPage() {
             toast.success('Login successful!');
             setShowRememberedPasswordModal(false);
             setShowEmployeeModal(false);
-            router.push(ROLE_REDIRECTS[userRole] || '/warehousing');
+            router.push(settingsService.getRoleRedirect(userRole));
             return true;
 
         } catch (error) {
@@ -634,7 +635,10 @@ export default function SupplyChainLoginPage() {
                 userAgent: navigator.userAgent,
             });
 
+            // Load accounts into the modal (from users table for Admin/Executive, mock_employees for Employee)
             await loadEmployeesFromHR(data.user.role);
+            setSelectedEmployee(null);
+            setOtpSent(false);
             setShowEmployeeModal(true);
         } catch {
             setLoginError('Something went wrong. Please try again.');
@@ -663,8 +667,13 @@ export default function SupplyChainLoginPage() {
     }
 
     // request otp
-    async function requestOTP() {
-        if (!selectedEmployee || isDeviceBlocked) {
+    async function requestOTP(targetEmp?: any) {
+        // Guard against React SyntheticEvent being passed when used in onClick={requestOTP}
+        const emp = (targetEmp && typeof targetEmp === 'object' && 'email' in targetEmp && !('nativeEvent' in targetEmp))
+            ? targetEmp
+            : selectedEmployee;
+
+        if (!emp || isDeviceBlocked) {
             if (isDeviceBlocked) {
                 toast.error('This device is blocked. Please submit an appeal.');
             }
@@ -676,7 +685,17 @@ export default function SupplyChainLoginPage() {
         setOtpSuccess(null);
 
         try {
-            const blockedDevice = await checkIfDeviceBlocked(loggedInUser.id, navigator.userAgent);
+            const currentUserId = loggedInUser?.id || user.getUserId() || emp.id;
+            const targetId = emp.id || currentUserId;
+            const targetEmail = emp.email || emp.user_email;
+
+            if (!targetEmail) {
+                toast.error('No email address found for the selected account.');
+                setIsRequestingOTP(false);
+                return;
+            }
+
+            const blockedDevice = await checkIfDeviceBlocked(currentUserId, navigator.userAgent);
             if (blockedDevice) {
                 setIsDeviceBlocked(true);
                 setBlockedDeviceId(blockedDevice.id);
@@ -686,10 +705,10 @@ export default function SupplyChainLoginPage() {
             }
 
             const { ok, status, data } = await requestOtpApi({
-                userId: selectedEmployee.id,
-                email: selectedEmployee.email,
-                loggedInUserId: loggedInUser.id,
-                employeeName: selectedEmployee.display_name,
+                userId: targetId,
+                email: targetEmail,
+                loggedInUserId: currentUserId,
+                employeeName: emp.display_name || 'User',
             });
 
             if (!ok) {
@@ -702,11 +721,12 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            toast.success(`OTP sent to ${selectedEmployee.email}`);
-            setOtpSuccess(`OTP sent to ${selectedEmployee.email}`);
+            toast.success(`OTP sent to ${targetEmail}`);
+            setOtpSuccess(`OTP sent to ${targetEmail}`);
 
             setOtpSent(true);
-            setCountdown(30);
+            setCountdown(30); // 30s resend cooldown
+            setOtpExpiresIn(300); // 5 minutes code validity
             setTimeout(() => document.getElementById('otp-0')?.focus(), 100);
         } catch (err: any) {
             toast.error(err.message);
@@ -730,7 +750,17 @@ export default function SupplyChainLoginPage() {
         setOtpSuccess(null);
 
         try {
-            const blockedDevice = await checkIfDeviceBlocked(loggedInUser.id, navigator.userAgent);
+            const currentUserId = loggedInUser?.id || user.getUserId() || selectedEmployee.id;
+            const targetId = selectedEmployee.id || currentUserId;
+            const targetEmail = selectedEmployee.email;
+
+            if (!targetEmail) {
+                toast.error('No email address found for the selected account.');
+                setIsResending(false);
+                return;
+            }
+
+            const blockedDevice = await checkIfDeviceBlocked(currentUserId, navigator.userAgent);
             if (blockedDevice) {
                 setIsDeviceBlocked(true);
                 setBlockedDeviceId(blockedDevice.id);
@@ -740,10 +770,10 @@ export default function SupplyChainLoginPage() {
             }
 
             const { ok, status, data } = await requestOtpApi({
-                userId: selectedEmployee.id,
-                email: selectedEmployee.email,
-                loggedInUserId: loggedInUser.id,
-                employeeName: selectedEmployee.display_name,
+                userId: targetId,
+                email: targetEmail,
+                loggedInUserId: currentUserId,
+                employeeName: selectedEmployee.display_name || 'User',
             });
 
             if (!ok) {
@@ -756,9 +786,10 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            toast.success(`New OTP sent to ${selectedEmployee.email}`);
-            setOtpSuccess(`New OTP sent to ${selectedEmployee.email}`);
-            setCountdown(30);
+            toast.success(`New OTP sent to ${targetEmail}`);
+            setOtpSuccess(`New OTP sent to ${targetEmail}`);
+            setCountdown(30); // 30s resend cooldown
+            setOtpExpiresIn(300); // 5 minutes code validity
         } catch (err: any) {
             toast.error(err.message);
             setOtpError(err.message);
@@ -775,7 +806,7 @@ export default function SupplyChainLoginPage() {
             return;
         }
 
-        if (countdown === 0) {
+        if (otpExpiresIn === 0 && otpSent) {
             const errorMsg = 'The inputted OTP is already expired. Please click Resend Code to receive a new OTP.';
             toast.error(errorMsg);
             setOtpError(errorMsg);
@@ -848,13 +879,10 @@ export default function SupplyChainLoginPage() {
                 setShowEmployeeModal(false);
             } else {
                 setTempToken(data.tempToken);
-                setHrHasPassword(data.hrHasPassword);
-                setHrPassword(data.hrPassword || '');
                 setSelectedEmployeeForPassword({
                     ...data.employee,
                     role: data.employee.role || selectedEmployee.role,
                 });
-                setUseHrPassword(data.hrHasPassword);
                 setShowPasswordModal(true);
                 setOtpSent(false);
                 setShowEmployeeModal(false);
@@ -871,31 +899,29 @@ export default function SupplyChainLoginPage() {
 
     // create account
     async function handleCreateAccount() {
-        if (!useHrPassword) {
-            if (newPassword.length < 8) {
-                toast.error('Password must be at least 8 characters long');
-                return;
-            }
-            if (!/[A-Z]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 uppercase letter (A-Z)');
-                return;
-            }
-            if (!/[a-z]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 lowercase letter (a-z)');
-                return;
-            }
-            if (!/[0-9]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 number (0-9)');
-                return;
-            }
-            if (!/[^A-Za-z0-9]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 special character (e.g. !@#$%^&*)');
-                return;
-            }
-            if (newPassword !== confirmPassword) {
-                toast.error('Passwords do not match');
-                return;
-            }
+        if (newPassword.length < 8) {
+            toast.error('Password must be at least 8 characters long');
+            return;
+        }
+        if (!/[A-Z]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 uppercase letter (A-Z)');
+            return;
+        }
+        if (!/[a-z]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 lowercase letter (a-z)');
+            return;
+        }
+        if (!/[0-9]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 number (0-9)');
+            return;
+        }
+        if (!/[^A-Za-z0-9]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 special character (e.g. !@#$%^&*)');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            toast.error('Passwords do not match');
+            return;
         }
 
         setIsCreatingUser(true);
@@ -907,8 +933,8 @@ export default function SupplyChainLoginPage() {
                 displayName: selectedEmployeeForPassword.display_name,
                 role: selectedEmployeeForPassword.role,
                 tempToken: tempToken,
-                useHrPassword: useHrPassword,
-                hrPassword: useHrPassword ? hrPassword : null,
+                useHrPassword: false,
+                hrPassword: null,
                 rememberMe: rememberMe,
             });
 
@@ -925,10 +951,9 @@ export default function SupplyChainLoginPage() {
                         console.error('Error setting Supabase session:', sessionError);
                     }
                 } else {
-                    const password = useHrPassword ? hrPassword : newPassword;
                     const { error: signInError } = await signInWithSupabasePassword(
                         selectedEmployeeForPassword.email,
-                        password
+                        newPassword
                     );
 
                     if (signInError) {
@@ -948,7 +973,8 @@ export default function SupplyChainLoginPage() {
 
                 setShowPasswordModal(false);
                 setShowEmployeeModal(false);
-                router.push(data.redirect_url);
+                const targetRedirect = settingsService.getRoleRedirect(data.role) || data.redirect_url || '/warehousing';
+                router.push(targetRedirect);
             } else {
                 toast.error(data.message || 'Failed to create account');
             }
@@ -1000,6 +1026,12 @@ export default function SupplyChainLoginPage() {
     // close modal and cleanup
     const handleCloseModal = async () => {
         setShowEmployeeModal(false);
+        setOtpSent(false);
+        setOtpCode(['', '', '', '', '', '']);
+        setOtpError(null);
+        setOtpSuccess(null);
+        setIsRemembered(false);
+        setSelectedEmployee(null);
         await clearUserSession();
         router.push('/scAuth');
     };
@@ -1265,6 +1297,7 @@ export default function SupplyChainLoginPage() {
                     rememberMe={rememberMe}
                     setRememberMe={setRememberMe}
                     countdown={countdown}
+                    otpExpiresIn={otpExpiresIn}
                     existingAppeal={existingAppeal}
                     blockedDeviceId={blockedDeviceId}
                     getRoleColor={getRoleColor}
@@ -1288,9 +1321,6 @@ export default function SupplyChainLoginPage() {
                 <PasswordSetupModal
                     showPasswordModal={showPasswordModal}
                     selectedEmployeeForPassword={selectedEmployeeForPassword}
-                    hrHasPassword={hrHasPassword}
-                    useHrPassword={useHrPassword}
-                    setUseHrPassword={setUseHrPassword}
                     newPassword={newPassword}
                     setNewPassword={setNewPassword}
                     confirmPassword={confirmPassword}

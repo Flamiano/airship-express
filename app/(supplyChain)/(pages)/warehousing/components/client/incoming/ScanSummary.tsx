@@ -17,6 +17,8 @@ export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSu
                 return 'emerald' as const;
             case 'rejected':
                 return 'rose' as const;
+            case 'not_synced':
+                return 'rose' as const;
             default:
                 return 'amber' as const;
         }
@@ -30,6 +32,8 @@ export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSu
                 return 'fa-check-circle';
             case 'rejected':
                 return 'fa-times-circle';
+            case 'not_synced':
+                return 'fa-satellite-dish';
             default:
                 return 'fa-clock';
         }
@@ -51,7 +55,7 @@ export function ScanSummary({ lastScan, trackingNumber, lastScanStatus }: ScanSu
                             icon={`fas ${getStatusIcon(lastScanStatus)}`}
                             size="xs"
                         >
-                            {lastScanStatus}
+                            {lastScanStatus === 'not_synced' ? 'Not Synced' : lastScanStatus}
                         </StatusBadge>
                     </span>
                 )}

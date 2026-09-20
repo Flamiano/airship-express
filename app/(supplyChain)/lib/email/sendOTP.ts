@@ -17,9 +17,14 @@ function getTransporter() {
                 user: user,
                 pass: pass,
             },
-            connectionTimeout: 10000,
-            greetingTimeout: 5000,
-            socketTimeout: 10000,
+            pool: true,
+            maxConnections: 5,
+            maxMessages: Infinity,
+            rateDelta: 1000,
+            rateLimit: 14,
+            connectionTimeout: 5000,
+            greetingTimeout: 3000,
+            socketTimeout: 5000,
         });
     }
     return transporter;
@@ -37,9 +42,9 @@ export async function sendOTPEmail(
     legacyOtp?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-        const { to, otp, userName, expiresIn = '30 seconds' } =
+        const { to, otp, userName, expiresIn = '5 minutes' } =
             typeof optionsOrTo === 'string'
-                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: '30 seconds' }
+                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: '5 minutes' }
                 : optionsOrTo;
 
         const expiryDisplay = typeof expiresIn === 'number'
@@ -53,9 +58,6 @@ export async function sendOTPEmail(
         }
 
         const transporter = getTransporter();
-
-        // verify transporter connection
-        await transporter.verify();
 
         const mailOptions = {
             from: `"Supply Chain Management" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,

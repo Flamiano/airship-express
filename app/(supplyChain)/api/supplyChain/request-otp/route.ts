@@ -17,9 +17,12 @@ export async function POST(request: Request) {
     try {
         const { userId, email, loggedInUserId, employeeName } = await request.json();
 
-        if (!userId || !email || !loggedInUserId) {
+        const effectiveUserId = userId || loggedInUserId;
+        const effectiveLoggedInUserId = loggedInUserId || userId;
+
+        if (!effectiveUserId || !email) {
             return NextResponse.json(
-                { message: 'User ID, email, and logged in user are required' },
+                { message: 'User ID and email are required' },
                 { status: 400 }
             );
         }
@@ -33,48 +36,11 @@ export async function POST(request: Request) {
             );
         }
 
-        // check if user exists in users table, create if not
-        const { data: existingUser, error: userCheckError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', loggedInUserId)
-            .maybeSingle();
-
-        let effectiveUserId = loggedInUserId;
-
-        if (!existingUser) {
-            const { data: roleData } = await supabase
-                .from('role_based_accounts')
-                .select('email, role')
-                .eq('id', loggedInUserId)
-                .maybeSingle();
-
-            const { error: insertError } = await supabase
-                .from('users')
-                .insert({
-                    id: loggedInUserId,
-                    email: roleData?.email || email,
-                    display_name: employeeName || 'User',
-                    role: roleData?.role || 'Employee',
-                    status: 'Pending',
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                });
-
-            if (insertError) {
-                console.error('Failed to create temporary user:', insertError);
-                return NextResponse.json(
-                    { message: 'Failed to create user profile' },
-                    { status: 500 }
-                );
-            }
-        }
-
         // rate limiting - max 3 per hour
         const { count, error: countError } = await supabase
             .from('otp_codes')
             .select('*', { count: 'exact', head: true })
-            .eq('user_id', effectiveUserId)
+            .eq('user_id', effectiveLoggedInUserId)
             .gte('created_at', new Date(Date.now() - 3600000).toISOString());
 
         if (countError) {
@@ -88,41 +54,40 @@ export async function POST(request: Request) {
             );
         }
 
-        // generate otp (valid for 30 seconds)
+        // generate otp (valid for 5 minutes)
         const otp = generateOTP();
         const hashedOTP = hashOTP(otp);
-        const expiresAt = new Date(Date.now() + 30 * 1000);
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-        // store otp
-        const { error: insertError } = await supabase
-            .from('otp_codes')
-            .insert({
-                user_id: effectiveUserId,
-                code_hash: hashedOTP,
-                expires_at: expiresAt.toISOString(),
-                attempts: 0,
-                email: email,
-                employee_name: employeeName || 'Unknown',
-            });
+        // execute database insert and email dispatch concurrently in parallel
+        const [insertResult, emailResult] = await Promise.all([
+            supabase
+                .from('otp_codes')
+                .insert({
+                    user_id: effectiveLoggedInUserId,
+                    code_hash: hashedOTP,
+                    expires_at: expiresAt.toISOString(),
+                    attempts: 0,
+                    email: email,
+                    employee_name: employeeName || 'Unknown',
+                }),
+            sendOTPEmail({
+                to: email,
+                otp: otp,
+                userName: employeeName || 'HR Employee',
+            }).then(() => ({ success: true, error: null })).catch((err) => ({ success: false, error: err?.message || 'Failed to send email' }))
+        ]);
 
-        if (insertError) {
-            console.error('OTP insert error:', insertError);
+        if (insertResult.error) {
+            console.error('OTP insert error:', insertResult.error);
             return NextResponse.json(
-                { message: 'Failed to generate OTP: ' + insertError.message },
+                { message: 'Failed to generate OTP: ' + insertResult.error.message },
                 { status: 500 }
             );
         }
 
-        // send email
-        try {
-            await sendOTPEmail({
-                to: email,
-                otp: otp,
-                userName: employeeName || 'HR Employee',
-                expiresIn: '30 seconds',
-            });
-        } catch (emailError: any) {
-            console.error('Email sending failed:', emailError.message);
+        if (!emailResult.success) {
+            console.error('Email sending failed:', emailResult.error);
             return NextResponse.json(
                 { message: 'Failed to send OTP email. Please check your email address or contact support.' },
                 { status: 500 }

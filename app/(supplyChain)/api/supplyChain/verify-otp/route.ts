@@ -33,25 +33,43 @@ export async function POST(request: Request) {
 
         const hashedInputOTP = hashOTP(otp);
 
-        // get latest valid otp
-        const { data: otpRecords, error: otpError } = await supabase
+        // get latest valid otp by user_id or email
+        let otpQuery = supabase
             .from('otp_codes')
             .select('*')
-            .eq('user_id', userId)
             .is('used_at', null)
             .gte('expires_at', new Date().toISOString())
             .order('created_at', { ascending: false })
             .limit(1);
 
+        if (email && userId) {
+            otpQuery = otpQuery.or(`user_id.eq.${userId},email.eq.${email}`);
+        } else if (email) {
+            otpQuery = otpQuery.eq('email', email);
+        } else {
+            otpQuery = otpQuery.eq('user_id', userId);
+        }
+
+        const { data: otpRecords, error: otpError } = await otpQuery;
+
         if (otpError || !otpRecords || otpRecords.length === 0) {
             // check if the specific inputted OTP was issued and is now expired
-            const { data: matchingExpired } = await supabase
+            let expiredQuery = supabase
                 .from('otp_codes')
                 .select('*')
-                .eq('user_id', userId)
                 .eq('code_hash', hashedInputOTP)
                 .order('created_at', { ascending: false })
                 .limit(1);
+
+            if (email && userId) {
+                expiredQuery = expiredQuery.or(`user_id.eq.${userId},email.eq.${email}`);
+            } else if (email) {
+                expiredQuery = expiredQuery.eq('email', email);
+            } else {
+                expiredQuery = expiredQuery.eq('user_id', userId);
+            }
+
+            const { data: matchingExpired } = await expiredQuery;
 
             if (matchingExpired && matchingExpired.length > 0) {
                 return NextResponse.json(
@@ -64,13 +82,22 @@ export async function POST(request: Request) {
             }
 
             // check if any recent unused OTP is expired
-            const { data: recentRecords } = await supabase
+            let recentQuery = supabase
                 .from('otp_codes')
                 .select('*')
-                .eq('user_id', userId)
                 .is('used_at', null)
                 .order('created_at', { ascending: false })
                 .limit(1);
+
+            if (email && userId) {
+                recentQuery = recentQuery.or(`user_id.eq.${userId},email.eq.${email}`);
+            } else if (email) {
+                recentQuery = recentQuery.or(`email.eq.${email}`);
+            } else {
+                recentQuery = recentQuery.eq('user_id', userId);
+            }
+
+            const { data: recentRecords } = await recentQuery;
 
             if (recentRecords && recentRecords.length > 0) {
                 const latest = recentRecords[0];
@@ -78,7 +105,7 @@ export async function POST(request: Request) {
                     return NextResponse.json(
                         {
                             expired: true,
-                            message: 'The inputted OTP is already expired (30s limit reached). Please click Resend Code.'
+                            message: 'The inputted OTP is already expired (5-minute limit reached). Please click Resend Code.'
                         },
                         { status: 400 }
                     );
@@ -146,6 +173,29 @@ export async function POST(request: Request) {
             : new Date(Date.now() + 8 * 3600000);
 
         if (existingUser) {
+            // resolve and synchronize accurate role in users table
+            let effectiveRole = existingUser.role;
+            if (employeeRole && ['Admin', 'Executive', 'Manager', 'Operator', 'Employee'].includes(employeeRole)) {
+                effectiveRole = employeeRole;
+            } else if (hrData) {
+                const rawRole = (hrData.role || hrData.position || '').trim();
+                if (/manager/i.test(rawRole)) effectiveRole = 'Manager';
+                else if (/operator/i.test(rawRole)) effectiveRole = 'Operator';
+                else if (hrData.role) effectiveRole = hrData.role;
+            }
+
+            if (effectiveRole && effectiveRole !== existingUser.role) {
+                try {
+                    await supabase
+                        .from('users')
+                        .update({ role: effectiveRole, updated_at: new Date().toISOString() })
+                        .eq('id', existingUser.id);
+                    existingUser.role = effectiveRole;
+                } catch (updateRoleErr) {
+                    console.error('Error synchronizing user role:', updateRoleErr);
+                }
+            }
+
             const sessionToken = randomBytes(32).toString('hex');
 
             // deactivate existing sessions
@@ -237,6 +287,14 @@ export async function POST(request: Request) {
             // user doesn't exist - return temp token for password setup
             const tempToken = generateTemporaryToken();
 
+            let effectiveRole = employeeRole || 'Employee';
+            if (hrData) {
+                const rawRole = (hrData.role || hrData.position || '').trim();
+                if (/manager/i.test(rawRole)) effectiveRole = 'Manager';
+                else if (/operator/i.test(rawRole)) effectiveRole = 'Operator';
+                else if (hrData.role) effectiveRole = hrData.role;
+            }
+
             return NextResponse.json({
                 verified: true,
                 userExists: false,
@@ -247,7 +305,7 @@ export async function POST(request: Request) {
                     id: targetUserId,
                     email: email,
                     display_name: employeeName || 'User',
-                    role: employeeRole || 'Employee',
+                    role: effectiveRole,
                     employee_id: hrData?.employee_id || null,
                     department: hrData?.department || null,
                     position: hrData?.position || null,

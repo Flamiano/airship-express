@@ -6,6 +6,7 @@ import Loader from '../../components/global/Loader';
 import Custom404 from '../global/Custom404';
 import { WifiOff, RefreshCw, Clock } from 'lucide-react';
 import { user } from '../../lib/services/Class/user';
+import { settingsService } from '../../lib/services/settingsService';
 interface SessionGuardProps {
     children: React.ReactNode;
     requiredRole?: string[];
@@ -21,8 +22,6 @@ const VALID_ROLES = ['Admin', 'Manager', 'Employee', 'Operator', 'Executive'];
 const CACHE_DURATION = 60 * 1000;
 const TAMPER_POLL_INTERVAL = 30 * 1000;
 const OFFLINE_RETRY_DELAY = 5000;
-const INACTIVITY_TIMEOUT_MS = 60 * 1000;
-const INACTIVITY_WARNING_MS = 10 * 1000;
 const ACTIVITY_THROTTLE_MS = 1000;
 const INACTIVITY_STORAGE_KEY = 'sc_last_activity_time';
 const BACKUP_KEYS = {
@@ -317,7 +316,8 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     const [inactivityWarning, setInactivityWarning] = useState<{
         show: boolean;
         remainingSeconds: number;
-    }>({ show: false, remainingSeconds: 10 });
+        totalWarningSeconds: number;
+    }>({ show: false, remainingSeconds: 10, totalWarningSeconds: 10 });
     const lastActivityRef = useRef<number>(Date.now());
     const lastThrottleRef = useRef<number>(0);
     const [showLoader, setShowLoader] = useState(true);
@@ -608,7 +608,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         if (isLoggingOutRef.current) return;
         isLoggingOutRef.current = true;
 
-        setInactivityWarning({ show: false, remainingSeconds: 0 });
+        setInactivityWarning(prev => ({ ...prev, show: false, remainingSeconds: 0 }));
 
         const token = getSessionToken();
         try {
@@ -645,7 +645,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
 
         setInactivityWarning(prev => {
             if (prev.show) {
-                return { show: false, remainingSeconds: 10 };
+                return { ...prev, show: false, remainingSeconds: prev.totalWarningSeconds || 10 };
             }
             return prev;
         });
@@ -688,7 +688,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                     lastActivityRef.current = remoteTime;
                     setInactivityWarning(prev => {
                         if (prev.show) {
-                            return { show: false, remainingSeconds: 10 };
+                            return { ...prev, show: false, remainingSeconds: prev.totalWarningSeconds || 10 };
                         }
                         return prev;
                     });
@@ -714,20 +714,31 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 }
             } catch (e) { }
 
+            const timeoutMs = settingsService.getInactivityTimeoutMs();
+            const warningMs = settingsService.getInactivityWarningMs();
+
+            if (timeoutMs >= Number.MAX_SAFE_INTEGER) {
+                // Inactivity timer is disabled in settings
+                setInactivityWarning(prev => (prev.show ? { show: false, remainingSeconds: 10, totalWarningSeconds: 10 } : prev));
+                return;
+            }
+
             const elapsed = Date.now() - latestActivity;
-            const remainingMs = INACTIVITY_TIMEOUT_MS - elapsed;
+            const remainingMs = timeoutMs - elapsed;
 
             if (remainingMs <= 0) {
                 handleInactivityLogout();
-            } else if (remainingMs <= INACTIVITY_WARNING_MS) {
+            } else if (remainingMs <= warningMs) {
                 const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+                const totalWarningSec = Math.max(1, Math.ceil(warningMs / 1000));
                 setInactivityWarning({
                     show: true,
                     remainingSeconds: remainingSec,
+                    totalWarningSeconds: totalWarningSec,
                 });
             } else {
                 setInactivityWarning(prev => {
-                    if (prev.show) return { show: false, remainingSeconds: 10 };
+                    if (prev.show) return { show: false, remainingSeconds: 10, totalWarningSeconds: 10 };
                     return prev;
                 });
             }
@@ -883,8 +894,16 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 }
                 return;
             }
-            if (shouldSkipCheck())
+            if (shouldSkipCheck()) {
+                const currentRole = user.getRole();
+                if (currentRole && VALID_ROLES.includes(currentRole)) {
+                    const effectiveAllowed = settingsService.getPageRoles(pathname, requiredRole);
+                    if (effectiveAllowed && effectiveAllowed.length > 0 && !effectiveAllowed.includes(currentRole as any)) {
+                        setGuardState('denied');
+                    }
+                }
                 return;
+            }
             isCheckingRef.current = true;
             prevPathRef.current = pathname;
             try {
@@ -934,7 +953,8 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 if (data.user?.role) {
                     user.updateUser({ role: data.user.role });
                 }
-                if (requiredRole && requiredRole.length > 0 && !requiredRole.includes(userRole)) {
+                const effectiveAllowedRoles = settingsService.getPageRoles(pathname, requiredRole);
+                if (effectiveAllowedRoles && effectiveAllowedRoles.length > 0 && !effectiveAllowedRoles.includes(userRole as any)) {
                     setGuardState('denied');
                     return;
                 }
@@ -971,6 +991,34 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         };
         checkSession();
     }, [router, requiredRole, pathname, hasValidLocalStorage, shouldSkipCheck, handleInvalidSession, clearSessionData, getSessionToken, handleDeviceBlocked]);
+
+    // Synchronous immediate permission pre-check whenever route/role changes
+    useEffect(() => {
+        const currentRole = user.getRole();
+        if (currentRole && VALID_ROLES.includes(currentRole)) {
+            const effectiveAllowed = settingsService.getPageRoles(pathname, requiredRole);
+            if (effectiveAllowed && effectiveAllowed.length > 0 && !effectiveAllowed.includes(currentRole as any)) {
+                setGuardState('denied');
+            }
+        }
+    }, [pathname, requiredRole]);
+
+    // Live settings subscriber to instantly re-check permissions when altered
+    useEffect(() => {
+        const unsubscribe = settingsService.subscribe(() => {
+            const currentUserRole = user.getRole();
+            if (currentUserRole && VALID_ROLES.includes(currentUserRole)) {
+                const effectiveAllowed = settingsService.getPageRoles(pathname, requiredRole);
+                if (effectiveAllowed && effectiveAllowed.length > 0 && !effectiveAllowed.includes(currentUserRole as any)) {
+                    setGuardState('denied');
+                } else if (guardState === 'denied') {
+                    setGuardState('authorized');
+                }
+            }
+        });
+        return () => unsubscribe();
+    }, [pathname, requiredRole, guardState]);
+
     useEffect(() => {
         hasShownSessionClearedToastRef.current = false;
         hasShownInvalidToastRef.current = false;
@@ -1057,7 +1105,9 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                             <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
                                 <div
                                     className="bg-amber-500 h-2 rounded-full transition-all duration-1000 ease-linear"
-                                    style={{ width: `${((10 - inactivityWarning.remainingSeconds) / 10) * 100}%` }}
+                                    style={{
+                                        width: `${Math.min(100, Math.max(0, (((inactivityWarning.totalWarningSeconds || 10) - inactivityWarning.remainingSeconds) / (inactivityWarning.totalWarningSeconds || 10)) * 100))}%`
+                                    }}
                                 />
                             </div>
                         </div>

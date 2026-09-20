@@ -3,7 +3,7 @@
 import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
 import { ftmSupabase } from "@/app/(supplyChain)/lib/services/client/ftmSupabase";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 const rateLimiter = new Map<string, { count: number; resetTime: number }>();
 
@@ -23,6 +23,7 @@ export async function addManualParcel(data: {
     courier_id?: number;
     customer_name?: string;
     customer_number?: string;
+    scanned_by?: string;
 }) {
     try {
         const headersList = await headers();
@@ -202,6 +203,26 @@ export async function addManualParcel(data: {
             }
         }
 
+        let finalScannedBy = data.scanned_by?.trim() || null;
+        if (!finalScannedBy) {
+            try {
+                const cookieStore = await cookies();
+                const token = cookieStore.get('session_token')?.value || cookieStore.get('sc_session_token')?.value;
+                if (token) {
+                    const { data: sessData } = await supabase
+                        .from('sessions')
+                        .select('user_id')
+                        .eq('session_token', token)
+                        .maybeSingle();
+                    if (sessData?.user_id) {
+                        finalScannedBy = sessData.user_id;
+                    }
+                }
+            } catch {
+                // Ignore cookie lookup error
+            }
+        }
+
         const insertData = {
             barcode: trimmedBarcode,
             tracking_number: trackingNumber,
@@ -214,6 +235,7 @@ export async function addManualParcel(data: {
             customer_name: data.customer_name?.trim() || null,
             customer_number: data.customer_number?.trim() || null,
             status: 'pending',
+            scanned_by: finalScannedBy || null,
             scanned_at: new Date().toISOString(),
         }; // insert
 

@@ -21,7 +21,8 @@ export default function IncomingHeader({ onReceiveAll }: IncomingHeaderProps) {
         const toastId = toast.loading('Processing receive all...');
 
         try {
-            const result = await receiveAllParcels();
+            const currentUserId = user.getUserId();
+            const result = await receiveAllParcels(currentUserId || undefined);
 
             if (!result.success) {
                 toast.error(result.error || 'Failed to receive parcels', {

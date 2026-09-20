@@ -9,6 +9,7 @@ import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
 import { toast } from "sonner";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
 import ForecastExportModal from "./components/ForecastExportModal";
+import MonthlyIntelligencePanel from "./components/MonthlyIntelligencePanel";
 interface ForecastData {
     raw_db_stats: {
         total_parcels_in_db: number;
@@ -485,6 +486,14 @@ export default function Forecast() {
                     </div>
 
                     <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                        <AppButton type="button" variant="pink" size="md" onClick={() => {
+                            const el = document.getElementById("monthly-intelligence-section");
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}>
+                            <i className="fa-solid fa-calendar-check text-xs" />
+                            <span>Monthly AI Audit</span>
+                        </AppButton>
+
                         <AppButton type="button" variant="primary" size="md" onClick={generateAiSummary} disabled={loading || summarizing || !forecastData}>
                             <i className={`fas ${summarizing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} text-xs`}/>
                             <span>{summarizing ? "Analyzing Models..." : "Summarize with AI"}</span>
@@ -609,6 +618,9 @@ export default function Forecast() {
 
                         <Cards frontIcon="fa-solid fa-truck-fast" header="Top Courier Partner" data={sortedCouriers[0]?.[0] || "None"} arrow="fa-solid fa-trophy" description={`${sortedCouriers[0]?.[1] || 0} parcels dispatched`} backBg="bg-ink dark:bg-slate-900" backHeader="Courier Leaderboard" headerTextColor="text-muted dark:text-white/80" backDescription={sortedCouriers.slice(0, 4).map(([name, count], i) => `${i + 1}. ${name}: ${count} parcels`).join('\n') || "No courier data"} tooltip="Courier volume share" frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
                     </div>)}
+
+                {/* Monthly Operational Intelligence & Predictive AI Panel */}
+                <MonthlyIntelligencePanel />
 
                {/* insights banner */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">

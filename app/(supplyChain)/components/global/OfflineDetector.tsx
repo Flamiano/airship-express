@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { calculateGrabbableCollision } from '@/app/(supplyChain)/lib/grabbablePhysics';
 import { Wifi, WifiOff, RefreshCw, AlertCircle, X, GripVertical, Minus, Maximize2 } from 'lucide-react';
@@ -25,6 +26,8 @@ export function OfflineDetector({
     pingTimeout = 5000,
     blurAmount = 4,
 }: OfflineDetectorProps) {
+    const pathname = usePathname();
+    const isWarehousing = pathname?.includes('/warehousing');
     const [isOnline, setIsOnline] = useState(true);
     const [wasOffline, setWasOffline] = useState(false);
     const [isReconnecting, setIsReconnecting] = useState(false);
@@ -194,9 +197,9 @@ export function OfflineDetector({
         return () => window.removeEventListener('supplychain:grabbable-bounce', handleExternalBounce);
     }, [x, y, dragBounds, savePosition]);
 
-    // disable background interaction & scroll when offline
+    // disable background interaction & scroll when offline (except on warehousing where offline scanning is active)
     useEffect(() => {
-        if (!isOnline) {
+        if (!isOnline && !isWarehousing) {
             document.body.classList.add('is-offline');
             document.documentElement.classList.add('is-offline');
             document.body.style.overflow = 'hidden';
@@ -270,7 +273,7 @@ export function OfflineDetector({
                 lenis.start();
             }
         }
-    }, [isOnline]);
+    }, [isOnline, isWarehousing]);
 
     // continuous network check
     const checkConnection = useCallback(async () => {
@@ -456,9 +459,9 @@ export function OfflineDetector({
 
     return (
         <>
-            {/* Offline Shield Overlay - Intercepts and completely disables background interaction */}
+            {/* Offline Shield Overlay - Intercepts and completely disables background interaction (disabled on warehousing so operators can scan offline) */}
             <AnimatePresence>
-                {!isOnline && (
+                {!isOnline && !isWarehousing && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -557,7 +560,9 @@ export function OfflineDetector({
 
                                         <p className="text-xs sm:text-sm mt-0.5 leading-relaxed font-medium text-slate-600 dark:text-slate-300">
                                             {!isOnline
-                                                ? 'Network connectivity paused. Changes will sync once reconnected.'
+                                                ? (isWarehousing
+                                                    ? 'Offline mode active: You can continue scanning. Parcels will be stored locally as "Not Synced".'
+                                                    : 'Network connectivity paused. Changes will sync once reconnected.')
                                                 : 'Your connection has been restored. All systems fully operational.'
                                             }
                                         </p>
@@ -608,11 +613,11 @@ export function OfflineDetector({
                 )}
             </AnimatePresence>
 
-            {/* Children with total offline shielding */}
+            {/* Children with total offline shielding (disabled on warehousing) */}
             <div
-                aria-hidden={!isOnline}
-                className={`transition-all duration-300 ${!isOnline ? 'pointer-events-none select-none filter blur-[1px]' : ''}`}
-                style={{ pointerEvents: !isOnline ? 'none' : 'auto' }}
+                aria-hidden={!isOnline && !isWarehousing}
+                className={`transition-all duration-300 ${!isOnline && !isWarehousing ? 'pointer-events-none select-none filter blur-[1px]' : ''}`}
+                style={{ pointerEvents: !isOnline && !isWarehousing ? 'none' : 'auto' }}
             >
                 {children}
             </div>

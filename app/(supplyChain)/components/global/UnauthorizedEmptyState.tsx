@@ -11,17 +11,47 @@ export const isPrivilegedRole = (role?: string | null): boolean => {
 };
 
 export function useUserRole() {
-    const [role, setRole] = React.useState<string>('');
+    const [role, setRole] = React.useState<string>(() => {
+        if (typeof window !== 'undefined') return user.getRole() || '';
+        return '';
+    });
+    const [userId, setUserId] = React.useState<string>(() => {
+        if (typeof window !== 'undefined') return user.getUserId() || '';
+        return '';
+    });
+    const [userName, setUserName] = React.useState<string>(() => {
+        if (typeof window !== 'undefined') return user.getName() || '';
+        return '';
+    });
+    const [userEmail, setUserEmail] = React.useState<string>(() => {
+        if (typeof window !== 'undefined') return user.getEmail() || '';
+        return '';
+    });
     const [isLoaded, setIsLoaded] = React.useState(false);
 
     React.useEffect(() => {
         const storedRole = user.getRole();
+        const storedUserId = user.getUserId() || '';
+        const storedName = user.getName() || '';
+        const storedEmail = user.getEmail() || '';
         setRole(storedRole);
+        setUserId(storedUserId);
+        setUserName(storedName);
+        setUserEmail(storedEmail);
         setIsLoaded(true);
 
         const handleStorage = (e: StorageEvent) => {
             if (e.key === 'user_role') {
                 setRole(e.newValue || user.getRole());
+            }
+            if (e.key === 'user_id') {
+                setUserId(e.newValue || user.getUserId() || '');
+            }
+            if (e.key === 'user_name') {
+                setUserName(e.newValue || user.getName() || '');
+            }
+            if (e.key === 'user_email') {
+                setUserEmail(e.newValue || user.getEmail() || '');
             }
         };
         window.addEventListener('storage', handleStorage);
@@ -30,6 +60,9 @@ export function useUserRole() {
 
     return {
         role,
+        userId,
+        userName,
+        userEmail,
         isPrivileged: isPrivilegedRole(role),
         isLoaded,
     };

@@ -8,6 +8,7 @@ import { sanitizeBarcode, sanitizeSearch } from "@/app/(supplyChain)/components/
 import { philippineLocations } from "@/app/(supplyChain)/lib/regionDataSet";
 import Portal from "@/app/(supplyChain)/components/client/Portal";
 import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { user } from "@/app/(supplyChain)/lib/services/Class/user";
 
 interface AddManualButtonProps {
     onAdd?: () => void;
@@ -46,6 +47,7 @@ export default function AddManualButton({ onAdd }: AddManualButtonProps) {
                 courier_id: data.courier_id ? Number(data.courier_id) : undefined,
                 customer_name: data.customer_name,
                 customer_number: data.customer_number,
+                scanned_by: user.getUserId() || user.getName() || undefined,
             };
 
             const result = await addManualParcel(payload);

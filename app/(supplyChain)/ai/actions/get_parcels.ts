@@ -25,6 +25,7 @@ export interface Parcel {
     region: string | null;
     bulk_qr_code: string | null;
     driver_name: string | null;
+    scanned_by: string | null;
 }
 
 /**

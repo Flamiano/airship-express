@@ -13,7 +13,7 @@ import { StockInModal } from '@/app/(supplyChain)/(pages)/inventory/components/m
 import { StockOutModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockOutModal';
 import { ScopedPORequestModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/ScopedPORequestModal';
 import { PurchaseRequestDetailModal } from '@/app/(supplyChain)/components/modals/PurchaseRequestDetailModal';
-import { GroupedParcels, InventoryItem } from '@/app/(supplyChain)/(pages)/inventory/types';
+import { GroupedParcels, InventoryItem, ScannerUser } from '@/app/(supplyChain)/(pages)/inventory/types';
 import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
 import { fetchInventoryPageData, type Parcel } from '@/app/(supplyChain)/(pages)/inventory/server/query';
 import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
@@ -61,7 +61,7 @@ export const inventoryCache = new InventoryCacheManager();
 
 export default function InventoryClient() {
     const searchParams = useSearchParams();
-    const { role: userRole, isPrivileged, isLoaded } = useUserRole();
+    const { role: userRole, userId: currentUserId, isPrivileged, isLoaded } = useUserRole();
     const urlTab = searchParams.get('tab');
     const initialTab = urlTab || (isLoaded && !isPrivileged ? 'parcels' : 'dashboard');
     const [activeTab, setActiveTab] = useState<string>(initialTab);
@@ -72,6 +72,7 @@ export default function InventoryClient() {
     const [parcelStatusFilter, setParcelStatusFilter] = useState('');
     const [parcelDateFrom, setParcelDateFrom] = useState('');
     const [parcelDateTo, setParcelDateTo] = useState('');
+    const [parcelScannedByFilter, setParcelScannedByFilter] = useState('');
     const [inventoryPage, setInventoryPage] = useState(1);
     const [parcelPage, setParcelPage] = useState(1);
     const itemsPerPage = 30;
@@ -96,6 +97,7 @@ export default function InventoryClient() {
     const [totalInventoryItems, setTotalInventoryItems] = useState(0);
     const [inventoryTotalPages, setInventoryTotalPages] = useState(1);
     const [parcels, setParcels] = useState<Parcel[]>([]);
+    const [scanners, setScanners] = useState<ScannerUser[]>([]);
     const [totalParcels, setTotalParcels] = useState(0);
     const [parcelTotalPages, setParcelTotalPages] = useState(1);
     const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -106,13 +108,14 @@ export default function InventoryClient() {
     const { saving, deleting, addItem, updateItem, deleteItem, deleteMultipleItems, stockIn, stockOut } = useInventory();
 
     const fetchDashboardData = useCallback(async (forceRefresh = false) => {
-        const cacheKey = 'inventory_dashboard_data';
+        const cacheKey = `inventory_dashboard_data_${currentUserId || 'all'}_${isPrivileged}`;
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
             if (cached.data) {
                 setDashboardItems(cached.data.inventory?.items || []);
                 setDashboardStats(cached.data.stats || null);
                 setSuppliers(cached.data.suppliers || []);
+                if (cached.data.scanners) setScanners(cached.data.scanners || []);
                 if (!cached.isStale)
                     return; // 0ms instant cache response
             }
@@ -130,21 +133,31 @@ export default function InventoryClient() {
                 parcelStatus: '',
                 parcelDateFrom: '',
                 parcelDateTo: '',
+                parcelScannedBy: !isPrivileged && currentUserId ? currentUserId : undefined,
             });
             if (result.success && result.data) {
                 setDashboardItems(result.data.inventory?.items || []);
                 setDashboardStats(result.data.stats || null);
                 setSuppliers(result.data.suppliers || []);
+                if (result.data.scanners) setScanners(result.data.scanners || []);
                 inventoryCache.set(cacheKey, result.data);
             }
         }
         catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
-    }, []);
+    }, [isPrivileged, currentUserId]);
+
+    const effectiveParcelDateFrom = (parcelDateFrom && parcelDateTo) ? parcelDateFrom : '';
+    const effectiveParcelDateTo = (parcelDateFrom && parcelDateTo) ? parcelDateTo : '';
 
     const fetchInventoryData = useCallback(async (showLoading = true, forceRefresh = false) => {
+        const effectiveScannedBy = !isPrivileged && currentUserId ? currentUserId : parcelScannedByFilter;
+        const effectiveDateFrom = (parcelDateFrom && parcelDateTo) ? parcelDateFrom : '';
+        const effectiveDateTo = (parcelDateFrom && parcelDateTo) ? parcelDateTo : '';
         const cacheKey = JSON.stringify({
+            uid: currentUserId,
+            priv: isPrivileged,
             ip: inventoryPage,
             is: debouncedSearchTerm.trim().toLowerCase(),
             ic: categoryFilter,
@@ -152,8 +165,9 @@ export default function InventoryClient() {
             pp: parcelPage,
             ps: debouncedParcelSearch.trim().toLowerCase(),
             pst: parcelStatusFilter,
-            pdf: parcelDateFrom,
-            pdt: parcelDateTo,
+            pdf: effectiveDateFrom,
+            pdt: effectiveDateTo,
+            psb: effectiveScannedBy,
         });
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
@@ -167,6 +181,9 @@ export default function InventoryClient() {
                     setParcels(cached.data.parcels.parcels || []);
                     setTotalParcels(cached.data.parcels.totalItems || 0);
                     setParcelTotalPages(cached.data.parcels.totalPages || 1);
+                }
+                if (cached.data.scanners) {
+                    setScanners(cached.data.scanners || []);
                 }
                 setLoadingInventory(false);
                 setLoadingParcels(false);
@@ -189,8 +206,9 @@ export default function InventoryClient() {
                 parcelLimit: itemsPerPage,
                 parcelSearch: debouncedParcelSearch,
                 parcelStatus: parcelStatusFilter,
-                parcelDateFrom: parcelDateFrom,
-                parcelDateTo: parcelDateTo,
+                parcelDateFrom: effectiveDateFrom,
+                parcelDateTo: effectiveDateTo,
+                parcelScannedBy: effectiveScannedBy,
             });
             if (result.success && result.data) {
                 const { data } = result;
@@ -203,6 +221,9 @@ export default function InventoryClient() {
                     setParcels(data.parcels.parcels || []);
                     setTotalParcels(data.parcels.totalItems || 0);
                     setParcelTotalPages(data.parcels.totalPages || 1);
+                }
+                if (data?.scanners) {
+                    setScanners(data.scanners || []);
                 }
                 inventoryCache.set(cacheKey, data);
             }
@@ -231,6 +252,9 @@ export default function InventoryClient() {
         parcelStatusFilter,
         parcelDateFrom,
         parcelDateTo,
+        parcelScannedByFilter,
+        isPrivileged,
+        currentUserId,
     ]);
 
     useEffect(() => {
@@ -244,12 +268,13 @@ export default function InventoryClient() {
             isInitialLoad.current = false;
         };
         loadInitialData();
-    }, [fetchDashboardData, fetchInventoryData]);
+    }, [fetchDashboardData, fetchInventoryData, isLoaded]);
 
     useEffect(() => {
         if (isInitialLoad.current)
             return;
         setInventoryPage(1);
+        setParcelPage(1);
         const timeoutId = setTimeout(() => {
             fetchInventoryData(true);
         }, 300);
@@ -260,8 +285,9 @@ export default function InventoryClient() {
         statusFilter,
         debouncedParcelSearch,
         parcelStatusFilter,
-        parcelDateFrom,
-        parcelDateTo,
+        effectiveParcelDateFrom,
+        effectiveParcelDateTo,
+        parcelScannedByFilter,
         fetchInventoryData,
     ]);
 
@@ -550,6 +576,7 @@ export default function InventoryClient() {
         setParcelStatusFilter('');
         setParcelDateFrom('');
         setParcelDateTo('');
+        setParcelScannedByFilter('');
         setParcelPage(1);
     }, []);
 
@@ -709,6 +736,8 @@ export default function InventoryClient() {
                         statusFilter={parcelStatusFilter}
                         dateFrom={parcelDateFrom}
                         dateTo={parcelDateTo}
+                        scannedByFilter={parcelScannedByFilter}
+                        scanners={scanners}
                         currentPage={parcelPage}
                         totalPages={parcelTotalPages}
                         totalItems={totalParcels}
@@ -717,6 +746,10 @@ export default function InventoryClient() {
                         onStatusChange={setParcelStatusFilter}
                         onDateFromChange={setParcelDateFrom}
                         onDateToChange={setParcelDateTo}
+                        onScannedByChange={(val) => {
+                            setParcelScannedByFilter(val);
+                            setParcelPage(1);
+                        }}
                         onClearFilters={handleClearParcelFilters}
                         onPageChange={handleParcelPageChange}
                         onDeleteMultiple={handleDeleteMultipleParcels}

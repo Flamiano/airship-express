@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Eye, EyeOff, CheckCircle2, X, Loader2, LogOut, ShieldCheck, KeyRound, Check } from 'lucide-react';
+import { Lock, Eye, EyeOff, CheckCircle2, X, Loader2, LogOut, ShieldCheck, KeyRound, Check, Sliders } from 'lucide-react';
 import { toast } from 'sonner';
 import { user } from '@/app/(supplyChain)/lib/services/Class/user';
 interface UserProfileMenuProps {
@@ -270,9 +270,23 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
                                 </div>
                             </div>
 
-                            <button type="button" onClick={handleClose} disabled={isSubmitting} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-lg transition-colors cursor-pointer disabled:opacity-50" aria-label="Close">
-                                <X className="h-4 w-4"/>
-                            </button>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleClose();
+                                        router.push('/settings');
+                                    }}
+                                    className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-pink-600 dark:hover:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/40 rounded-lg transition-colors cursor-pointer"
+                                    title="System Settings"
+                                    aria-label="Settings"
+                                >
+                                    <Sliders className="h-4 w-4"/>
+                                </button>
+                                <button type="button" onClick={handleClose} disabled={isSubmitting} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-lg transition-colors cursor-pointer disabled:opacity-50" aria-label="Close">
+                                    <X className="h-4 w-4"/>
+                                </button>
+                            </div>
                         </div>
 
                         {/* Scrollable Body */}

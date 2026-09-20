@@ -16,13 +16,73 @@ export async function GET(request: Request) {
             );
         }
 
-        // Query mock_employees from Supabase database
-        let query = supabase
+        // If Admin or Executive, fetch directly from users table
+        if (role === 'Admin' || role === 'Executive') {
+            const { data: dbUsers, error: userError } = await supabase
+                .from('users')
+                .select('*')
+                .ilike('role', role)
+                .order('display_name', { ascending: true });
+
+            if (userError) {
+                console.error(`Error fetching ${role} users:`, userError);
+                return NextResponse.json(
+                    { message: `Failed to fetch ${role} accounts: ` + userError.message },
+                    { status: 500 }
+                );
+            }
+
+            const usersList = (dbUsers || []).map((u: any) => ({
+                id: u.id || u.user_id,
+                display_name: u.display_name || u.full_name || u.name || (role === 'Admin' ? 'Admin User' : 'Executive User'),
+                email: u.email || u.user_email,
+                role: u.role || role,
+                department: u.department || role,
+                position: u.position || role,
+                employee_id: u.employee_id || u.id,
+                has_hr_password: false,
+                remembered: false,
+                is_active: false
+            }));
+
+            // Check sessions for remembered / active status
+            try {
+                const userEmails = usersList.map(u => u.email).filter(Boolean);
+                if (userEmails.length > 0) {
+                    const { data: sessions } = await supabase
+                        .from('sessions')
+                        .select('email, remember_me, expires_at, is_active')
+                        .in('email', userEmails);
+
+                    if (sessions) {
+                        const now = new Date();
+                        const activeEmails = sessions
+                            .filter(s => s.is_active && new Date(s.expires_at) > now)
+                            .map(s => s.email);
+                        const rememberedEmails = sessions
+                            .filter(s => s.remember_me && new Date(s.expires_at) > now)
+                            .map(s => s.email);
+
+                        usersList.forEach(u => {
+                            u.is_active = activeEmails.includes(u.email);
+                            u.remembered = rememberedEmails.includes(u.email);
+                        });
+                    }
+                }
+            } catch (sessionErr) {
+                console.error('Session check error:', sessionErr);
+            }
+
+            return NextResponse.json(usersList);
+        }
+
+        // For Employee (and any other role), fetch all mock_employees (excluding any with Admin/Executive role)
+        const { data: dbEmployees, error: dbError } = await supabase
             .from('mock_employees')
             .select('*')
-            .ilike('role', role);
-
-        const { data: dbEmployees, error: dbError } = await query;
+            .not('role', 'ilike', '%Admin%')
+            .not('role', 'ilike', '%Executive%')
+            .order('display_name', { ascending: true });
 
         if (dbError) {
             console.error('Error fetching mock_employees from db:', dbError);
@@ -32,30 +92,49 @@ export async function GET(request: Request) {
             );
         }
 
-        const employees = dbEmployees || [];
+        const employees = (dbEmployees || []).map(emp => {
+            let employeeRole = 'Employee';
+            const rawRole = (emp.role || emp.position || '').trim();
+            if (/manager/i.test(rawRole)) {
+                employeeRole = 'Manager';
+            } else if (/operator/i.test(rawRole)) {
+                employeeRole = 'Operator';
+            } else if (emp.role) {
+                employeeRole = emp.role;
+            }
+
+            return {
+                ...emp,
+                id: emp.id || emp.user_id,
+                display_name: emp.display_name || emp.full_name || emp.name || 'Employee User',
+                email: emp.email || emp.user_email || emp.work_email,
+                role: employeeRole
+            };
+        });
 
         let rememberedEmails: string[] = [];
         let activeEmails: string[] = [];
 
-        if (loggedInEmail) {
-            try {
+        try {
+            const empEmails = employees.map(e => e.email).filter(Boolean);
+            if (empEmails.length > 0) {
                 const { data: sessions } = await supabase
                     .from('sessions')
                     .select('email, remember_me, expires_at, is_active')
-                    .eq('email', loggedInEmail)
-                    .maybeSingle();
+                    .in('email', empEmails);
 
                 if (sessions) {
-                    if (sessions.is_active && new Date(sessions.expires_at) > new Date()) {
-                        activeEmails = [sessions.email];
-                    }
-                    if (sessions.remember_me && new Date(sessions.expires_at) > new Date()) {
-                        rememberedEmails = [sessions.email];
-                    }
+                    const now = new Date();
+                    activeEmails = sessions
+                        .filter(s => s.is_active && new Date(s.expires_at) > now)
+                        .map(s => s.email);
+                    rememberedEmails = sessions
+                        .filter(s => s.remember_me && new Date(s.expires_at) > now)
+                        .map(s => s.email);
                 }
-            } catch (error) {
-                console.error('Session check error:', error);
             }
+        } catch (error) {
+            console.error('Session check error:', error);
         }
 
         const employeesWithStatus = employees.map(emp => ({

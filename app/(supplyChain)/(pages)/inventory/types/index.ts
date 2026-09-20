@@ -9,8 +9,22 @@ export interface Parcel {
     destination: string | null;
     courier: string | null;
     status: string;
+    scanned_by?: string | null;
+    scanner_name?: string | null;
+    scanner_email?: string | null;
+    scanner_role?: string | null;
     created_at: string;
-    updated_at: string
+    updated_at: string;
+}
+
+export interface ScannerUser {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    scanned_count: number;
+    status_counts: Record<string, number>;
+    last_scanned_at: string | null;
 }
 
 export interface LatestPOInfo {
