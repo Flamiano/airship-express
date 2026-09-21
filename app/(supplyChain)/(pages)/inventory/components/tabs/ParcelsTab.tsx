@@ -2,7 +2,7 @@
 'use client';
 import { useState, memo, useMemo, useCallback } from 'react';
 import { toast } from "sonner";
-import { Parcel, GroupedParcels, ScannerUser } from '../../types';
+import { Parcel, GroupedParcels, ScannerUser, DriverOption } from '../../types';
 import { getStatusLabel, getStatusTone } from '../../utils/helpers';
 import { sanitizeSearch } from '../../../../components/global/sanitize';
 import { Pagination } from '../../../../components/global/pagination';
@@ -10,6 +10,7 @@ import { TableSkeleton } from '../../../../components/ui/SkeletonLoader';
 import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
 import { AppButton } from '../../../../components/ui/AppButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { SearchableDropdown, SearchableDropdownOption } from '../../../../components/ui/SearchableDropdown';
 import { ParcelTrackingCard } from '../tracking/ParcelTrackingCard';
 import { ScannerStatsModal } from '../modals/ScannerStatsModal';
 import Portal from '../../../../components/client/Portal';
@@ -20,6 +21,8 @@ interface ParcelsTabProps {
     groupedParcels: GroupedParcels[];
     searchTerm: string;
     statusFilter: string;
+    driverFilter?: string;
+    drivers?: DriverOption[];
     dateFrom: string;
     dateTo: string;
     scannedByFilter?: string;
@@ -30,6 +33,7 @@ interface ParcelsTabProps {
     isLoading?: boolean;
     onSearchChange: (value: string) => void;
     onStatusChange: (value: string) => void;
+    onDriverChange?: (value: string) => void;
     onDateFromChange: (value: string) => void;
     onDateToChange: (value: string) => void;
     onScannedByChange?: (value: string) => void;
@@ -64,6 +68,8 @@ export const ParcelsTab = memo(function ParcelsTab({
     groupedParcels,
     searchTerm,
     statusFilter,
+    driverFilter = '',
+    drivers = [],
     dateFrom,
     dateTo,
     scannedByFilter = '',
@@ -74,6 +80,7 @@ export const ParcelsTab = memo(function ParcelsTab({
     isLoading = false,
     onSearchChange,
     onStatusChange,
+    onDriverChange,
     onDateFromChange,
     onDateToChange,
     onScannedByChange,
@@ -231,24 +238,56 @@ export const ParcelsTab = memo(function ParcelsTab({
             console.warn('onPageChange is not a function');
         }
     };
+    // memoized options for searchable dropdowns
+    const driverOptions: SearchableDropdownOption[] = useMemo(() => {
+        return (drivers || []).map((d) => ({
+            value: d.name,
+            label: d.name,
+            count: d.count,
+            icon: 'fas fa-id-badge',
+        }));
+    }, [drivers]);
+
+    const scannerOptions: SearchableDropdownOption[] = useMemo(() => {
+        return (scanners || [])
+            .filter((s) => s.id !== 'unassigned')
+            .map((s) => ({
+                value: s.id,
+                label: s.name,
+                subLabel: s.role ? `${s.role}${s.email ? ` • ${s.email}` : ''}` : s.email,
+                count: s.scanned_count,
+                icon: 'fas fa-user-tag',
+            }));
+    }, [scanners]);
+
     // calculate range
     const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
     const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
     return (<>
             <div className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] overflow-hidden transition-colors flex flex-col">
                 {/* header */}
-                <div className="flex-shrink-0 p-4 border-b border-slate-200/60 dark:border-slate-800/80 bg-[#ebf0f7]/70 dark:bg-[#14151c]/70 backdrop-blur-md flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 justify-between">
+                <div className="flex-shrink-0 p-4 border-b border-slate-200/60 dark:border-slate-800/80 bg-[#ebf0f7]/70 dark:bg-[#14151c]/70 backdrop-blur-md flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 justify-between relative z-20">
                     <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
                         {/* search */}
-                        <div className="relative flex-1 min-w-0 sm:min-w-[200px] sm:max-w-xs group">
+                        <div className="relative flex-1 min-w-0 sm:min-w-[180px] sm:max-w-xs group">
                             <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-pink-500 text-xs pointer-events-none transition-colors"></i>
-                            <input type="search" className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl px-3 py-2 pl-9 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.35),inset_-1px_-1px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 dark:focus:border-pink-500/80 transition-all" placeholder="Search barcode, tracking, sender..." value={searchTerm} onChange={(e) => onSearchChange(sanitizeSearch(e.target.value))}/>
+                            <input
+                                type="search"
+                                className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl px-3 py-2 pl-9 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.35),inset_-1px_-1px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 dark:focus:border-pink-500/80 transition-all"
+                                placeholder="Search barcode, tracking, sender..."
+                                value={searchTerm}
+                                onChange={(e) => onSearchChange(sanitizeSearch(e.target.value))}
+                            />
                         </div>
 
                         {/* status filter */}
-                        <div className="relative min-w-0 sm:min-w-[130px] group">
+                        <div className="relative min-w-0 sm:min-w-[125px] group">
                             <i className="fas fa-filter absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-pink-500 text-xs pointer-events-none transition-colors"></i>
-                            <select className="w-full appearance-none bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl px-3 py-2 pl-9 pr-8 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] focus:outline-none focus:border-pink-500 dark:focus:border-pink-500/80 transition-all cursor-pointer" value={statusFilter} onChange={(e) => onStatusChange(e.target.value)}>
+                            <select
+                                className="w-full min-h-[38px] appearance-none bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl px-3 py-1.5 pl-9 pr-8 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] focus:outline-none focus:border-pink-500 dark:focus:border-pink-500/80 transition-all cursor-pointer"
+                                value={statusFilter}
+                                onChange={(e) => onStatusChange(e.target.value)}
+                            >
                                 <option value="" className="dark:bg-slate-900">All Statuses</option>
                                 <option value="received" className="dark:bg-slate-900">Received</option>
                                 <option value="sorting" className="dark:bg-slate-900">Sorting</option>
@@ -261,34 +300,43 @@ export const ParcelsTab = memo(function ParcelsTab({
                             <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none"></i>
                         </div>
 
-                        {/* scanned by filter (privileged only) */}
+                        {/* searchable assigned driver filter */}
+                        <SearchableDropdown
+                            value={driverFilter || ''}
+                            onChange={(val) => onDriverChange?.(val)}
+                            options={driverOptions}
+                            placeholder="All Drivers"
+                            allOptionLabel="All Drivers"
+                            unassignedOptionLabel="Unassigned Driver"
+                            searchPlaceholder="Search driver name..."
+                            icon="fas fa-id-badge"
+                            className="min-w-[145px] flex-1 sm:flex-none"
+                            title="Filter by Assigned Driver"
+                        />
+
+                        {/* searchable scanned by filter (privileged only) */}
                         {!isPrivileged ? (
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-800/50 text-xs font-bold text-pink-700 dark:text-pink-300">
+                            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200/80 dark:border-pink-800/50 text-xs font-bold text-pink-700 dark:text-pink-300 min-h-[38px]">
                                 <i className="fas fa-user-shield text-[10px]"></i>
-                                <span>My Scanned Parcels Only</span>
+                                <span>My Scanned Parcels</span>
                             </div>
                         ) : (
-                            <div className="relative min-w-0 sm:min-w-[150px] group">
-                                <i className="fas fa-user-tag absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-pink-500 text-xs pointer-events-none transition-colors"></i>
-                                <select
-                                    className="w-full appearance-none bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl px-3 py-2 pl-9 pr-8 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] focus:outline-none focus:border-pink-500 dark:focus:border-pink-500/80 transition-all cursor-pointer"
-                                    value={scannedByFilter || ''}
-                                    onChange={(e) => onScannedByChange?.(e.target.value)}
-                                >
-                                    <option value="" className="dark:bg-slate-900">All Scanners</option>
-                                    <option value="unassigned" className="dark:bg-slate-900">Unassigned / System</option>
-                                    {scanners && scanners.filter(s => s.id !== 'unassigned').map((s) => (
-                                        <option key={s.id} value={s.id} className="dark:bg-slate-900">
-                                            {s.name} ({s.scanned_count})
-                                        </option>
-                                    ))}
-                                </select>
-                                <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[10px] pointer-events-none"></i>
-                            </div>
+                            <SearchableDropdown
+                                value={scannedByFilter || ''}
+                                onChange={(val) => onScannedByChange?.(val)}
+                                options={scannerOptions}
+                                placeholder="All Scanners"
+                                allOptionLabel="All Scanners"
+                                unassignedOptionLabel="Unassigned / System"
+                                searchPlaceholder="Search scanner or role..."
+                                icon="fas fa-user-tag"
+                                className="min-w-[145px] flex-1 sm:flex-none"
+                                title="Filter by Operator / Scanner"
+                            />
                         )}
 
                         {/* date filter */}
-                        <div className="flex items-center justify-between sm:justify-start gap-1.5 bg-[#ebf0f7] dark:bg-[#14151c] p-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
+                        <div className="flex items-center justify-between sm:justify-start gap-1.5 bg-[#ebf0f7] dark:bg-[#14151c] p-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] min-h-[38px]">
                             <div className="relative flex items-center flex-1 sm:flex-none">
                                 <input
                                     type="date"
@@ -331,24 +379,6 @@ export const ParcelsTab = memo(function ParcelsTab({
                                 <i className="fas fa-info-circle text-[10px]"></i>
                                 {dateFrom && !dateTo ? 'Select "To" date to filter' : 'Select "From" date to filter'}
                             </span>
-                        )}
-
-                        {/* Active scanner pill badge */}
-                        {isPrivileged && scannedByFilter && (
-                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-pink-100 dark:bg-pink-950/60 border border-pink-200 dark:border-pink-800 text-xs font-bold text-pink-700 dark:text-pink-300 animate-in fade-in">
-                                <i className="fas fa-user-check text-[10px]"></i>
-                                <span className="truncate max-w-[140px]">
-                                    {scanners?.find(s => s.id === scannedByFilter)?.name || (scannedByFilter === 'unassigned' ? 'Unassigned' : 'Selected Scanner')}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => onScannedByChange?.('')}
-                                    className="ml-0.5 hover:text-pink-900 dark:hover:text-pink-100 cursor-pointer p-0.5"
-                                    title="Remove scanner filter"
-                                >
-                                    <i className="fas fa-times text-[10px]"></i>
-                                </button>
-                            </div>
                         )}
                     </div>
 
@@ -546,8 +576,9 @@ export const ParcelsTab = memo(function ParcelsTab({
                                                 <th>Sender</th>
                                                 <th>Customer</th>
                                                 <th>Customer Number</th>
-                                                <th>Destination</th>
+                                                 <th>Destination</th>
                                                 <th>Courier</th>
+                                                <th>Driver</th>
                                                 <th>Status</th>
                                                 <th>Scanned By</th>
                                                 <th>Time</th>
@@ -629,6 +660,41 @@ export const ParcelsTab = memo(function ParcelsTab({
                                                         <span className="truncate inline-block text-right" title={parcel.courier || 'N/A'}>
                                                             {parcel.courier || 'N/A'}
                                                         </span>
+                                                    </td>
+                                                    <td data-label="Driver" className="sm:whitespace-nowrap text-right sm:text-left">
+                                                        <div className="flex items-center gap-1.5 justify-end sm:justify-start">
+                                                            {parcel.driver_name ? (
+                                                                <span
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (onDriverChange) {
+                                                                            onDriverChange(parcel.driver_name!);
+                                                                            toast.info(`Filtered by driver: ${parcel.driver_name}`);
+                                                                        }
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-400 dark:hover:border-emerald-700 transition-colors cursor-pointer"
+                                                                    title={`Assigned Driver: ${parcel.driver_name} - Click to filter`}
+                                                                >
+                                                                    <i className="fas fa-id-badge text-[10px] text-emerald-600 dark:text-emerald-400"></i>
+                                                                    <span className="truncate max-w-[120px]">{parcel.driver_name}</span>
+                                                                </span>
+                                                            ) : (
+                                                                <span
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (onDriverChange) {
+                                                                            onDriverChange('unassigned');
+                                                                            toast.info('Filtered by unassigned drivers');
+                                                                        }
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer transition-colors"
+                                                                    title="Unassigned driver - Click to filter unassigned"
+                                                                >
+                                                                    <i className="fas fa-user-slash text-[9px]"></i>
+                                                                    <span>Unassigned</span>
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td data-label="Status" className="sm:whitespace-nowrap">
                                                         <div className="flex justify-end sm:justify-start">
@@ -779,6 +845,27 @@ export const ParcelsTab = memo(function ParcelsTab({
                                             <p className="font-semibold text-xs text-slate-800 dark:text-slate-200 break-words">{selectedParcel.courier || 'N/A'}</p>
                                         </div>
 
+                                        {/* Assigned Driver Info */}
+                                        <div className="p-3 rounded-xl bg-white dark:bg-[#14151c] border border-slate-200 dark:border-slate-800 space-y-1">
+                                            <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500">Assigned Driver</p>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 flex items-center justify-center text-xs font-bold shrink-0">
+                                                    <i className="fas fa-id-badge"></i>
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-semibold text-xs text-slate-800 dark:text-slate-200 truncate">
+                                                        {selectedParcel.driver_name || 'Unassigned'}
+                                                    </p>
+                                                    {selectedParcel.bulk_qr_code && (
+                                                        <p className="text-[10px] font-mono text-slate-400 dark:text-slate-500 truncate" title={`Bulk Manifest: ${selectedParcel.bulk_qr_code}`}>
+                                                            Manifest: {selectedParcel.bulk_qr_code}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Status */}
                                         <div className="p-3 rounded-xl bg-white dark:bg-[#14151c] border border-slate-200 dark:border-slate-800 space-y-1">
                                             <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500">Status</p>
                                             <div>

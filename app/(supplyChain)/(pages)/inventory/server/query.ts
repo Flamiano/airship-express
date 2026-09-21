@@ -66,8 +66,13 @@ export interface Parcel {
     customer_name: string | null;
     customer_number: string | null;
     destination: string | null;
-    region: string | null;
+    city?: string | null;
+    region?: string | null;
     courier: string | null;
+    driver_name?: string | null;
+    bulk_qr_code?: string | null;
+    bulk_qr_city?: string | null;
+    bulk_qr_courier?: string | null;
     scanned_by: string | null;
     scanner_name?: string | null;
     scanner_email?: string | null;
@@ -76,6 +81,10 @@ export interface Parcel {
     status: string;
     created_at: string;
     updated_at: string;
+}
+export interface DriverOption {
+    name: string;
+    count: number;
 }
 export interface ScannerUser {
     id: string;
@@ -639,6 +648,77 @@ export async function fetchScannersSummary(): Promise<{ success: boolean; data: 
     }
 }
 
+const FALLBACK_DRIVERS = [
+    "MAGAT, ROSANT CARLO",
+    "MANAAY, ANTHONY",
+    "MELENCION, JAMES",
+    "NUEVAS, KENNETH",
+];
+
+// get drivers summary with parcel counts
+export async function fetchDriversSummary(): Promise<{ success: boolean; data: DriverOption[]; error?: string }> {
+    try {
+        const [{ data: parcelsData }, { data: empData }] = await Promise.all([
+            dbClient.from('parcels').select('driver_name'),
+            dbClient.from('mock_employees').select('id, display_name, position, department, role')
+        ]);
+
+        const driverCounts: Record<string, number> = {};
+        (parcelsData || []).forEach((p: any) => {
+            if (p.driver_name && typeof p.driver_name === 'string') {
+                const name = p.driver_name.trim();
+                if (name) {
+                    driverCounts[name] = (driverCounts[name] || 0) + 1;
+                }
+            }
+        });
+
+        const allDriverNames = new Set<string>(FALLBACK_DRIVERS);
+        (empData || []).forEach((emp: any) => {
+            const pos = (emp.position || '').toLowerCase();
+            const dept = (emp.department || '').toLowerCase();
+            const role = (emp.role || '').toLowerCase();
+            if (
+                pos.includes('rider') ||
+                pos.includes('driver') ||
+                pos.includes('drop-off') ||
+                pos.includes('pick-up') ||
+                dept.includes('rider') ||
+                dept.includes('driver') ||
+                role.includes('rider') ||
+                role.includes('driver')
+            ) {
+                const name = (emp.display_name || '').trim();
+                if (name) {
+                    allDriverNames.add(name);
+                }
+            }
+        });
+
+        // Also add any driver names present on parcels
+        Object.keys(driverCounts).forEach(name => allDriverNames.add(name));
+
+        const list: DriverOption[] = Array.from(allDriverNames)
+            .sort((a, b) => a.localeCompare(b))
+            .map(name => ({
+                name,
+                count: driverCounts[name] || 0,
+            }));
+
+        return {
+            success: true,
+            data: list,
+        };
+    } catch (err: any) {
+        console.error('Error fetching drivers summary:', err);
+        return {
+            success: false,
+            data: FALLBACK_DRIVERS.map(name => ({ name, count: 0 })),
+            error: err?.message,
+        };
+    }
+}
+
 // get parcels with pagination and filters
 export async function fetchParcels(params: {
     page?: number;
@@ -648,6 +728,7 @@ export async function fetchParcels(params: {
     dateFrom?: string;
     dateTo?: string;
     scannedBy?: string;
+    driver?: string;
 }) {
     try {
         const headersList = await headers();
@@ -659,7 +740,7 @@ export async function fetchParcels(params: {
                 status: 429,
             };
         }
-        const { page = 1, limit = 15, search = '', status = '', dateFrom = '', dateTo = '', scannedBy = '' } = params;
+        const { page = 1, limit = 15, search = '', status = '', dateFrom = '', dateTo = '', scannedBy = '', driver = '' } = params;
         const from = (page - 1) * limit;
         const to = from + limit - 1;
         let query = dbClient
@@ -679,6 +760,15 @@ export async function fetchParcels(params: {
                 query = query.is('scanned_by', null);
             } else {
                 query = query.eq('scanned_by', scannedBy);
+            }
+        }
+        if (driver) {
+            if (driver === 'unassigned') {
+                query = query.is('driver_name', null);
+            } else if (driver === 'assigned') {
+                query = query.not('driver_name', 'is', null);
+            } else {
+                query = query.eq('driver_name', driver);
             }
         }
         if (dateFrom) {
@@ -831,6 +921,7 @@ export async function fetchInventoryPageData(params: {
     parcelDateFrom?: string;
     parcelDateTo?: string;
     parcelScannedBy?: string;
+    parcelDriver?: string;
 }) {
     try {
         const headersList = await headers();
@@ -843,7 +934,7 @@ export async function fetchInventoryPageData(params: {
             };
         }
         // run all queries at the same time so it don't wait for each one to finish before starting the next
-        const [inventoryResult, parcelsResult, suppliersResult, statsResult, scannersResult] = await Promise.all([
+        const [inventoryResult, parcelsResult, suppliersResult, statsResult, scannersResult, driversResult] = await Promise.all([
             fetchInventoryItems({
                 page: params.inventoryPage || 1,
                 limit: params.inventoryLimit || 15,
@@ -859,10 +950,12 @@ export async function fetchInventoryPageData(params: {
                 dateFrom: params.parcelDateFrom || '',
                 dateTo: params.parcelDateTo || '',
                 scannedBy: params.parcelScannedBy || '',
+                driver: params.parcelDriver || '',
             }),
             fetchSuppliers(),
             fetchDashboardStats(),
             fetchScannersSummary(),
+            fetchDriversSummary(),
         ]);
         return {
             success: true,
@@ -872,6 +965,7 @@ export async function fetchInventoryPageData(params: {
                 suppliers: suppliersResult.success ? suppliersResult.data : [],
                 stats: statsResult.success ? statsResult.data : null,
                 scanners: scannersResult.success ? scannersResult.data : [],
+                drivers: driversResult.success ? driversResult.data : [],
             },
             status: 200,
         };

@@ -1,12 +1,10 @@
-// app/(supplyChain)/procurement/api/send-email/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
-import { sendSupplyChainEmail } from '../../../../lib/email/mailer';
+import { sendSupplyChainEmail } from '../../lib/email/mailer';
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { to, subject, html, text, po_number, supplier_name } = body;
+        const { to, subject, html, text, senderName, senderEmail, replyTo, attachments, cc, bcc } = body;
 
         if (!to || !subject || !html) {
             return NextResponse.json(
@@ -20,9 +18,12 @@ export async function POST(request: NextRequest) {
             subject,
             html,
             text: text || '',
-            senderName: 'Airship Express Procurement',
-            senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
-            replyTo: process.env.EMAIL_SUPPLYCHAIN_USER,
+            senderName,
+            senderEmail,
+            replyTo,
+            attachments,
+            cc,
+            bcc
         });
 
         return NextResponse.json({
@@ -33,15 +34,9 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error: any) {
-        let errorMessage = 'Failed to send email';
-        if (error.code === 'EAUTH') {
-            errorMessage = 'Email authentication failed. Please check your credentials.';
-        } else if (error.code === 'ECONNECTION') {
-            errorMessage = 'Could not connect to email server. Please check your internet connection.';
-        }
-
+        console.error('Error in send-email route:', error);
         return NextResponse.json(
-            { success: false, error: errorMessage, details: error.message },
+            { success: false, error: error.message || 'Failed to send email' },
             { status: 500 }
         );
     }

@@ -13,7 +13,7 @@ import { StockInModal } from './components/modals/StockInModal';
 import { StockOutModal } from './components/modals/StockOutModal';
 import { ScopedPORequestModal } from './components/modals/ScopedPORequestModal';
 import { PurchaseRequestDetailModal } from '../../components/modals/PurchaseRequestDetailModal';
-import { GroupedParcels, InventoryItem, ScannerUser } from './types';
+import { GroupedParcels, InventoryItem, ScannerUser, DriverOption } from './types';
 import { useDebounce } from "../../hooks/useDebounce";
 import { fetchInventoryPageData, type Parcel } from './server/query';
 import { AppButton } from '../../components/ui/AppButton';
@@ -70,6 +70,7 @@ export default function InventoryClient() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [parcelSearchTerm, setParcelSearchTerm] = useState('');
     const [parcelStatusFilter, setParcelStatusFilter] = useState('');
+    const [parcelDriverFilter, setParcelDriverFilter] = useState('');
     const [parcelDateFrom, setParcelDateFrom] = useState('');
     const [parcelDateTo, setParcelDateTo] = useState('');
     const [parcelScannedByFilter, setParcelScannedByFilter] = useState('');
@@ -98,6 +99,7 @@ export default function InventoryClient() {
     const [inventoryTotalPages, setInventoryTotalPages] = useState(1);
     const [parcels, setParcels] = useState<Parcel[]>([]);
     const [scanners, setScanners] = useState<ScannerUser[]>([]);
+    const [drivers, setDrivers] = useState<DriverOption[]>([]);
     const [totalParcels, setTotalParcels] = useState(0);
     const [parcelTotalPages, setParcelTotalPages] = useState(1);
     const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -116,6 +118,7 @@ export default function InventoryClient() {
                 setDashboardStats(cached.data.stats || null);
                 setSuppliers(cached.data.suppliers || []);
                 if (cached.data.scanners) setScanners(cached.data.scanners || []);
+                if (cached.data.drivers) setDrivers(cached.data.drivers || []);
                 if (!cached.isStale)
                     return; // 0ms instant cache response
             }
@@ -131,6 +134,7 @@ export default function InventoryClient() {
                 parcelLimit: 5,
                 parcelSearch: '',
                 parcelStatus: '',
+                parcelDriver: '',
                 parcelDateFrom: '',
                 parcelDateTo: '',
                 parcelScannedBy: !isPrivileged && currentUserId ? currentUserId : undefined,
@@ -140,6 +144,7 @@ export default function InventoryClient() {
                 setDashboardStats(result.data.stats || null);
                 setSuppliers(result.data.suppliers || []);
                 if (result.data.scanners) setScanners(result.data.scanners || []);
+                if (result.data.drivers) setDrivers(result.data.drivers || []);
                 inventoryCache.set(cacheKey, result.data);
             }
         }
@@ -165,6 +170,7 @@ export default function InventoryClient() {
             pp: parcelPage,
             ps: debouncedParcelSearch.trim().toLowerCase(),
             pst: parcelStatusFilter,
+            pdrv: parcelDriverFilter,
             pdf: effectiveDateFrom,
             pdt: effectiveDateTo,
             psb: effectiveScannedBy,
@@ -184,6 +190,9 @@ export default function InventoryClient() {
                 }
                 if (cached.data.scanners) {
                     setScanners(cached.data.scanners || []);
+                }
+                if (cached.data.drivers) {
+                    setDrivers(cached.data.drivers || []);
                 }
                 setLoadingInventory(false);
                 setLoadingParcels(false);
@@ -206,6 +215,7 @@ export default function InventoryClient() {
                 parcelLimit: itemsPerPage,
                 parcelSearch: debouncedParcelSearch,
                 parcelStatus: parcelStatusFilter,
+                parcelDriver: parcelDriverFilter,
                 parcelDateFrom: effectiveDateFrom,
                 parcelDateTo: effectiveDateTo,
                 parcelScannedBy: effectiveScannedBy,
@@ -224,6 +234,9 @@ export default function InventoryClient() {
                 }
                 if (data?.scanners) {
                     setScanners(data.scanners || []);
+                }
+                if (data?.drivers) {
+                    setDrivers(data.drivers || []);
                 }
                 inventoryCache.set(cacheKey, data);
             }
@@ -250,6 +263,7 @@ export default function InventoryClient() {
         parcelPage,
         debouncedParcelSearch,
         parcelStatusFilter,
+        parcelDriverFilter,
         parcelDateFrom,
         parcelDateTo,
         parcelScannedByFilter,
@@ -285,6 +299,7 @@ export default function InventoryClient() {
         statusFilter,
         debouncedParcelSearch,
         parcelStatusFilter,
+        parcelDriverFilter,
         effectiveParcelDateFrom,
         effectiveParcelDateTo,
         parcelScannedByFilter,
@@ -574,6 +589,7 @@ export default function InventoryClient() {
     const handleClearParcelFilters = useCallback(() => {
         setParcelSearchTerm('');
         setParcelStatusFilter('');
+        setParcelDriverFilter('');
         setParcelDateFrom('');
         setParcelDateTo('');
         setParcelScannedByFilter('');
@@ -734,6 +750,8 @@ export default function InventoryClient() {
                         groupedParcels={filteredGroupedParcels}
                         searchTerm={parcelSearchTerm}
                         statusFilter={parcelStatusFilter}
+                        driverFilter={parcelDriverFilter}
+                        drivers={drivers}
                         dateFrom={parcelDateFrom}
                         dateTo={parcelDateTo}
                         scannedByFilter={parcelScannedByFilter}
@@ -744,6 +762,10 @@ export default function InventoryClient() {
                         isLoading={loading || loadingParcels}
                         onSearchChange={setParcelSearchTerm}
                         onStatusChange={setParcelStatusFilter}
+                        onDriverChange={(val) => {
+                            setParcelDriverFilter(val);
+                            setParcelPage(1);
+                        }}
                         onDateFromChange={setParcelDateFrom}
                         onDateToChange={setParcelDateTo}
                         onScannedByChange={(val) => {

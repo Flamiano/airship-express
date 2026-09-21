@@ -213,7 +213,7 @@ export default function SortingPanel() {
                     </p>
                     <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 space-y-0.5">
                         <li>Items: <span className="font-semibold text-slate-900 dark:text-white">{targetList.length} parcel{targetList.length > 1 ? 's' : ''}</span></li>
-                        <li>Action: Assign shared Global, City, and Courier QR codes & Move to Ready for Pickup</li>
+                        <li>Action: Assign shared Global, City, and Courier QR codes</li>
                     </ul>
                 </div>{/* note */}
                 <div className="space-y-2 text-xs">
@@ -288,7 +288,7 @@ export default function SortingPanel() {
             if (globalIds.length > 0) {
                 const { error: globalError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_code: globalQrCode, status: 'ready_for_pickup' })
+                    .update({ bulk_qr_code: globalQrCode })
                     .in('id', globalIds);
                 if (globalError)
                     throw globalError;
@@ -296,7 +296,7 @@ export default function SortingPanel() {
             for (const [qrCode, ids] of Object.entries(cityGroups)) {
                 const { error: cityError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_city: qrCode, status: 'ready_for_pickup' })
+                    .update({ bulk_qr_city: qrCode })
                     .in('id', ids);
                 if (cityError)
                     throw cityError;
@@ -304,21 +304,12 @@ export default function SortingPanel() {
             for (const [qrCode, ids] of Object.entries(courierGroups)) {
                 const { error: courierError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_courier: qrCode, status: 'ready_for_pickup' })
+                    .update({ bulk_qr_courier: qrCode })
                     .in('id', ids);
                 if (courierError)
                     throw courierError;
-            } // update status
-            const allParcelIds = targetList.map(p => p.id);
-            if (allParcelIds.length > 0) {
-                const { error: statusError } = await supabase
-                    .from('parcels')
-                    .update({ status: 'ready_for_pickup' })
-                    .in('id', allParcelIds);
-                if (statusError)
-                    throw statusError;
             }
-            toast.success(`All bulk QR codes generated & moved to Ready for pickup for ${targetList.length} parcels!`, {
+            toast.success(`All bulk QR codes generated for ${targetList.length} parcels!`, {
                 id: toastId,
                 duration: 4000,
                 action: {

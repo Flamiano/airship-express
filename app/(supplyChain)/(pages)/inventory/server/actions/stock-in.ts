@@ -152,6 +152,8 @@ export async function stockInItemAction(params: StockInParams): Promise<StockInR
         const effectiveRole = dbUserRole || userRole || 'Employee';
         const role = (effectiveRole || '').toLowerCase().trim();
         const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(role) || effectiveRole === 'Admin';
+        const isExecutive = ['executive'].includes(role) || effectiveRole === 'Executive';
+        const canForce = isAdmin || isExecutive;
 
         // 3. Validation Logic
         let exceededLimit = false;
@@ -161,15 +163,15 @@ export async function stockInItemAction(params: StockInParams): Promise<StockInR
             if (!force) {
                 return {
                     success: false,
-                    error: `No delivered Purchase Order found for "${item.item_name}". Stock-in requires a delivered PO, or Administrator authorization.`,
+                    error: `No delivered Purchase Order found for "${item.item_name}". Stock-in requires a delivered PO, or Administrator / Executive authorization.`,
                     status: 400,
                 };
             }
 
-            if (!isAdmin) {
+            if (!canForce) {
                 return {
                     success: false,
-                    error: 'Forbidden: Force stock-in without a delivered PO requires Administrator authorization (disabled for Manager role).',
+                    error: 'Forbidden: Force stock-in without a delivered PO requires Administrator or Executive authorization (disabled for Manager role).',
                     status: 403,
                 };
             }
@@ -184,10 +186,10 @@ export async function stockInItemAction(params: StockInParams): Promise<StockInR
                     };
                 }
 
-                if (!isAdmin) {
+                if (!canForce) {
                     return {
                         success: false,
-                        error: 'Forbidden: Force stock-in for non-delivered PO requires Administrator authorization (disabled for Manager role).',
+                        error: 'Forbidden: Force stock-in for non-delivered PO requires Administrator or Executive authorization (disabled for Manager role).',
                         status: 403,
                     };
                 }
@@ -210,10 +212,10 @@ export async function stockInItemAction(params: StockInParams): Promise<StockInR
                     };
                 }
 
-                if (!isAdmin) {
+                if (!canForce) {
                     return {
                         success: false,
-                        error: `Exceeds delivered quantity on PO #${po?.po_number || ''}. Force stock-in requires Administrator authorization (disabled for Manager role).`,
+                        error: `Exceeds delivered quantity on PO #${po?.po_number || ''}. Force stock-in requires Administrator or Executive authorization (disabled for Manager role).`,
                         status: 403,
                     };
                 }

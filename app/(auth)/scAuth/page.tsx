@@ -662,7 +662,10 @@ export default function SupplyChainLoginPage() {
             const { ok, data } = await fetchHREmployeesApi(role, userEmail);
 
             if (ok) {
-                setEmployees(data);
+                const nonRiders = Array.isArray(data)
+                    ? data.filter((emp: any) => !isDropOffPickupRider(emp))
+                    : [];
+                setEmployees(nonRiders);
             } else {
                 setLoginError('Failed to load employees from HR system.');
             }

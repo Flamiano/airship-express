@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/services/client/supabase";
 import { buildEmailTemplate } from "../../../(pages)/procurement/api/send-email/template";
-import nodemailer from "nodemailer";
+import { sendSupplyChainEmail } from "../../../lib/email/mailer";
 
 export async function POST(request: NextRequest) {
     try {
@@ -149,17 +149,9 @@ export async function POST(request: NextRequest) {
                     .update({ status: "Approved", updated_at: new Date().toISOString() })
                     .eq("id", pr.id);
 
-                // If user selected to send via Gmail
-                if (send_email && validSupplier?.email && process.env.EMAIL_SUPPLYCHAIN_USER && process.env.EMAIL_SUPPLYCHAIN_PASS) {
+                // If user selected to send via Email (Brevo / SMTP)
+                if (send_email && validSupplier?.email) {
                     try {
-                        const transporter = nodemailer.createTransport({
-                            service: "gmail",
-                            auth: {
-                                user: process.env.EMAIL_SUPPLYCHAIN_USER,
-                                pass: process.env.EMAIL_SUPPLYCHAIN_PASS,
-                            },
-                        });
-
                         const origin = request.nextUrl.origin || "https://airshipexpress.ph";
                         const confirmLink = `${origin}/procurement/confirm?po=${poNumber}`;
 
@@ -176,15 +168,16 @@ export async function POST(request: NextRequest) {
                             senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
                         });
 
-                        const info = await transporter.sendMail({
-                            from: `"AirshipExpress Procurement" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
+                        const sendResult = await sendSupplyChainEmail({
                             to: validSupplier.email,
                             subject: `Official Purchase Order: ${poNumber} from Airship Express`,
                             html: emailHtml,
+                            senderName: "Airship Express Procurement",
+                            senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
                             replyTo: process.env.EMAIL_SUPPLYCHAIN_USER,
                         });
 
-                        emailResults.push({ po_number: poNumber, recipient: validSupplier.email, status: "sent", messageId: info.messageId });
+                        emailResults.push({ po_number: poNumber, recipient: validSupplier.email, status: "sent", messageId: sendResult.messageId });
                     } catch (e: any) {
                         console.error(`Error emailing PO ${poNumber}:`, e);
                         emailResults.push({ po_number: poNumber, recipient: validSupplier.email, status: "failed", error: e.message });

@@ -91,12 +91,16 @@ export async function GET(request: Request) {
             return NextResponse.json(usersList);
         }
 
-        // For Employee (and any other role), fetch all mock_employees (excluding any with Admin/Executive role)
+        // For Employee (and any other role), fetch all mock_employees (excluding Admin/Executive and Drop-Off Pick-Up Riders / Drivers)
         const { data: dbEmployees, error: dbError } = await supabase
             .from('mock_employees')
             .select('*')
             .not('role', 'ilike', '%Admin%')
             .not('role', 'ilike', '%Executive%')
+            .not('position', 'ilike', '%Rider%')
+            .not('position', 'ilike', '%Driver%')
+            .not('position', 'ilike', '%Drop-Off%')
+            .not('position', 'ilike', '%Pick-Up%')
             .order('display_name', { ascending: true });
 
         if (dbError) {
@@ -107,7 +111,26 @@ export async function GET(request: Request) {
             );
         }
 
-        const employees = (dbEmployees || []).map(emp => {
+        const filteredDbEmployees = (dbEmployees || []).filter((emp: any) => {
+            const pos = (emp.position || '').toLowerCase();
+            const dept = (emp.department || '').toLowerCase();
+            const role = (emp.role || '').toLowerCase();
+            const isRiderOrDriver = (
+                pos.includes('rider') ||
+                pos.includes('driver') ||
+                pos.includes('drop-off') ||
+                pos.includes('drop off') ||
+                pos.includes('pick-up') ||
+                pos.includes('pick up') ||
+                dept.includes('rider') ||
+                dept.includes('driver') ||
+                role.includes('rider') ||
+                role.includes('driver')
+            );
+            return !isRiderOrDriver;
+        });
+
+        const employees = filteredDbEmployees.map((emp: any) => {
             let employeeRole = 'Employee';
             const rawRole = (emp.role || emp.position || '').trim();
             if (/manager/i.test(rawRole)) {

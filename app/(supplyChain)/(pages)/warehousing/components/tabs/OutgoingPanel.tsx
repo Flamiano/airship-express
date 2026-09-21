@@ -25,9 +25,12 @@ interface Parcel {
     destination: string | null;
     courier: string | null;
     courier_id: number | null;
+    city?: string | null;
     status: string;
     created_at: string;
     bulk_qr_code?: string | null;
+    bulk_qr_city?: string | null;
+    bulk_qr_courier?: string | null;
     driver_name?: string | null;
     scanned_by?: string | null;
 }
@@ -58,6 +61,7 @@ export default function OutgoingPanel({ isVisible = true }) {
     const [bulkQrCode, setBulkQrCode] = useState<string | null>(null);
     const [selectedDriver, setSelectedDriver] = useState<string>("");
     const [driverList, setDriverList] = useState<string[]>(FALLBACK_DRIVERS);
+    const [driverEmailMap, setDriverEmailMap] = useState<Record<string, string>>({});
     const [showDriverModal, setShowDriverModal] = useState(false);
     const [driverSearchTerm, setDriverSearchTerm] = useState("");
     const [debouncedDriverSearch, setDebouncedDriverSearch] = useState("");
@@ -168,7 +172,7 @@ export default function OutgoingPanel({ isVisible = true }) {
             try {
                 const { data, error } = await supabase
                     .from('mock_employees')
-                    .select('display_name, full_name, name, position, department, role');
+                    .select('id, display_name, email, position, department, role');
 
                 if (!error && data && data.length > 0) {
                     const drivers = data.filter((emp: any) => {
@@ -187,9 +191,18 @@ export default function OutgoingPanel({ isVisible = true }) {
                         );
                     });
 
+                    const emailMap: Record<string, string> = {};
                     const driverNames = drivers
-                        .map((emp: any) => (emp.display_name || emp.full_name || emp.name || '').trim())
+                        .map((emp: any) => {
+                            const name = (emp.display_name || '').trim();
+                            if (name && emp.email) {
+                                emailMap[name] = emp.email.trim();
+                            }
+                            return name;
+                        })
                         .filter(Boolean);
+
+                    setDriverEmailMap(emailMap);
 
                     if (driverNames.length > 0) {
                         const uniqueDrivers = Array.from(new Set([...driverNames, ...FALLBACK_DRIVERS]));
@@ -243,7 +256,7 @@ export default function OutgoingPanel({ isVisible = true }) {
             }
 
             if (bulkQrCode) {
-                query = query.eq('bulk_qr_code', bulkQrCode);
+                query = query.or(`bulk_qr_code.eq.${bulkQrCode},bulk_qr_city.eq.${bulkQrCode},bulk_qr_courier.eq.${bulkQrCode}`);
             }
 
             if (selectedDriver) {
@@ -313,7 +326,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                 const { data: bulkParcels, error: bulkError } = await supabase
                     .from('parcels')
                     .select('*')
-                    .eq('bulk_qr_code', sanitized)
+                    .or(`bulk_qr_code.eq.${sanitized},bulk_qr_city.eq.${sanitized},bulk_qr_courier.eq.${sanitized}`)
                     .neq('status', 'picked_up')
                     .neq('status', 'delivered');
 
@@ -370,7 +383,7 @@ export default function OutgoingPanel({ isVisible = true }) {
             const { data: parcel, error: findError } = await supabase
                 .from('parcels')
                 .select('*')
-                .eq('barcode', sanitized)
+                .or(`barcode.eq.${sanitized},tracking_number.eq.${sanitized}`)
                 .maybeSingle();
 
             if (findError) {
@@ -589,9 +602,39 @@ export default function OutgoingPanel({ isVisible = true }) {
                 .update(updateData)
                 .in('id', idsToDispatch);
 
-            if (error) {
-                console.error('Dispatch error:', error);
-                throw error;
+            const dispatchedParcelsData = parcels.filter(p => idsToDispatch.includes(p.id));
+            const currentDispatcherName = user.getName() || 'Warehouse Staff';
+            const currentDispatcherEmail = user.getEmail() || 'supplychain.airshipexpress@gmail.com';
+            const currentDispatcherRole = user.getRole() || 'Staff';
+
+            // Send dispatch manifest email with Excel attachment via Brevo and insert in-app notifications
+            try {
+                fetch('/api/supplyChain/dispatch-manifest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        driverName: selectedDriver || 'Assigned Driver',
+                        driverEmail: selectedDriver ? driverEmailMap[selectedDriver] : undefined,
+                        parcelIds: idsToDispatch,
+                        parcels: dispatchedParcelsData,
+                        dispatcherName: currentDispatcherName,
+                        dispatcherEmail: currentDispatcherEmail,
+                        dispatcherRole: currentDispatcherRole
+                    })
+                }).then(async res => {
+                    const data = await res.json();
+                    if (data.success) {
+                        if (data.recipients && data.recipients.length > 0) {
+                            toast.success(`Manifest emailed to driver (${data.recipients.join(', ')})`, { duration: 4000 });
+                        } else {
+                            toast.info(`Manifest generated & notification dispatched`, { duration: 3000 });
+                        }
+                    }
+                }).catch(err => {
+                    console.warn('Dispatch manifest email notification error:', err);
+                });
+            } catch (emailErr) {
+                console.warn('Could not trigger dispatch manifest email:', emailErr);
             }
 
             toast.success(`Successfully dispatched ${idsToDispatch.length} parcels${selectedDriver ? ` to ${selectedDriver}` : ''}`, {
@@ -736,9 +779,39 @@ export default function OutgoingPanel({ isVisible = true }) {
                 .update(updateData)
                 .eq('id', parcelId);
 
-            if (error) {
-                console.error('Dispatch error:', error);
-                throw error;
+            const singleParcel = parcels.find(p => p.id === parcelId) || { id: parcelId, barcode };
+            const currentDispatcherName = user.getName() || 'Warehouse Staff';
+            const currentDispatcherEmail = user.getEmail() || 'supplychain.airshipexpress@gmail.com';
+            const currentDispatcherRole = user.getRole() || 'Staff';
+
+            // Send dispatch manifest email with Excel attachment via Brevo and insert in-app notifications
+            try {
+                fetch('/api/supplyChain/dispatch-manifest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        driverName: selectedDriver || 'Assigned Driver',
+                        driverEmail: selectedDriver ? driverEmailMap[selectedDriver] : undefined,
+                        parcelIds: [parcelId],
+                        parcels: [singleParcel],
+                        dispatcherName: currentDispatcherName,
+                        dispatcherEmail: currentDispatcherEmail,
+                        dispatcherRole: currentDispatcherRole
+                    })
+                }).then(async res => {
+                    const data = await res.json();
+                    if (data.success) {
+                        if (data.recipients && data.recipients.length > 0) {
+                            toast.success(`Manifest emailed to driver (${data.recipients.join(', ')})`, { duration: 3500 });
+                        } else {
+                            toast.info(`Manifest generated & notification dispatched`, { duration: 3000 });
+                        }
+                    }
+                }).catch(err => {
+                    console.warn('Single dispatch manifest email notification error:', err);
+                });
+            } catch (emailErr) {
+                console.warn('Could not trigger dispatch manifest email:', emailErr);
             }
 
             toast.success(`Parcel ${barcode} dispatched${selectedDriver ? ` to ${selectedDriver}` : ''}`);
@@ -1316,18 +1389,41 @@ export default function OutgoingPanel({ isVisible = true }) {
                                             </td>
                                             <td data-label="#" className="text-center font-bold text-slate-400 dark:text-slate-500">{index + 1}</td>
                                             <td data-label="Barcode">
-                                                <div className="inline-flex items-center gap-1.5 font-mono text-slate-900 dark:text-slate-100 font-semibold">
-                                                    <span>{parcel.barcode}</span>
-                                                    {parcel.bulk_qr_code && (
-                                                        <span
-                                                            className="inline-flex items-center p-1 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/50"
-                                                            title={`Bulk QR: ${parcel.bulk_qr_code}`}
-                                                        >
-                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                                                            </svg>
-                                                        </span>
-                                                    )}
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="inline-flex items-center gap-1.5 font-mono text-slate-900 dark:text-slate-100 font-semibold">
+                                                        <span>{parcel.barcode}</span>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-1">
+                                                        {parcel.bulk_qr_code && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/50 text-[10px] font-mono font-medium"
+                                                                title={`Global Bulk QR: ${parcel.bulk_qr_code}`}
+                                                            >
+                                                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                                                </svg>
+                                                                <span>{parcel.bulk_qr_code}</span>
+                                                            </span>
+                                                        )}
+                                                        {parcel.bulk_qr_city && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/50 text-[10px] font-mono font-medium"
+                                                                title={`City Bulk QR: ${parcel.bulk_qr_city}`}
+                                                            >
+                                                                <i className="fas fa-city text-[8px]" />
+                                                                <span>{parcel.bulk_qr_city}</span>
+                                                            </span>
+                                                        )}
+                                                        {parcel.bulk_qr_courier && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/50 text-[10px] font-mono font-medium"
+                                                                title={`Courier Bulk QR: ${parcel.bulk_qr_courier}`}
+                                                            >
+                                                                <i className="fas fa-truck-fast text-[8px]" />
+                                                                <span>{parcel.bulk_qr_courier}</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td data-label="Tracking" className="font-mono text-slate-500 dark:text-slate-400">{parcel.tracking_number}</td>

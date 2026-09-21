@@ -225,7 +225,7 @@ export function PurchaseOrderModal({
     };
 
     const getFullMessage = () => {
-        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+        const APP_URL = process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
         const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
         const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 
@@ -328,7 +328,7 @@ export function PurchaseOrderModal({
 
             const fullMessage = getFullMessage();
             const sanitizedItems = getSanitizedItems();
-            const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+            const APP_URL = process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
             const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
             const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 
@@ -422,7 +422,7 @@ export function PurchaseOrderModal({
 
     if (!isOpen || !request) return null;
 
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const APP_URL = process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
     const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 

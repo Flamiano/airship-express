@@ -32,11 +32,13 @@ export interface DigitalReceiptData {
 interface DigitalReceiptModalProps {
     isOpen: boolean;
     onClose: () => void;
-    order: DigitalReceiptData | null;
+    order?: DigitalReceiptData | null;
+    purchaseOrder?: DigitalReceiptData | null;
 }
 
-export function DigitalReceiptModal({ isOpen, onClose, order }: DigitalReceiptModalProps) {
+export function DigitalReceiptModal({ isOpen, onClose, order: propOrder, purchaseOrder }: DigitalReceiptModalProps) {
     const receiptRef = useRef<HTMLDivElement>(null);
+    const order = propOrder || purchaseOrder || null;
 
     if (!isOpen || !order) return null;
 

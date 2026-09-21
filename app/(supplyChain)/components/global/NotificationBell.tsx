@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package, Trash2, Edit3, Plus } from 'lucide-react';
+import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package, Trash2, Edit3, Plus, Download, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/services/client/supabase';
 import { useConfirm } from '../ui/ConfirmModal';
@@ -160,10 +160,10 @@ export function NotificationBell() {
     const getRoleFilterQuery = useCallback(() => {
         const uRole = (userRole || '').toLowerCase().trim();
         if (['admin', 'executive'].includes(uRole)) {
-            return 'role.ilike.All,role.ilike.Admin,role.ilike.Executive';
+            return 'role.ilike.All,role.ilike.Admin,role.ilike.Executive,role.ilike.Manager';
         }
         if (uRole === 'manager') {
-            return 'role.ilike.All,role.ilike.Manager';
+            return 'role.ilike.All,role.ilike.Manager,role.ilike.Admin,role.ilike.Executive';
         }
         if (uRole) {
             return `role.ilike.All,role.ilike.${userRole}`;
@@ -628,7 +628,18 @@ export function NotificationBell() {
         }
 
         if (notification.link) {
-            router.push(notification.link);
+            if (notification.link.startsWith('/api/') || notification.link.includes('download')) {
+                const a = document.createElement('a');
+                a.href = notification.link;
+                a.target = '_blank';
+                a.download = '';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast.success('Downloading attached manifest (.xlsx)...');
+            } else {
+                router.push(notification.link);
+            }
             setIsOpen(false);
         }
     };
@@ -878,6 +889,7 @@ export function NotificationBell() {
 
     const getTypeColor = (type: string) => {
         switch (type) {
+            case 'dispatch_manifest': return 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30';
             case 'appeal': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/30';
             case 'security': return 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/30';
             case 'system': return 'bg-purple-100 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/30';
@@ -890,6 +902,7 @@ export function NotificationBell() {
 
     const getTypeIcon = (type: string) => {
         switch (type) {
+            case 'dispatch_manifest': return 'fas fa-file-excel';
             case 'appeal': return 'fas fa-pen';
             case 'security': return 'fas fa-shield-alt';
             case 'system': return 'fas fa-cog';
@@ -1120,6 +1133,37 @@ export function NotificationBell() {
                                     ${!notification.is_read ? 'text-slate-700 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
                                                         {notification.message}
                                                     </p>
+
+                                                    {/* Download Attached File Button for Dispatch Manifests */}
+                                                    {notification.link && (notification.link.includes('dispatch-manifest') || notification.type === 'dispatch_manifest') && (
+                                                        <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (!notification.is_read) {
+                                                                        handleMarkAsRead(notification.id);
+                                                                    }
+                                                                    const a = document.createElement('a');
+                                                                    a.href = notification.link;
+                                                                    a.target = '_blank';
+                                                                    a.download = '';
+                                                                    document.body.appendChild(a);
+                                                                    a.click();
+                                                                    document.body.removeChild(a);
+                                                                    toast.success('Downloading attached manifest (.xlsx)...');
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50 transition-colors shadow-2xs cursor-pointer"
+                                                            >
+                                                                <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                                                <span>Download Attached (.xlsx)</span>
+                                                            </button>
+                                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800/30 flex items-center gap-1">
+                                                                <FileSpreadsheet className="h-3 w-3" />
+                                                                <span>Excel Attached</span>
+                                                            </span>
+                                                        </div>
+                                                    )}
 
                                                     {/* Metadata Chips Footer */}
                                                     <div className="flex items-center gap-1.5 mt-2.5 flex-wrap text-[10px] text-slate-400 dark:text-slate-500">

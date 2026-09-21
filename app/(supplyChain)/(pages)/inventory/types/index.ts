@@ -7,7 +7,13 @@ export interface Parcel {
     customer_name: string | null;
     customer_number: string | null;
     destination: string | null;
+    city?: string | null;
+    region?: string | null;
     courier: string | null;
+    driver_name?: string | null;
+    bulk_qr_code?: string | null;
+    bulk_qr_city?: string | null;
+    bulk_qr_courier?: string | null;
     status: string;
     scanned_by?: string | null;
     scanner_name?: string | null;
@@ -15,6 +21,11 @@ export interface Parcel {
     scanner_role?: string | null;
     created_at: string;
     updated_at: string;
+}
+
+export interface DriverOption {
+    name: string;
+    count: number;
 }
 
 export interface ScannerUser {

@@ -30,11 +30,16 @@ export const isDropOffPickupRider = (emp: any): boolean => {
     const pos = (emp.position || '').toLowerCase();
     const dept = (emp.department || '').toLowerCase();
     const role = (emp.role || '').toLowerCase();
+    const title = (emp.job_title || emp.title || '').toLowerCase();
     return (
         pos.includes('rider') ||
         pos.includes('driver') ||
-        pos.includes('drop-off pick-up') ||
-        pos.includes('drop off pick up') ||
+        pos.includes('drop-off') ||
+        pos.includes('drop off') ||
+        pos.includes('pick-up') ||
+        pos.includes('pick up') ||
+        title.includes('rider') ||
+        title.includes('driver') ||
         dept.includes('rider') ||
         dept.includes('driver') ||
         role.includes('rider') ||
@@ -158,13 +163,18 @@ export default function EmployeeSelectionModal({
     const isAdminOrExec = loggedInUser?.role === 'Admin' || loggedInUser?.role === 'Executive';
 
     const filteredEmployees = useMemo(() => {
+        // Exclude Drop-Off Pick-Up Riders / Drivers from the selection modal
+        const eligibleEmployees = (employees || []).filter(emp => !isDropOffPickupRider(emp));
+
         const query = debouncedSearchTerm.toLowerCase().trim();
-        if (!query) return employees;
-        return employees.filter(emp =>
+        if (!query) return eligibleEmployees;
+        return eligibleEmployees.filter(emp =>
             (emp.display_name || '').toLowerCase().includes(query) ||
             (emp.employee_id || '').toLowerCase().includes(query) ||
             (emp.id || '').toLowerCase().includes(query) ||
-            (emp.email || '').toLowerCase().includes(query)
+            (emp.email || '').toLowerCase().includes(query) ||
+            (emp.position || '').toLowerCase().includes(query) ||
+            (emp.department || '').toLowerCase().includes(query)
         );
     }, [employees, debouncedSearchTerm]);
 

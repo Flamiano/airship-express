@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { InventoryItem } from '../../types';
 import { sanitizeSearch } from '../../../../components/global/sanitize';
 import { Pagination } from '../../../../components/global/pagination';
@@ -11,7 +11,7 @@ import { TableRowsSkeleton } from '../../../../components/ui/SkeletonLoader';
 import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
 import { AppButton } from '../../../../components/ui/AppButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
-import { ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
+import { ShoppingCart, ArrowDown, ArrowUp, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import Portal from '../../../../components/client/Portal';
 
 interface InventoryTabProps {
@@ -78,6 +78,45 @@ export const InventoryTab = memo(function InventoryTab({
         timestamp?: string;
         type: 'description' | 'override_reason';
     } | null>(null);
+
+    const [openActionMenu, setOpenActionMenu] = useState<{
+        itemId: string;
+        item: InventoryItem;
+        position: { top: number; left: number };
+    } | null>(null);
+
+    // close action overflow menu on outside click, window resize, or scroll
+    useEffect(() => {
+        if (!openActionMenu) return;
+
+        const handleScrollOrResize = () => {
+            setOpenActionMenu(null);
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpenActionMenu(null);
+        };
+
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            setOpenActionMenu(null);
+        };
+
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        window.addEventListener('keydown', handleKeyDown);
+
+        const timer = setTimeout(() => {
+            window.addEventListener('click', handleClickOutside);
+        }, 10);
+
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('click', handleClickOutside);
+        };
+    }, [openActionMenu]);
 
     const allSelected = items.length > 0 && selectedIds.size === items.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < items.length;
@@ -221,7 +260,7 @@ export const InventoryTab = memo(function InventoryTab({
                             <th className="px-4 py-3.5 sm:min-w-[160px]">Stock & Status</th>
                             <th className="px-4 py-3.5 sm:min-w-[170px]">Latest PO / Activity</th>
                             <th className="px-4 py-3.5 sm:min-w-[190px]">Remarks & Audit</th>
-                            <th className="px-4 py-3.5 text-right sm:min-w-[190px] sm:w-[190px]">Actions</th>
+                            <th className="px-4 py-3.5 text-right sm:min-w-[155px] sm:w-[155px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04] text-xs">
@@ -236,7 +275,7 @@ export const InventoryTab = memo(function InventoryTab({
                                     { type: 'text', width: 'w-28' },
                                     { type: 'badge' },
                                     { type: 'text', width: 'w-44' },
-                                    { type: 'actions', align: 'right', width: 'w-[190px]' },
+                                    { type: 'actions', align: 'right', width: 'w-[155px]' },
                                 ]}
                             />
                         ) : items.length === 0 ? (
@@ -494,7 +533,7 @@ export const InventoryTab = memo(function InventoryTab({
                                         </td>
 
                                         {/* actions */}
-                                        <td data-label="Actions" className="px-4 py-3 text-right sm:whitespace-nowrap sm:min-w-[190px] sm:w-[190px] w-full" onClick={(e) => e.stopPropagation()}>
+                                        <td data-label="Actions" className="px-4 py-3 text-right sm:whitespace-nowrap sm:min-w-[155px] sm:w-[155px] w-full" onClick={(e) => e.stopPropagation()}>
                                             {(() => {
                                                 const hasPendingPR = Boolean(
                                                     po?.has_pending_pr || (po?.is_request && po?.status === 'Pending')
@@ -502,10 +541,10 @@ export const InventoryTab = memo(function InventoryTab({
                                                 const pendingPRNumber = po?.pending_pr_number || (po?.is_request && po?.status === 'Pending' ? po?.request_number || po?.po_number : undefined);
 
                                                 return (
-                                                    <div className="flex items-center flex-wrap justify-end gap-1.5 w-full">
+                                                    <div className="flex items-center justify-end gap-1.5 flex-nowrap w-full">
                                                         {/* po button */}
                                                         <div
-                                                            className="inline-block"
+                                                            className="inline-block shrink-0"
                                                             title={hasPendingPR ? `Cannot order: Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending` : "Order / Purchase Request"}
                                                         >
                                                             <CrudActionButton
@@ -523,45 +562,52 @@ export const InventoryTab = memo(function InventoryTab({
                                                             />
                                                         </div>
 
-                                                {/* stock in */}
-                                                <CrudActionButton
-                                                    action="custom"
-                                                    label="In"
-                                                    icon={ArrowDown}
-                                                    ariaLabel={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                    title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                    onClick={() => onStockIn(item.item_name, item)}
-                                                />
+                                                        {/* stock in */}
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="In"
+                                                            icon={ArrowDown}
+                                                            ariaLabel={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
+                                                            title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
+                                                            onClick={() => onStockIn(item.item_name, item)}
+                                                        />
 
-                                                {/* stock out */}
-                                                <CrudActionButton
-                                                    action="custom"
-                                                    label="Out"
-                                                    icon={ArrowUp}
-                                                    ariaLabel="Stock Out"
-                                                    title="Stock Out"
-                                                    onClick={() => onStockOut(item.item_name)}
-                                                />
+                                                        {/* stock out */}
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="Out"
+                                                            icon={ArrowUp}
+                                                            ariaLabel="Stock Out"
+                                                            title="Stock Out"
+                                                            onClick={() => onStockOut(item.item_name)}
+                                                        />
 
-                                                {/* edit */}
-                                                <CrudActionButton
-                                                    action="edit"
-                                                    ariaLabel="Edit Item"
-                                                    title="Edit Item"
-                                                    onClick={() => onEdit(item)}
-                                                />
+                                                        {/* action overflow button */}
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="More"
+                                                            icon={MoreHorizontal}
+                                                            ariaLabel="More Actions"
+                                                            title="More Actions"
+                                                            onClick={(e) => {
+                                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                                const menuWidth = 145;
+                                                                const left = Math.max(10, Math.min(window.innerWidth - menuWidth - 10, rect.right - menuWidth));
+                                                                const top = rect.bottom + 6;
+                                                                const fitsBelow = top + 95 < window.innerHeight;
+                                                                const resolvedTop = fitsBelow ? top : rect.top - 90;
 
-                                                {/* delete */}
-                                                <CrudActionButton
-                                                    action="delete"
-                                                    ariaLabel="Delete Item"
-                                                    title="Delete Item"
-                                                    onClick={() => onDelete(item.id, item.item_name)}
-                                                />
-                                            </div>
-                                        );
-                                    })()}
-                                </td>
+                                                                setOpenActionMenu(prev => (prev?.itemId === item.id ? null : {
+                                                                    itemId: item.id,
+                                                                    item: item,
+                                                                    position: { top: resolvedTop, left }
+                                                                }));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                );
+                                            })()}
+                                        </td>
                                     </tr>
                                 );
                             })
@@ -656,6 +702,48 @@ export const InventoryTab = memo(function InventoryTab({
                                 </AppButton>
                             </div>
                         </div>
+                    </div>
+                </Portal>
+            )}
+
+            {/* Action Overflow Menu Dropdown via Portal */}
+            {openActionMenu && (
+                <Portal>
+                    <div
+                        style={{
+                            position: 'fixed',
+                            top: `${openActionMenu.position.top}px`,
+                            left: `${openActionMenu.position.left}px`,
+                            zIndex: 9999,
+                        }}
+                        className="w-[145px] bg-[#f0f3f8] dark:bg-[#181926] rounded-2xl border border-white/90 dark:border-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.18),0_4px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_12px_35px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.05)] p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const itm = openActionMenu.item;
+                                setOpenActionMenu(null);
+                                onEdit(itm);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer text-left group"
+                        >
+                            <Pencil className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-pink-500 transition-colors" />
+                            <span>Edit Item</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const itm = openActionMenu.item;
+                                setOpenActionMenu(null);
+                                onDelete(itm.id, itm.item_name);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer text-left group"
+                        >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500 group-hover:text-rose-600 transition-colors" />
+                            <span>Delete Item</span>
+                        </button>
                     </div>
                 </Portal>
             )}
