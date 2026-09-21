@@ -100,6 +100,7 @@ async function createVehicle(req, res) {
 
   payload.status = 'Available';
   payload.availability = 'Available';
+  payload.assignment_status = payload.courier_id ? 'pending' : null;
 
   if (!payload.id || !payload.plate_number || !payload.vehicle_type) {
     return res.status(400).json({ error: 'id, plate_number, and vehicle_type are required' });
@@ -132,6 +133,17 @@ async function createVehicle(req, res) {
       });
     }
     return res.status(500).json({ error: `Unable to create vehicle: ${error.message}` });
+  }
+  if (payload.courier_id) {
+    const { error: notificationError } = await supabase.from('notifications').insert({
+      user_id: payload.courier_id,
+      title: 'Vehicle assignment request',
+      message: `You have been assigned vehicle ${data.plate_number || data.id}. Accept or reject it in the driver app.`,
+      is_read: false,
+    });
+    if (notificationError) {
+      console.warn('Vehicle created but assignment notification could not be sent:', notificationError.message || notificationError);
+    }
   }
   return res.status(201).json(normalizeVehicle(data));
 }

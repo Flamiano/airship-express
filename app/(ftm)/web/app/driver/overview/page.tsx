@@ -326,10 +326,8 @@ export default function DriverOverviewPage() {
 
             <button
               type="button"
-              onClick={() => {
-                setShowExportNotice(true);
-                window.setTimeout(() => setShowExportNotice(false), 2500);
-              }}
+              data-skip-loading
+              onClick={exportReport}
               className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#b80049] text-white hover:bg-[#96003b] transition-all text-xs font-semibold shadow-sm hover:shadow-pink-200"
             >
               <span className="material-symbols-outlined text-[18px]">

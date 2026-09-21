@@ -284,6 +284,7 @@ export default function DriverLeaderboardPage() {
               <div className="flex items-center bg-pink-50/50 p-1 rounded-xl border border-pink-200/80 gap-1">
                 <button
                   type="button"
+                  data-skip-loading
                   onClick={handleExport}
                   title="Export CSV"
                   className="px-3 py-1.5 bg-white border border-pink-100 rounded-lg text-slate-700 hover:text-[#b80049] text-xs font-bold flex items-center gap-1.5 hover:border-pink-300 shadow-2xs transition-all active:scale-95"
@@ -293,6 +294,7 @@ export default function DriverLeaderboardPage() {
                 </button>
                 <button
                   type="button"
+                  data-skip-loading
                   onClick={handleExportXls}
                   title="Export Excel"
                   className="px-3 py-1.5 bg-white border border-pink-100 rounded-lg text-slate-700 hover:text-[#b80049] text-xs font-bold flex items-center gap-1.5 hover:border-pink-300 shadow-2xs transition-all active:scale-95"
@@ -302,6 +304,7 @@ export default function DriverLeaderboardPage() {
                 </button>
                 <button
                   type="button"
+                  data-skip-loading
                   onClick={handleExportPng}
                   title="Export PNG"
                   className="px-3 py-1.5 bg-[#b80049] text-white rounded-lg hover:bg-[#96003b] text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"

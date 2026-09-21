@@ -4,9 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import { SkeletonTable } from "../../components/PageSkeleton";
-import { useParcelStore, receiveParcel, bulkDeliverParcels } from "../../lib/parcelStore";
-import { updateParcelStatus } from "../../lib/api";
-import { COURIER_NAMES, CourierName, Parcel, ParcelType, PARCEL_STATUS_LABEL } from "../../lib/parcelTypes";
+import { useParcelStore, receiveParcel, bulkDeliverParcels, refreshStoreFromBackend } from "../../lib/parcelStore";
+import { getTrips, updateParcelStatus } from "../../lib/api";
+import { COURIER_NAMES, CourierName, isOperationalTrip, Parcel, ParcelType, PARCEL_STATUS_LABEL } from "../../lib/parcelTypes";
 import { QRCodeSVG } from "qrcode.react";
 import { getParcelGroupKey } from "../../lib/parcelGrouping";
 
@@ -21,6 +21,19 @@ const PARCEL_TYPES: ParcelType[] = [
 
 const COURIER_OPTIONS: CourierName[] = Array.from(COURIER_NAMES) as CourierName[];
 
+function normalizeCourier(value: unknown): CourierName {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw.includes("shopee")) return "ShopeeXpress";
+  if (raw.includes("j&t") || raw.includes("jnt")) return "JNT Express";
+  if (raw.includes("lazada")) return "Lazada Express";
+  if (raw.includes("flash")) return "Flash Express";
+  if (raw.includes("tiktok")) return "TikTok Delivery";
+  if (raw.includes("lbc")) return "LBC";
+  if (raw.includes("gogo")) return "GOGO Xpress";
+  if (raw.includes("air21") || raw.includes("airship")) return "Airship Express";
+  return COURIER_OPTIONS.find((courier) => courier.toLowerCase() === raw) ?? "LBC";
+}
+
 const COURIER_BRANDING: Record<CourierName, { label: string; badge: string; accent: string; icon: string }> = {
   "ShopeeXpress": { label: "Shopee Xpress", badge: "bg-orange-50 text-orange-700 border-orange-200", accent: "bg-orange-500 text-white", icon: "S" },
   "JNT Express": { label: "J&T Express", badge: "bg-rose-50 text-rose-700 border-rose-200", accent: "bg-rose-600 text-white", icon: "J" },
@@ -32,7 +45,8 @@ const COURIER_BRANDING: Record<CourierName, { label: string; badge: string; acce
   "Airship Express": { label: "Airship Express", badge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200", accent: "bg-fuchsia-600 text-white", icon: "A" },
 };
 
-const STATUS_FILTERS = ["All", "RECEIVED", "PICKED_UP", "BOOKED", "IN_TRANSIT", "DELAYED", "DELIVERED"] as const;
+const STATUS_FILTERS = ["All", "PICKED_UP", "BOOKED", "IN_TRANSIT", "DELAYED", "DELIVERED", "CANCELLED"] as const;
+const ACTIVE_STATUS_FILTERS = STATUS_FILTERS;
 const SORT_OPTIONS = ["Newest", "Weight", "Destination"] as const;
 const STORAGE_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
 import { PERSISTED_SERVICE_AREA_KEY, ALL_SERVICE_AREA_SENTINEL, SERVICE_AREA_CITIES, SERVICE_CITY_BOUNDS, inferCityFromCoordinates } from "../../lib/serviceAreas";
@@ -52,6 +66,17 @@ function formatRelative(iso: string) {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
+}
+
+function formatTripDateTime(trip: any) {
+  const value = trip.createdAt || trip.created_at || trip.startedAt || trip.started_at || trip.updatedAt || trip.updated_at;
+  if (!value) return "Schedule unavailable";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Schedule unavailable" : date.toLocaleString();
+}
+
+function isVisibleTrip(trip: any) {
+  return isOperationalTrip(trip);
 }
 
 function persistBulkServiceArea(value: string | null) {
@@ -140,11 +165,12 @@ function getLocationParts(address: string, lat?: number | null, lng?: number | n
 }
 
 export default function VrdsParcelsPage() {
-  const { parcels, ready }: { parcels: Parcel[]; ready: boolean } = useParcelStore({ history: true });
+  const { parcels, bookings, drivers, ready }: { parcels: Parcel[]; bookings: any[]; drivers: any[]; ready: boolean } = useParcelStore({ history: true });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [activeParcel, setActiveParcel] = useState<Parcel | null>(null);
+  const [activeTripParcels, setActiveTripParcels] = useState<{ trip: any; parcels: Parcel[] } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [filterStatus, setFilterStatus] = useState<StatusFilter>("All");
@@ -152,9 +178,33 @@ export default function VrdsParcelsPage() {
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [sortBy, setSortBy] = useState<SortOption>("Newest");
   const [viewMode, setViewMode] = useState<"grid" | "stream">("grid");
-  const [contentMode, setContentMode] = useState<"parcels" | "bulk">("parcels");
-  const [expandedBulkQr, setExpandedBulkQr] = useState<string | null>(null);
+  const [contentMode, setContentMode] = useState<"parcels" | "bulk" | "courier">("parcels");
   const [historyScope, setHistoryScope] = useState<"active" | "archived" | "all">("active");
+  const [expandedBulkQr, setExpandedBulkQr] = useState<string | null>(null);
+  const [trips, setTrips] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const loadTrips = async () => {
+      const [lightTrips, fullTrips] = await Promise.all([
+        getTrips({ light: true }),
+        getTrips(),
+      ]);
+      const mergedTrips = new Map<string, any>();
+      for (const trip of [...(Array.isArray(lightTrips) ? lightTrips : []), ...(Array.isArray(fullTrips) ? fullTrips : [])]) {
+        const id = String(trip.id ?? trip.trip_id ?? "");
+        if (id) mergedTrips.set(id, { ...mergedTrips.get(id), ...trip });
+      }
+      if (active) setTrips(Array.from(mergedTrips.values()));
+    };
+
+    void loadTrips();
+    const intervalId = window.setInterval(() => void loadTrips(), 5000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -169,9 +219,64 @@ export default function VrdsParcelsPage() {
     }
   }, [selectedLocation]);
 
-  const receivedParcels = useMemo<Parcel[]>(() => parcels.filter((p) => p.status === "RECEIVED"), [parcels]);
-  const readyParcels = useMemo<Parcel[]>(() => parcels.filter((p) => p.status === "READY_FOR_BOOKING"), [parcels]);
-  const bookedParcels = useMemo<Parcel[]>(() => parcels.filter((p) => p.status === "BOOKED"), [parcels]);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (active && document.visibilityState === "visible") {
+        void refreshStoreFromBackend({ history: true });
+      }
+    };
+
+    refresh();
+    const intervalId = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+
+  const activeTripIds = useMemo(
+    () => new Set(
+      trips
+        .filter((trip) => isVisibleTrip(trip))
+        .map((trip) => String(trip.id ?? trip.trip_id ?? ""))
+        .filter(Boolean)
+    ),
+    [trips]
+  );
+
+  const activeTripBookingIds = useMemo(
+    () => new Set(
+      trips
+        .filter((trip) => isVisibleTrip(trip))
+        .map((trip) => String(trip.booking_id ?? trip.bookingId ?? ""))
+        .filter(Boolean)
+    ),
+    [trips]
+  );
+
+  const activeBookingIds = useMemo(
+    () => new Set(
+      bookings
+        .filter((booking) => !/completed|cancelled|canceled|delivered|failed|closed/i.test(String(booking.status ?? "")))
+        .map((booking) => String(booking.id ?? ""))
+        .filter(Boolean)
+    ),
+    [bookings]
+  );
+
+  const isParcelOnActiveTrip = (parcel: Parcel) =>
+    Boolean(
+      (parcel.tripId && activeTripIds.has(String(parcel.tripId))) ||
+      (parcel.bookingId && (
+        activeTripBookingIds.has(String(parcel.bookingId)) || activeBookingIds.has(String(parcel.bookingId))
+      ))
+    );
 
   const availableParcels = useMemo<Parcel[]>(
     () => parcels.filter((p) => p.status !== "DELIVERED" && p.status !== "CANCELLED"),
@@ -181,34 +286,37 @@ export default function VrdsParcelsPage() {
   const storageParcels = useMemo<Parcel[]>(() => {
     return availableParcels.filter((parcel) => {
       const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
-      return parcel.status !== "DELIVERED" && Date.now() - receivedAt < STORAGE_RETENTION_MS;
+      return parcel.status !== "DELIVERED" && (
+        isParcelOnActiveTrip(parcel) || Date.now() - receivedAt < STORAGE_RETENTION_MS
+      );
     });
-  }, [availableParcels]);
-
-  const archivedParcels = useMemo<Parcel[]>(() => {
-    return availableParcels.filter((parcel) => {
-      const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
-      return parcel.status !== "DELIVERED" && Date.now() - receivedAt >= STORAGE_RETENTION_MS;
-    });
-  }, [availableParcels]);
-
-  const deliveredParcels = useMemo<Parcel[]>(() => parcels.filter((p) => p.status === "DELIVERED"), [parcels]);
+  }, [availableParcels, activeTripIds, activeTripBookingIds, activeBookingIds]);
 
   const allArchivedParcels = useMemo<Parcel[]>(
     () => parcels.filter((parcel) => {
       if (parcel.status === "DELIVERED" || parcel.status === "CANCELLED") return true;
       const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
-      return Date.now() - receivedAt >= STORAGE_RETENTION_MS;
+      return !isParcelOnActiveTrip(parcel) && Date.now() - receivedAt >= STORAGE_RETENTION_MS;
     }),
-    [parcels]
+    [parcels, activeTripIds, activeTripBookingIds, activeBookingIds]
   );
+
+  const pickedUpParcels = useMemo<Parcel[]>(() => storageParcels.filter((p) => p.status === "PICKED_UP"), [storageParcels]);
+  const bookedParcels = useMemo<Parcel[]>(() => storageParcels.filter((p) => p.status === "BOOKED"), [storageParcels]);
+
+  const archivedParcels = useMemo<Parcel[]>(() => {
+    return availableParcels.filter((parcel) => {
+      const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
+      return parcel.status !== "DELIVERED" && !isParcelOnActiveTrip(parcel) && Date.now() - receivedAt >= STORAGE_RETENTION_MS;
+    });
+  }, [availableParcels, activeTripIds, activeTripBookingIds, activeBookingIds]);
 
   const filteredParcels = useMemo<Parcel[]>(() => {
     const sourceParcels = historyScope === "all"
       ? parcels
       : historyScope === "archived"
-      ? allArchivedParcels
-      : filterStatus === "DELIVERED" ? deliveredParcels : storageParcels;
+        ? allArchivedParcels
+        : storageParcels;
     const query = searchText.toLowerCase().trim();
     return sourceParcels
       .filter((p) => {
@@ -219,11 +327,12 @@ export default function VrdsParcelsPage() {
       .filter((p) => {
         if (filterStatus === "All") return true;
         if (filterStatus === "DELIVERED") return p.status === "DELIVERED";
+        if (filterStatus === "CANCELLED") return p.status === "CANCELLED";
         return p.status === filterStatus;
       })
       .filter((p) => {
         if (!selectedCourier) return true;
-        return (p.courier ?? "LBC") === selectedCourier;
+        return normalizeCourier(p.courier) === selectedCourier;
       })
       .filter((p) => {
         if (!selectedLocation) return true;
@@ -244,7 +353,7 @@ export default function VrdsParcelsPage() {
         const bTime = new Date(b.receivedAt).getTime() || 0;
         return bTime - aTime;
       });
-  }, [parcels, storageParcels, allArchivedParcels, deliveredParcels, historyScope, searchText, filterStatus, selectedCourier, selectedLocation, sortBy]);
+  }, [parcels, storageParcels, allArchivedParcels, historyScope, searchText, filterStatus, selectedCourier, selectedLocation, sortBy]);
 
   const bulkGroups = useMemo(() => {
     const groups = new Map<string, { parcels: Parcel[]; courier: string; city: string }>();
@@ -284,7 +393,7 @@ export default function VrdsParcelsPage() {
   };
 
   const selectedParcels = availableParcels.filter((p) => selected.has(p.id));
-  const bulkDeliverEligible = selectedParcels.length > 0 && selectedParcels.every((p) => p.status === "RECEIVED");
+  const bulkDeliverEligible = selectedParcels.length > 0 && selectedParcels.every((p) => p.status === "PICKED_UP");
 
   const courierGroups = useMemo(() => {
     const groups = new Map<CourierName, Parcel[]>();
@@ -295,7 +404,7 @@ export default function VrdsParcelsPage() {
         ? location.city
         : "Unknown";
       if (selectedLocation && parcelCity !== selectedLocation) return;
-      const courier = (parcel.courier ?? "LBC") as CourierName;
+      const courier = normalizeCourier(parcel.courier);
       if (!groups.has(courier)) groups.set(courier, []);
       groups.get(courier)!.push(parcel);
     });
@@ -309,7 +418,7 @@ export default function VrdsParcelsPage() {
     }
 
     filteredParcels.forEach((parcel) => {
-      if (selectedCourier && (parcel.courier ?? "LBC") !== selectedCourier) return;
+      if (selectedCourier && normalizeCourier(parcel.courier) !== selectedCourier) return;
       const location = getLocationParts(parcel.destinationAddress ?? "", parcel.destLat, parcel.destLng);
       const city = SERVICE_AREA_CITIES.includes(location.city as ServiceAreaCity)
         ? location.city
@@ -327,6 +436,58 @@ export default function VrdsParcelsPage() {
       return aIndex - bIndex;
     });
   }, [filteredParcels, selectedCourier]);
+
+  const courierTrips = useMemo(() => {
+    const uniqueTrips = new Map<string, any>();
+    trips.filter(isVisibleTrip).forEach((trip) => {
+      const tripId = String(trip.id ?? trip.trip_id ?? "");
+      const bookingId = String(trip.bookingId ?? trip.booking_id ?? "");
+      const routePlanId = String(trip.routePlanId ?? trip.route_plan_id ?? "");
+      const identity = routePlanId || bookingId || tripId;
+      const existing = uniqueTrips.get(identity);
+      uniqueTrips.set(identity, existing ? { ...existing, ...trip } : trip);
+    });
+
+    return Array.from(uniqueTrips.values())
+      .map((trip) => {
+        const tripId = String(trip.id ?? trip.trip_id ?? "");
+        const bookingId = String(trip.bookingId ?? trip.booking_id ?? "");
+        const driverId = String(trip.driverId ?? trip.driver_id ?? "");
+        const routePlanId = String(trip.routePlanId ?? trip.route_plan_id ?? "");
+        const booking = bookings.find((item) => String(item.id) === bookingId);
+        const bookingParcelIds = new Set(
+          Array.isArray(booking?.parcelIds)
+            ? booking.parcelIds.map((id: unknown) => String(id))
+            : []
+        );
+        const bookingCargoCount = Number(
+          String(booking?.cargo_description ?? "").match(/(\d+)\s+parcel/i)?.[1] || 0
+        );
+        const directlyLinkedParcels = parcels.filter((parcel) =>
+          bookingParcelIds.size > 0
+            ? bookingParcelIds.has(String(parcel.id))
+            : (bookingId && String(parcel.bookingId ?? "") === bookingId)
+              || (tripId && String(parcel.tripId ?? "") === tripId)
+        );
+        const tripParcels = directlyLinkedParcels.length > 0
+          ? directlyLinkedParcels
+          : parcels.filter((parcel) =>
+              (routePlanId && String(parcel.routePlanId ?? "") === routePlanId)
+              || (driverId && String((parcel as any).driverId ?? (parcel as any).driver_id ?? "") === driverId)
+            );
+        const tripCourier = trip.courier ?? trip.courier_name ?? trip.courierName ?? booking?.courier;
+        const courier = normalizeCourier(tripCourier || tripParcels[0]?.courier);
+        if (selectedCourier && courier !== selectedCourier) return null;
+
+        const parcelCount = bookingParcelIds.size
+          || Number(trip.parcelCount ?? trip.parcel_count ?? booking?.parcelCount ?? booking?.parcel_count ?? 0)
+          || bookingCargoCount
+          || tripParcels.length;
+
+        return { trip, parcels: tripParcels, courier, parcelCount };
+      })
+      .filter(Boolean) as Array<{ trip: any; parcels: Parcel[]; courier: CourierName; parcelCount: number }>;
+  }, [trips, bookings, drivers, parcels, selectedCourier]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -382,23 +543,28 @@ export default function VrdsParcelsPage() {
                 color="pink"
               />
               <StatusCard
-                label="Archived"
-                value={allArchivedParcels.length}
-                description="Moved to history"
-                icon="history"
+                label="Booked"
+                value={bookedParcels.length}
+                description="Active bookings"
+                icon="assignment"
                 color="pink"
               />
               <StatusCard
-                label="Received"
-                value={receivedParcels.length}
+                label="Pick Up"
+                value={pickedUpParcels.length}
                 description="Stored this week"
                 icon="inbox"
                 color="pink"
+                onClick={() => {
+                  setHistoryScope("active");
+                  setFilterStatus("PICKED_UP");
+                  setContentMode("parcels");
+                }}
               />
               <StatusCard
-                label="Total Inventory"
-                value={parcels.length}
-                description="All parcel records"
+                label="Active Parcels"
+                value={storageParcels.length}
+                description="Received within 7 days"
                 icon="archive"
                 color="pink"
               />
@@ -411,11 +577,11 @@ export default function VrdsParcelsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-black text-slate-900">Parcel Storage</h2>
-              <p className="text-sm text-slate-500">Active storage only. Parcels older than 7 days are automatically moved to history.</p>
+              <p className="text-sm text-slate-500">Active parcels are from the last 7 days or linked to an active trip.</p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700 border border-pink-200">
               <span className="material-symbols-outlined text-[15px]">inventory_2</span>
-              {filteredParcels.length} {historyScope === "all" ? "history" : historyScope === "archived" ? "archived" : filterStatus === "DELIVERED" ? "delivered" : "active"} parcels
+              {filteredParcels.length} {historyScope === "active" ? "active" : historyScope === "archived" ? "archived" : "all-history"} parcels
             </div>
           </div>
 
@@ -426,27 +592,23 @@ export default function VrdsParcelsPage() {
                 type="button"
                 onClick={() => {
                   setHistoryScope(scope);
-                  if (scope === "active") setFilterStatus("All");
+                  setFilterStatus("All");
                 }}
                 className={`rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all duration-200 ${
-                  historyScope === scope
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-white hover:text-pink-700"
+                  historyScope === scope ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-pink-700"
                 }`}
               >
-                {scope === "active" ? "Active" : scope === "archived" ? "Archived" : "All history"}
+                {scope === "active" ? "Active" : scope === "archived" ? "Archived" : "All History"}
               </button>
             ))}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/30 p-1.5">
-            {STATUS_FILTERS.map((status) => {
+            {(historyScope === "active" ? ACTIVE_STATUS_FILTERS : STATUS_FILTERS).map((status) => {
               const isActive = filterStatus === status;
               const label =
                 status === "All"
                   ? "All"
-                  : status === "RECEIVED"
-                  ? "Received"
                   : status === "PICKED_UP"
                   ? "Pick Up"
                   : status === "BOOKED"
@@ -455,6 +617,8 @@ export default function VrdsParcelsPage() {
                   ? "In Transit"
                   : status === "DELAYED"
                   ? "Delayed"
+                  : status === "CANCELLED"
+                  ? "Cancelled"
                   : "Delivered";
 
               return (
@@ -475,7 +639,7 @@ export default function VrdsParcelsPage() {
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
-            {(["parcels", "bulk"] as const).map((mode) => (
+            {(["parcels", "bulk", "courier"] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
@@ -484,7 +648,7 @@ export default function VrdsParcelsPage() {
                   contentMode === mode ? "bg-pink-600 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-pink-700"
                 }`}
               >
-                {mode === "parcels" ? "Parcel records" : "Bulk QR codes"}
+                {mode === "parcels" ? "Parcel records" : mode === "bulk" ? "Bulk QR codes" : "Courier parcel load"}
               </button>
             ))}
           </div>
@@ -604,6 +768,112 @@ export default function VrdsParcelsPage() {
                 })}
               </div>
             )
+          ) : contentMode === "courier" ? (
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-pink-100 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900">Courier parcel load</h2>
+                    <p className="text-sm text-slate-500">Select a courier to view every parcel currently assigned to its trips.</p>
+                  </div>
+                  <span className="text-xs font-semibold text-pink-600">{filteredParcels.length} parcels shown</span>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                  {courierGroups.map(({ courier, parcels: courierParcels }) => {
+                    const brand = COURIER_BRANDING[courier];
+                    const inTransitCount = courierParcels.filter((parcel) => parcel.status === "IN_TRANSIT").length;
+                    const bookedCount = courierParcels.filter((parcel) => parcel.status === "BOOKED").length;
+                    const isSelected = selectedCourier === courier;
+                    return (
+                      <button
+                        key={courier}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCourier(isSelected ? "" : courier);
+                          setFilterStatus("All");
+                        }}
+                        className={`rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                          isSelected ? "border-pink-500 bg-pink-50 shadow-sm ring-2 ring-pink-500/20" : "border-pink-100 bg-slate-50/60 hover:border-pink-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-black ${brand.accent}`}>{brand.icon}</span>
+                          <span className="text-2xl font-black text-slate-900">{courierParcels.length}</span>
+                        </div>
+                        <p className="mt-2 truncate text-xs font-bold text-slate-800">{brand.label}</p>
+                        <div className="mt-2 flex items-center gap-2 text-[10px] font-semibold text-slate-500">
+                          <span>{inTransitCount} in transit</span><span className="text-slate-300">•</span><span>{bookedCount} booked</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {courierTrips.length === 0 ? (
+                  <div className="lg:col-span-2 rounded-2xl border border-dashed border-pink-200 bg-white p-8 text-center text-sm text-slate-500">
+                    No trips found for the selected courier.
+                  </div>
+                ) : courierTrips.map(({ trip, parcels: tripParcels, courier, parcelCount }) => {
+                  const brand = COURIER_BRANDING[courier] ?? COURIER_BRANDING.LBC;
+                  const driverId = trip.driverId ?? trip.driver_id ?? trip.driver;
+                  const assignedDriver = drivers.find((item) => String(item.id) === String(driverId));
+                  const driver = trip.driverName || trip.driver_name || assignedDriver?.name || assignedDriver?.full_name || (driverId ? `Driver ${driverId}` : "Driver not assigned");
+                  const vehicle = trip.vehiclePlate || trip.vehicle_plate || trip.plate || trip.vehicle_id || trip.vehicleId || "Vehicle not assigned";
+                  const status = String(trip.status || "Scheduled").replace(/[_-]+/g, " ");
+                  return (
+                    <article key={String(trip.id ?? trip.trip_id ?? `${courier}-${formatTripDateTime(trip)}`)} className="rounded-2xl border border-pink-100 bg-white p-5 shadow-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-pink-100 pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-black ${brand.accent}`}>{brand.icon}</span>
+                            <div>
+                              <h3 className="text-sm font-black text-slate-900">{brand.label} trip</h3>
+                              <p className="text-xs text-slate-500">Trip {trip.id ?? trip.trip_id ?? "Unassigned"}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-bold uppercase text-pink-700">{status}</span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                        <div><p className="text-slate-500">Parcel count</p><p className="font-bold text-slate-900">{parcelCount}</p></div>
+                        <div><p className="text-slate-500">Parcel records</p><p className="font-bold text-slate-900">{tripParcels.length}</p></div>
+                        <div><p className="text-slate-500">Trip date & time</p><p className="font-bold text-slate-900">{formatTripDateTime(trip)}</p></div>
+                        <div><p className="text-slate-500">Driver</p><p className="font-bold text-slate-900">{driver}</p></div>
+                        <div><p className="text-slate-500">Vehicle</p><p className="font-bold text-slate-900">{vehicle}</p></div>
+                      </div>
+                      {parcelCount > tripParcels.length && (
+                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                          {parcelCount - tripParcels.length} parcel record{parcelCount - tripParcels.length === 1 ? " is" : "s are"} still missing from the parcel table. The trip manifest is retained until synchronization completes.
+                        </p>
+                      )}
+                      <div className="mt-4">
+                          <button
+                          type="button"
+                          disabled={tripParcels.length === 0}
+                          onClick={() => setActiveTripParcels({ trip, parcels: tripParcels })}
+                          className="inline-flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-xs font-bold text-pink-700 transition hover:bg-pink-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">inventory_2</span>
+                          View {tripParcels.length} parcel records{parcelCount > tripParcels.length ? ` (${parcelCount - tripParcels.length} syncing)` : ""}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+                {filteredParcels.map((parcel) => (
+                  <ParcelCard
+                    key={parcel.id}
+                    parcel={parcel}
+                    isSelected={selected.has(parcel.id)}
+                    onToggle={() => toggle(parcel.id)}
+                    onOpenDetail={() => setActiveParcel(parcel)}
+                  />
+                ))}
+              </div>
+            </div>
           ) : (
             <div key={filterStatus} className="animate-[fadeIn_180ms_ease-out] transition-all duration-200">
               {viewMode === "grid" ? (
@@ -650,6 +920,16 @@ export default function VrdsParcelsPage() {
         <ParcelDetailsModal
           parcel={activeParcel}
           onClose={() => setActiveParcel(null)}
+          onUpdated={(status) => showToast(`Parcel status updated to ${PARCEL_STATUS_LABEL[status] || status}.`)}
+        />
+      )}
+
+      {activeTripParcels && (
+        <TripParcelsModal
+          trip={activeTripParcels.trip}
+          parcels={activeTripParcels.parcels}
+          onClose={() => setActiveTripParcels(null)}
+          onOpenParcel={setActiveParcel}
         />
       )}
 
@@ -715,16 +995,16 @@ function ParcelCard({
 
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-tight ${
-              parcel.status === "RECEIVED"
+              parcel.status === "PICKED_UP"
                 ? "bg-amber-100 text-amber-800"
-                : parcel.status === "READY_FOR_BOOKING"
-                ? "bg-emerald-100 text-emerald-800"
                 : parcel.status === "IN_TRANSIT"
                 ? "bg-sky-100 text-sky-800"
+                : parcel.status === "DELAYED"
+                ? "bg-rose-100 text-rose-800"
                 : "bg-blue-100 text-blue-800"
             }`}
           >
-            {parcel.status === "RECEIVED" ? "Pick Up" : PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
+            {PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
           </span>
         </div>
 
@@ -849,15 +1129,17 @@ function StatusCard({
   value,
   description,
   icon,
+  onClick,
 }: {
   label: string;
   value: number;
   description: string;
   icon: string;
   color?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="rounded-2xl border border-pink-200/60 bg-white p-4 shadow-xs flex flex-col justify-between">
+  const content = (
+    <>
       <div className="flex items-center justify-between text-pink-600">
         <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span>
         <span className="material-symbols-outlined text-[20px] text-pink-500">{icon}</span>
@@ -866,6 +1148,20 @@ function StatusCard({
         <p className="text-2xl font-black text-slate-900">{value}</p>
         <p className="mt-0.5 text-[11px] text-slate-500 truncate">{description}</p>
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="rounded-2xl border border-pink-200/60 bg-white p-4 text-left shadow-xs transition hover:border-pink-400 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-300">
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-pink-200/60 bg-white p-4 shadow-xs flex flex-col justify-between">
+      {content}
     </div>
   );
 }
@@ -1097,13 +1393,72 @@ function ReceiveParcelModal({
 }
 
 {/* Modal: Parcel Details */}
+function TripParcelsModal({
+  trip,
+  parcels,
+  onClose,
+  onOpenParcel,
+}: {
+  trip: any;
+  parcels: Parcel[];
+  onClose: () => void;
+  onOpenParcel: (parcel: Parcel) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
+      <div className="w-full max-w-2xl rounded-3xl border border-pink-200 bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between border-b border-pink-100 pb-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-pink-600">Trip parcels</p>
+            <h3 className="mt-1 text-xl font-black text-slate-900">{trip.id ?? trip.trip_id ?? "Unassigned trip"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{parcels.length} parcels linked to this trip</p>
+          </div>
+          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        <div className="mt-4 max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+          {parcels.map((parcel) => (
+            <button
+              key={parcel.id}
+              type="button"
+              onClick={() => onOpenParcel(parcel)}
+              className="flex w-full items-center justify-between gap-4 rounded-xl border border-pink-100 bg-pink-50/40 px-4 py-3 text-left transition hover:border-pink-300 hover:bg-pink-50"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-900">{parcel.trackingNumber}</p>
+                <p className="truncate text-xs text-slate-500">{parcel.recipientName || "Recipient"} · {parcel.destinationAddress || "Destination unavailable"}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-pink-700">
+                {PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-5 flex justify-end border-t border-pink-100 pt-4">
+          <button onClick={onClose} className="rounded-xl bg-pink-600 px-5 py-2 text-xs font-semibold text-white hover:bg-pink-700">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ParcelDetailsModal({
   parcel,
   onClose,
+  onUpdated,
 }: {
   parcel: Parcel;
   onClose: () => void;
+  onUpdated: (status: Parcel["status"]) => void;
 }) {
+  const [status, setStatus] = useState<Parcel["status"]>(parcel.status);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const brand = COURIER_BRANDING[(parcel.courier ?? "LBC") as CourierName] ?? {
     label: parcel.courier || "LBC",
     badge: "bg-pink-50 text-pink-700 border-pink-200",
@@ -1112,7 +1467,7 @@ function ParcelDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
       <div className="w-full max-w-lg rounded-3xl border border-pink-200 bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between border-b border-pink-100 pb-4">
           <div>
@@ -1121,7 +1476,7 @@ function ParcelDetailsModal({
                 {brand.label}
               </span>
               <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-bold text-pink-700">
-                {parcel.status === "RECEIVED" ? "Pick Up" : PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
+                {PARCEL_STATUS_LABEL[parcel.status] || parcel.status}
               </span>
             </div>
             <h3 className="mt-2 text-xl font-black text-slate-900">{parcel.trackingNumber}</h3>
@@ -1162,6 +1517,26 @@ function ParcelDetailsModal({
             </div>
           </div>
 
+          <div className="rounded-2xl border border-pink-100 bg-pink-50/30 p-3.5">
+            <label htmlFor="parcel-status" className="block text-[10px] font-bold uppercase text-pink-600">
+              Parcel Status
+            </label>
+            <select
+              id="parcel-status"
+              value={status}
+              disabled={saving}
+              onChange={(event) => setStatus(event.target.value as Parcel["status"])}
+              className="mt-1.5 w-full rounded-xl border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 focus:border-pink-500 focus:outline-none disabled:opacity-60"
+            >
+              {STATUS_FILTERS.filter((option): option is Parcel["status"] => option !== "All").map((option) => (
+                <option key={option} value={option}>
+                  {PARCEL_STATUS_LABEL[option] || option}
+                </option>
+              ))}
+            </select>
+            {error && <p className="mt-2 text-xs font-semibold text-rose-600">{error}</p>}
+          </div>
+
           {parcel.notes && (
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-800">
               <span className="font-bold">Notes:</span> {parcel.notes}
@@ -1169,12 +1544,33 @@ function ParcelDetailsModal({
           )}
         </div>
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="rounded-xl bg-pink-600 px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-pink-700 transition"
+            disabled={saving}
+            className="rounded-xl border border-slate-200 px-5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-60"
           >
-            Close Details
+            Close
+          </button>
+          <button
+            disabled={saving || status === parcel.status}
+            onClick={async () => {
+              setError(null);
+              setSaving(true);
+              try {
+                await updateParcelStatus(parcel.id, status);
+                await refreshStoreFromBackend({ history: true });
+                onUpdated(status);
+                onClose();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Unable to update parcel status.");
+              } finally {
+                setSaving(false);
+              }
+            }}
+            className="rounded-xl bg-pink-600 px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-pink-700 transition disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Status"}
           </button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBookings, getDrivers, getVehicles, getParcels } from "./api";
+import { getBookings, getDrivers, getVehicles, getParcels, getTrips } from "./api";
 import {
   Booking,
   COURIER_NAMES,
@@ -145,6 +145,50 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 }
 
+function addMissingBookedParcels(parcels: Parcel[], bookings: Booking[]) {
+  const existingIds = new Set(parcels.map((parcel) => String(parcel.id)));
+  const missing: Parcel[] = [];
+
+  for (const booking of bookings) {
+    const knownParcelIds = (booking.parcelIds || []).map((parcelId) => String(parcelId));
+    const declaredCount = Number(booking.parcelCount || 0);
+    const expectedCount = Math.max(knownParcelIds.length, declaredCount);
+    const manifestIds = [...knownParcelIds];
+
+    for (let index = manifestIds.length; index < expectedCount; index += 1) {
+      manifestIds.push(`${booking.id}-manifest-${index + 1}`);
+    }
+
+    for (const parcelId of manifestIds) {
+      const id = String(parcelId);
+      if (!id || existingIds.has(id)) continue;
+
+      missing.push({
+        id,
+        trackingNumber: `MANIFEST-${id}`,
+        senderName: "Booking manifest",
+        senderPhone: "",
+        recipientName: "Pending parcel record",
+        recipientPhone: "",
+        destinationAddress: booking.routeLabel || "Destination pending synchronization",
+        destLat: 0,
+        destLng: 0,
+        parcelType: "E-commerce Package",
+        courier: (normalizeCourierName(booking.courier) ?? "LBC") as CourierName,
+        weightKg: 0,
+        status: "BOOKED",
+        receivedAt: booking.createdAt,
+        bookingId: booking.id,
+        routePlanId: booking.routePlanId,
+        notes: "Manifest record pending synchronization with the parcels table.",
+      });
+      existingIds.add(id);
+    }
+  }
+
+  return missing.length ? [...parcels, ...missing] : parcels;
+}
+
 const COURIER_CANONICAL_MAP: Record<string, CourierName> = {
   "Shopee Xpress": "ShopeeXpress",
   "ShopeeXpress": "ShopeeXpress",
@@ -193,13 +237,21 @@ function normalizeStatusToAvailability(raw: unknown, defaultAvailable = true): '
   return defaultAvailable ? 'Available' : 'Assigned';
 }
 
-function normalizeParcelStatus(raw: unknown): Parcel["status"] {
+function normalizeParcelStatus(raw: unknown, parcel?: Record<string, unknown>): Parcel["status"] {
   const value = String(raw ?? "received").trim().toLowerCase().replace(/\s+/g, "_");
+  const hasBookingAssignment = Boolean(
+    parcel?.booking_id ?? parcel?.bookingId ?? parcel?.route_plan_id ?? parcel?.routePlanId
+  );
+
+  if (hasBookingAssignment && ["picked_up", "received", "pending", "ready"].includes(value)) {
+    return "BOOKED";
+  }
+
   const statusMap: Record<string, Parcel["status"]> = {
-    received: "RECEIVED",
-    pending: "RECEIVED",
-    ready: "RECEIVED",
-    ready_for_booking: "RECEIVED",
+    received: "PICKED_UP",
+    pending: "PICKED_UP",
+    ready: "PICKED_UP",
+    ready_for_booking: "PICKED_UP",
     picked_up: "PICKED_UP",
     booked: "BOOKED",
     assigned: "BOOKED",
@@ -211,7 +263,74 @@ function normalizeParcelStatus(raw: unknown): Parcel["status"] {
     cancelled: "CANCELLED",
     canceled: "CANCELLED",
   };
-  return statusMap[value] ?? "RECEIVED";
+  return statusMap[value] ?? "PICKED_UP";
+}
+
+function isTripInTransitStatus(raw: unknown) {
+  const value = String(raw ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  return /\b(in transit|transit|dispatched|dispatch|delivering|moving|en route|on route)\b/.test(value);
+}
+
+function isTripBookedStatus(raw: unknown) {
+  const value = String(raw ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  return /\b(assigned|scheduled|pending|accepted|driver assigned)\b/.test(value);
+}
+
+function isTripDelayedStatus(raw: unknown) {
+  const value = String(raw ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  return /\b(delayed|late|behind schedule)\b/.test(value);
+}
+
+function applyTripStatuses(parcels: Parcel[], trips: any[] | null) {
+  if (!Array.isArray(trips) || trips.length === 0) return parcels;
+
+  const delayedBookingIds = new Set(
+    trips
+      .filter((trip) => isTripDelayedStatus(trip.status))
+      .map((trip) => String(trip.booking_id ?? trip.bookingId ?? ""))
+      .filter(Boolean)
+  );
+  const delayedTripIds = new Set(
+    trips
+      .filter((trip) => isTripDelayedStatus(trip.status))
+      .map((trip) => String(trip.id ?? trip.trip_id ?? ""))
+      .filter(Boolean)
+  );
+  const bookedBookingIds = new Set(
+    trips
+      .filter((trip) => isTripBookedStatus(trip.status))
+      .map((trip) => String(trip.booking_id ?? trip.bookingId ?? ""))
+      .filter(Boolean)
+  );
+  const bookedTripIds = new Set(
+    trips
+      .filter((trip) => isTripBookedStatus(trip.status))
+      .map((trip) => String(trip.id ?? trip.trip_id ?? ""))
+      .filter(Boolean)
+  );
+
+  const activeBookingIds = new Set(
+    trips
+      .filter((trip) => isTripInTransitStatus(trip.status))
+      .map((trip) => String(trip.booking_id ?? trip.bookingId ?? ""))
+      .filter(Boolean)
+  );
+  const activeTripIds = new Set(
+    trips
+      .filter((trip) => isTripInTransitStatus(trip.status))
+      .map((trip) => String(trip.id ?? trip.trip_id ?? ""))
+      .filter(Boolean)
+  );
+
+  return parcels.map((parcel) =>
+    (delayedBookingIds.has(String(parcel.bookingId ?? "")) || delayedTripIds.has(String(parcel.tripId ?? "")))
+      ? { ...parcel, status: "DELAYED" as const }
+      : (activeBookingIds.has(String(parcel.bookingId ?? "")) || activeTripIds.has(String(parcel.tripId ?? "")))
+      ? { ...parcel, status: "IN_TRANSIT" as const }
+      : (bookedBookingIds.has(String(parcel.bookingId ?? "")) || bookedTripIds.has(String(parcel.tripId ?? "")))
+      ? { ...parcel, status: "BOOKED" as const }
+      : parcel
+  );
 }
 
 export function useParcelStore(options: { status?: string; history?: boolean } = {}) {
@@ -228,11 +347,12 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
     // hydrate from backend APIs if available
     (async function hydrateFromApi() {
       try {
-        const [apiBookings, apiDrivers, apiVehicles, apiParcels] = await Promise.all([
+        const [apiBookings, apiDrivers, apiVehicles, apiParcels, apiTrips] = await Promise.all([
           getBookings().catch(() => null),
           getDrivers().catch(() => null),
           getVehicles().catch(() => null),
           getParcels(options).catch(() => null),
+          getTrips({ light: true }).catch(() => null),
         ]);
 
         const normalizedBookings = apiBookings === null
@@ -359,7 +479,7 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
                 ) ?? undefined,
               weightKg: Number(p.weight_kg ?? p.weightKg ?? p.weight ?? 0),
               notes: p.notes ?? undefined,
-              status: normalizeParcelStatus(p.status || p.parcel_status),
+              status: normalizeParcelStatus(p.status || p.parcel_status, p),
               receivedAt: p.created_at || p.received_at || p.receivedAt || new Date().toISOString(),
               bookingId: p.booking_id || p.bookingId || undefined,
               routePlanId: p.route_plan_id || p.routePlanId || undefined,
@@ -374,19 +494,29 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
         const mergedParcels = normalizedParcels.map((parcel) => {
           const current = currentParcelsById.get(parcel.id);
           const bookingId = bookingByParcelId.get(String(parcel.id));
-          if (bookingId && !parcel.bookingId) parcel = { ...parcel, bookingId };
+          if (bookingId && !parcel.bookingId) {
+            parcel = {
+              ...parcel,
+              bookingId,
+              status: parcel.status === "PICKED_UP" ? "BOOKED" : parcel.status,
+            };
+          }
           if (!current) return parcel;
           if (current.status === parcel.status) return current;
           // Prefer backend/remote parcel status when statuses diverge.
           // This avoids stale local IN_TRANSIT states from masking real booked/received updates.
           return parcel;
         });
+        const syncedParcels = applyTripStatuses(
+          addMissingBookedParcels(mergedParcels, normalizedBookings),
+          apiTrips
+        );
 
         const nextState: StoreState = {
           bookings: Array.isArray(apiBookings) && apiBookings.length === 0 ? state.bookings : dedupeBookings(normalizedBookings),
           drivers: finalDrivers.length > 0 ? finalDrivers : DEFAULT_DRIVERS,
           vehicles: finalVehicles.length > 0 ? finalVehicles : DEFAULT_VEHICLES,
-          parcels: Array.isArray(apiParcels) && apiParcels.length === 0 ? state.parcels : mergedParcels,
+          parcels: Array.isArray(apiParcels) && apiParcels.length === 0 ? state.parcels : syncedParcels,
         };
 
         if (options.status) {
@@ -416,11 +546,12 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
 export async function refreshStoreFromBackend(options: { status?: string; history?: boolean } = {}) {
   // Manually re-hydrate the store from backend APIs
   try {
-    const [apiBookings, apiDrivers, apiVehicles, apiParcels] = await Promise.all([
+    const [apiBookings, apiDrivers, apiVehicles, apiParcels, apiTrips] = await Promise.all([
       getBookings().catch(() => null),
       getDrivers().catch(() => null),
       getVehicles().catch(() => null),
       getParcels(options).catch(() => null),
+      getTrips({ light: true }).catch(() => null),
     ]);
 
     console.log('[refreshStoreFromBackend] Raw API responses:', {
@@ -565,7 +696,7 @@ export async function refreshStoreFromBackend(options: { status?: string; histor
             ) ?? undefined,
           weightKg: Number(p.weight_kg ?? p.weightKg ?? p.weight ?? 0),
           notes: p.notes ?? undefined,
-          status: normalizeParcelStatus(p.status || p.parcel_status),
+          status: normalizeParcelStatus(p.status || p.parcel_status, p),
           receivedAt: p.created_at || p.received_at || p.receivedAt || new Date().toISOString(),
           bookingId: p.booking_id || p.bookingId || undefined,
           routePlanId: p.route_plan_id || p.routePlanId || undefined,
@@ -579,15 +710,25 @@ export async function refreshStoreFromBackend(options: { status?: string; histor
     });
     const mergedParcels = normalizedParcels.map((parcel) => {
       const bookingId = bookingByParcelId.get(String(parcel.id));
-      if (bookingId && !parcel.bookingId) parcel = { ...parcel, bookingId };
+      if (bookingId && !parcel.bookingId) {
+        parcel = {
+          ...parcel,
+          bookingId,
+          status: parcel.status === "PICKED_UP" ? "BOOKED" : parcel.status,
+        };
+      }
       return parcel;
     });
+    const syncedParcels = applyTripStatuses(
+      addMissingBookedParcels(mergedParcels, normalizedBookings),
+      apiTrips
+    );
 
     const nextState: StoreState = {
       bookings: dedupeBookings(normalizedBookings),
       drivers: finalDrivers.length > 0 ? finalDrivers : DEFAULT_DRIVERS,
       vehicles: finalVehicles.length > 0 ? finalVehicles : DEFAULT_VEHICLES,
-      parcels: mergedParcels,
+      parcels: syncedParcels,
     };
 
     writeState(nextState);
@@ -610,7 +751,7 @@ export function receiveParcel(input: Omit<Parcel, "id" | "trackingNumber" | "sta
     id: makeId("PAR"),
     trackingNumber: makeId("AXP"),
     courier: input.courier ?? "LBC",
-    status: "RECEIVED",
+    status: "PICKED_UP",
     receivedAt: new Date().toISOString(),
   };
   writeState({ ...state, parcels: [...state.parcels, parcel] });

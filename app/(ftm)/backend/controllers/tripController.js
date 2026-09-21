@@ -26,6 +26,54 @@ async function markBookingDispatched(supabase, bookingId) {
   if (error) console.error('Failed to persist dispatched booking status:', error.message || error);
 }
 
+async function notifyDriverTripAssigned(supabase, trip) {
+  if (!supabase || !trip?.driver_id) return;
+  const pickup = trip.from_location || trip.pickup_location || 'pickup';
+  const dropoff = trip.to_location || trip.dropoff_location || 'drop-off';
+  const notification = {
+    user_id: trip.driver_id,
+    title: 'New trip assignment',
+    message: `Trip ${trip.id} has been assigned to you: ${pickup} to ${dropoff}.`,
+    is_read: false,
+  };
+  const { error } = await supabase.from('notifications').insert(notification);
+  if (error) {
+    console.warn('Trip assigned but driver notification could not be sent:', error.message || error);
+    return;
+  }
+
+  try {
+    const { data: tokens, error: tokenError } = await supabase
+      .from('driver_push_tokens')
+      .select('token')
+      .eq('driver_id', trip.driver_id);
+    if (tokenError) throw tokenError;
+
+    const messages = (tokens || [])
+      .map((item) => item.token)
+      .filter((token) => /^ExponentPushToken\[.+\]$/.test(token))
+      .map((to) => ({
+        to,
+        title: notification.title,
+        body: notification.message,
+        sound: 'default',
+        data: { tripId: trip.id, notificationType: 'trip_assignment' },
+      }));
+    if (messages.length === 0) return;
+
+    const pushResponse = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages),
+    });
+    if (!pushResponse.ok) {
+      console.warn('Expo push service rejected trip assignment:', await pushResponse.text());
+    }
+  } catch (error) {
+    console.warn('Trip notification saved but push delivery failed:', error.message || error);
+  }
+}
+
 async function getBookingParcelIds(supabase, bookingId) {
   if (!supabase || !bookingId) return [];
   const { data, error } = await supabase
@@ -85,7 +133,7 @@ function isPermissionError(error) {
 }
 
 function isInTransitStatus(status) {
-  return /in transit|in_transit|transit|assigned|scheduled|dispatch|moving|en route|active/i.test(String(status || ''));
+  return /in transit|in_transit|transit|dispatched|dispatching|delivering|moving|en route|on route|active/i.test(String(status || ''));
 }
 
 function normalizeStopPoint(stop) {
@@ -384,6 +432,11 @@ async function createTrip(req, res) {
   } catch (err) {
     console.error('Failed to broadcast assignment:', err?.message || err);
   }
+  try {
+    await notifyDriverTripAssigned(supabase, data);
+  } catch (err) {
+    console.error('Failed to create driver trip assignment notification:', err?.message || err);
+  }
   // Update the booking with driver and vehicle assignment
   try {
     const bookingId = data?.booking_id;
@@ -425,7 +478,7 @@ async function createTrip(req, res) {
   try {
     const bookingId = data?.booking_id;
     if (bookingId) {
-      const parcelStatus = isInTransitStatus(data?.status) ? 'in_transit' : 'assigned';
+      const parcelStatus = isInTransitStatus(data?.status) ? 'in_transit' : 'booked';
       await updateRemoteParcelStatus(bookingId, parcelStatus);
     }
   } catch (e) {
@@ -455,11 +508,16 @@ async function assignTrip(req, res) {
     }
     if (!data) return res.status(404).json({ error: 'Trip not found' });
     try { broadcastAssignment({ type: 'assignment', trip: data }); } catch (err) { console.error('Broadcast failed:', err?.message || err); }
+    try {
+      await notifyDriverTripAssigned(supabase, data);
+    } catch (err) {
+      console.error('Failed to create driver trip assignment notification:', err?.message || err);
+    }
     // update parcels for this booking to mark them assigned and with trip id
     try {
       const bookingId = data?.booking_id;
       if (bookingId) {
-        await updateRemoteParcelStatus(bookingId, 'assigned');
+        await updateRemoteParcelStatus(bookingId, 'booked');
       }
     } catch (e) {
       console.error('Failed to sync parcels with trip assign:', e);

@@ -12,6 +12,7 @@ import ResourceData from "./components/ResourceData";
 import SensorHub from "./components/SensorHub";
 import NewsAlerts from "./components/NewsAlerts";
 import MapSection from "./components/MapSection";
+import { isTripInTransitStatus } from "../lib/parcelTypes";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -122,21 +123,26 @@ type DashboardCache = {
   cachedAt: number;
 };
 
+let runtimeDashboardCache: DashboardCache | null = null;
+
 function readDashboardCache(): DashboardCache | null {
+  if (runtimeDashboardCache) return runtimeDashboardCache;
   if (typeof window === "undefined") return null;
   try {
     const parsed = JSON.parse(window.sessionStorage.getItem(DASHBOARD_CACHE_KEY) || "null");
     if (!parsed || Date.now() - Number(parsed.cachedAt) > DASHBOARD_CACHE_TTL_MS) return null;
-    return parsed as DashboardCache;
+    runtimeDashboardCache = parsed as DashboardCache;
+    return runtimeDashboardCache;
   } catch {
     return null;
   }
 }
 
 function writeDashboardCache(cache: Omit<DashboardCache, "cachedAt">) {
+  runtimeDashboardCache = { ...cache, cachedAt: Date.now() };
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({ ...cache, cachedAt: Date.now() }));
+    window.sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(runtimeDashboardCache));
   } catch {
     // Storage can be unavailable in private browsing or when the payload is too large.
   }
@@ -165,6 +171,8 @@ const calculateFuelConsumptionData = (fuelLogs: any[], trips: DashboardTrip[]) =
   });
 };
 
+const isFuelCategory = (value?: string | null) => /fuel|energy/i.test(String(value ?? ""));
+
 const calculateCostBreakdownData = (costEntries: any[]) => {
   const breakdown: Record<string, number> = {
     "Fuel & Energy": 0,
@@ -175,8 +183,8 @@ const calculateCostBreakdownData = (costEntries: any[]) => {
 
   costEntries.forEach(entry => {
     const category = entry.category || "Other";
-    const amount = Number(entry.amount || 0);
-    if (category.toLowerCase().includes("fuel")) breakdown["Fuel & Energy"] += amount;
+    const amount = Number(entry.amount ?? entry.cost ?? 0);
+    if (isFuelCategory(category)) breakdown["Fuel & Energy"] += amount;
     else if (category.toLowerCase().includes("maintenance") || category.toLowerCase().includes("service")) breakdown.Maintenance += amount;
     else if (category.toLowerCase().includes("payroll") || category.toLowerCase().includes("driver")) breakdown["Driver Payroll"] += amount;
     else if (category.toLowerCase().includes("toll") || category.toLowerCase().includes("insurance")) breakdown["Insurance & Tolls"] += amount;
@@ -322,7 +330,7 @@ const calculateRouteCongestionData = (trips: DashboardTrip[]) => {
     }
     
     routeMap[route].total += 1;
-    if (isInTransitStatus(trip.status)) {
+    if (isTripInTransitStatus(trip.status)) {
       routeMap[route].active += 1;
     }
   });
@@ -382,15 +390,6 @@ const calculateDriverPerformanceData = (trips: DashboardTrip[], drivers: Array<a
     .map(([driver, data]) => ({ driver: driver.length > 16 ? `${driver.slice(0, 13)}...` : driver, ...data }));
 };
 
-const isInTransitStatus = (status?: string | null) => {
-  const normalized = String(status || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-
-  return /\b(in transit|active|assigned|scheduled|dispatch|moving|en route|on route|delayed|late)\b/.test(normalized);
-};
-
 const KPI_IDS = [
   "active-vehicles",
   "in-transit",
@@ -415,15 +414,16 @@ export default function Home() {
   const [dashboardFullscreen, setDashboardFullscreen] = useState(false);
   const [hiddenKPIs, setHiddenKPIs] = useState<Set<string>>(new Set(KPI_IDS));
 
-  const [snapshot, setSnapshot] = useState<DashboardSnapshot>({
+  const initialCache = readDashboardCache();
+  const [snapshot, setSnapshot] = useState<DashboardSnapshot>(initialCache?.snapshot ?? {
     vehicles: [],
     trips: [],
     bookings: [],
     drivers: [],
   });
-  const [fuelLogs, setFuelLogs] = useState<any[]>([]);
-  const [costEntries, setCostEntries] = useState<any[]>([]);
-  const [parcels, setParcels] = useState<any[]>([]);
+  const [fuelLogs, setFuelLogs] = useState<any[]>(initialCache?.fuelLogs ?? []);
+  const [costEntries, setCostEntries] = useState<any[]>(initialCache?.costEntries ?? []);
+  const [parcels, setParcels] = useState<any[]>(initialCache?.parcels ?? []);
   const [parcelTimeframe, setParcelTimeframe] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -468,6 +468,17 @@ export default function Home() {
           bookings: mergedBookings,
           drivers: [...storeDrivers],
         });
+        writeDashboardCache({
+          snapshot: {
+            vehicles: Array.isArray(vehicles) ? vehicles : [],
+            trips: Array.isArray(trips) ? trips : [],
+            bookings: mergedBookings,
+            drivers: [...storeDrivers],
+          },
+          fuelLogs: [],
+          costEntries: [],
+          parcels: storeParcels,
+        });
         setIsLoading(false);
 
       } catch (requestError) {
@@ -510,7 +521,7 @@ export default function Home() {
       active = false;
       window.clearTimeout(loadingTimeout);
     };
-  }, [storeBookings, storeParcels, storeDrivers]);
+  }, []);
 
   useEffect(() => {
     const handleDashboardShortcuts = (event: KeyboardEvent) => {
@@ -553,7 +564,7 @@ export default function Home() {
     );
   }
 
-  const activeTripsCount = snapshot.trips.filter((trip) => isInTransitStatus(trip.status)).length;
+  const activeTripsCount = snapshot.trips.filter((trip) => isTripInTransitStatus(trip.status)).length;
   const activeVehiclesCount = snapshot.vehicles.filter((v) => v.status === "active" || v.status === "moving").length;
   const pendingBookingsCount = snapshot.bookings.filter((b) => b.status === "pending").length;
   const totalVehiclesCount = snapshot.vehicles.length;
@@ -628,7 +639,9 @@ export default function Home() {
 
   // Calculate fuel management KPI values
   const totalFuelConsumed = fuelLogs.reduce((sum, log) => sum + (log.liters || 0), 0);
-  const totalFuelCost = fuelLogs.reduce((sum, log) => sum + (log.cost || 0), 0);
+  const totalFuelCost = costEntries
+    .filter((entry) => isFuelCategory(entry.category))
+    .reduce((sum, entry) => sum + (Number(entry.amount ?? entry.cost ?? 0) || 0), 0);
   const fuelEfficiencyRatio = totalFuelConsumed > 0 
     ? (totalFuelCost / totalFuelConsumed).toFixed(2) 
     : "0.00";
@@ -640,7 +653,7 @@ export default function Home() {
     : "0.00";
 
   // Calculate cost analysis KPI values
-  const totalOperatingCost = costEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+  const totalOperatingCost = costEntries.reduce((sum, entry) => sum + (Number(entry.amount ?? entry.cost ?? 0) || 0), 0);
   const fuelCostPercentage = totalOperatingCost > 0 
     ? ((totalFuelCost / totalOperatingCost) * 100).toFixed(1) 
     : "0.0";
@@ -1067,11 +1080,6 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <MissionLogs 
-                trips={snapshot.trips} 
-              />
-            </div>
           </section>
 
           {/* Right Column: Delivery Performance & Driver Safety Charts */}
@@ -1156,6 +1164,10 @@ export default function Home() {
               </div>
             </div>
           </aside>
+
+          <div className="col-span-12 rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
+            <MissionLogs trips={snapshot.trips} />
+          </div>
 
         </div>
       </main>

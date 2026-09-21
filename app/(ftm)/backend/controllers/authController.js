@@ -1,4 +1,4 @@
-const { getSupabase } = require('../config/db');
+const { getSupabase, getServiceSupabase } = require('../config/db');
 const { normalizeUser } = require('../models/User');
 const failedLogins = new Map();
 const MAX_FAILED_ATTEMPTS = 5;
@@ -23,6 +23,37 @@ function profileFromAuthUser(authUser) {
     role: metadata.role || 'driver',
     vehicle_id: null,
   };
+}
+
+async function persistAccountLock(email) {
+  const supabase = getServiceSupabase();
+  if (!supabase) return { persisted: false };
+
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('id')
+    .ilike('email', email)
+    .maybeSingle();
+
+  let userId = profile?.id;
+  if (profileError) console.error('Account lock profile lookup error:', profileError.message);
+  if (!userId) {
+    const { data: authData, error: authError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (authError) {
+      console.error('Account lock auth-user lookup error:', authError.message);
+      return { persisted: false };
+    }
+    userId = authData?.users?.find((user) => user.email?.toLowerCase() === email)?.id;
+  }
+  if (!userId) return { persisted: false };
+
+  const { data, error } = await supabase.auth.admin.updateUserById(userId, { ban_duration: `${LOCKOUT_MS / 1000}s` });
+  if (error) {
+    console.error('Account lock persistence error:', error.message);
+    return { persisted: false };
+  }
+
+  return { persisted: true, bannedUntil: data?.user?.banned_until || null };
 }
 
 async function restoreDriverProfile(supabase, authUser) {
@@ -119,7 +150,10 @@ async function loginDriver(req, res) {
         return res.status(500).json({ error: 'Supabase auth permission denied. Configure Supabase auth and RLS policies.' });
       }
       const next = { attempts: (lock?.attempts || 0) + 1, lockedUntil: 0 };
-      if (next.attempts >= MAX_FAILED_ATTEMPTS) next.lockedUntil = Date.now() + LOCKOUT_MS;
+      if (next.attempts >= MAX_FAILED_ATTEMPTS) {
+        next.lockedUntil = Date.now() + LOCKOUT_MS;
+        await persistAccountLock(loginKey);
+      }
       failedLogins.set(loginKey, next);
       return res.status(next.lockedUntil ? 423 : 401).json({ error: next.lockedUntil ? 'Account temporarily locked after 5 failed login attempts.' : 'Invalid email or password' });
     }
@@ -128,7 +162,12 @@ async function loginDriver(req, res) {
 
     if (!data?.user?.id) return res.status(401).json({ error: 'Authentication failed' });
 
-    const { data: userData, error: userError } = await supabase.from('users').select('*').eq('id', data.user.id).maybeSingle();
+    let { data: userData, error: userError } = await supabase.from('users').select('*').eq('id', data.user.id).maybeSingle();
+    if (!userError && !userData && data.user.email) {
+      const byEmail = await supabase.from('users').select('*').ilike('email', data.user.email).maybeSingle();
+      userData = byEmail.data;
+      userError = byEmail.error;
+    }
     if (userError) {
       console.error('Profile fetch error:', userError.message);
       const metadata = data.user.user_metadata || {};
@@ -138,7 +177,7 @@ async function loginDriver(req, res) {
           email: data.user.email,
           full_name: metadata.full_name || data.user.email?.split('@')[0] || 'Driver',
           phone: metadata.phone || null,
-          role: metadata.role || 'driver',
+          role: metadata.role || null,
           vehicle_id: null,
         },
         session: data.session,

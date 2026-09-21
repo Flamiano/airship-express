@@ -7,6 +7,7 @@ import { SkeletonBlock } from "../components/PageSkeleton";
 
 import { useEffect, useMemo, useState } from "react";
 import { createVehicle, createVehicleDocument, getCouriers, getDashboardSnapshot, getNextVehicleId, uploadVehicleDocument } from "../lib/api";
+import { getCurrentRole, hasAppPermission } from "../lib/roleAccess";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -34,7 +35,7 @@ type DashboardSnapshot = {
     bookings?: number;
     drivers?: number;
   };
-  vehicles?: Array<{ id?: string; courier_id?: string | null; courierId?: string | null; status?: string; plate_number?: string; fuel_level?: number; driver?: string; location?: string }>;
+  vehicles?: Array<{ id?: string; courier_id?: string | null; courierId?: string | null; status?: string; plate_number?: string; fuel_level?: number | string | null; fuelLevel?: number | string | null; fuel_percentage?: number | string | null; fuelPercentage?: number | string | null; driver?: string; location?: string }>;
   trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; driver_id?: string; destination?: string }>;
   drivers?: Array<{ id?: string; full_name?: string | null; name?: string | null }>;
 };
@@ -192,6 +193,8 @@ export default function FvmOverviewPage() {
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
   const [isModalDragging, setIsModalDragging] = useState(false);
   const [modalDragOffset, setModalDragOffset] = useState({ x: 0, y: 0 });
+  const canManageFleet = hasAppPermission(getCurrentRole(), "fvm", "update");
+  const canCreateVehicle = hasAppPermission(getCurrentRole(), "fvm", "create");
   const [plateStatus, setPlateStatus] = useState<"idle" | "checking" | "available" | "duplicate">("idle");
   const [documents, setDocuments] = useState<VehicleDocumentDraft[]>([
     { id: "registration", type: "Registration Certificate", number: "", expiry: "", file: null },
@@ -491,13 +494,25 @@ export default function FvmOverviewPage() {
     { name: "Maintenance", value: maintenanceCount, color: "#fbcfe8" },
   ];
 
-  // Additional mock chart data for fuel distribution feature
-  const fuelDistributionData = [
-    { range: "0-25%", count: 2 },
-    { range: "26-50%", count: 5 },
-    { range: "51-75%", count: 12 },
-    { range: "76-100%", count: totalVehicles > 19 ? totalVehicles - 19 : 8 },
-  ];
+  const fuelDistributionData = useMemo(() => {
+    const ranges = [
+      { range: "0-25%", min: 0, max: 25, count: 0 },
+      { range: "26-50%", min: 26, max: 50, count: 0 },
+      { range: "51-75%", min: 51, max: 75, count: 0 },
+      { range: "76-100%", min: 76, max: 100, count: 0 },
+    ];
+
+    for (const vehicle of vehicles) {
+      const fuel = Number(vehicle.fuel_level ?? vehicle.fuelLevel ?? vehicle.fuel_percentage ?? vehicle.fuelPercentage);
+      if (!Number.isFinite(fuel) || fuel < 0 || fuel > 100) continue;
+      const bucket = ranges.find((item) => fuel >= item.min && fuel <= item.max);
+      if (bucket) bucket.count += 1;
+    }
+
+    return ranges.map(({ range, count }) => ({ range, count }));
+  }, [vehicles]);
+
+  const fuelTelemetryCount = fuelDistributionData.reduce((total, item) => total + item.count, 0);
 
   const activity: ActivityItem[] = trips.length > 0 ? trips.slice(0, 5).map((trip) => ({
     tone: /cancel|fail|error/i.test(trip.status || "") ? "critical" : isInTransitStatus(trip.status) ? "info" : "warning",
@@ -510,7 +525,7 @@ export default function FvmOverviewPage() {
 
   return (
     // @ts-ignore - RoleRestricted's React node type conflicts with the installed React typings.
-    <RoleRestricted allowedRoles={["fleet_manager", "admin"]} hideWhenRestricted>
+    <RoleRestricted permission={{ module: "fvm", action: "view" }} hideWhenRestricted>
       <div className="fvm-page-shell flex flex-col min-h-screen bg-gradient-to-br from-pink-50/60 via-white to-pink-100/40 text-slate-800 selection:bg-pink-600 selection:text-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
         <GlobalNavbar />
 
@@ -532,7 +547,7 @@ export default function FvmOverviewPage() {
 
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Quick Maintenance Toggle Feature */}
-            <button
+            {canManageFleet && <button
               type="button"
               aria-pressed={maintenanceMode}
               onClick={() => setMaintenanceMode(!maintenanceMode)}
@@ -543,7 +558,7 @@ export default function FvmOverviewPage() {
               }`}
             >
               {maintenanceMode ? "⚠️ Maint. Lockdown Active" : "🛡️ Enable Maintenance Mode"}
-            </button>
+            </button>}
 
             <div className="flex bg-pink-50/80 border border-pink-200 rounded-xl p-0.5">
               {(["Today", "This Week", "This Month"] as const).map((tf) => (
@@ -561,13 +576,13 @@ export default function FvmOverviewPage() {
               ))}
             </div>
 
-            <button
+            {canCreateVehicle && <button
               onClick={openAddVehicle}
               className="flex items-center gap-1.5 bg-pink-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-pink-700 transition-all shadow-sm cursor-pointer active:scale-95"
             >
               <span className="material-symbols-outlined text-[16px]">add_circle</span>
               Add Vehicle
-            </button>
+            </button>}
 
             <button
               onClick={handleExportReport}
@@ -821,7 +836,12 @@ export default function FvmOverviewPage() {
                 </div>
               </div>
 
-              <div className="w-full h-[130px]">
+              <div className="relative w-full h-[130px]">
+                {fuelTelemetryCount === 0 && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center text-xs font-semibold text-slate-500">
+                    No fuel telemetry available
+                  </div>
+                )}
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={fuelDistributionData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#fce7f3" vertical={false} />
@@ -900,8 +920,8 @@ export default function FvmOverviewPage() {
         )}
 
         {showAddVehicle && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4" onClick={() => !vehicleSubmitting && setShowAddVehicle(false)}>
-            <form onSubmit={handleAddVehicle} onClick={(event) => event.stopPropagation()} style={{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }} className="fvm-panel relative max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-4 shadow-2xl transition-transform sm:p-5">
+          <div className="fixed inset-x-0 bottom-0 top-12 z-[1100] flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-6 sm:py-8 lg:top-[84px]" onClick={() => !vehicleSubmitting && setShowAddVehicle(false)}>
+            <form onSubmit={handleAddVehicle} onClick={(event) => event.stopPropagation()} style={{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }} className="fvm-panel relative max-h-[calc(100vh-6rem)] w-full max-w-2xl overflow-y-auto rounded-2xl p-4 shadow-2xl transition-transform sm:max-h-[calc(100vh-7rem)] sm:p-5 lg:max-h-[calc(100vh-9rem)]">
               {vehicleSubmitting && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 p-6 backdrop-blur-sm" role="status" aria-live="polite">
                   <div className="flex w-full max-w-xs flex-col items-center gap-4 text-center">

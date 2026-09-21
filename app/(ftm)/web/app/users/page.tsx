@@ -7,7 +7,7 @@ import { getAdminUsers, lockAdminUser, unlockAdminUser, updateAdminUserRole } fr
 import { supabase } from "../lib/supabaseClient";
 
 type FtmUser = { id: string; email?: string; full_name?: string; role?: string | null; last_sign_in_at?: string | null; locked?: boolean; banned_until?: string | null };
-const ROLES = ["admin", "fleet_manager", "dispatcher", "driver", "customer"];
+const ROLES = ["admin", "fleet_manager", "dispatcher", "driver"];
 
 export default function ManageUsersPage() {
   const [users, setUsers] = useState<FtmUser[]>([]);
@@ -22,10 +22,29 @@ export default function ManageUsersPage() {
   const [lockChange, setLockChange] = useState<{ user: FtmUser; locked: boolean } | null>(null);
 
   useEffect(() => {
-    void getAdminUsers()
-      .then((data) => setUsers(Array.isArray(data) ? data : []))
-      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "Unable to load users"))
-      .finally(() => setLoading(false));
+    let active = true;
+    const loadUsers = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!active) return;
+        if (!sessionData.session?.access_token) {
+          setError("Your admin session has expired. Please sign in again.");
+          return;
+        }
+        const data = await getAdminUsers();
+        if (active) setUsers(Array.isArray(data) ? data : []);
+      } catch (requestError) {
+        if (!active) return;
+        const message = requestError instanceof Error ? requestError.message : "Unable to load users";
+        setError(/401|403|bearer|session|unauthorized/i.test(message)
+          ? "Your admin session is no longer valid. Please sign in again."
+          : message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loadUsers();
+    return () => { active = false; };
   }, []);
 
   const requestRoleChange = (user: FtmUser, role: string) => {

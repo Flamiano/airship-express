@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import type { DashboardTrip, DashboardVehicle, DashboardBooking } from "../page";
 import type { LeafletMarker } from "../../components/LeafletMap";
 import { useParcelStore } from "../../lib/parcelStore";
+import { isOperationalTrip, isTripInTransitStatus } from "../../lib/parcelTypes";
 import { getRoutePlan } from "../../lib/api";
 import { SkeletonMap } from "../../components/PageSkeleton";
 
@@ -111,12 +112,8 @@ async function fetchOsrmMetrics(waypoints: LatLng[]): Promise<{ distanceKm: numb
 }
 
 const isActiveTripStatus = (status?: string | null) => {
-  const value = (status || "").toLowerCase();
-  return Boolean(value) && !/completed|cancelled|delivered|failed|closed/i.test(value)
-    && /transit|assigned|dispatch|scheduled|active|moving|in_transit|in transit|en route|route|delayed|late|critical/i.test(value);
+  return isOperationalTrip({ id: status ? "status" : null, status });
 };
-
-const MAX_MAP_DELIVERIES = 6;
 
 export default function MapSection({ 
   trips, 
@@ -177,7 +174,7 @@ export default function MapSection({
       return;
     }
 
-    const limitedIds = ids.slice(0, 6);
+    const limitedIds = ids;
     let cancelled = false;
     Promise.all(
       limitedIds.map(async (id) => {
@@ -234,7 +231,7 @@ export default function MapSection({
   );
 
   const visibleTrips = useMemo(
-    () => activeTrips.slice(0, MAX_MAP_DELIVERIES),
+    () => activeTrips,
     [activeTrips]
   );
 
@@ -477,7 +474,7 @@ export default function MapSection({
     ) as Record<string, LatLng[]>;
     setRoadPaths(savedPaths);
 
-    deliveries.slice(0, 6).forEach((delivery) => {
+    deliveries.forEach((delivery) => {
       if (delivery.routePlanPolyline) return;
       if (delivery.destPos.lat === HUB_POS.lat && delivery.destPos.lng === HUB_POS.lng) return;
       const waypoints = delivery.stops && delivery.stops.length > 0
@@ -554,7 +551,7 @@ export default function MapSection({
         })
       : deliveries;
 
-    return list.slice(0, MAX_MAP_DELIVERIES);
+    return list;
   }, [deliveries, showOnlyTrackingVehicles]);
 
   const mapMarkers = useMemo<LeafletMarker[]>(
@@ -694,11 +691,11 @@ export default function MapSection({
   const stats = [
     { icon: "directions_car", value: locatedVehicles.length, unit: "vehicles", label: "Located Vehicles" },
     { icon: "alt_route", value: activeTrips.length, unit: "active", label: "Active Trips" },
-    { icon: "local_shipping", value: activeTrips.filter(t => /transit|active|in_transit|dispatch|moving|route/i.test(t.status || "")).length, unit: "in transit", label: "In Transit" },
+    { icon: "local_shipping", value: activeTrips.filter((trip) => isTripInTransitStatus(trip.status)).length, unit: "in transit", label: "In Transit" },
     { icon: "task_alt", value: trips.filter(t => /completed|delivered/i.test(t.status || "")).length, unit: "completed", label: "Completed" },
   ];
 
-  const vehicleCards = filteredDeliveries.slice(0, MAX_MAP_DELIVERIES).map((delivery) => ({
+  const vehicleCards = filteredDeliveries.map((delivery) => ({
     id: delivery.id,
     name: delivery.driverName,
     plate: delivery.vehiclePlate,

@@ -64,7 +64,11 @@ async function requireFleetUser(req, res, next) {
       .select('role')
       .eq('id', authUser.id)
       .maybeSingle();
-    const role = normalizeRole(profile?.role || authUser.app_metadata?.role);
+    const role = normalizeRole(
+      profile?.role
+        || authUser.app_metadata?.role
+        || authUser.user_metadata?.role
+    );
 
     if (!role || !FLEET_AI_ROLES.has(role)) {
       return res.status(403).json({ error: 'Fleet AI is only available to fleet staff accounts.' });

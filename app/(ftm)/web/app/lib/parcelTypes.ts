@@ -22,7 +22,19 @@ export const COURIER_NAMES = [
   "Airship Express",
 ] as const;
 export type CourierName = (typeof COURIER_NAMES)[number];
-export type ParcelStatus = "RECEIVED" | "READY_FOR_BOOKING" | "PICKED_UP" | "BOOKED" | "IN_TRANSIT" | "DELAYED" | "DELIVERED" | "CANCELLED";
+export type ParcelStatus = "PICKED_UP" | "BOOKED" | "IN_TRANSIT" | "DELAYED" | "DELIVERED" | "CANCELLED";
+
+export function isTripInTransitStatus(status?: string | null) {
+  const normalized = String(status || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  return /\b(in transit|transit|dispatched|dispatch|delivering|moving|en route|on route)\b/.test(normalized);
+}
+
+export function isOperationalTrip(trip: { id?: string | null; trip_id?: string | null; status?: string | null }) {
+  const status = String(trip.status ?? "").trim().toLowerCase();
+  if (!status) return Boolean(trip.id ?? trip.trip_id);
+  if (/completed|cancelled|canceled|delivered|failed|closed/.test(status)) return false;
+  return /transit|assigned|dispatch|scheduled|active|moving|in_transit|in transit|en route|route|delayed|late|critical/.test(status);
+}
 
 export type Parcel = {
   id: string;
@@ -105,8 +117,6 @@ export type Vehicle = {
 };
 
 export const PARCEL_STATUS_LABEL: Record<ParcelStatus, string> = {
-  RECEIVED: "Received",
-  READY_FOR_BOOKING: "Ready for booking",
   PICKED_UP: "Pick Up",
   BOOKED: "Booked",
   IN_TRANSIT: "In transit",

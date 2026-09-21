@@ -6,15 +6,29 @@ export async function fetchJson(path: string, opts: RequestInit = {}) {
   const url = path.startsWith("http") ? path : `${base}${path}`;
   let slowTimer: number | undefined;
 
+  const getAccessToken = async () => {
+    const current = await supabase.auth.getSession();
+    if (current.data.session?.access_token) return current.data.session.access_token;
+
+    const refreshed = await supabase.auth.refreshSession();
+    return refreshed.data.session?.access_token ?? null;
+  };
+
   if (typeof window !== "undefined") {
     slowTimer = window.setTimeout(() => window.dispatchEvent(new Event("ftm:network-slow")), 2500);
   }
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/ftmAuth")) {
+        window.location.assign(`/ftmAuth?next=${encodeURIComponent(window.location.pathname)}`);
+      }
+      throw new Error("Your session has expired. Please sign in again.");
+    }
     const headers = new Headers(opts.headers);
     headers.set("Content-Type", "application/json");
-    if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
+    headers.set("Authorization", `Bearer ${accessToken}`);
     const res = await fetch(url, { ...opts, headers });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -192,6 +206,38 @@ export async function getDrivers() {
   }
 }
 
+export async function getHrEmployees(options: { status?: string; department?: string } = {}) {
+  const params = new URLSearchParams();
+  if (options.status) params.set('status', options.status);
+  if (options.department) params.set('department', options.department);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return fetchJson(`/api/hr/employees${query}`);
+}
+
+export async function getHrAttendance(options: { employee_id?: string; status?: string } = {}) {
+  const params = new URLSearchParams();
+  if (options.employee_id) params.set('employee_id', options.employee_id);
+  if (options.status) params.set('status', options.status);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return fetchJson(`/api/hr/attendance${query}`);
+}
+
+export async function getHrShifts(options: { driver_id?: string; status?: string } = {}) {
+  const params = new URLSearchParams();
+  if (options.driver_id) params.set('driver_id', options.driver_id);
+  if (options.status) params.set('status', options.status);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return fetchJson(`/api/hr/shifts${query}`);
+}
+
+export async function getHrFreightLoads(options: { driver_id?: string; status?: string } = {}) {
+  const params = new URLSearchParams();
+  if (options.driver_id) params.set('driver_id', options.driver_id);
+  if (options.status) params.set('status', options.status);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return fetchJson(`/api/hr/freight-loads${query}`);
+}
+
 export async function getParcels(options: { status?: string; history?: boolean } = {}) {
   try {
     const params = new URLSearchParams();
@@ -211,11 +257,53 @@ export async function getParcelHistory() {
 
 export async function getFuelLogs() {
   try {
-    return await fetchJson('/api/fuel/logs');
+    const logs = await fetchJson('/api/fuel/logs');
+    if (Array.isArray(logs) && logs.length > 0) return addFuelDistances(logs);
+
+    const fuelCosts = (await getCostEntries()).filter(
+      (entry: any) => String(entry.category || '').toLowerCase() === 'fuel'
+    );
+
+    return addFuelDistances(fuelCosts.map((entry: any) => ({
+      id: entry.id,
+      vehicleId: entry.vehicleId ?? null,
+      tripId: entry.tripId ?? null,
+      liters: entry.categoryCost?.liters != null ? Number(entry.categoryCost.liters) : null,
+      cost: entry.amount != null ? Number(entry.amount) : null,
+      odometerReading: entry.categoryCost?.odometer_reading != null
+        ? Number(entry.categoryCost.odometer_reading)
+        : null,
+      loggedAt: entry.entryDate ?? entry.recorded_at ?? entry.created_at ?? null,
+      fuelReceiptImage: entry.receipt_image ?? null,
+    })));
   } catch (error) {
     reportBackendLoadFailure("fuel logs", error);
     return [] as any[];
   }
+}
+
+function addFuelDistances(logs: any[]) {
+  const lastOdometerByVehicle = new Map<string, number>();
+  return logs
+    .slice()
+    .sort((a, b) => new Date(a.loggedAt ?? a.logged_at ?? a.createdAt ?? a.created_at ?? 0).getTime()
+      - new Date(b.loggedAt ?? b.logged_at ?? b.createdAt ?? b.created_at ?? 0).getTime())
+    .map((log) => {
+      if (Number.isFinite(Number(log.distance))) return log;
+
+      const vehicleId = String(log.vehicleId ?? log.vehicle_id ?? "unknown");
+      const odometer = Number(log.odometerReading ?? log.odometer_reading);
+      const previous = lastOdometerByVehicle.get(vehicleId);
+      lastOdometerByVehicle.set(vehicleId, odometer);
+
+      return {
+        ...log,
+        distance: Number.isFinite(odometer) && previous != null && odometer >= previous
+          ? odometer - previous
+          : 0,
+      };
+    })
+    .reverse();
 }
 
 export async function getExpenses() {
@@ -296,6 +384,26 @@ export async function getAlertsSnapshot() {
   return { incidents, notifications, trackingEvents };
 }
 
+export async function getAlerts(options: { status?: string; category?: string; severity?: string } = {}) {
+  const params = new URLSearchParams();
+  if (options.status) params.set("status", options.status);
+  if (options.category) params.set("category", options.category);
+  if (options.severity) params.set("severity", options.severity);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return fetchJson(`/api/alerts${query}`);
+}
+
+export async function updateAlertStatus(id: string, status: "ACKNOWLEDGED" | "IN_PROGRESS" | "RESOLVED" | "DISMISSED") {
+  return fetchJson(`/api/alerts/${encodeURIComponent(id)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getAlertHistory() {
+  return fetchJson("/api/alerts/history");
+}
+
 export async function getRoutePlans(courier?: string) {
   const query = courier ? `?courier=${encodeURIComponent(courier)}` : "";
   return fetchJson(`/api/route-plans${query}`);
@@ -316,11 +424,14 @@ function normalizeParcelStatusForApi(status: string) {
   const value = String(status ?? "").trim().toLowerCase();
   if (!value) return value;
   switch (value) {
-    case "booked":
-    case "assigned":
     case "ready_for_booking":
     case "ready":
+    case "received":
+    case "pending":
       return "picked_up";
+    case "booked":
+    case "assigned":
+      return "booked";
     default:
       return value;
   }

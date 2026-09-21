@@ -64,6 +64,40 @@ async function fetchOsrmPolyline(
   }
 }
 
+async function fetchOsrmCostMatrix(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  stops: Array<{ lat: number; lng: number }>
+): Promise<{ distanceMatrix: number[][]; durationMatrix: number[][] } | null> {
+  try {
+    const coords = [origin, ...stops, destination]
+      .filter((point) => isValidLatLng(point))
+      .map((point) => `${point.lng},${point.lat}`);
+    if (coords.length < 2) return null;
+
+      const url = new URL(`https://router.project-osrm.org/table/v1/driving/${coords.join(";")}`);
+    url.searchParams.set("annotations", "distance,duration");
+    const res = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const distances = json?.distances;
+    const durations = json?.durations;
+    if (!Array.isArray(distances) || !Array.isArray(durations)) return null;
+    if (distances.length !== coords.length || durations.length !== coords.length) return null;
+
+      const distanceMatrix = distances.map((row: unknown[]) => row.map((value) => value == null ? Number.NaN : Number(value) / 1609.344));
+      const durationMatrix = durations.map((row: unknown[]) => row.map((value) => value == null ? Number.NaN : Number(value) / 60));
+      const validMatrix = (matrix: number[][]) => matrix.every((row) => row.length === coords.length && row.every(Number.isFinite));
+    return validMatrix(distanceMatrix) && validMatrix(durationMatrix) ? { distanceMatrix, durationMatrix } : null;
+  } catch {
+    return null;
+  }
+}
+
 function calcDistanceMiles(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 3958.8;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -81,6 +115,10 @@ function calculateRouteDistanceMi(points: Array<{ lat: number; lng: number }>): 
     total += calcDistanceMiles(points[i], points[i + 1]);
   }
   return total;
+}
+
+function roundDistanceMi(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function computeFuelSavingsPct(baselineDistanceMi: number, optimizedDistanceMi: number): number {
@@ -144,9 +182,13 @@ function runOrTools(payload: OptimizeRequest): Promise<{
         origin: payload.origin,
         destination: payload.destination,
         stops: payload.stops,
+        availableVehicles: payload.availableVehicles,
+        vehicleCount: payload.vehicleCount,
         cargoWeightKg: payload.cargoWeightKg,
         prioritizeFuelEfficiency: payload.prioritizeFuelEfficiency,
         optimizationMode: payload.optimizationMode,
+        distanceMatrix: payload.distanceMatrix,
+        durationMatrix: payload.durationMatrix,
       })
     );
     proc.stdin.end();
@@ -176,7 +218,12 @@ export async function POST(req: NextRequest) {
   let result: OptimizeResponse;
 
   try {
-    const solved = await runOrTools(normalizedBody);
+    const roadCosts = await fetchOsrmCostMatrix(normalizedBody.origin, normalizedBody.destination, normalizedBody.stops);
+    const solved = await runOrTools({
+      ...normalizedBody,
+      distanceMatrix: roadCosts?.distanceMatrix,
+      durationMatrix: roadCosts?.durationMatrix,
+    });
     const orderedStops = solved.orderedStopIds
       .map((id: string) => normalizedBody.stops.find((s: any) => s.id === id))
       .filter(Boolean) as OptimizeStop[];
@@ -243,24 +290,75 @@ export async function POST(req: NextRequest) {
         normalizedBody.destination,
       ]);
 
-    // Use the initial metrics if provided, otherwise calculate from naive order
-    const baselineDistanceMi = body.initialDistanceMi ?? (() => {
+    // Use the initial metrics if provided, otherwise calculate a straight-line fallback.
+    const straightLineBaselineMi = (() => {
       const pts = [normalizedBody.origin, ...normalizedBody.stops, normalizedBody.destination];
       return calculateRouteDistanceMi(pts);
     })();
 
-    const baselineEtaMinutes = body.initialEtaMinutes ?? Math.round((baselineDistanceMi / 32) * 60);
-    const etaImprovementMin = Math.max(0, baselineEtaMinutes - solved.etaMinutes);
-    const fuelSavingsPct = computeFuelSavingsPct(baselineDistanceMi, solved.distanceMi || calculateRouteDistanceMi(polyline));
-
+    const baselinePolyline = await fetchOsrmPolyline(
+      normalizedBody.origin,
+      normalizedBody.destination,
+      normalizedBody.stops.map((stop) => ({ lat: stop.lat, lng: stop.lng }))
+    );
+    const matrixRouteCost = (orderedIds: string[], matrix: number[][] | undefined) => {
+      if (!matrix || matrix.length !== normalizedBody.stops.length + 2) return 0;
+      const stopIndex = new Map(normalizedBody.stops.map((stop: any, index: number) => [stop.id, index + 1]));
+      const indexes = [0, ...orderedIds.map((id) => stopIndex.get(id)).filter((index): index is number => index !== undefined), normalizedBody.stops.length + 1];
+      return indexes.slice(0, -1).reduce((total, from, index) => total + (matrix[from]?.[indexes[index + 1]] || 0), 0);
+    };
+    const matrixRouteTotal = (matrix: number[][] | undefined) => solved.routes?.length
+      ? solved.routes.reduce((total, route) => total + matrixRouteCost(route.orderedStopIds || [], matrix), 0)
+      : matrixRouteCost(solved.orderedStopIds, matrix);
+    const baselineRoadDistanceMi = roadCosts?.distanceMatrix
+      ? matrixRouteCost(normalizedBody.stops.map((stop: any) => stop.id), roadCosts.distanceMatrix)
+      : baselinePolyline?.length
+      ? calculateRouteDistanceMi(baselinePolyline)
+      : 0;
+    const displayedRoadDistanceMi = roadCosts?.distanceMatrix
+      ? matrixRouteTotal(roadCosts.distanceMatrix)
+      : calculateRouteDistanceMi(polyline);
+    const baselineRoadDurationMin = roadCosts?.durationMatrix
+      ? matrixRouteCost(normalizedBody.stops.map((stop: any) => stop.id), roadCosts.durationMatrix)
+      : 0;
+    const displayedRoadDurationMin = roadCosts?.durationMatrix
+      ? solved.routes?.length
+        ? Math.max(...solved.routes.map((route) => matrixRouteCost(route.orderedStopIds || [], roadCosts.durationMatrix)))
+        : matrixRouteCost(solved.orderedStopIds, roadCosts.durationMatrix)
+      : 0;
+    const baselineDistanceMi = roundDistanceMi(body.initialDistanceMi
+      ?? (baselineRoadDistanceMi > 0 ? baselineRoadDistanceMi : straightLineBaselineMi));
+    const baselineEtaMinutes = body.initialEtaMinutes
+      ?? (baselineRoadDurationMin > 0
+        ? Math.max(1, Math.round(baselineRoadDurationMin))
+        : Math.max(1, Math.round((baselineDistanceMi / 32) * 60)));
+    const displayedEtaMinutes = displayedRoadDurationMin > 0
+      ? Math.max(1, Math.round(displayedRoadDurationMin))
+      : Math.max(1, Math.round((displayedRoadDistanceMi / 32) * 60));
+    const isTimeObjective = body.optimizationMode === "fastest" || body.optimizationMode === "balanced";
+    const useBaselineRoute = baselineRoadDistanceMi > 0 && (isTimeObjective
+      ? displayedEtaMinutes > baselineEtaMinutes
+      : displayedRoadDistanceMi > baselineDistanceMi);
+    const selectedRoadPolyline = useBaselineRoute && baselinePolyline?.length ? baselinePolyline : polyline;
+    const selectedRoadDistanceMi = roadCosts?.distanceMatrix
+      ? roundDistanceMi(useBaselineRoute ? baselineRoadDistanceMi : displayedRoadDistanceMi)
+      : roundDistanceMi(calculateRouteDistanceMi(selectedRoadPolyline));
+    const selectedRoadEtaMinutes = Math.max(1, Math.round(roadCosts?.durationMatrix
+      ? useBaselineRoute ? baselineRoadDurationMin : displayedRoadDurationMin
+      : (selectedRoadDistanceMi / 32) * 60));
     result = {
       orderedStopIds: solved.orderedStopIds,
       routes: routeResults,
-      polyline,
-      distanceMi: solved.distanceMi,
-      etaMinutes: solved.etaMinutes,
-      fuelSavingsPct,
-      etaImprovementMin,
+      polyline: selectedRoadPolyline,
+      distanceMi: selectedRoadDistanceMi > 0 ? selectedRoadDistanceMi : solved.distanceMi,
+      etaMinutes: selectedRoadDistanceMi > 0 ? selectedRoadEtaMinutes : solved.etaMinutes,
+      fuelSavingsPct: computeFuelSavingsPct(
+        baselineDistanceMi,
+        selectedRoadDistanceMi > 0 ? selectedRoadDistanceMi : solved.distanceMi
+      ),
+      etaImprovementMin: Math.max(0, baselineEtaMinutes - (selectedRoadDistanceMi > 0 ? selectedRoadEtaMinutes : solved.etaMinutes)),
+      baselineDistanceMi,
+      baselineEtaMinutes,
       engine: "or-tools",
     };
   } catch (err) {
@@ -300,33 +398,65 @@ export async function POST(req: NextRequest) {
           normalizedBody.destination,
         ];
 
-    const routePolyline =
-      routePaths[0]?.polyline?.length
-        ? routePaths[0].polyline
-        : fallback.polyline?.length
-        ? fallback.polyline
-        : warehouseFallbackPolyline;
-    const totalDistance = routePaths.reduce((total: number, route: any) => total + route.distanceMi, 0);
-    const totalEta = routePaths.reduce((total: number, route: any) => total + route.etaMinutes, 0);
+    const osrmFallbackPolyline = await fetchOsrmPolyline(
+      normalizedBody.origin,
+      normalizedBody.destination,
+      fallbackOrderedStops
+    );
+    const baselineFallbackPolyline = await fetchOsrmPolyline(
+      normalizedBody.origin,
+      normalizedBody.destination,
+      normalizedBody.stops.map((stop: any) => ({ lat: stop.lat, lng: stop.lng }))
+    );
+    const generatedFallbackPolyline = osrmFallbackPolyline?.length
+      ? osrmFallbackPolyline
+      : routePaths[0]?.polyline?.length
+      ? routePaths[0].polyline
+      : fallback.polyline?.length
+      ? fallback.polyline
+      : warehouseFallbackPolyline;
+    const generatedFallbackDistanceMi = calculateRouteDistanceMi(generatedFallbackPolyline);
+    const baselineFallbackDistanceMi = baselineFallbackPolyline?.length
+      ? calculateRouteDistanceMi(baselineFallbackPolyline)
+      : calculateRouteDistanceMi([
+          normalizedBody.origin,
+          ...normalizedBody.stops.map((stop: any) => ({ lat: stop.lat, lng: stop.lng })),
+          normalizedBody.destination,
+        ]);
+    const routePolyline = generatedFallbackDistanceMi > baselineFallbackDistanceMi && baselineFallbackPolyline?.length
+      ? baselineFallbackPolyline
+      : generatedFallbackPolyline;
+    const selectedDistanceMi = roundDistanceMi(calculateRouteDistanceMi(routePolyline));
+    const selectedEtaMinutes = Math.max(1, Math.round((selectedDistanceMi / 32) * 60));
+    const roadRoutePaths = routePaths.map((route, index) => ({
+      ...route,
+      polyline: index === 0 ? routePolyline : route.polyline,
+      distanceMi: index === 0
+        ? selectedDistanceMi
+        : route.distanceMi,
+      etaMinutes: index === 0
+        ? selectedEtaMinutes
+        : route.etaMinutes,
+    }));
+    const totalDistance = selectedDistanceMi;
+    const totalEta = selectedEtaMinutes;
 
     // Use initial metrics if provided for ETA improvement calculation
-    const fallbackBaselineDistanceMi = body.initialDistanceMi ?? calculateRouteDistanceMi([
-      normalizedBody.origin,
-      ...normalizedBody.stops.map((stop: any) => ({ lat: stop.lat, lng: stop.lng })),
-      normalizedBody.destination,
-    ]);
+    const fallbackBaselineDistanceMi = roundDistanceMi(body.initialDistanceMi ?? baselineFallbackDistanceMi);
     const fallbackBaselineEtaMinutes = body.initialEtaMinutes ?? Math.round((fallbackBaselineDistanceMi / 32) * 60);
     const fallbackEtaImprovementMin = Math.max(0, fallbackBaselineEtaMinutes - totalEta);
     const fallbackFuelSavingsPct = computeFuelSavingsPct(fallbackBaselineDistanceMi, totalDistance || fallbackBaselineDistanceMi);
 
     result = {
       orderedStopIds: fallback.orderedStopIds,
-      routes: routePaths,
+      routes: roadRoutePaths,
       polyline: routePolyline,
       distanceMi: totalDistance,
       etaMinutes: totalEta,
       fuelSavingsPct: fallbackFuelSavingsPct,
       etaImprovementMin: fallbackEtaImprovementMin,
+      baselineDistanceMi: fallbackBaselineDistanceMi,
+      baselineEtaMinutes: fallbackBaselineEtaMinutes,
       engine: "heuristic-fallback",
     };
   }

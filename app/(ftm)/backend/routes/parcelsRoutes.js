@@ -38,7 +38,7 @@ function localParcelsClient() {
 // database constraint and cause insert/update failures (check constraint
 // "chk_status"). Instead fetch distinct status values from the parcels
 // table on demand so UI and validation match the DB.
-const EXTRA_PARCEL_STATUSES = ['received', 'picked_up', 'delayed'];
+const EXTRA_PARCEL_STATUSES = ['picked_up', 'delayed', 'cancelled'];
 
 function normalizeParcelStatusForDatabase(status) {
   if (status == null) return null;
@@ -46,16 +46,18 @@ function normalizeParcelStatusForDatabase(status) {
   if (!raw) return null;
   const value = raw.toLowerCase();
   const aliases = {
-    booked: 'picked_up',
-    assigned: 'picked_up',
+    booked: 'booked',
+    assigned: 'booked',
     ready_for_booking: 'picked_up',
     ready: 'picked_up',
-    pending: 'received',
-    received: 'received',
+    pending: 'picked_up',
+    received: 'picked_up',
     picked_up: 'picked_up',
     delayed: 'delayed',
     late: 'delayed',
     exception: 'delayed',
+    cancelled: 'cancelled',
+    canceled: 'cancelled',
   };
   return aliases[value] || value;
 }
@@ -209,7 +211,7 @@ router.get('/statuses', async (req, res) => {
     console.error('Parcels statuses error:', err?.message || err);
     const msg = String(err?.message || err || '');
     if (/Could not find the table|public\.parcels|Could not query the database for the schema cache/i.test(msg)) {
-      return res.json({ statuses: ['received', 'picked_up', 'Pending', 'Assigned', 'Scheduled', 'Loading', 'In Transit', 'Completed'] });
+      return res.json({ statuses: ['picked_up', 'booked', 'in_transit', 'delayed', 'delivered', 'cancelled'] });
     }
     return res.status(500).json({ error: 'Server error' });
   }

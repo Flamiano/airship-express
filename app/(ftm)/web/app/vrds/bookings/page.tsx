@@ -515,7 +515,7 @@ export default function VrdsBookingsPage() {
           courier: undefined as any,
           weightKg: Math.round((selectedBooking!.totalWeightKg / syntheticCount) * 10) / 10,
           notes: undefined,
-          status: "RECEIVED" as const,
+          status: "PICKED_UP" as const,
           receivedAt: new Date().toISOString(),
           bookingId: selectedBooking!.id,
         }))
@@ -1268,6 +1268,23 @@ export default function VrdsBookingsPage() {
         </div>
 
         {/* Assignment Error Modal */}
+        {loadingBookingId && (
+          <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm" role="status" aria-live="polite" aria-label="Generating assignment">
+            <div className="w-full max-w-sm rounded-3xl border border-rose-100 bg-white p-8 text-center shadow-2xl">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                <TruckLoadingAnimation size="h-10 w-10" />
+              </div>
+              <h2 className="mt-5 text-lg font-black text-slate-900">Generating Assignment</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                Saving the driver and vehicle assignment for booking #{loadingBookingId}.
+              </p>
+              <div className="mx-auto mt-5 h-1.5 w-40 overflow-hidden rounded-full bg-rose-100">
+                <div className="h-full w-1/2 animate-pulse rounded-full bg-rose-600" />
+              </div>
+            </div>
+          </div>
+        )}
+
         {assignmentErrorModal.isOpen && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"

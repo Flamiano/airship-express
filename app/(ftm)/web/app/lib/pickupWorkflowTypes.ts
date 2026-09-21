@@ -143,6 +143,7 @@ export type ParcelForPickup = {
   // Pickup workflow
   status: ParcelPickupStatus;
   receivedAt: string;
+  updatedAt?: string;
   
   // Route assignment
   assignedRoutePlanId?: string;           // Current route plan

@@ -2,23 +2,28 @@
 
 import { useEffect, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { AppRole, getCurrentRole, hasRoleAccess } from "../lib/roleAccess";
+import { AppRole, getCurrentRole, hasAppPermission, hasRoleAccess } from "../lib/roleAccess";
+import type { PermissionAction, PermissionModule } from "../lib/permissions";
 
 type RoleRestrictedProps = {
-  allowedRoles: AppRole[];
+  allowedRoles?: AppRole[];
+  permission?: { module: PermissionModule; action?: PermissionAction };
   children: ReactNode;
   fallback?: ReactNode;
   hideWhenRestricted?: boolean;
 };
 
-export default function RoleRestricted({ allowedRoles, children, fallback, hideWhenRestricted = false }: RoleRestrictedProps): ReactElement | null {
+export default function RoleRestricted({ allowedRoles = [], permission, children, fallback, hideWhenRestricted = false }: RoleRestrictedProps): ReactElement | null {
   const [isAllowed, setIsAllowed] = useState<boolean>(false);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    setIsAllowed(hasRoleAccess(allowedRoles));
+    const role = getCurrentRole();
+    setIsAllowed(permission
+      ? hasAppPermission(role, permission.module, permission.action ?? "view")
+      : hasRoleAccess(allowedRoles, role));
     setIsReady(true);
-  }, [allowedRoles]);
+  }, [allowedRoles, permission]);
 
   if (!isReady) {
     return null;
@@ -30,7 +35,8 @@ export default function RoleRestricted({ allowedRoles, children, fallback, hideW
     }
 
     return (
-      fallback ?? (
+      <>
+        {fallback ?? (
         <div className="flex min-h-[40vh] items-center justify-center bg-[#fff7fc] px-6 py-12 text-center">
           <div className="max-w-md rounded-3xl border border-pink-200 bg-white p-8 shadow-sm">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-pink-100 text-xl text-[#b80049]">🔒</div>
@@ -43,7 +49,8 @@ export default function RoleRestricted({ allowedRoles, children, fallback, hideW
             </p>
           </div>
         </div>
-      )
+        )}
+      </>
     );
   }
 

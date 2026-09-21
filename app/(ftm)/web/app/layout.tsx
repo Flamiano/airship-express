@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import CursorHost from "./components/CursorHost";
 import { ThemeProvider } from "./components/ThemeProvider";
 import FtmLoadingProvider from "./components/FtmLoadingProvider";
 import FtmSecurityProvider from "./components/FtmSecurityProvider";
-import FleetAIChatbot from "../components/fleet-ai/FleetAIChatbot";
+import FtmChatbotGate from "./components/FtmChatbotGate";
 
 export const metadata: Metadata = {
   title: "Airship Express - Fleet & Transport Suite",
@@ -28,13 +29,15 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased min-h-screen flex flex-col">
         <ThemeProvider>
-          <FtmLoadingProvider>
-            <FtmSecurityProvider>
-              <CursorHost />
-              {children}
-              <FleetAIChatbot />
-            </FtmSecurityProvider>
-          </FtmLoadingProvider>
+          <Suspense fallback={null}>
+            <FtmLoadingProvider>
+              <FtmSecurityProvider>
+                <CursorHost />
+                {children}
+                <FtmChatbotGate />
+              </FtmSecurityProvider>
+            </FtmLoadingProvider>
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>

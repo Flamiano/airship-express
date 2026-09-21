@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
-import { getDashboardSnapshot, getFuelLogs } from "../lib/api";
+import { getCostEntries, getDashboardSnapshot, getFuelLogs } from "../lib/api";
 import {
   BarChart,
   Bar,
@@ -153,13 +153,35 @@ export default function FuelOverviewPage() {
     let mounted = true;
     (async () => {
       try {
-        const [dash, fuelLogs] = await Promise.all([
+        const [dash, fuelLogs, costEntries] = await Promise.all([
           getDashboardSnapshot(),
           getFuelLogs(),
+          getCostEntries(),
         ]);
-        const logs = Array.isArray(fuelLogs) && fuelLogs.length > 0
-          ? fuelLogs
-          : (dash.fuelLogs || []);
+        const isFuelCategory = (value?: string | null) => /fuel|energy/i.test(String(value ?? ""));
+        const fuelCostEntries = (Array.isArray(costEntries) ? costEntries : []).filter(
+          (entry: any) => isFuelCategory(entry.category)
+        );
+        const measurementLogs = Array.isArray(fuelLogs) && fuelLogs.length > 0 ? fuelLogs : (dash.fuelLogs || []);
+        const logsById = new Map<string, any>(measurementLogs.map((log: any) => [String(log.id), log]));
+        const logs = fuelCostEntries.length > 0
+          ? fuelCostEntries.map((entry: any) => {
+              const measurement = logsById.get(String(entry.id));
+              const receiptAmount = Number(entry.amount ?? entry.cost ?? 0) || 0;
+              const measurementAmount = Number(measurement?.cost ?? measurement?.amount ?? 0) || 0;
+              return {
+                ...measurement,
+                ...entry,
+                vehicleId: measurement?.vehicleId ?? entry.vehicleId ?? entry.vehicle_id ?? null,
+                tripId: measurement?.tripId ?? entry.tripId ?? entry.trip_id ?? null,
+                liters: measurement?.liters ?? (entry.categoryCost?.liters != null ? Number(entry.categoryCost.liters) : null),
+                distance: measurement?.distance ?? 0,
+                cost: receiptAmount > 0 ? receiptAmount : measurementAmount,
+                odometerReading: measurement?.odometerReading ?? entry.categoryCost?.odometer_reading ?? null,
+                loggedAt: measurement?.loggedAt ?? entry.entryDate ?? entry.entry_date ?? entry.recorded_at ?? entry.created_at ?? null,
+              };
+            })
+          : measurementLogs;
         if (mounted) {
           setSnapshot({ ...dash, fuelLogs: logs });
           setHasData(Boolean(logs.length));
@@ -272,6 +294,13 @@ export default function FuelOverviewPage() {
     return days.map((d) => ({ day: d, efficiency: 0, target: 0 }));
   })();
 
+  const hasConsumptionMeasurements = Boolean(
+    hasData && (snapshot?.fuelLogs || []).some(
+      (log: any) => Number(log.liters ?? log.consumption ?? log.volume ?? 0) > 0
+        || Number(log.distance ?? 0) > 0
+    )
+  );
+
   const transactionsView = (() => {
     if (hasData && snapshot) {
       const logs = (snapshot.fuelLogs || []).slice().sort((a: any, b: any) => new Date(b.loggedAt ?? b.logged_at ?? b.createdAt ?? b.created_at ?? 0).getTime() - new Date(a.loggedAt ?? a.logged_at ?? a.createdAt ?? a.created_at ?? 0).getTime());
@@ -281,7 +310,7 @@ export default function FuelOverviewPage() {
         person: l.driverName || l.person || "—",
         time: new Date(l.loggedAt ?? l.logged_at ?? l.createdAt ?? l.created_at ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         cost: l.cost ? formatPeso(Number(l.cost)) : "—",
-        volume: `${Math.round(Number(l.liters ?? l.volume ?? 0))} kWh`,
+        volume: `${Math.round(Number(l.liters ?? l.volume ?? 0))} L`,
         alert: Boolean(l.alert),
       }));
     }
@@ -327,27 +356,25 @@ export default function FuelOverviewPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-            {/* Anomaly Notification Pill */}
-            <div className="bg-rose-50 border border-rose-200/80 rounded-2xl p-3.5 flex items-center gap-3 shadow-xs">
-              <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center shrink-0">
-                <Icon name="warning" className="text-xl" fill />
-              </div>
-              <div className="pr-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Delivery Fuel Anomaly Detected</span>
-                  <span className="text-[10px] font-bold bg-rose-600 text-white px-1.5 py-0.2 rounded">CRITICAL</span>
-                </div>
-                <p className="text-xs font-medium text-slate-700">
-                  Unit <span className="font-extrabold text-slate-900">D-109</span> spikes +42% above the delivery route baseline.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleAlertAction("Dispatched dispatch support to Unit D-109")}
-                className="ml-auto text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shadow-xs"
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-700">
+              {hasData ? "Fuel records synchronized" : "No fuel records available"}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href="/fuel/efficiency"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm font-bold text-[#b80049] transition-colors hover:bg-pink-50"
               >
-                Inspect
-              </button>
+                <Icon name="speed" className="text-[18px]" />
+                Efficiency
+              </a>
+              <a
+                href="/fuel/refueling-log"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm font-bold text-[#b80049] transition-colors hover:bg-pink-50"
+              >
+                <Icon name="local_gas_station" className="text-[18px]" />
+                Refueling Log
+              </a>
             </div>
 
             {/* Export Action Button */}
@@ -388,7 +415,7 @@ export default function FuelOverviewPage() {
           <KpiCard
             label="Avg Route Efficiency"
             value={hasData && avgRouteEfficiency != null ? `${avgRouteEfficiency.toFixed(2)}` : "0.00"}
-            unit={hasData ? "mi/kWh" : undefined}
+            unit={hasData ? "km/L" : undefined}
             icon="speed"
             trend={routeEfficiencyTrend.text}
             trendDirection={routeEfficiencyTrend.direction}
@@ -400,7 +427,7 @@ export default function FuelOverviewPage() {
           <KpiCard
             label="Total Route Consumption"
             value={hasData && totalRouteConsumption != null ? `${Math.round(totalRouteConsumption).toLocaleString()}` : "0"}
-            unit={hasData ? "kWh" : undefined}
+            unit={hasData ? "L" : undefined}
             icon="ev_station"
             trend={routeConsumptionTrend.text}
             trendDirection={routeConsumptionTrend.direction}
@@ -466,7 +493,11 @@ export default function FuelOverviewPage() {
 
             {/* Recharts Bar/Line Chart */}
             <div className="w-full h-[340px]">
-              <ResponsiveContainer width="100%" height="100%">
+              {!hasConsumptionMeasurements ? (
+                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-pink-200 bg-pink-50/30 px-6 text-center text-sm font-semibold text-slate-500">
+                  Fuel cost records are available, but liters or distance measurements have not been recorded yet.
+                </div>
+              ) : <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={selectedTrendView === "Weekly" ? consumptionDataWeeklyView : consumptionDataDailyView}
                   margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
@@ -506,7 +537,7 @@ export default function FuelOverviewPage() {
                     yAxisId="left"
                     dataKey="consumption"
                     fill="#b80049"
-                    name="Energy Draw (kWh)"
+                    name="Fuel Draw (L)"
                     radius={[6, 6, 0, 0]}
                     maxBarSize={40}
                   />
@@ -515,12 +546,12 @@ export default function FuelOverviewPage() {
                     type="monotone"
                     dataKey="distance"
                     stroke="#2563eb"
-                    name="Distance (mi)"
+                    name="Distance (km)"
                     strokeWidth={3}
                     dot={{ r: 4, fill: "#2563eb", strokeWidth: 2, stroke: "#ffffff" }}
                   />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer>}
             </div>
           </div>
 
@@ -648,7 +679,7 @@ export default function FuelOverviewPage() {
                     strokeWidth={3}
                     fillOpacity={1}
                     fill="url(#colorEff)"
-                    name="Actual Efficiency (mi/kWh)"
+                    name="Actual Efficiency (km/L)"
                   />
                   <Line
                     type="monotone"
