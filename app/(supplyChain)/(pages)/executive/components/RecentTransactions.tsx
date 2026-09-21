@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import ViewLink from "@/app/(supplyChain)/components/global/Links";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import ViewLink from "../../../components/global/Links";
+import { StatusBadge } from "../../../components/ui/StatusBadge";
+import { CrudActionButton } from "../../../components/ui/CrudActionButton";
 import { ExecutiveTransaction } from "../hooks/useExecutiveData";
 import ItemDetailModal, { ItemDetailRecord } from "./modals/ItemDetailModal";
 

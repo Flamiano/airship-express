@@ -1,4 +1,4 @@
-import { maskName } from "@/app/(supplyChain)/components/global/dataMasking";
+import { maskName } from "../../../../../components/global/dataMasking";
 import DeleteButton from "../../client/incoming/DeleteButton";
 
 interface Parcel {

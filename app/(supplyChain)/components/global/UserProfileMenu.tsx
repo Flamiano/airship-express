@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Eye, EyeOff, CheckCircle2, X, Loader2, LogOut, ShieldCheck, KeyRound, Check, Sliders } from 'lucide-react';
 import { toast } from 'sonner';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../lib/services/Class/user';
 interface UserProfileMenuProps {
     className?: string;
 }

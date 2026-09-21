@@ -1,16 +1,16 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { fetchParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/incomingPanel";
-import { fetchBatchMockParcels, batchInsertOfflineParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/offlineActions";
+import { fetchParcels } from "../../../actions/incoming/incomingPanel";
+import { fetchBatchMockParcels, batchInsertOfflineParcels } from "../../../actions/incoming/offlineActions";
 import IncomingHeader from "./IncomingHeader";
 import ScanPanel from "./ScanPanel";
 import TableFilters from "./TableFilters";
 import { IncomingTable } from "./ParcelTable";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { TableSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { supabase } from "../../../../../lib/services/client/supabase";
+import { TableSkeleton } from "../../../../../components/ui/SkeletonLoader";
 import { getOfflineScans, removeOfflineScan, updateMultipleOfflineScans } from "./offlineStorage";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { user } from "../../../../../lib/services/Class/user";
 
 interface Parcel {
     id: number;

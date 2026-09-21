@@ -5,9 +5,9 @@
 import React from "react";
 import { PurchaseOrder } from "../../types";
 import { getStatusBadge, getPaidBadge } from "../../utils/formatters";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { PurchaseHistorySkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
+import { Pagination } from "../../../../components/global/pagination";
+import { PurchaseHistorySkeleton } from "../../../../components/ui/SkeletonLoader";
 
 interface RecentPurchaseHistoryTableProps {
     isLoading: boolean;

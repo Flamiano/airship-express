@@ -1,5 +1,5 @@
 "use server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../../lib/services/client/supabase";
 import { headers } from "next/headers";
 export async function getLastScan() {
     try {

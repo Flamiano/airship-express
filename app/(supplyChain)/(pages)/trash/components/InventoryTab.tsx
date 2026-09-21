@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { BulkActionsToolbar } from '@/app/(supplyChain)/components/global/BulkActionsToolbar';
-import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
-import { sanitizeSearch, sanitizeText } from '@/app/(supplyChain)/components/global/sanitize';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
-import Cards from '@/app/(supplyChain)/components/global/Cards';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
+import { useConfirm } from '../../../components/ui/ConfirmModal';
+import { BulkActionsToolbar } from '../../../components/global/BulkActionsToolbar';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { sanitizeSearch, sanitizeText } from '../../../components/global/sanitize';
+import { Pagination } from '../../../components/global/pagination';
+import { TableContentLoader } from '../../../components/global/Loader';
+import Cards from '../../../components/global/Cards';
+import { CrudActionButton } from '../../../components/ui/CrudActionButton';
 
 interface ArchivedItem {
     id: string;

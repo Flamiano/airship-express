@@ -4,10 +4,10 @@
 
 import React from "react";
 import { Supplier } from "../../types";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { SupplierDirectorySkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { StatusBadge } from "../../../../components/ui/StatusBadge";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
+import { Pagination } from "../../../../components/global/pagination";
+import { SupplierDirectorySkeleton } from "../../../../components/ui/SkeletonLoader";
 
 interface SupplierDirectoryTableProps {
     isLoading: boolean;

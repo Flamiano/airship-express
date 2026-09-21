@@ -4,13 +4,13 @@
 import React from 'react';
 import { Document, Supplier } from '../../types';
 import { getFileIcon, getFileColor, formatFileSize } from '../../utils/formatters';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
-import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
-import { TableRowsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { BulkActionsToolbar } from "../../../../components/global/BulkActionsToolbar";
+import { TableContentLoader } from "../../../../components/global/Loader";
+import { TableRowsSkeleton } from "../../../../components/ui/SkeletonLoader";
+import { Pagination } from "../../../../components/global/pagination";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
 
 interface DocumentsTableProps {
     documents: Document[];

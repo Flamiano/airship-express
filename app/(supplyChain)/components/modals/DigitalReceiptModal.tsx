@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useRef } from 'react';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import Portal from '../client/Portal';
+import { AppButton } from '../ui/AppButton';
 import { toast } from 'sonner';
 
 export interface DigitalReceiptData {

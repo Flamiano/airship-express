@@ -2,15 +2,15 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
+import { useConfirm } from "../../../../../components/ui/ConfirmModal";
 import { TablePagination } from "./TablePagination";
-import { deleteMultipleParcels, deleteParcel } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/delete";
-import { receiveMultipleParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/parcels";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
-import { useUserRole } from "@/app/(supplyChain)/components/global/UnauthorizedEmptyState";
-import { BulkActionsToolbar } from "@/app/(supplyChain)/components/global/BulkActionsToolbar";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { deleteMultipleParcels, deleteParcel } from "../../../actions/incoming/delete";
+import { receiveMultipleParcels } from "../../../actions/incoming/parcels";
+import { user } from "../../../../../lib/services/Class/user";
+import { useUserRole } from "../../../../../components/global/UnauthorizedEmptyState";
+import { BulkActionsToolbar } from "../../../../../components/global/BulkActionsToolbar";
+import { CrudActionButton } from "../../../../../components/ui/CrudActionButton";
+import { StatusBadge } from "../../../../../components/ui/StatusBadge";
 
 interface Parcel {
     id: number;

@@ -1,7 +1,7 @@
 // helper formatters and status badges for suppliers module
 
 import React from "react";
-import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { StatusBadge, getPOStatusTone } from "../../../components/ui/StatusBadge";
 
 // status badge renderer for purchase orders
 export function getStatusBadge(status: string) {

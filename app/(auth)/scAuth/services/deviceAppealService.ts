@@ -1,4 +1,4 @@
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../(supplyChain)/lib/services/client/supabase';
 
 export interface BlockedDevice {
     id: string;

@@ -4,9 +4,9 @@
 import React from 'react';
 import { Document } from '../../types';
 import { formatFileSize } from '../../utils/formatters';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import EmbeddedDocViewer from "@/app/(supplyChain)/components/ui/EmbeddedDocViewer";
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import EmbeddedDocViewer from "../../../../components/ui/EmbeddedDocViewer";
+import Portal from '../../../../components/client/Portal';
 
 interface DocumentPreviewModalProps {
     isOpen: boolean;

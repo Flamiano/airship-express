@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../../lib/services/client/supabase";
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;

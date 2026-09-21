@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { BlockedDevice, Appeal, UserActivity } from '../../types';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
 
 interface HeaderStatsProps {
     blockedDevices: BlockedDevice[];

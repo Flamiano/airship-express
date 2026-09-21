@@ -4,12 +4,12 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAI } from "./AIContext";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
-import { calculateGrabbableCollision } from "@/app/(supplyChain)/lib/grabbablePhysics";
+import { calculateGrabbableCollision } from "../../lib/grabbablePhysics";
 // Import robot components
 import { RobotAvatar, RobotHeader } from "../components";
-import AppButton from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import AppButton from "../../components/ui/AppButton";
+import { StatusBadge } from "../../components/ui/StatusBadge";
+import { user } from "../../lib/services/Class/user";
 import { ShieldAlert, Clock, AlertTriangle, GripVertical, Minus, Maximize2, Minimize2, X, Sparkles, Eye, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, FileText, Image as ImageIcon, FileCheck, Layers, Search, RefreshCw, Copy, Check } from "lucide-react";
 interface PendingRequestItem {
     name: string;

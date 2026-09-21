@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Filter, Grid, List } from 'lucide-react';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { AppButton } from '../../../../components/ui/AppButton';
 import { formatFileSize } from '../../utils/formatters';
 
 interface GalleryHeaderProps {

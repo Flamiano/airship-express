@@ -4,7 +4,7 @@
 import React from 'react';
 import { Search, XCircle, Filter, RefreshCw, X } from 'lucide-react';
 import { FilterState } from '../../types';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { AppButton } from '../../../../components/ui/AppButton';
 
 interface GalleryFilterBarProps {
     filterState: FilterState;

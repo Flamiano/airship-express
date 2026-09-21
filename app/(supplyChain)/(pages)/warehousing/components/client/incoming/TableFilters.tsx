@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import AddManualButton from "./AddManualButton";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { sanitizeSearch } from "@/app/(supplyChain)/components/global/sanitize";
+import { useDebounce } from "../../../../../hooks/useDebounce";
+import { sanitizeSearch } from "../../../../../components/global/sanitize";
 interface TableFiltersProps {
     onFilterChange?: (courier: string) => void;
     onSearch?: (search: string) => void;

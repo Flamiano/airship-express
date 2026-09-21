@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { AppButton } from "../ui/AppButton";
 
 interface Params {
     link: string;
@@ -80,5 +80,5 @@ export function NavBtn({ link, isActive, color, icon, label, onClick, 'data-tab'
     );
 }
 
-export { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-export type { CrudActionButtonProps, CrudActionType, CrudActionVariant } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+export { CrudActionButton } from "../ui/CrudActionButton";
+export type { CrudActionButtonProps, CrudActionType, CrudActionVariant } from "../ui/CrudActionButton";

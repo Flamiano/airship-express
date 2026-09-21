@@ -3,12 +3,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../lib/services/client/supabase";
 import { toast } from "sonner";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
+import { useDebounce } from "../../../hooks/useDebounce";
+import { useConfirm } from "../../../components/ui/ConfirmModal";
 import { Document, Supplier, Activity, DEFAULT_USER } from "../types";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { user } from "../../../lib/services/Class/user";
 
 export function useDocuments() {
     const searchParams = useSearchParams();

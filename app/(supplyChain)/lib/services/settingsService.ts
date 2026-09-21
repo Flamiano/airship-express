@@ -1,6 +1,6 @@
 'use client';
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from './client/supabase';
 
 export type UserRole = 'Admin' | 'Executive' | 'Manager' | 'Operator' | 'Employee';
 

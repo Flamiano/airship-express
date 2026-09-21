@@ -5,8 +5,8 @@ import Chart from "chart.js/auto";
 import { toast } from "sonner";
 import { downloadCSV } from "../../lib/exportUtils";
 import { ExecutiveDataPayload } from "../../hooks/useExecutiveData";
-import { AIChartResult } from "@/app/(supplyChain)/api/supplyChain/executive/ai-query/route";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { AIChartResult } from "../../../../api/supplyChain/executive/ai-query/route";
+import Portal from "../../../../components/client/Portal";
 
 interface AiChartGeneratorTabProps {
     data: ExecutiveDataPayload;

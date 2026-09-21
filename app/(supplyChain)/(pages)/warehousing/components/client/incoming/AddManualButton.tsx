@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { addManualParcel } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/addManual";
-import { getActiveCouriers, Courier } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/couriers";
-import { sanitizeBarcode, sanitizeSearch } from "@/app/(supplyChain)/components/global/sanitize";
-import { philippineLocations } from "@/app/(supplyChain)/lib/regionDataSet";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { addManualParcel } from "../../../actions/incoming/addManual";
+import { getActiveCouriers, Courier } from "../../../actions/incoming/couriers";
+import { sanitizeBarcode, sanitizeSearch } from "../../../../../components/global/sanitize";
+import { philippineLocations } from "../../../../../lib/regionDataSet";
+import Portal from "../../../../../components/client/Portal";
+import { AppButton } from "../../../../../components/ui/AppButton";
+import { user } from "../../../../../lib/services/Class/user";
 
 interface AddManualButtonProps {
     onAdd?: () => void;

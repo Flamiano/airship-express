@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
-import { DocumentsTab } from '@/app/(supplyChain)/(pages)/trash/components/DocumentsTab';
-import { PurchaseOrdersTab } from '@/app/(supplyChain)/(pages)/trash/components/PurchaseOrdersTab';
-import { SuppliersTab } from '@/app/(supplyChain)/(pages)/trash/components/SuppliersTab';
-import { ParcelsTab } from '@/app/(supplyChain)/(pages)/trash/components/ParcelsTab';
-import { trashCache } from '@/app/(supplyChain)/(pages)/trash/utils/trashCache';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import UnauthorizedEmptyState, { useUserRole } from '@/app/(supplyChain)/components/global/UnauthorizedEmptyState';
+import { SessionGuard } from '../../components/server/SessionGuard';
+import { DocumentsTab } from './components/DocumentsTab';
+import { PurchaseOrdersTab } from './components/PurchaseOrdersTab';
+import { SuppliersTab } from './components/SuppliersTab';
+import { ParcelsTab } from './components/ParcelsTab';
+import { trashCache } from './utils/trashCache';
+import { AppButton } from '../../components/ui/AppButton';
+import UnauthorizedEmptyState, { useUserRole } from '../../components/global/UnauthorizedEmptyState';
 
 type ArchiveTab = 'documents' | 'purchase_orders' | 'suppliers' | 'parcels';
 

@@ -1,8 +1,8 @@
 // app/(supplyChain)/ai/api/create-pos-from-requests/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
+import { supabase } from "../../../lib/services/client/supabase";
+import { buildEmailTemplate } from "../../../(pages)/procurement/api/send-email/template";
 import nodemailer from "nodemailer";
 
 export async function POST(request: NextRequest) {

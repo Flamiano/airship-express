@@ -1,5 +1,5 @@
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { supabase } from '../../../(supplyChain)/lib/services/client/supabase';
+import { user } from '../../../(supplyChain)/lib/services/Class/user';
 
 export interface RequestOtpParams {
     userId: string;

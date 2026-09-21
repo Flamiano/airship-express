@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { useUserRole } from "@/app/(supplyChain)/components/global/UnauthorizedEmptyState";
+import { AppButton } from "../../../components/ui/AppButton";
+import { StatusBadge } from "../../../components/ui/StatusBadge";
+import { useUserRole } from "../../../components/global/UnauthorizedEmptyState";
 
 interface MonthOption {
     value: string;

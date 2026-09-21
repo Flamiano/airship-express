@@ -3,22 +3,22 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Chart from "chart.js/auto";
 import { toast } from "sonner";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import { CardsSkeleton, ChartsSkeleton, TableSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import Cards from "@/app/(supplyChain)/components/global/Cards";
-import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
-import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
+import { useDebounce } from "../../hooks/useDebounce";
+import { useConfirm } from "../../components/ui/ConfirmModal";
+import { CardsSkeleton, ChartsSkeleton, TableSkeleton } from "../../components/ui/SkeletonLoader";
+import { Pagination } from "../../components/global/pagination";
+import Cards from "../../components/global/Cards";
+import AiQuestions from "../../components/global/AiQuestions";
+import { TableContentLoader } from "../../components/global/Loader";
 import { Supplier, PurchaseOrder, PurchaseRequest } from "./types/index";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { CrudActionButton } from "../../components/ui/CrudActionButton";
+import { AppButton } from "../../components/ui/AppButton";
+import { StatusBadge, getPOStatusTone } from "../../components/ui/StatusBadge";
 import { FileText, Check, X } from "lucide-react";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { fetchProcurementData, createPurchaseRequest, updatePurchaseRequest, deletePurchaseRequest, deleteMultiplePurchaseRequests, patchPurchaseRequest } from '@/app/(supplyChain)/(pages)/procurement/utils/procurementApi';
-import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { supabase } from "../../lib/services/client/supabase";
+import { fetchProcurementData, createPurchaseRequest, updatePurchaseRequest, deletePurchaseRequest, deleteMultiplePurchaseRequests, patchPurchaseRequest } from './utils/procurementApi';
+import { SessionGuard } from "../../components/server/SessionGuard";
+import { user } from "../../lib/services/Class/user";
 import Link from "next/link";
 const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
 const getPriorityColor = (priority: string) => {
@@ -46,10 +46,10 @@ const getPOStatusColor = (status: string) => {
         default: return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
     }
 };
-import { PurchaseRequestModal } from "@/app/(supplyChain)/components/modals/PurchaseRequestModal";
-import { PurchaseOrderModal } from "@/app/(supplyChain)/components/modals/PurchaseOrderModal";
-import { ChartDetailModal } from "@/app/(supplyChain)/components/modals/ChartDetailModal";
-import { DigitalReceiptModal } from "@/app/(supplyChain)/components/modals/DigitalReceiptModal";
+import { PurchaseRequestModal } from "../../components/modals/PurchaseRequestModal";
+import { PurchaseOrderModal } from "../../components/modals/PurchaseOrderModal";
+import { ChartDetailModal } from "../../components/modals/ChartDetailModal";
+import { DigitalReceiptModal } from "../../components/modals/DigitalReceiptModal";
 // re-export modals
 export { PurchaseRequestModal, PurchaseOrderModal, ChartDetailModal, DigitalReceiptModal };
 function EmptyState({ title, description, icon = "fas fa-inbox", actionText, onAction }: {

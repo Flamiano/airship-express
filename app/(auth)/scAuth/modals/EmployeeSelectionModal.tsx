@@ -25,6 +25,23 @@ const isUUID = (str?: string | null): boolean => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
 };
 
+export const isDropOffPickupRider = (emp: any): boolean => {
+    if (!emp) return false;
+    const pos = (emp.position || '').toLowerCase();
+    const dept = (emp.department || '').toLowerCase();
+    const role = (emp.role || '').toLowerCase();
+    return (
+        pos.includes('rider') ||
+        pos.includes('driver') ||
+        pos.includes('drop-off pick-up') ||
+        pos.includes('drop off pick up') ||
+        dept.includes('rider') ||
+        dept.includes('driver') ||
+        role.includes('rider') ||
+        role.includes('driver')
+    );
+};
+
 const formatId = (id?: string | null): string => {
     if (!id) return '';
     const trimmed = id.trim();
@@ -366,20 +383,27 @@ export default function EmployeeSelectionModal({
                                     ) : (
                                         <div className="space-y-3">
                                             {displayedEmployees.map((emp) => {
+                                                const isRider = isDropOffPickupRider(emp);
                                                 const isSelected = selectedEmployee?.id === emp.id;
-                                                const isDisabled = isSelectionLocked || isCheckingRemembered || isDeviceBlocked;
+                                                const isDisabled = isSelectionLocked || isCheckingRemembered || isDeviceBlocked || isRider;
 
                                                 return (
                                                     <button
                                                         key={emp.id}
                                                         type="button"
-                                                        onClick={() => handleEmployeeSelect(emp)}
+                                                        onClick={() => {
+                                                            if (isRider) return;
+                                                            handleEmployeeSelect(emp);
+                                                        }}
                                                         disabled={isDisabled}
+                                                        title={isRider ? "Drop-Off Pick-Up Drivers are field personnel and cannot access the web portal." : undefined}
                                                         className={`w-full text-left px-4 py-3 rounded-2xl transition-all duration-150 border
-                                                            ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-[0.99]'}
+                                                            ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer active:scale-[0.99]'}
                                                             ${isSelected
                                                                 ? 'bg-[#E2ECF6] dark:bg-[#192233] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border-accent/60'
-                                                                : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_5px_#c4d0df,inset_-2px_-2px_5px_#ffffff] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.7)] border-white/70 dark:border-white/[0.06] hover:border-accent/30'
+                                                                : isRider
+                                                                    ? 'bg-[#E5EBF2]/60 dark:bg-[#151821]/60 shadow-none border-dashed border-slate-300 dark:border-slate-800'
+                                                                    : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_5px_#c4d0df,inset_-2px_-2px_5px_#ffffff] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.7)] border-white/70 dark:border-white/[0.06] hover:border-accent/30'
                                                             }`}
                                                     >
                                                         <div className="flex items-center justify-between gap-3">
@@ -395,13 +419,20 @@ export default function EmployeeSelectionModal({
                                                                         </span>
                                                                     )}
 
-                                                                    {emp.is_active && (
+                                                                    {isRider && (
+                                                                        <span className="text-[10px] bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-500/30 shrink-0">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                                            Field Staff (Driver)
+                                                                        </span>
+                                                                    )}
+
+                                                                    {!isRider && emp.is_active && (
                                                                         <span className="text-[10px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-medium px-2 py-0.5 rounded-full flex items-center gap-1 border border-rose-200/60 dark:border-rose-900/40 shrink-0">
                                                                             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
                                                                             Active
                                                                         </span>
                                                                     )}
-                                                                    {!emp.is_active && emp.remembered && (
+                                                                    {!isRider && !emp.is_active && emp.remembered && (
                                                                         <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200/60 dark:border-emerald-900/40 shrink-0">
                                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                                             Remembered

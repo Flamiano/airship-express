@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Supplier } from '../../types';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
 
 interface PurchaseRequestModalProps {
     isOpen: boolean;

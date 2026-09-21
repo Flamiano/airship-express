@@ -1,6 +1,6 @@
 // app/(supplyChain)/api/supplyChain/employees/route.ts
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 
 const isUUID = (str?: string | null): boolean => {

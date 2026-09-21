@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import EmbeddedDocViewer from '@/app/(supplyChain)/components/ui/EmbeddedDocViewer';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { supabase } from '../../lib/services/client/supabase';
+import { AppButton } from '../ui/AppButton';
+import { StatusBadge } from '../ui/StatusBadge';
+import EmbeddedDocViewer from '../ui/EmbeddedDocViewer';
+import Portal from '../client/Portal';
 
 export interface ViewDocumentData {
     id?: string;

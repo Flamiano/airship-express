@@ -1,5 +1,5 @@
 "use client";
-import { cn } from "@/app/(supplyChain)/lib/utils";
+import { cn } from "../../lib/utils";
 import { IconLayoutNavbarCollapse } from "@tabler/icons-react";
 import { AnimatePresence, MotionValue, motion, useMotionValue, useSpring, useTransform } from "motion/react";
 import { useRef, useState } from "react";

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
-import { calculateGrabbableCollision } from '@/app/(supplyChain)/lib/grabbablePhysics';
+import { calculateGrabbableCollision } from '../../lib/grabbablePhysics';
 import { Wifi, WifiOff, RefreshCw, AlertCircle, X, GripVertical, Minus, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
 

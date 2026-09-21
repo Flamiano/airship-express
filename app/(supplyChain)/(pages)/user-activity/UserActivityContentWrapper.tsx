@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useUserActivity } from './hooks/useUserActivity';
-import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
+import { useDebounce } from '../../hooks/useDebounce';
 import { ActivityTab, Appeal } from './types';
 
 import { HeaderStats } from './components/common/HeaderStats';

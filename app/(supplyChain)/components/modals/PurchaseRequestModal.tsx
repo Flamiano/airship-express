@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { sanitizeText, sanitizeNumber } from "@/app/(supplyChain)/components/global/sanitize";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { PurchaseRequestItem, PurchaseRequestModalProps } from "@/app/(supplyChain)/(pages)/procurement/types/index";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { sanitizeText, sanitizeNumber } from "../global/sanitize";
+import { AppButton } from "../ui/AppButton";
+import { PurchaseRequestItem, PurchaseRequestModalProps } from "../../(pages)/procurement/types/index";
+import Portal from "../client/Portal";
+import { user } from "../../lib/services/Class/user";
 
 export function PurchaseRequestModal({
     isOpen,

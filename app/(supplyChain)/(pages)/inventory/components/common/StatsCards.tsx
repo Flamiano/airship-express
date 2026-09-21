@@ -1,6 +1,6 @@
 'use client';
 
-import Cards from '@/app/(supplyChain)/components/global/Cards';
+import Cards from '../../../../components/global/Cards';
 
 interface StatsCardsProps {
     totalItems: number;
@@ -55,7 +55,7 @@ export function StatsCards({ totalItems, availableItems, lowStockItems, outOfSto
                 backHeader="Low Stock Items"
                 backIcon="fas fa-exclamation-triangle"
                 headerTextColor="text-muted dark:text-white/80"
-                backDescription={`${lowStockItems} items are below minimum stock levels.\n\n⚠️ These items need immediate attention.\n\n🔍 Check inventory to review stock levels.`}
+                backDescription={`${lowStockItems} items are below minimum stock levels.\n\n These items need immediate attention.\n\n🔍 Check inventory to review stock levels.`}
                 tooltip="Click the card to see more details"
                 frontTextColor="text-amber-600 dark:text-amber-400"
                 descriptionTextColor="text-slate-500 dark:text-slate-400"

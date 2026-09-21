@@ -11,16 +11,17 @@ import {
     Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { OfflineDetector } from '@/app/(supplyChain)/components/global/OfflineDetector';
-import CustomCursor from '@/app/(supplyChain)/components/global/CustomCursor';
+import { useConfirm } from '../../(supplyChain)/components/ui/ConfirmModal';
+import { OfflineDetector } from '../../(supplyChain)/components/global/OfflineDetector';
+import CustomCursor from '../../(supplyChain)/components/global/CustomCursor';
 import {
     EmployeeSelectionModal,
+    isDropOffPickupRider,
     PasswordSetupModal,
     RememberedPasswordModal,
     AppealModal,
 } from './modals';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../(supplyChain)/lib/services/Class/user';
 import {
     clearUserSession,
     checkRememberedSessionApi,
@@ -40,7 +41,7 @@ import {
     updateAppeal,
     deleteAppeal,
 } from './services';
-import { settingsService } from '@/app/(supplyChain)/lib/services/settingsService';
+import { settingsService } from '../../(supplyChain)/lib/services/settingsService';
 
 export default function SupplyChainLoginPage() {
     const router = useRouter();
@@ -394,6 +395,11 @@ export default function SupplyChainLoginPage() {
 
     // handle employee selection
     const handleEmployeeSelect = async (employee: any) => {
+        if (!employee) return;
+        if (isDropOffPickupRider(employee)) {
+            toast.warning('Drop-Off Pick-Up Drivers are field personnel and cannot access the web portal.');
+            return;
+        }
         if (isSelectionLocked || isCheckingRemembered || isRequestingOTP || isDeviceBlocked) return;
 
         setSelectedEmployee(employee);

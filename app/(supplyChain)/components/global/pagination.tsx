@@ -1,5 +1,5 @@
 "use client";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { AppButton } from "../ui/AppButton";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 interface PaginationProps {
     currentPage: number;

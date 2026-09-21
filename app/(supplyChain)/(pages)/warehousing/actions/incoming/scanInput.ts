@@ -1,11 +1,11 @@
 "use server";
 
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../../lib/services/client/supabase";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
-import { sanitizeBarcode } from "@/app/(supplyChain)/components/global/sanitize";
+import { sanitizeBarcode } from "../../../../components/global/sanitize";
 import { toast } from "sonner";
-import { isRateLimited } from "@/app/(supplyChain)/components/global/rateLimit";
+import { isRateLimited } from "../../../../components/global/rateLimit";
 
 const generateTrackingNumber = () => {
     const date = new Date();

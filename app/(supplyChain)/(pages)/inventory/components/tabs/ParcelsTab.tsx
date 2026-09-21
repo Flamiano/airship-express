@@ -4,16 +4,16 @@ import { useState, memo, useMemo, useCallback } from 'react';
 import { toast } from "sonner";
 import { Parcel, GroupedParcels, ScannerUser } from '../../types';
 import { getStatusLabel, getStatusTone } from '../../utils/helpers';
-import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { sanitizeSearch } from '../../../../components/global/sanitize';
+import { Pagination } from '../../../../components/global/pagination';
+import { TableSkeleton } from '../../../../components/ui/SkeletonLoader';
+import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { ParcelTrackingCard } from '../tracking/ParcelTrackingCard';
 import { ScannerStatsModal } from '../modals/ScannerStatsModal';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
-import { useUserRole } from '@/app/(supplyChain)/components/global/UnauthorizedEmptyState';
+import Portal from '../../../../components/client/Portal';
+import { useUserRole } from '../../../../components/global/UnauthorizedEmptyState';
 
 interface ParcelsTabProps {
     parcels: Parcel[];

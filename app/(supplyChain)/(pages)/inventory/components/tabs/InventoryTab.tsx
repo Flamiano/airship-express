@@ -4,15 +4,15 @@
 
 import { useState, memo } from 'react';
 import { InventoryItem } from '../../types';
-import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
-import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { sanitizeSearch } from '../../../../components/global/sanitize';
+import { Pagination } from '../../../../components/global/pagination';
+import { TableContentLoader } from '../../../../components/global/Loader';
+import { TableRowsSkeleton } from '../../../../components/ui/SkeletonLoader';
+import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import Portal from '../../../../components/client/Portal';
 
 interface InventoryTabProps {
     items: InventoryItem[];

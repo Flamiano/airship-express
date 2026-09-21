@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { sanitizeText } from '@/app/(supplyChain)/components/global/sanitize';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { sanitizeText } from '../../../../components/global/sanitize';
+import { AppButton } from '../../../../components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
 
 export interface AddItemModalProps {
     isOpen: boolean;

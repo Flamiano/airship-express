@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, Calendar, User, Building, Tag, Package, Trash2, Edit3, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
-import { deletePurchaseRequest, updatePurchaseRequest } from '@/app/(supplyChain)/(pages)/procurement/utils/procurementApi';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { supabase } from '../../lib/services/client/supabase';
+import { useConfirm } from '../ui/ConfirmModal';
+import { AppButton } from '../ui/AppButton';
+import { StatusBadge } from '../ui/StatusBadge';
+import Portal from '../client/Portal';
+import { deletePurchaseRequest, updatePurchaseRequest } from '../../(pages)/procurement/utils/procurementApi';
+import { user } from '../../lib/services/Class/user';
 
 interface PurchaseRequestDetailModalProps {
     isOpen: boolean;

@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { scanBarcode } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/scanInput";
+import { scanBarcode } from "../../../actions/incoming/scanInput";
 import BarcodeScanner from "./BarcodeScanner";
-import { sanitizeBarcode } from "@/app/(supplyChain)/components/global/sanitize";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { sanitizeBarcode } from "../../../../../components/global/sanitize";
+import { StatusBadge } from "../../../../../components/ui/StatusBadge";
 import { addOfflineScan } from "./offlineStorage";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { user } from "../../../../../lib/services/Class/user";
 
 interface ScanInputProps {
     onScan?: (barcode?: string, isOffline?: boolean) => void;

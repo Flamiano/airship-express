@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
-import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
-import { PurchaseRequestItem, PurchaseOrderModalProps } from "@/app/(supplyChain)/(pages)/procurement/types/index";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { supabase } from "../../lib/services/client/supabase";
+import { user } from "../../lib/services/Class/user";
+import { buildEmailTemplate } from "../../(pages)/procurement/api/send-email/template";
+import { PurchaseRequestItem, PurchaseOrderModalProps } from "../../(pages)/procurement/types/index";
+import { AppButton } from "../ui/AppButton";
+import Portal from "../client/Portal";
 
 export function PurchaseOrderModal({
     isOpen,

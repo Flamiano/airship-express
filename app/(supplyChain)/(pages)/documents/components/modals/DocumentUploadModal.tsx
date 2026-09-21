@@ -4,8 +4,8 @@
 import React from 'react';
 import { Supplier } from '../../types';
 import { formatFileSize } from '../../utils/formatters';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
 
 interface DocumentUploadModalProps {
     isOpen: boolean;

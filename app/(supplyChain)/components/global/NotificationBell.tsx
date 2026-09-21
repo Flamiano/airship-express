@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package, Trash2, Edit3, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
+import { supabase } from '../../lib/services/client/supabase';
+import { useConfirm } from '../ui/ConfirmModal';
 import Portal from '../client/Portal';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../lib/services/Class/user';
 
 
 interface Notification {

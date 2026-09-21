@@ -1,10 +1,10 @@
 'use client';
 import React from 'react';
 import { Search, Filter, Trash2, Inbox } from 'lucide-react';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { Pagination } from '../../../../components/global/pagination';
+import { TableRowsSkeleton } from '../../../../components/ui/SkeletonLoader';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { AppButton } from '../../../../components/ui/AppButton';
 import { UserActivity } from '../../types';
 import { formatDate } from '../../utils/formatters';
 interface ActivityLogTabProps {

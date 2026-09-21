@@ -27,7 +27,7 @@ import {
     ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../lib/services/Class/user';
 import {
     settingsService,
     SystemSettings,
@@ -36,10 +36,10 @@ import {
     DEFAULT_PAGE_PERMISSIONS,
     DEFAULT_ROLE_REDIRECTS,
     PagePermission
-} from '@/app/(supplyChain)/lib/services/settingsService';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { SkeletonBlock } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
+} from '../../lib/services/settingsService';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { useConfirm } from '../../components/ui/ConfirmModal';
+import { SkeletonBlock } from '../../components/ui/SkeletonLoader';
 
 const ALL_SECTIONS = ['all', 'Operations', 'Procurement', 'Intelligence', 'Others'] as const;
 
@@ -857,7 +857,7 @@ export default function SettingsContentWrapper() {
                                                             disabled={isOptionDisabled}
                                                             className={isOptionDisabled ? 'text-slate-400 dark:text-slate-600 bg-[#EAF0F6] dark:bg-[#13161F]' : 'bg-[#EAF0F6] dark:bg-[#13161F] text-slate-900 dark:text-white'}
                                                         >
-                                                            {p.label} ({p.route}) {!pageAllowed ? '⚠️ (Restricted)' : ''}
+                                                            {p.label} ({p.route}) {!pageAllowed ? '(Restricted)' : ''}
                                                         </option>
                                                     );
                                                 })}

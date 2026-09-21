@@ -1,9 +1,9 @@
 // app/(supplyChain)/api/supplyChain/request-otp/route.ts
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 import { createHash } from 'crypto';
-import { sendOTPEmail } from '@/app/(supplyChain)/lib/email/sendOTP';
+import { sendOTPEmail } from '../../../lib/email/sendOTP';
 
 function generateOTP(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();

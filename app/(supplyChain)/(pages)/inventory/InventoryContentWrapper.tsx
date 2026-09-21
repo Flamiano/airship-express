@@ -1,24 +1,24 @@
 'use client';
 import { toast } from "sonner";
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { useInventory } from '@/app/(supplyChain)/(pages)/inventory/hooks/useInventory';
+import { useConfirm } from '../../components/ui/ConfirmModal';
+import { useInventory } from './hooks/useInventory';
 import { useSearchParams } from 'next/navigation';
-import { DashboardTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/DashboardTab';
-import { InventoryTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/InventoryTab';
-import { ParcelsTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/ParcelsTab';
-import { AddItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/AddItemModal';
-import { EditItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/EditItemModal';
-import { StockInModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockInModal';
-import { StockOutModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockOutModal';
-import { ScopedPORequestModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/ScopedPORequestModal';
-import { PurchaseRequestDetailModal } from '@/app/(supplyChain)/components/modals/PurchaseRequestDetailModal';
-import { GroupedParcels, InventoryItem, ScannerUser } from '@/app/(supplyChain)/(pages)/inventory/types';
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { fetchInventoryPageData, type Parcel } from '@/app/(supplyChain)/(pages)/inventory/server/query';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import UnauthorizedEmptyState, { useUserRole } from '@/app/(supplyChain)/components/global/UnauthorizedEmptyState';
+import { DashboardTab } from './components/tabs/DashboardTab';
+import { InventoryTab } from './components/tabs/InventoryTab';
+import { ParcelsTab } from './components/tabs/ParcelsTab';
+import { AddItemModal } from './components/modals/AddItemModal';
+import { EditItemModal } from './components/modals/EditItemModal';
+import { StockInModal } from './components/modals/StockInModal';
+import { StockOutModal } from './components/modals/StockOutModal';
+import { ScopedPORequestModal } from './components/modals/ScopedPORequestModal';
+import { PurchaseRequestDetailModal } from '../../components/modals/PurchaseRequestDetailModal';
+import { GroupedParcels, InventoryItem, ScannerUser } from './types';
+import { useDebounce } from "../../hooks/useDebounce";
+import { fetchInventoryPageData, type Parcel } from './server/query';
+import { AppButton } from '../../components/ui/AppButton';
+import { supabase } from '../../lib/services/client/supabase';
+import UnauthorizedEmptyState, { useUserRole } from '../../components/global/UnauthorizedEmptyState';
 
 // SWR Cache Manager for Inventory data
 interface CacheEntry<T> {

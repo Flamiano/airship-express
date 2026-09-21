@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { useConfirm } from '../../../components/ui/ConfirmModal';
+import { user } from '../../../lib/services/Class/user';
+import { supabase } from '../../../lib/services/client/supabase';
 import { Session, BlockedDevice, Appeal, UserActivity } from '../types';
 import { isRateLimited, sanitizeText } from '../utils/formatters';
 

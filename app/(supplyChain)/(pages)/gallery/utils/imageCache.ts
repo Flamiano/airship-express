@@ -1,5 +1,5 @@
 // caching layers for images, supabase storage urls, and swr query responses
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { CacheEntry, GalleryCachePayload } from '../types';
 
 export class LRUImageCache {

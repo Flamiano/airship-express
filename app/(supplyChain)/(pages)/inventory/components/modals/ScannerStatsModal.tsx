@@ -1,8 +1,8 @@
 // app/(supplyChain)/inventory/components/modals/ScannerStatsModal.tsx
 'use client';
 import { useState, useMemo } from 'react';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
 import { ScannerUser } from '../../types';
 import { toast } from 'sonner';
 

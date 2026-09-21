@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { PurchaseRequest } from "@/app/(supplyChain)/(pages)/procurement/types/index";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { supabase } from "../../lib/services/client/supabase";
+import { PurchaseRequest } from "../../(pages)/procurement/types/index";
+import { AppButton } from "../ui/AppButton";
+import { StatusBadge } from "../ui/StatusBadge";
+import Portal from "../client/Portal";
 
 interface ApprovedRequestsModalProps {
     isOpen: boolean;

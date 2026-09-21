@@ -1,8 +1,8 @@
 //app/(supplyChain)/procurement/api/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
+import { supabase } from '../../../lib/services/client/supabase';
+import { sanitizeText, sanitizeNumber } from '../../../components/global/sanitize';
 import { headers } from 'next/headers';
 
 // types

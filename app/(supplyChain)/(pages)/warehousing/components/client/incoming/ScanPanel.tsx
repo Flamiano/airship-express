@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../../../lib/services/client/supabase";
 import ScanInput from "./ScanInput";
 import { ScanSummary } from "./ScanSummary";
 import { StatsCards } from "./StatsCards";

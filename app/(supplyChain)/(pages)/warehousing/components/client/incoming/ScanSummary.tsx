@@ -1,6 +1,6 @@
 "use client";
 
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { StatusBadge } from "../../../../../components/ui/StatusBadge";
 
 interface ScanSummaryProps {
     lastScan: string;

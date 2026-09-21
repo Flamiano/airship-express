@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { AppButton } from "../../../../../components/ui/AppButton";
+import Portal from "../../../../../components/client/Portal";
 
 export default function ManualEntryModal() {
     const modalRef = useRef<HTMLDivElement>(null);

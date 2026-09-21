@@ -3,10 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { InventoryItem } from '../../types';
 import { toast } from "sonner";
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../../../lib/services/Class/user';
 import { stockInItemAction } from '../../server/actions/stock-in';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
 
 interface StockInModalProps {
     isOpen: boolean;

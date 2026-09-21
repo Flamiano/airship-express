@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { AIRSHIP_HQ, resolveDestinationCoords, getStatusProgress, fetchOSRMRoute, getLocalityFromProgress, splitRouteByProgress, GeoCoordinate } from '../../utils/geo-locations';
 import { getStatusLabel, getStatusTone } from '../../utils/helpers';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
 // import map component without ssr
 const DynamicParcelTrackingMap = dynamic(() => import('./ParcelTrackingMap'), {
     ssr: false,

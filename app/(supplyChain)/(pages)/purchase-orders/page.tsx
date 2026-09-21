@@ -4,20 +4,20 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Chart from "chart.js/auto";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../lib/services/client/supabase";
 import { toast } from "sonner";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import { CardsSkeleton, ChartSkeleton, TableSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
-import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
-import Cards from "@/app/(supplyChain)/components/global/Cards";
+import { useDebounce } from "../../hooks/useDebounce";
+import { useConfirm } from "../../components/ui/ConfirmModal";
+import { CardsSkeleton, ChartSkeleton, TableSkeleton } from "../../components/ui/SkeletonLoader";
+import { Pagination } from "../../components/global/pagination";
+import { SessionGuard } from "../../components/server/SessionGuard";
+import { TableContentLoader } from "../../components/global/Loader";
+import Cards from "../../components/global/Cards";
 import dynamic from "next/dynamic";
-import { createPurchaseRequest } from "@/app/(supplyChain)/(pages)/procurement/utils/procurementApi";
-import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
-import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
+import { createPurchaseRequest } from "../procurement/utils/procurementApi";
+import AiQuestions from "../../components/global/AiQuestions";
+import { user } from "../../lib/services/Class/user";
+import { buildEmailTemplate } from "../procurement/api/send-email/template";
 import {
     VerificationJob,
     ReceiptQueueItem,
@@ -25,43 +25,43 @@ import {
     setPoRateLimit,
     clearPoRateLimit,
     MAX_MISMATCH_ATTEMPTS,
-} from "@/app/(supplyChain)/components/modals/UploadReceiptModal";
-import { uploadReceiptAndVerifyAction } from "@/app/(supplyChain)/(pages)/purchase-orders/server/actions/ocr-verify";
-import { ReceiptProcessingIndicator } from "@/app/(supplyChain)/components/global/ReceiptProcessingIndicator";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+} from "../../components/modals/UploadReceiptModal";
+import { uploadReceiptAndVerifyAction } from "./server/actions/ocr-verify";
+import { ReceiptProcessingIndicator } from "../../components/global/ReceiptProcessingIndicator";
+import { CrudActionButton } from "../../components/ui/CrudActionButton";
+import { AppButton } from "../../components/ui/AppButton";
 import { FileText, MoreHorizontal, Receipt } from "lucide-react";
-import type { ViewDocumentData } from "@/app/(supplyChain)/components/modals/DocumentViewerModal";
-import { StatusBadge, getPOStatusTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import type { ViewDocumentData } from "../../components/modals/DocumentViewerModal";
+import { StatusBadge, getPOStatusTone } from "../../components/ui/StatusBadge";
+import Portal from "../../components/client/Portal";
 
 // dynamic modal imports to reduce initial bundle size
 const PurchaseOrderModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/PurchaseOrderModal").then(m => m.PurchaseOrderModal),
+    () => import("../../components/modals/PurchaseOrderModal").then(m => m.PurchaseOrderModal),
     { ssr: false }
 );
 const ApprovedRequestsModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/ApprovedRequestsModal").then(m => m.ApprovedRequestsModal),
+    () => import("../../components/modals/ApprovedRequestsModal").then(m => m.ApprovedRequestsModal),
     { ssr: false }
 );
 const PurchaseRequestModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/PurchaseRequestModal").then(m => m.PurchaseRequestModal),
+    () => import("../../components/modals/PurchaseRequestModal").then(m => m.PurchaseRequestModal),
     { ssr: false }
 );
 const ChartDetailModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/ChartDetailModal").then(m => m.ChartDetailModal),
+    () => import("../../components/modals/ChartDetailModal").then(m => m.ChartDetailModal),
     { ssr: false }
 );
 const DocumentViewerModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/DocumentViewerModal"),
+    () => import("../../components/modals/DocumentViewerModal"),
     { ssr: false }
 );
 const UploadReceiptModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/UploadReceiptModal").then(m => m.UploadReceiptModal),
+    () => import("../../components/modals/UploadReceiptModal").then(m => m.UploadReceiptModal),
     { ssr: false }
 );
 const DigitalReceiptModal = dynamic(
-    () => import("@/app/(supplyChain)/components/modals/DigitalReceiptModal").then(m => m.DigitalReceiptModal),
+    () => import("../../components/modals/DigitalReceiptModal").then(m => m.DigitalReceiptModal),
     { ssr: false }
 );
 // types

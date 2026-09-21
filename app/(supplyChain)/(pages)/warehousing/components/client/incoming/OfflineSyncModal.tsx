@@ -13,8 +13,8 @@ import {
     fetchBatchMockParcels,
     batchInsertOfflineParcels,
     OfflineParcelItem
-} from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/offlineActions";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+} from "../../../actions/incoming/offlineActions";
+import { user } from "../../../../../lib/services/Class/user";
 
 interface OfflineSyncModalProps {
     isOpen: boolean;

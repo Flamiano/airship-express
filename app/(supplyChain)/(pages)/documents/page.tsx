@@ -2,8 +2,8 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
 import DocumentsContentWrapper from './DocumentsContentWrapper';
-import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
+import { PageSkeleton } from '../../components/ui/SkeletonLoader';
+import { SessionGuard } from '../../components/server/SessionGuard';
 
 export const metadata: Metadata = {
     title: 'Document Tracking & Logistics Records | Supply Chain Management',

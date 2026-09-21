@@ -4,17 +4,17 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { user } from '../../lib/services/Class/user';
+import { AppButton } from '../ui/AppButton';
+import { StatusBadge } from '../ui/StatusBadge';
+import Portal from '../client/Portal';
 import {
     uploadReceiptAndVerifyAction,
     forceInsertVerificationAction,
     getVerificationDetailsAction,
     ComparedFields,
     ExtractedReceiptJSON
-} from '@/app/(supplyChain)/(pages)/purchase-orders/server/actions/ocr-verify';
+} from '../../(pages)/purchase-orders/server/actions/ocr-verify';
 
 export interface VerificationJob {
     verificationId: string;

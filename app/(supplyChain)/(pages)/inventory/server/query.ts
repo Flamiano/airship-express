@@ -1,9 +1,9 @@
 "use server";
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
-import { isRateLimited } from '@/app/(supplyChain)/components/global/rateLimit';
-import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
+import { isRateLimited } from '../../../components/global/rateLimit';
+import { sanitizeSearch } from '../../../components/global/sanitize';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 

@@ -1,6 +1,6 @@
 // app/(supplyChain)/utils/procurementApi.ts
 
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../../lib/services/Class/user';
 
 interface FetchProcurementParams {
     page?: number;

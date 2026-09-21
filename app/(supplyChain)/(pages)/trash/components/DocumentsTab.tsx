@@ -2,18 +2,18 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { BulkActionsToolbar } from '@/app/(supplyChain)/components/global/BulkActionsToolbar';
-import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
-import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
-import Cards from '@/app/(supplyChain)/components/global/Cards';
-import { CardsSkeleton, TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { useConfirm } from '../../../components/ui/ConfirmModal';
+import { supabase } from '../../../lib/services/client/supabase';
+import { BulkActionsToolbar } from '../../../components/global/BulkActionsToolbar';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { sanitizeSearch, sanitizeText, sanitizeNumber } from '../../../components/global/sanitize';
+import { Pagination } from '../../../components/global/pagination';
+import { TableContentLoader } from '../../../components/global/Loader';
+import Cards from '../../../components/global/Cards';
+import { CardsSkeleton, TableRowsSkeleton } from '../../../components/ui/SkeletonLoader';
+import { CrudActionButton } from '../../../components/ui/CrudActionButton';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { AppButton } from '../../../components/ui/AppButton';
 
 import { trashCache } from '../utils/trashCache';
 import { TrashRetentionBadge } from './TrashRetentionBadge';

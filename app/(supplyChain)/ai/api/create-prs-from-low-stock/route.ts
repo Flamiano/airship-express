@@ -1,7 +1,7 @@
 // app/(supplyChain)/ai/api/create-prs-from-low-stock/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../lib/services/client/supabase";
 
 export async function POST(request: NextRequest) {
     try {

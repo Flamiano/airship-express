@@ -1,5 +1,5 @@
 // type definitions for document management, suppliers, and audit activity history
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { user } from "../../../lib/services/Class/user";
 
 export interface Document {
     id: string;

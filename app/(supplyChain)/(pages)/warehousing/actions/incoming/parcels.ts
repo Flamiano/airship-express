@@ -1,11 +1,11 @@
 "use server";
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { ftmSupabase } from '@/app/(supplyChain)/lib/services/client/ftmSupabase';
+import { supabase } from '../../../../lib/services/client/supabase';
+import { ftmSupabase } from '../../../../lib/services/client/ftmSupabase';
 import { revalidatePath } from 'next/cache';
 import { cookies, headers } from 'next/headers';
-import { sanitizeBarcode, sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
-import { isRateLimited } from '@/app/(supplyChain)/components/global/rateLimit';
+import { sanitizeBarcode, sanitizeSearch } from '../../../../components/global/sanitize';
+import { isRateLimited } from '../../../../components/global/rateLimit';
 
 const generateTrackingNumber = () => {
     const date = new Date();

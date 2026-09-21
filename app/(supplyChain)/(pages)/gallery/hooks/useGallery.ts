@@ -4,8 +4,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
+import { supabase } from '../../../lib/services/client/supabase';
+import { useDebounce } from '../../../hooks/useDebounce';
 import { MediaItem, FilterState } from '../types';
 import { formatFileSize } from '../utils/formatters';
 import { imageCache, galleryDataCache, getCachedPublicUrl } from '../utils/imageCache';

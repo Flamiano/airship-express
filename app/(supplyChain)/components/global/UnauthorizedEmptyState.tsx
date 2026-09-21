@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Lock, ShieldAlert } from 'lucide-react';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../lib/services/Class/user';
 
 export const isPrivilegedRole = (role?: string | null): boolean => {
     if (!role) return false;

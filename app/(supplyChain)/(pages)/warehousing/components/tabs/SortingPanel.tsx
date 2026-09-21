@@ -1,17 +1,17 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
+import { supabase } from "../../../../lib/services/client/supabase";
+import { useDebounce } from "../../../../hooks/useDebounce";
 import { toast } from "sonner";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { useConfirm } from "../../../../components/ui/ConfirmModal";
+import Portal from "../../../../components/client/Portal";
+import { Pagination } from "../../../../components/global/pagination";
+import { TableContentLoader } from "../../../../components/global/Loader";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
+import { AppButton } from "../../../../components/ui/AppButton";
+import { StatusBadge } from "../../../../components/ui/StatusBadge";
 import { Clipboard, Eye } from "lucide-react";
-import { useUserRole } from "@/app/(supplyChain)/components/global/UnauthorizedEmptyState";
+import { useUserRole } from "../../../../components/global/UnauthorizedEmptyState";
 interface Parcel {
     id: number;
     barcode: string;

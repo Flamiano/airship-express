@@ -3,10 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { InventoryItem, Supplier } from '../../types';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../../../lib/services/Class/user';
 import { createScopedPurchaseRequestAction } from '../../server/actions/purchase-request';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
 
 interface ScopedPORequestModalProps {
     isOpen: boolean;

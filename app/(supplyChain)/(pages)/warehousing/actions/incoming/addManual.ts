@@ -1,7 +1,7 @@
 "use server";
 
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { ftmSupabase } from "@/app/(supplyChain)/lib/services/client/ftmSupabase";
+import { supabase } from "../../../../lib/services/client/supabase";
+import { ftmSupabase } from "../../../../lib/services/client/ftmSupabase";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 

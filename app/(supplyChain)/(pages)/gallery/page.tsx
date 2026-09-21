@@ -2,8 +2,8 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
 import GalleryContentWrapper from './GalleryContentWrapper';
-import { PageSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
+import { PageSkeleton } from '../../components/ui/SkeletonLoader';
+import { SessionGuard } from '../../components/server/SessionGuard';
 
 export const metadata: Metadata = {
     title: 'Media Gallery | Supply Chain Management',
