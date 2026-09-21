@@ -477,6 +477,22 @@ export type PerformanceAppraisal = {
    */
   evaluator_id: string | null;
   /**
+   * Frozen applicability snapshot: the applicable goal IDs at the time the
+   * manager assessment was submitted.  NULL for pre-migration appraisals or
+   * appraisals that have not yet been submitted.  Once set, finalization and
+   * scoring-input reads use this snapshot instead of recomputing the live
+   * applicable set, preventing applicability drift.
+   */
+  applicable_goal_ids_snapshot: string[] | null;
+  /**
+   * Frozen applicability snapshot: the applicable competency IDs at the time
+   * the manager assessment was submitted.  NULL for pre-migration appraisals
+   * or appraisals that have not yet been submitted.  Once set, finalization
+   * and scoring-input reads use this snapshot instead of recomputing the live
+   * applicable set.
+   */
+  applicable_competency_ids_snapshot: string[] | null;
+  /**
    * Server-attached details (single-record reads only): the formal ratings
    * stored in `hr3_performance_appraisal_goal_results` /
    * `hr3_performance_appraisal_competency_results`.

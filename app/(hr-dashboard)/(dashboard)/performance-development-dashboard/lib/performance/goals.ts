@@ -2,12 +2,13 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
+import { selectAll, chunkedIn } from "@/performance-development-dashboard/lib/performance/serverUtils";
 import {
   assertEmployeeOwnsRecord,
   resolveManagerDirectReportUuids,
 } from "@/performance-development-dashboard/lib/auth/access";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
-import { requireHrEmployee } from "@/performance-development-dashboard/lib/auth/hrIdentity";
+import { requireHrEmployee, isPerDevHrAdminRole } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import {
   auditActorFromIdentity,
   auditActorFromPerDevActor,
@@ -234,41 +235,47 @@ export async function enrichGoalsWithAssignerAccount(
 
   const goalIds = [...new Set(goals.map((goal) => goal.id))];
 
-  const { data: auditRows, error: auditError } = await supabaseAdmin
-    .from("hr3_audit_events")
-    .select("entity_id, actor_id")
-    .eq("entity_type", PERFORMANCE_AUDIT_ENTITY_TYPE.goal)
-    .eq("action", PERFORMANCE_AUDIT_REASON.goalCreated)
-    .in("entity_id", goalIds);
-
-  if (auditError) {
-    console.error("enrichGoalsWithAssignerAccount: audit query error:", auditError);
-    return goals.map((goal) => ({ ...goal, assignedByAccountName: null }));
-  }
+  const auditBatches = await chunkedIn(goalIds, 100, async (chunk) => {
+    const { data, error } = await supabaseAdmin
+      .from("hr3_audit_events")
+      .select("entity_id, actor_id")
+      .eq("entity_type", PERFORMANCE_AUDIT_ENTITY_TYPE.goal)
+      .eq("action", PERFORMANCE_AUDIT_REASON.goalCreated)
+      .in("entity_id", chunk);
+    if (error) {
+      console.error("enrichGoalsWithAssignerAccount: audit query error:", error);
+      return [];
+    }
+    return data ?? [];
+  });
+  const auditRows = auditBatches.flat();
 
   const accountIds = [
     ...new Set(
-      (auditRows ?? []).map((row) => row.actor_id).filter(Boolean)
+      auditRows.map((row) => row.actor_id).filter(Boolean)
     ),
   ] as string[];
 
   const accountNamesById: Record<string, string> = {};
   if (accountIds.length > 0) {
-    const { data: accounts, error: accountsError } = await supabaseAdmin
-      .from("hr_admin")
-      .select("id, full_name")
-      .in("id", accountIds);
+    const accountBatches = await chunkedIn(accountIds, 100, async (chunk) => {
+      const { data, error } = await supabaseAdmin
+        .from("hr_admin")
+        .select("id, full_name")
+        .in("id", chunk);
+      if (error) {
+        console.error(
+          "enrichGoalsWithAssignerAccount: account lookup error:",
+          error
+        );
+        return [];
+      }
+      return data ?? [];
+    });
 
-    if (accountsError) {
-      console.error(
-        "enrichGoalsWithAssignerAccount: account lookup error:",
-        accountsError
-      );
-    } else {
-      for (const account of accounts ?? []) {
-        if (account.id && account.full_name) {
-          accountNamesById[account.id] = account.full_name;
-        }
+    for (const account of accountBatches.flat()) {
+      if (account.id && account.full_name) {
+        accountNamesById[account.id] = account.full_name;
       }
     }
   }
@@ -713,6 +720,11 @@ export async function listPerformanceGoals(
     return enrichGoalsWithAssignerAccount((data ?? []) as PerformanceGoal[]);
   }
 
+  // HR admin with a non-PerDev role: reject, do not fall through.
+  if (actor.actorType === "hr_admin" && !isPerDevHrAdminRole(actor.role)) {
+    return FORBIDDEN_RESPONSE();
+  }
+
   let query = supabaseAdmin.from("hr3_performance_goals").select(GOAL_SELECT);
 
   if (input?.employee_id !== undefined && input?.employee_id !== null) {
@@ -738,9 +750,11 @@ export async function listPerformanceGoals(
     query = query.eq("cycle_id", cycleId);
   }
 
-  const { data, error } = await query
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false });
+  const { data, error } = await selectAll(
+    query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }),
+  ).then((rows) => ({ data: rows, error: null }));
 
   if (error) {
     console.error("listPerformanceGoals: query error:", error);
@@ -771,7 +785,7 @@ export async function createPerformanceGoal(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  const isHrAdmin = actor.actorType === "hr_admin";
+  const isHrAdmin = actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
 
   let assignerEmployeeUuid: string;
   let allowedEmployeeIds: string[] | null = null;
@@ -787,6 +801,9 @@ export async function createPerformanceGoal(
       );
     }
     assignerEmployeeUuid = actor.employeeUuid;
+  } else if (actor.actorType === "hr_admin") {
+    // HR admin with a non-PerDev role: reject.
+    return FORBIDDEN_RESPONSE();
   } else {
     if (actor.actorType !== "manager" || !actor.employeeUuid) {
       return FORBIDDEN_RESPONSE();
@@ -956,6 +973,11 @@ export async function getPerformanceGoal(
     return enrichedEmployee;
   }
 
+  // HR admin with a non-PerDev role: reject, do not fall through.
+  if (actor.actorType === "hr_admin" && !isPerDevHrAdminRole(actor.role)) {
+    return FORBIDDEN_RESPONSE();
+  }
+
   const existing = await loadGoalOr404(id);
   if (existing instanceof NextResponse) return existing;
 
@@ -991,9 +1013,13 @@ export async function updatePerformanceGoal(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  const isHrAdmin = actor.actorType === "hr_admin";
+  const isHrAdmin = actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
 
   if (!isHrAdmin) {
+    if (actor.actorType === "hr_admin") {
+      // HR admin with a non-PerDev role: reject.
+      return FORBIDDEN_RESPONSE();
+    }
     if (actor.actorType !== "manager" || !actor.employeeUuid) {
       return FORBIDDEN_RESPONSE();
     }
@@ -1263,6 +1289,12 @@ export async function updateGoalProgress(
     );
   }
 
+  const goalPlanError = await assertGoalPlanEditable({
+    employeeId: existing.employee_id,
+    cycleId: existing.cycle_id,
+  });
+  if (goalPlanError) return goalPlanError;
+
   const progress = requireProgressPercent(input?.progress_percent, "progress_percent");
   if (progress instanceof NextResponse) return progress;
   if (progress === null) {
@@ -1323,6 +1355,12 @@ export async function submitGoalCompletion(
       `Cannot submit goal: status "${existing.status}" does not allow submission. Only not_started or in_progress goals can be submitted.`
     );
   }
+
+  const goalPlanError = await assertGoalPlanEditable({
+    employeeId: existing.employee_id,
+    cycleId: existing.cycle_id,
+  });
+  if (goalPlanError) return goalPlanError;
 
   const updated = await transitionGoal(
     id,

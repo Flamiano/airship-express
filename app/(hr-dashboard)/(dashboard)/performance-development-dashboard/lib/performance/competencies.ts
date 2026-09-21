@@ -915,6 +915,17 @@ export async function listEmployeeCompetencies(
     }
   }
 
+  /* Index scores by employee_id for O(1) lookup per employee. */
+  const scoresByEmployee = new Map<string, ScoreRow[]>();
+  for (const row of latestByKey.values()) {
+    const list = scoresByEmployee.get(row.employee_id);
+    if (list) {
+      list.push(row);
+    } else {
+      scoresByEmployee.set(row.employee_id, [row]);
+    }
+  }
+
   const items: EmployeeCompetencyProfileItem[] = [];
 
   for (const employee of employees) {
@@ -923,9 +934,7 @@ export async function listEmployeeCompetencies(
         requirementByPosition.get(employee.job_position_id)) ||
       new Map<string, number>();
 
-    const employeeScores = [...latestByKey.values()].filter(
-      (score) => score.employee_id === employee.id
-    );
+    const employeeScores = scoresByEmployee.get(employee.id) ?? [];
 
     for (const score of employeeScores) {
       const positionRequired = positionRequirements.get(score.competency_id) ?? null;

@@ -20,11 +20,14 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
+import { selectAll, chunkedIn } from "@/performance-development-dashboard/lib/performance/serverUtils";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
+import { isPerDevHrAdminRole } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import { resolveManagerDirectReportUuids } from "@/performance-development-dashboard/lib/auth/access";
 import { chooseCurrentCycle } from "@/performance-development-dashboard/lib/performance/cycles";
 
 type StatusRow = { status: string | null };
+type AppraisalIdRow = { appraisal_id: string | null };
 type CycleRow = {
   id: string;
   name: string;
@@ -58,6 +61,7 @@ export type DashboardCurrentCycle = {
 
 export type DashboardActionItems = {
   goalsPendingCompletion: number;
+  appraisalsAwaitingSelfAssessment: number;
   appraisalsAwaitingManagerAssessment: number;
   appraisalsAwaitingFinalization: number;
   redemptionsPending: number;
@@ -159,18 +163,20 @@ async function resolveActorNames(
 
   if (actorIds.length === 0) return new Map();
 
-  const { data, error } = await supabaseAdmin
-    .from("hr_admin")
-    .select("id, full_name")
-    .in("id", actorIds);
-
-  if (error) {
-    console.error("getPerformanceDashboard: actor names error:", error);
-    return new Map();
-  }
-
   const names = new Map<string, string>();
-  for (const admin of data ?? []) {
+  const adminBatches = await chunkedIn(actorIds, 100, async (chunk) => {
+    const { data, error } = await supabaseAdmin
+      .from("hr_admin")
+      .select("id, full_name")
+      .in("id", chunk);
+    if (error) {
+      console.error("getPerformanceDashboard: actor names error:", error);
+      return [];
+    }
+    return data ?? [];
+  });
+
+  for (const admin of adminBatches.flat()) {
     if (admin?.full_name) names.set(admin.id, admin.full_name);
   }
   return names;
@@ -201,8 +207,10 @@ async function buildDirectReportSummaries(
         .in("employee_id", allIds),
       supabaseAdmin
         .from("hr3_performance_appraisals")
-        .select("employee_id, status")
-        .in("employee_id", allIds),
+        .select("employee_id, status, created_at, id")
+        .in("employee_id", allIds)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false }),
       supabaseAdmin
         .from("hr3_performance_feedback")
         .select("employee_id, created_at")
@@ -229,10 +237,10 @@ async function buildDirectReportSummaries(
     if (goal.status === "completed") entry.completed++;
   }
 
-  // Index latest appraisal by employee
+  // Index latest appraisal by employee (query ordered by created_at DESC, id DESC)
   const appraisalByEmployee = new Map<string, string>();
   for (const app of appraisals) {
-    // Keep the most recent (last in query order) per employee
+    // First occurrence per employee is the most recent due to ordering
     if (!appraisalByEmployee.has(app.employee_id)) {
       appraisalByEmployee.set(app.employee_id, app.status ?? "unknown");
     }
@@ -316,12 +324,19 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
     directReportIds = await resolveManagerDirectReportUuids(employeeUuid);
   }
 
-  const isHrAdmin = actorType === "hr_admin";
+  const isHrAdmin = actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
 
   // For Manager/Employee, the scoped employee ID list = self + (direct reports).
   // For HR Admin, null = org-wide.
   let scopedEmployeeIds: string[] | null = null;
   if (!isHrAdmin) {
+    // HR admin with a non-PerDev role: reject.
+    if (actorType === "hr_admin") {
+      return NextResponse.json(
+        { error: "Forbidden - This account does not have access to this dashboard" },
+        { status: 403 }
+      );
+    }
     if (!employeeUuid) {
       return NextResponse.json(
         { error: "Forbidden - no linked employee identity" },
@@ -336,6 +351,7 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
       cycles,
       goalStatusRows,
       appraisalStatusRows,
+      appraisalGoalResultRows,
       competencyCount,
       requirementCount,
       scoreEmployeeRows,
@@ -367,12 +383,23 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
           scopedEmployeeIds
         )
       ),
-      requireRows<StatusRow[]>("appraisals", () =>
+      requireRows<{ id: string; status: string | null }[]>("appraisals", () =>
         scopedQuery(
-          supabaseAdmin.from("hr3_performance_appraisals").select("status"),
+          supabaseAdmin.from("hr3_performance_appraisals").select("id, status"),
           "employee_id",
           scopedEmployeeIds
         )
+      ),
+      // Goal results for detecting submitted manager assessments.
+      // Filtered in memory against the scoped appraisal IDs to avoid
+      // depending on employee_id on the results table.
+      requireRows<AppraisalIdRow[]>("appraisal goal results", () =>
+        selectAll(
+          supabaseAdmin
+            .from("hr3_performance_appraisal_goal_results")
+            .select("appraisal_id")
+            .order("appraisal_id", { ascending: true }),
+        ).then((rows) => ({ data: rows, error: null })),
       ),
       isHrAdmin
         ? requireCount("competencies", () =>
@@ -399,13 +426,16 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
       requireRows<{ employee_id: string | null }[]>(
         "employee competency scores",
         () =>
-          scopedQuery(
-            supabaseAdmin
-              .from("hr3_employee_competency_scores")
-              .select("employee_id"),
-            "employee_id",
-            scopedEmployeeIds
-          )
+          selectAll(
+            scopedQuery(
+              supabaseAdmin
+                .from("hr3_employee_competency_scores")
+                .select("employee_id")
+                .order("employee_id", { ascending: true }),
+              "employee_id",
+              scopedEmployeeIds,
+            ),
+          ).then((rows) => ({ data: rows, error: null })),
       ),
       isHrAdmin
         ? requireCount("courses", () =>
@@ -525,16 +555,38 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
       (row) => (row.approval_status ?? "").toLowerCase() === "pending"
     ).length;
 
+    // Build a set of appraisal IDs that have persisted goal results,
+    // indicating the manager has submitted their assessment.
+    const appraisalIdsWithResults = new Set(
+      appraisalGoalResultRows
+        .map((row) => row.appraisal_id)
+        .filter((id): id is string => Boolean(id))
+    );
+
     const actionItems: DashboardActionItems = {
       goalsPendingCompletion:
         goalStatusRows.filter(
           (row) => row.status === "pending_completion"
         ).length,
-      appraisalsAwaitingManagerAssessment: appraisalStatusRows.filter(
+      // Awaiting employee self-assessment
+      appraisalsAwaitingSelfAssessment: appraisalStatusRows.filter(
         (row) => row.status === "self_assessment"
       ).length,
+      // Awaiting manager assessment: status is manager_assessment AND no
+      // persisted goal results yet (manager has not submitted).
+      appraisalsAwaitingManagerAssessment: appraisalStatusRows.filter(
+        (row) =>
+          row.status === "manager_assessment" &&
+          row.id &&
+          !appraisalIdsWithResults.has(row.id)
+      ).length,
+      // Awaiting HR finalization: status is manager_assessment AND persisted
+      // goal results exist (manager has submitted, HR needs to finalize).
       appraisalsAwaitingFinalization: appraisalStatusRows.filter(
-        (row) => row.status === "manager_assessment"
+        (row) =>
+          row.status === "manager_assessment" &&
+          row.id &&
+          appraisalIdsWithResults.has(row.id)
       ).length,
       redemptionsPending: redemptionStatusRows.filter(
         (row) => (row.status ?? "").toLowerCase() === "pending"

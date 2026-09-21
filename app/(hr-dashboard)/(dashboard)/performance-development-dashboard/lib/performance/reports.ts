@@ -16,6 +16,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
+import { selectAll, chunkedIn } from "@/performance-development-dashboard/lib/performance/serverUtils";
 import { assertHrAdminScope } from "@/performance-development-dashboard/lib/auth/access";
 import { chooseCurrentCycle } from "@/performance-development-dashboard/lib/performance/cycles";
 import { listAppraisals } from "@/performance-development-dashboard/lib/performance/appraisals";
@@ -189,13 +190,15 @@ export async function getPerformanceReports(
     redemptionsResult,
     auditResult,
   ] = await Promise.all([
-    supabaseAdmin
-      .from("hr1_employees")
-      .select(
-        "id, employee_id_number, first_name, last_name, department, job_position_id, status",
-      )
-      .order("last_name", { ascending: true })
-      .order("first_name", { ascending: true }),
+    selectAll(
+      supabaseAdmin
+        .from("hr1_employees")
+        .select(
+          "id, employee_id_number, first_name, last_name, department, job_position_id, status",
+        )
+        .order("last_name", { ascending: true })
+        .order("first_name", { ascending: true }),
+    ).then((rows) => ({ data: rows, error: null })),
     supabaseAdmin
       .from("hr1_job_positions")
       .select("id, title, department, is_active")
@@ -819,16 +822,19 @@ async function resolveRecentActivity(
 
   const names = new Map<string, string>();
   if (actorIds.length > 0) {
-    const { data, error } = await supabaseAdmin
-      .from("hr_admin")
-      .select("id, full_name")
-      .in("id", actorIds);
-    if (error) {
-      console.error("getPerformanceReports: actor name lookup error:", error);
-    } else {
-      for (const admin of data ?? []) {
-        if (admin?.id && admin.full_name) names.set(admin.id, admin.full_name);
+    const batches = await chunkedIn(actorIds, 100, async (chunk) => {
+      const { data, error } = await supabaseAdmin
+        .from("hr_admin")
+        .select("id, full_name")
+        .in("id", chunk);
+      if (error) {
+        console.error("getPerformanceReports: actor name lookup error:", error);
+        return [];
       }
+      return data ?? [];
+    });
+    for (const admin of batches.flat()) {
+      if (admin?.id && admin.full_name) names.set(admin.id, admin.full_name);
     }
   }
 

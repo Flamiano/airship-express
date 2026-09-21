@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
-import { requireHrAdmin, requireHrEmployee } from "@/performance-development-dashboard/lib/auth/hrIdentity";
+import {
+  isPerDevHrAdminRole,
+  requireHrEmployee,
+} from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import { listCompetencies } from "@/performance-development-dashboard/lib/performance/competencies";
 import {
   listCertifications,
@@ -93,12 +96,12 @@ async function loadLearningData() {
 }
 
 export default async function LearningDevelopmentPage() {
-  const admin = await requireHrAdmin();
+  const employee = await requireHrEmployee();
+  if (employee instanceof NextResponse) redirect("/hrAuth");
 
-  if (admin instanceof NextResponse) {
-    const employee = await requireHrEmployee();
-    if (employee instanceof NextResponse) redirect("/hrAuth");
+  const isHrAdmin = isPerDevHrAdminRole(employee.role);
 
+  if (!isHrAdmin) {
     const serverUser: CurrentPerDevUser = {
       fullName: employee.fullName,
       role: employee.role,
@@ -140,9 +143,9 @@ export default async function LearningDevelopmentPage() {
   }
 
   const serverUser: CurrentPerDevUser = {
-    fullName: admin.fullName,
-    role: admin.role,
-    email: admin.email,
+    fullName: employee.fullName,
+    role: employee.role,
+    email: employee.email,
   };
 
   const [learning, competenciesResult, employees] = await Promise.all([
@@ -177,8 +180,8 @@ export default async function LearningDevelopmentPage() {
       employees={employees}
       competenciesById={competenciesById}
       employeeNamesById={employeeNamesById}
-      currentUserEmployeeId={admin.employeeUuid}
-      defaultEmployeeId={admin.employeeUuid}
+      currentUserEmployeeId={employee.employeeUuid}
+      defaultEmployeeId={employee.employeeUuid}
     />
   );
 }

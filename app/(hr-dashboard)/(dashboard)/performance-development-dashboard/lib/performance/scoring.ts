@@ -30,6 +30,8 @@ export const SCORING_RATING_MAX = 5;
 export const SCORING_MIN_SCORE = 1;
 export const SCORING_MAX_SCORE = 5;
 export const SCORING_WEIGHTS_TOTAL = 100;
+/** Floating-point tolerance for weight-total equality checks. */
+export const SCORING_WEIGHT_TOLERANCE = 1e-6;
 
 /** A formal 1–5 integer rating (used for both goals and competencies). */
 export function isScoreRating(value: unknown): value is number {
@@ -80,7 +82,7 @@ export function calculateGoalScore(
     weightTotal += entry.weight;
   }
 
-  if (Math.abs(weightTotal - SCORING_WEIGHTS_TOTAL) > 1e-6) {
+  if (Math.abs(weightTotal - SCORING_WEIGHTS_TOTAL) > SCORING_WEIGHT_TOLERANCE) {
     return `The evaluated goals' weights must total exactly ${SCORING_WEIGHTS_TOTAL}% (found ${roundScore(weightTotal, 2)}%).`;
   }
 
@@ -143,11 +145,16 @@ export function calculateScoring(input: {
     goalScore * SCORING_GOALS_COMPONENT_WEIGHT +
     competencyScore * SCORING_COMPETENCIES_COMPONENT_WEIGHT;
 
-  const band = performanceRatingBandFromScore(finalScore);
+  // Normalize to 6 decimal places before band lookup to prevent
+  // floating-point boundary misclassification (e.g. 3.499999999... → band 3).
+  // Display rounding (2 decimals) remains separate.
+  const normalizedFinalScore = Math.round(finalScore * 1_000_000) / 1_000_000;
+
+  const band = performanceRatingBandFromScore(normalizedFinalScore);
   if (
     !band ||
-    finalScore < SCORING_MIN_SCORE ||
-    finalScore > SCORING_MAX_SCORE
+    normalizedFinalScore < SCORING_MIN_SCORE ||
+    normalizedFinalScore > SCORING_MAX_SCORE
   ) {
     return {
       ok: false,

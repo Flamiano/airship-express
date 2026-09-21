@@ -2,6 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
+import { selectAll, chunkedIn } from "@/performance-development-dashboard/lib/performance/serverUtils";
 import {
   assertEmployeeOwnsRecord,
   assertHrAdminScope,
@@ -10,6 +11,7 @@ import {
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
 import {
   requireHrEmployee,
+  isPerDevHrAdminRole,
   type AuthenticatedHrEmployee,
 } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import {
@@ -116,7 +118,7 @@ export {
 } from "@/performance-development-dashboard/lib/constants";
 
 const APPRAISAL_SELECT =
-  "id, employee_id, reviewer_id, review_period, status, comments, strengths, improvements, created_at, updated_at, finalized_at, acknowledged_at, reviewer_hr_admin_id, cycle_id, final_score, performance_rating, evaluator_id";
+  "id, employee_id, reviewer_id, review_period, status, comments, strengths, improvements, created_at, updated_at, finalized_at, acknowledged_at, reviewer_hr_admin_id, cycle_id, final_score, performance_rating, evaluator_id, applicable_goal_ids_snapshot, applicable_competency_ids_snapshot";
 
 const GOAL_RESULT_SELECT = "id, appraisal_id, goal_id, rating, created_at";
 const COMPETENCY_RESULT_SELECT =
@@ -825,18 +827,20 @@ async function resolveCycleNames(
 
   if (cycleIds.length === 0) return new Map();
 
-  const { data, error } = await supabaseAdmin
-    .from("hr3_performance_cycles")
-    .select("id, name")
-    .in("id", cycleIds);
-
-  if (error) {
-    console.error("resolveCycleNames: query error:", error);
-    return new Map();
-  }
+  const batches = await chunkedIn(cycleIds, 100, async (chunk) => {
+    const { data, error } = await supabaseAdmin
+      .from("hr3_performance_cycles")
+      .select("id, name")
+      .in("id", chunk);
+    if (error) {
+      console.error("resolveCycleNames: query error:", error);
+      return [];
+    }
+    return data ?? [];
+  });
 
   const nameById = new Map<string, string>();
-  for (const cycle of data ?? []) {
+  for (const cycle of batches.flat()) {
     if (cycle.id && cycle.name) nameById.set(cycle.id, cycle.name);
   }
   return nameById;
@@ -1018,18 +1022,20 @@ async function enrichUnresolvedReviewersFromHrAdmin(
     ...new Set(unresolved.map((a) => a.reviewer_hr_admin_id!)),
   ];
 
-  const { data, error } = await supabaseAdmin
-    .from("hr_admin")
-    .select("id, full_name")
-    .in("id", hrAdminIds);
-
-  if (error) {
-    console.error("enrichUnresolvedReviewersFromHrAdmin: query error:", error);
-    return appraisals;
-  }
+  const batches = await chunkedIn(hrAdminIds, 100, async (chunk) => {
+    const { data, error } = await supabaseAdmin
+      .from("hr_admin")
+      .select("id, full_name")
+      .in("id", chunk);
+    if (error) {
+      console.error("enrichUnresolvedReviewersFromHrAdmin: query error:", error);
+      return [];
+    }
+    return data ?? [];
+  });
 
   const nameById: Record<string, string> = {};
-  for (const account of data ?? []) {
+  for (const account of batches.flat()) {
     if (account.id && account.full_name)
       nameById[account.id] = account.full_name;
   }
@@ -1051,16 +1057,19 @@ async function resolveHrAdminNames(
   hrAdminIds: string[],
 ): Promise<Record<string, string>> {
   if (hrAdminIds.length === 0) return {};
-  const { data, error } = await supabaseAdmin
-    .from("hr_admin")
-    .select("id, full_name")
-    .in("id", hrAdminIds);
-  if (error) {
-    console.error("resolveHrAdminNames: query error:", error);
-    return {};
-  }
+  const batches = await chunkedIn(hrAdminIds, 100, async (chunk) => {
+    const { data, error } = await supabaseAdmin
+      .from("hr_admin")
+      .select("id, full_name")
+      .in("id", chunk);
+    if (error) {
+      console.error("resolveHrAdminNames: query error:", error);
+      return [];
+    }
+    return data ?? [];
+  });
   const names: Record<string, string> = {};
-  for (const account of data ?? []) {
+  for (const account of batches.flat()) {
     if (account.id && account.full_name) names[account.id] = account.full_name;
   }
   return names;
@@ -1084,7 +1093,7 @@ export async function listAppraisals(
   if (actor instanceof NextResponse) return actor;
 
   // HR admin scope: org-wide
-  if (actor.actorType === "hr_admin") {
+  if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     const identity = await requireHrEmployee();
     if (identity instanceof NextResponse) return identity;
 
@@ -1098,9 +1107,11 @@ export async function listAppraisals(
       query = query.eq("employee_id", employeeId);
     }
 
-    const { data, error } = await query
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false });
+    const { data, error } = await selectAll(
+      query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false }),
+    ).then((rows) => ({ data: rows, error: null }));
 
     if (error) {
       console.error("listAppraisals: query error:", error);
@@ -1119,6 +1130,12 @@ export async function listAppraisals(
       currentUserIsHrReviewer: isCurrentUserHrReviewer(appraisal, identity),
       currentUserIsEvaluator: isCurrentUserEvaluator(appraisal, identity),
     }));
+  }
+
+  // HR admin with a non-PerDev role: reject, do not fall through to
+  // employee/manager logic.
+  if (actor.actorType === "hr_admin") {
+    return FORBIDDEN_RECORD_RESPONSE();
   }
 
   // Manager or Employee: require employee identity
@@ -1222,7 +1239,7 @@ export async function getAppraisal(
   if (actor instanceof NextResponse) return actor;
 
   // HR admin scope: may read any appraisal
-  if (actor.actorType === "hr_admin") {
+  if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     const identity = await requireHrEmployee();
     if (identity instanceof NextResponse) return identity;
 
@@ -1243,6 +1260,12 @@ export async function getAppraisal(
       currentUserIsHrReviewer: isCurrentUserHrReviewer(existing, identity),
       currentUserIsEvaluator: isCurrentUserEvaluator(existing, identity),
     };
+  }
+
+  // HR admin with a non-PerDev role: reject, do not fall through to
+  // employee/manager logic.
+  if (actor.actorType === "hr_admin") {
+    return FORBIDDEN_RECORD_RESPONSE();
   }
 
   // Manager or Employee: require employee identity
@@ -1314,7 +1337,9 @@ export async function getAppraisalScoringInputs(
 
   // Evaluator scope: authorized by persisted evaluator_id assignment.
   // Works for any employee type (manager or plain employee).
-  if (actor.actorType !== "hr_admin") {
+  // HR admins with a non-PerDev role are also rejected here (evaluator_id
+  // check will fail) rather than falling through to the HR admin path.
+  if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
     const employee = await requireHrEmployee();
     if (employee instanceof NextResponse) return employee;
 
@@ -1329,14 +1354,87 @@ export async function getAppraisalScoringInputs(
       return FORBIDDEN_RECORD_RESPONSE();
     }
 
-    const goals = await loadApplicableGoals(
-      existing.employee_id,
-      existing.cycle_id,
-    );
-    if (goals instanceof NextResponse) return goals;
+    // Use snapshot when available (submitted appraisal); fall back to live.
+    const evaluatorUseSnapshot =
+      existing.applicable_goal_ids_snapshot !== null &&
+      existing.applicable_competency_ids_snapshot !== null;
 
-    const competencies = await loadApplicableCompetencies(existing.employee_id);
-    if (competencies instanceof NextResponse) return competencies;
+    let goals: ApplicableGoalRow[];
+    let competencies: ApplicableCompetencyRow[];
+
+    if (evaluatorUseSnapshot) {
+      const { data: goalRows, error: goalRowsError } = await supabaseAdmin
+        .from("hr3_performance_goals")
+        .select("id, title, weight, status")
+        .in("id", existing.applicable_goal_ids_snapshot!);
+
+      if (goalRowsError) {
+        console.error(
+          "getAppraisalScoringInputs: snapshot goal query error:",
+          goalRowsError,
+        );
+        return NextResponse.json(
+          { error: "Failed to load appraisal goals for scoring" },
+          { status: 500 },
+        );
+      }
+      goals = (goalRows ?? []) as ApplicableGoalRow[];
+
+      const { data: compRows, error: compRowsError } = await supabaseAdmin
+        .from("hr3_competencies")
+        .select("id, name, category")
+        .in("id", existing.applicable_competency_ids_snapshot!);
+
+      if (compRowsError) {
+        console.error(
+          "getAppraisalScoringInputs: snapshot competency query error:",
+          compRowsError,
+        );
+        return NextResponse.json(
+          { error: "Failed to load competencies for appraisal scoring" },
+          { status: 500 },
+        );
+      }
+
+      const { data: scores, error: scoresError } = await supabaseAdmin
+        .from("hr3_employee_competency_scores")
+        .select("competency_id, current_level")
+        .eq("employee_id", existing.employee_id)
+        .in("competency_id", existing.applicable_competency_ids_snapshot!);
+
+      if (scoresError) {
+        console.error(
+          "getAppraisalScoringInputs: snapshot competency score query error:",
+          scoresError,
+        );
+        return NextResponse.json(
+          { error: "Failed to load employee competency scores for appraisal scoring" },
+          { status: 500 },
+        );
+      }
+
+      const currentLevelByCompetency = new Map<string, number>();
+      for (const row of scores ?? []) {
+        currentLevelByCompetency.set(row.competency_id, row.current_level);
+      }
+
+      competencies = (compRows ?? [])
+        .map((c) => ({
+          competency_id: c.id,
+          name: c.name,
+          category: c.category,
+          current_level: currentLevelByCompetency.get(c.id) ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      const g = await loadApplicableGoals(existing.employee_id, existing.cycle_id);
+      if (g instanceof NextResponse) return g;
+      goals = g;
+
+      const c = await loadApplicableCompetencies(existing.employee_id);
+      if (c instanceof NextResponse) return c;
+      competencies = c;
+    }
 
     const results = await loadScoringResults(id);
 
@@ -1386,14 +1484,87 @@ export async function getAppraisalScoringInputs(
   const reviewer = await assertReviewerScope(existing);
   if (reviewer instanceof NextResponse) return reviewer;
 
-  const goals = await loadApplicableGoals(
-    existing.employee_id,
-    existing.cycle_id,
-  );
-  if (goals instanceof NextResponse) return goals;
+  // Use snapshot when available (submitted appraisal); fall back to live.
+  const hrUseSnapshot =
+    existing.applicable_goal_ids_snapshot !== null &&
+    existing.applicable_competency_ids_snapshot !== null;
 
-  const competencies = await loadApplicableCompetencies(existing.employee_id);
-  if (competencies instanceof NextResponse) return competencies;
+  let goals: ApplicableGoalRow[];
+  let competencies: ApplicableCompetencyRow[];
+
+  if (hrUseSnapshot) {
+    const { data: goalRows, error: goalRowsError } = await supabaseAdmin
+      .from("hr3_performance_goals")
+      .select("id, title, weight, status")
+      .in("id", existing.applicable_goal_ids_snapshot!);
+
+    if (goalRowsError) {
+      console.error(
+        "getAppraisalScoringInputs: hr snapshot goal query error:",
+        goalRowsError,
+      );
+      return NextResponse.json(
+        { error: "Failed to load appraisal goals for scoring" },
+        { status: 500 },
+      );
+    }
+    goals = (goalRows ?? []) as ApplicableGoalRow[];
+
+    const { data: compRows, error: compRowsError } = await supabaseAdmin
+      .from("hr3_competencies")
+      .select("id, name, category")
+      .in("id", existing.applicable_competency_ids_snapshot!);
+
+    if (compRowsError) {
+      console.error(
+        "getAppraisalScoringInputs: hr snapshot competency query error:",
+        compRowsError,
+      );
+      return NextResponse.json(
+        { error: "Failed to load competencies for appraisal scoring" },
+        { status: 500 },
+      );
+    }
+
+    const { data: scores, error: scoresError } = await supabaseAdmin
+      .from("hr3_employee_competency_scores")
+      .select("competency_id, current_level")
+      .eq("employee_id", existing.employee_id)
+      .in("competency_id", existing.applicable_competency_ids_snapshot!);
+
+    if (scoresError) {
+      console.error(
+        "getAppraisalScoringInputs: hr snapshot competency score query error:",
+        scoresError,
+      );
+      return NextResponse.json(
+        { error: "Failed to load employee competency scores for appraisal scoring" },
+        { status: 500 },
+      );
+    }
+
+    const currentLevelByCompetency = new Map<string, number>();
+    for (const row of scores ?? []) {
+      currentLevelByCompetency.set(row.competency_id, row.current_level);
+    }
+
+    competencies = (compRows ?? [])
+      .map((c) => ({
+        competency_id: c.id,
+        name: c.name,
+        category: c.category,
+        current_level: currentLevelByCompetency.get(c.id) ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    const g = await loadApplicableGoals(existing.employee_id, existing.cycle_id);
+    if (g instanceof NextResponse) return g;
+    goals = g;
+
+    const c = await loadApplicableCompetencies(existing.employee_id);
+    if (c instanceof NextResponse) return c;
+    competencies = c;
+  }
 
   const results = await loadScoringResults(id);
 
@@ -1608,6 +1779,9 @@ export async function submitSelfAssessment(
     return STATE_CONFLICT_RESPONSE();
   }
 
+  const closedCycleError = await rejectIfClosedCycle(existing.cycle_id);
+  if (closedCycleError) return closedCycleError;
+
   const result = await transitionAppraisal({
     id,
     expectedFrom: "self_assessment",
@@ -1720,6 +1894,9 @@ export async function submitManagerAssessment(
   if (existing.status !== "manager_assessment") {
     return STATE_CONFLICT_RESPONSE();
   }
+
+  const closedCycleError = await rejectIfClosedCycle(existing.cycle_id);
+  if (closedCycleError) return closedCycleError;
 
   // Manager assessment intentionally uses a conservative one-submission model.
   // Because the status remains manager_assessment after submission, the status
@@ -1894,11 +2071,20 @@ export async function submitManagerAssessment(
 
   // Persist manager assessment — status stays at manager_assessment.
   // Only finalizeAppraisal (HR Admin) advances the status to finalized.
+  // The applicability snapshots freeze the goal/competency ID sets that passed
+  // validation, preventing future drift when employee competency scores or
+  // position requirements change after submission.
   const result = await transitionAppraisal({
     id,
     expectedFrom: "manager_assessment",
     nextTo: "manager_assessment",
-    updates: { comments },
+    updates: {
+      comments,
+      applicable_goal_ids_snapshot: goals.map((goal) => goal.id),
+      applicable_competency_ids_snapshot: competencies.map(
+        (competency) => competency.competency_id,
+      ),
+    },
     actor: identity,
     reason: PERFORMANCE_AUDIT_REASON.appraisalManagerAssessmentSubmitted,
     oldData: { status: existing.status },
@@ -1985,7 +2171,8 @@ export async function finalizeAppraisal(
   if (actor instanceof NextResponse) return actor;
 
   // Finalization is HR Admin reviewer only — Manager cannot finalize.
-  if (actor.actorType !== "hr_admin") {
+  // HR admins with a non-PerDev role are also rejected here.
+  if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
     return FORBIDDEN_RECORD_RESPONSE();
   }
 
@@ -2007,19 +2194,111 @@ export async function finalizeAppraisal(
     return STATE_CONFLICT_RESPONSE();
   }
 
-  const goals = await loadApplicableGoals(
-    existing.employee_id,
-    existing.cycle_id,
-  );
-  if (goals instanceof NextResponse) return goals;
+  const closedCycleError = await rejectIfClosedCycle(existing.cycle_id);
+  if (closedCycleError) return closedCycleError;
+
+  // Use the frozen applicability snapshots when available (post-migration
+  // appraisals that have been submitted).  This prevents applicability drift
+  // when employee competency scores or position requirements change after
+  // manager submission.  For pre-migration appraisals (NULL snapshots), fall
+  // back to the live recomputation.
+  const useSnapshot =
+    existing.applicable_goal_ids_snapshot !== null &&
+    existing.applicable_competency_ids_snapshot !== null;
+
+  let goals: ApplicableGoalRow[];
+  let goalIds: string[];
+
+  if (useSnapshot) {
+    goalIds = existing.applicable_goal_ids_snapshot!;
+    const { data: goalRows, error: goalRowsError } = await supabaseAdmin
+      .from("hr3_performance_goals")
+      .select("id, title, weight, status")
+      .in("id", goalIds);
+
+    if (goalRowsError) {
+      console.error("finalizeAppraisal: snapshot goal query error:", goalRowsError);
+      return NextResponse.json(
+        { error: "Failed to load appraisal goals for scoring" },
+        { status: 500 },
+      );
+    }
+
+    goals = (goalRows ?? []) as ApplicableGoalRow[];
+  } else {
+    const result = await loadApplicableGoals(
+      existing.employee_id,
+      existing.cycle_id,
+    );
+    if (result instanceof NextResponse) return result;
+    goals = result;
+    goalIds = goals.map((goal) => goal.id);
+  }
+
   if (goals.length === 0) {
     return BAD_REQUEST_RESPONSE(
       "The appraisal has no applicable goals to score. Assign goals before finalizing.",
     );
   }
 
-  const competencies = await loadApplicableCompetencies(existing.employee_id);
-  if (competencies instanceof NextResponse) return competencies;
+  let competencies: ApplicableCompetencyRow[];
+  let competencyIds: string[];
+
+  if (useSnapshot) {
+    competencyIds = existing.applicable_competency_ids_snapshot!;
+    const { data: compRows, error: compRowsError } = await supabaseAdmin
+      .from("hr3_competencies")
+      .select("id, name, category")
+      .in("id", competencyIds);
+
+    if (compRowsError) {
+      console.error(
+        "finalizeAppraisal: snapshot competency query error:",
+        compRowsError,
+      );
+      return NextResponse.json(
+        { error: "Failed to load competencies for appraisal scoring" },
+        { status: 500 },
+      );
+    }
+
+    const { data: scores, error: scoresError } = await supabaseAdmin
+      .from("hr3_employee_competency_scores")
+      .select("competency_id, current_level")
+      .eq("employee_id", existing.employee_id)
+      .in("competency_id", competencyIds);
+
+    if (scoresError) {
+      console.error(
+        "finalizeAppraisal: snapshot competency score query error:",
+        scoresError,
+      );
+      return NextResponse.json(
+        { error: "Failed to load employee competency scores for appraisal scoring" },
+        { status: 500 },
+      );
+    }
+
+    const currentLevelByCompetency = new Map<string, number>();
+    for (const row of scores ?? []) {
+      currentLevelByCompetency.set(row.competency_id, row.current_level);
+    }
+
+    competencies = (compRows ?? [])
+      .map((c) => ({
+        competency_id: c.id,
+        name: c.name,
+        category: c.category,
+        current_level: currentLevelByCompetency.get(c.id) ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    const result = await loadApplicableCompetencies(existing.employee_id);
+    if (result instanceof NextResponse) return result;
+    competencies = result;
+    competencyIds = competencies.map((c) => c.competency_id);
+  }
+
   if (competencies.length === 0) {
     return BAD_REQUEST_RESPONSE(
       "The appraisal has no applicable competencies to score. Associate competencies before finalizing.",
@@ -2043,7 +2322,7 @@ export async function finalizeAppraisal(
   // Validate existing goal ratings cover exactly the applicable set
   const goalSetError = requireExactRatingSet(
     existingGoalRatings,
-    goals.map((goal) => goal.id),
+    goalIds,
     "goal",
   );
   if (goalSetError) return goalSetError;
@@ -2051,7 +2330,7 @@ export async function finalizeAppraisal(
   // Validate existing competency ratings cover exactly the applicable set
   const competencySetError = requireExactRatingSet(
     existingCompetencyRatings,
-    competencies.map((competency) => competency.competency_id),
+    competencyIds,
     "competency",
   );
   if (competencySetError) return competencySetError;
@@ -2078,6 +2357,7 @@ export async function finalizeAppraisal(
       finalized_at: finalizedAt,
       final_score: scoring.calculation.finalScoreDisplay,
       performance_rating: scoring.calculation.band.rank,
+      updated_at: finalizedAt,
     })
     .eq("id", id)
     .eq("status", "manager_assessment")
@@ -2259,7 +2539,7 @@ export async function startSelfAssessmentByHrAdmin(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  if (actor.actorType !== "hr_admin") {
+  if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
     return FORBIDDEN_RECORD_RESPONSE();
   }
 
@@ -2313,7 +2593,7 @@ export async function reassignAppraisalEvaluator(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  if (actor.actorType !== "hr_admin") {
+  if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
     return FORBIDDEN_RECORD_RESPONSE();
   }
 

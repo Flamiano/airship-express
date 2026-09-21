@@ -13,7 +13,7 @@ import {
   type DevelopmentPlanItem,
   type PerformanceAppraisal,
 } from "@/performance-development-dashboard/types";
-import { calculateScoring } from "@/performance-development-dashboard/lib/performance/scoring";
+import { calculateScoring, SCORING_WEIGHT_TOLERANCE } from "@/performance-development-dashboard/lib/performance/scoring";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
 import { Skeleton } from "@/performance-development-dashboard/components/ui/Skeleton";
 import { formatDateTime } from "@/performance-development-dashboard/lib/format/date";
@@ -358,7 +358,7 @@ export function AppraisalDetailModal({
   const weightTotalOk =
     scoringInputs === null ||
     scoringInputs.goals.length === 0 ||
-    Math.abs(weightTotal - 100) < 0.001;
+    Math.abs(weightTotal - 100) < SCORING_WEIGHT_TOLERANCE;
   const allRatingsFilled =
     !!scoringInputs &&
     scoringInputs.goals.length > 0 &&

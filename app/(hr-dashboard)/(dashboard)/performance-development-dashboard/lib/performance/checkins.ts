@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { resolveManagerDirectReportUuids } from "@/performance-development-dashboard/lib/auth/access";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
+import { isPerDevHrAdminRole } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import {
   auditActorFromPerDevActor,
   insertAuditEvent,
@@ -591,7 +592,7 @@ export async function listCheckIns(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  if (actor.actorType === "hr_admin") {
+  if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     let query = supabaseAdmin
       .from("hr3_performance_feedback")
       .select(CHECK_IN_SELECT)
@@ -619,6 +620,11 @@ export async function listCheckIns(
       (data ?? []) as PerformanceCheckIn[],
     );
     return attachCheckInThreadSummaries(enriched);
+  }
+
+  // HR admin with a non-PerDev role: reject, do not fall through.
+  if (actor.actorType === "hr_admin") {
+    return FORBIDDEN_RECORD_RESPONSE();
   }
 
   if (!actor.employeeUuid) {
@@ -692,7 +698,7 @@ export async function createCheckIn(
 
   let employeeId: string;
 
-  if (actor.actorType === "hr_admin") {
+  if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     if (
       input?.employee_id === undefined ||
       input?.employee_id === null ||
@@ -706,6 +712,9 @@ export async function createCheckIn(
       if (parsedEmployeeId instanceof NextResponse) return parsedEmployeeId;
       employeeId = parsedEmployeeId;
     }
+  } else if (actor.actorType === "hr_admin") {
+    // HR admin with a non-PerDev role: reject.
+    return FORBIDDEN_RECORD_RESPONSE();
   } else if (actor.actorType === "manager") {
     if (
       input?.employee_id === undefined ||
@@ -832,7 +841,7 @@ export async function getCheckIn(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  if (actor.actorType === "hr_admin") {
+  if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     // HR admin scope: may read any check-in; 404 only for a genuinely missing
     // record to an already-authorized admin.
     const existing = await loadCheckInOr404(id);
@@ -840,6 +849,11 @@ export async function getCheckIn(
 
     const [enriched] = await enrichCheckInsWithAccountName([existing]);
     return enriched;
+  }
+
+  // HR admin with a non-PerDev role: reject, do not fall through.
+  if (actor.actorType === "hr_admin") {
+    return FORBIDDEN_RECORD_RESPONSE();
   }
 
   if (!actor.employeeUuid) {
@@ -928,7 +942,7 @@ export async function listCheckInThread(
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) return actor;
 
-  const includeAccount = actor.actorType === "hr_admin";
+  const includeAccount = actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
 
   const messagesQuery = await supabaseAdmin
     .from("hr3_performance_checkin_messages")
@@ -1024,8 +1038,11 @@ export async function createCheckInMessage(
     return FORBIDDEN_RECORD_RESPONSE();
   }
 
-  if (actor.actorType === "hr_admin") {
+  if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     // Existing HR scope applies (any authorized check-in).
+  } else if (actor.actorType === "hr_admin") {
+    // HR admin with a non-PerDev role: reject.
+    return FORBIDDEN_RECORD_RESPONSE();
   } else if (actor.actorType === "manager") {
     const scopedIds = await resolveManagerScopedEmployeeIds(actor.employeeUuid);
     if (!scopedIds.includes(root.employee_id)) {
@@ -1101,11 +1118,17 @@ export async function createCheckInMessage(
 
   /* Best-effort notifications: notify the other party in the conversation. */
   {
+    // Determine the correct recipient based on who authored the message:
+    // - If the subject employee authored it → notify given_by (the check-in
+    //   creator/manager) if available and different from the author.
+    // - If someone else authored it → notify the subject employee.
     const recipientId =
       createdMessage.author_employee_id !== root.employee_id
         ? root.employee_id
-        : createdMessage.author_employee_id;
-    if (recipientId && recipientId !== actor.employeeUuid) {
+        : root.given_by && root.given_by !== actor.employeeUuid
+          ? root.given_by
+          : null;
+    if (recipientId) {
       await createNotifications([
         {
           type: "checkin.message_posted",
@@ -1119,7 +1142,7 @@ export async function createCheckInMessage(
     }
   }
 
-  const includeAccount = actor.actorType === "hr_admin";
+  const includeAccount = actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
   const [resolved] = await resolveMessageAuthorNames(
     [createdMessage],
     includeAccount,

@@ -185,3 +185,28 @@ export function requireNonNegativeInteger(
   }
   return value;
 }
+
+/**
+ * Validates an OPTIONAL signed integer (positive, negative, or zero).
+ * With `optional`, absent → the `ABSENT` sentinel and null → null;
+ * otherwise absent/null are a 400. Non-integer values are always a 400.
+ */
+export function requireSignedInteger(
+  value: unknown,
+  field: string,
+  options: { optional?: boolean } = {}
+): number | null | typeof ABSENT | NextResponse {
+  if (options.optional) {
+    if (value === undefined) return ABSENT;
+  }
+  if (value === null) {
+    if (options.optional) return null;
+    return BAD_REQUEST_RESPONSE(`${field} must be an integer.`);
+  }
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    return BAD_REQUEST_RESPONSE(
+      `${field} must be an integer${options.optional ? ", or null" : ""}.`
+    );
+  }
+  return value;
+}

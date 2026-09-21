@@ -32,8 +32,16 @@ export function PointsModal({ points, employees, submitting, onSubmit, onClose }
     }
 
     const numericValue = Number(value.trim());
-    if (!Number.isInteger(numericValue) || numericValue < 0) {
-      setFormError("Points must be a whole number of 0 or more.");
+    if (!Number.isInteger(numericValue)) {
+      setFormError("Points must be a whole number.");
+      return;
+    }
+    if (mode === "set" && numericValue < 0) {
+      setFormError("Total balance cannot be negative.");
+      return;
+    }
+    if (mode === "delta" && numericValue === 0) {
+      setFormError("Adjustment amount cannot be zero.");
       return;
     }
 
@@ -155,13 +163,13 @@ export function PointsModal({ points, employees, submitting, onSubmit, onClose }
               htmlFor="points-value"
               className="mb-1.5 block text-[12.5px] font-medium text-ink"
             >
-              {mode === "set" ? "New total balance" : "Amount to add"}
+              {mode === "set" ? "New total balance" : "Adjustment amount (use − for deductions)"}
             </label>
             <input
               id="points-value"
               type="number"
               inputMode="numeric"
-              min={0}
+              min={mode === "set" ? 0 : undefined}
               step={1}
               value={value}
               onChange={(e) => setValue(e.target.value)}

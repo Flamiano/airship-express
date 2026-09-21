@@ -18,6 +18,7 @@ import {
   requireNonEmptyText,
   requireNonNegativeInteger,
   requireOptionalText,
+  requireSignedInteger,
   requireValidUuid,
 } from "@/performance-development-dashboard/lib/performance/validation";
 import type {
@@ -819,7 +820,7 @@ export async function setEmployeePoints(
     optional: true,
   });
   if (totalValue instanceof NextResponse) return totalValue;
-  const deltaValue = requireNonNegativeInteger(raw.delta, "delta", {
+  const deltaValue = requireSignedInteger(raw.delta, "delta", {
     optional: true,
   });
   if (deltaValue instanceof NextResponse) return deltaValue;
@@ -830,6 +831,11 @@ export async function setEmployeePoints(
     return BAD_REQUEST_RESPONSE(
       "Provide exactly one of total_points (absolute set) or delta (adjust by amount)."
     );
+  }
+
+  // Reject zero deltas explicitly — a no-op adjustment is not allowed.
+  if (hasDelta && (deltaValue as number) === 0) {
+    return BAD_REQUEST_RESPONSE("Delta must not be zero.");
   }
 
   const { data: existing, error: loadError } = await supabaseAdmin
@@ -851,8 +857,8 @@ export async function setEmployeePoints(
     : previousTotal + (deltaValue as number);
 
   if (newTotal < 0) {
-    return BAD_REQUEST_RESPONSE(
-      "The resulting balance cannot be negative."
+    return CONFLICT_RESPONSE(
+      "Insufficient points — the resulting balance cannot be negative."
     );
   }
 
@@ -860,6 +866,9 @@ export async function setEmployeePoints(
   let balancedRowId = existing?.id ?? null;
 
   if (!existing) {
+    // No row yet — insert one. Handle unique-violation 23505 from a
+    // concurrent insert by re-reading; the caller should retry if the
+    // race cannot be resolved.
     const { data: inserted, error: insertError } = await supabaseAdmin
       .from("hr3_employee_points")
       .insert({
@@ -870,6 +879,20 @@ export async function setEmployeePoints(
       .select("id")
       .single();
     if (insertError) {
+      if ((insertError as { code?: string }).code === "23505") {
+        // Concurrent insert won the race. Re-read the existing row so we
+        // can report the current state rather than double-apply points.
+        const { data: concurrent } = await supabaseAdmin
+          .from("hr3_employee_points")
+          .select("id")
+          .eq("employee_id", employeeId)
+          .maybeSingle();
+        if (concurrent) {
+          return CONFLICT_RESPONSE(
+            "A concurrent update created this employee's point balance. Please retry."
+          );
+        }
+      }
       console.error("setEmployeePoints: insert error:", insertError);
       return NextResponse.json(
         { error: constraintMessage(insertError, "Failed to set employee points") },
@@ -878,15 +901,25 @@ export async function setEmployeePoints(
     }
     balancedRowId = inserted.id;
   } else {
-    const { error: updateError } = await supabaseAdmin
+    // Row exists — conditional update: only write if the balance still
+    // matches what we read. This prevents lost-update races.
+    const { data: updated, error: updateError } = await supabaseAdmin
       .from("hr3_employee_points")
       .update({ total_points: newTotal, updated_at: now })
-      .eq("id", existing.id);
+      .eq("id", existing.id)
+      .eq("total_points", previousTotal)
+      .select("id");
     if (updateError) {
       console.error("setEmployeePoints: update error:", updateError);
       return NextResponse.json(
         { error: constraintMessage(updateError, "Failed to set employee points") },
         { status: 400 }
+      );
+    }
+    if (!updated || updated.length === 0) {
+      // The balance changed between our read and write — stale read.
+      return CONFLICT_RESPONSE(
+        "The point balance was modified by another request. Please reload and try again."
       );
     }
   }

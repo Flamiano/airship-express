@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
+import { requireHrAdmin } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +34,15 @@ export async function POST(request: NextRequest) {
 
   if (actor instanceof NextResponse) return actor;
 
+  // Only HR Admin accounts with an allowed PerDev role may verify export
+  // credentials. Manager and Employee accounts are rejected here before
+  // the password verification step.
+  const hrAdmin = await requireHrAdmin();
+  if (hrAdmin instanceof NextResponse) return hrAdmin;
+
   // Only the account email linked to the authenticated session is accepted as
   // the sign-in identifier, so a stolen session cannot verify another account.
-  const email = actor.accountEmail;
+  const email = hrAdmin.email;
 
   if (!email) {
     return NextResponse.json(

@@ -55,6 +55,15 @@ const PERFORMANCE_DASHBOARD_ALLOWED_ROLES =
   DASHBOARD_ACCESS[HR_ROUTE_PATHS.PERFORMANCE_DEVELOPMENT];
 
 /**
+ * Returns true only for HR Admin roles that are explicitly allowed for the
+ * Performance Development module. An HR Admin with an unrelated role must
+ * NOT be treated as a PerDev HR administrator.
+ */
+export function isPerDevHrAdminRole(role: string): boolean {
+  return PERFORMANCE_DASHBOARD_ALLOWED_ROLES.includes(role as AppRole);
+}
+
+/**
  * Requires an authenticated account with a real employee identity.
  *
  * Succeeds for:

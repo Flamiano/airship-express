@@ -198,6 +198,7 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initi
   const firstName = serverUser?.fullName.split(" ")[0] || "there";
   const actionItemsTotal =
     (data?.actionItems.goalsPendingCompletion ?? 0) +
+    (data?.actionItems.appraisalsAwaitingSelfAssessment ?? 0) +
     (data?.actionItems.appraisalsAwaitingManagerAssessment ?? 0) +
     (data?.actionItems.appraisalsAwaitingFinalization ?? 0) +
     (data?.actionItems.redemptionsPending ?? 0) +
@@ -392,9 +393,14 @@ function ActionRequiredPanel({
       tone: "bg-amber-500",
     },
     {
+      count: data.actionItems.appraisalsAwaitingSelfAssessment,
+      label: "Appraisals awaiting self-assessment",
+      tone: "bg-accent",
+    },
+    {
       count: data.actionItems.appraisalsAwaitingManagerAssessment,
       label: "Appraisals awaiting manager assessment",
-      tone: "bg-accent",
+      tone: "bg-amber-500",
     },
     {
       count: data.actionItems.appraisalsAwaitingFinalization,

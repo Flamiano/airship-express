@@ -1710,6 +1710,19 @@ export async function createTrainingEvaluation(
   );
   if (comments instanceof NextResponse) return comments;
 
+  const { data: duplicate } = await supabaseAdmin
+    .from("hr3_training_evaluations")
+    .select("id")
+    .eq("session_id", sessionId as string)
+    .eq("employee_id", employeeId as string)
+    .maybeSingle();
+
+  if (duplicate) {
+    return CONFLICT_RESPONSE(
+      "This employee has already evaluated this training session."
+    );
+  }
+
   const { data, error } = await supabaseAdmin
     .from("hr3_training_evaluations")
     .insert({
