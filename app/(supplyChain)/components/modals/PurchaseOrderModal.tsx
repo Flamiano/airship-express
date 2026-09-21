@@ -230,10 +230,10 @@ export function PurchaseOrderModal({
         const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 
         if (emailMode === 'ai' && aiMessage) {
-            return `${aiMessage}\n\n---\n\n📋 **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
+            return `${aiMessage}\n\n---\n\n **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
         }
 
-        return `Hello ${request?.supplier_name || 'Vendor'},\n\nPlease review Purchase Order #${poNumber} for a total of ₱${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\nExpected Delivery: ${formData.delivery_date || 'Standard Timeline'}\n\n---\n\n📋 Confirm this order: ${confirmLink}`;
+        return `Hello ${request?.supplier_name || 'Vendor'},\n\nPlease review Purchase Order #${poNumber} for a total of ₱${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\nExpected Delivery: ${formData.delivery_date || 'Standard Timeline'}\n\n---\n\n Confirm this order: ${confirmLink}`;
     };
 
     const getSanitizedItems = () => {

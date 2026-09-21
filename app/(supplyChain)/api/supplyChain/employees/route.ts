@@ -3,6 +3,11 @@
 import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 
+const isUUID = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
+};
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -32,18 +37,28 @@ export async function GET(request: Request) {
                 );
             }
 
-            const usersList = (dbUsers || []).map((u: any) => ({
-                id: u.id || u.user_id,
-                display_name: u.display_name || u.full_name || u.name || (role === 'Admin' ? 'Admin User' : 'Executive User'),
-                email: u.email || u.user_email,
-                role: u.role || role,
-                department: u.department || role,
-                position: u.position || role,
-                employee_id: u.employee_id || u.id,
-                has_hr_password: false,
-                remembered: false,
-                is_active: false
-            }));
+            const usersList = (dbUsers || []).map((u: any) => {
+                const userRole = u.role || role;
+                const cleanEmpId = u.employee_id || u.id || u.user_id;
+
+                const rawDept = (u.department || '').trim();
+                const rawPos = (u.position || '').trim();
+                const cleanDept = rawDept && rawDept.toLowerCase() !== userRole.toLowerCase() ? rawDept : null;
+                const cleanPos = rawPos && rawPos.toLowerCase() !== userRole.toLowerCase() && rawPos.toLowerCase() !== (cleanDept || '').toLowerCase() ? rawPos : null;
+
+                return {
+                    id: u.id || u.user_id,
+                    display_name: u.display_name || u.full_name || u.name || (role === 'Admin' ? 'Admin User' : 'Executive User'),
+                    email: u.email || u.user_email,
+                    role: userRole,
+                    department: cleanDept,
+                    position: cleanPos,
+                    employee_id: cleanEmpId,
+                    has_hr_password: false,
+                    remembered: false,
+                    is_active: false
+                };
+            });
 
             // Check sessions for remembered / active status
             try {
@@ -103,12 +118,23 @@ export async function GET(request: Request) {
                 employeeRole = emp.role;
             }
 
+            const rawEmpId = emp.employee_id;
+            const cleanEmpId = rawEmpId && !isUUID(rawEmpId) ? rawEmpId : null;
+
+            const rawDept = (emp.department || '').trim();
+            const rawPos = (emp.position || '').trim();
+            const cleanDept = rawDept && rawDept.toLowerCase() !== employeeRole.toLowerCase() ? rawDept : null;
+            const cleanPos = rawPos && rawPos.toLowerCase() !== employeeRole.toLowerCase() && rawPos.toLowerCase() !== (cleanDept || '').toLowerCase() ? rawPos : null;
+
             return {
                 ...emp,
                 id: emp.id || emp.user_id,
                 display_name: emp.display_name || emp.full_name || emp.name || 'Employee User',
                 email: emp.email || emp.user_email || emp.work_email,
-                role: employeeRole
+                role: employeeRole,
+                employee_id: cleanEmpId,
+                department: cleanDept,
+                position: cleanPos
             };
         });
 

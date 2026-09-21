@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
 import { OfflineDetector } from '@/app/(supplyChain)/components/global/OfflineDetector';
+import CustomCursor from '@/app/(supplyChain)/components/global/CustomCursor';
 import {
     EmployeeSelectionModal,
     PasswordSetupModal,
@@ -1061,14 +1062,15 @@ export default function SupplyChainLoginPage() {
     }
 
     return (
-        <OfflineDetector
-            showToast={true}
-            autoReconnect={true}
-            reconnectInterval={30000}
-            blurAmount={4}
-        >
-            <>
-                <div className="h-dvh w-full bg-paper dark:bg-ink text-ink dark:text-paper font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px] transition-colors duration-300">
+        <>
+            <CustomCursor />
+            <OfflineDetector
+                showToast={true}
+                autoReconnect={true}
+                reconnectInterval={30000}
+                blurAmount={4}
+            >
+                <div className="supplychain-container h-dvh w-full bg-paper dark:bg-ink text-ink dark:text-paper font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px] transition-colors duration-300">
                     {/* left side - branding */}
                     <div className="relative hidden lg:flex flex-col justify-between border-r border-line dark:border-paper/10 px-16 py-14 overflow-hidden">
                         <div className="absolute bottom-14 right-14 rotate-[-6deg] select-none">
@@ -1357,7 +1359,7 @@ export default function SupplyChainLoginPage() {
                     handleUpdateAppeal={handleUpdateAppeal}
                     handleDeleteAppeal={handleDeleteAppeal}
                 />
-            </>
-        </OfflineDetector>
+            </OfflineDetector>
+        </>
     );
 }

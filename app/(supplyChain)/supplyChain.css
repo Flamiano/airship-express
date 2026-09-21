@@ -29,14 +29,14 @@
   .supplychain-container *,
   body:has(.supplychain-container),
   body:has(.supplychain-container) *,
-  [data-sonner-toaster],
-  [data-sonner-toaster] *,
-  .offline-shield-overlay,
-  .offline-shield-overlay *,
-  .offline-banner-container,
-  .offline-banner-container *,
-  .offline-indicator,
-  .offline-indicator * {
+  body:has(.custom-cursor) [data-sonner-toaster],
+  body:has(.custom-cursor) [data-sonner-toaster] *,
+  body:has(.custom-cursor) .offline-shield-overlay,
+  body:has(.custom-cursor) .offline-shield-overlay *,
+  body:has(.custom-cursor) .offline-banner-container,
+  body:has(.custom-cursor) .offline-banner-container *,
+  body:has(.custom-cursor) .offline-indicator,
+  body:has(.custom-cursor) .offline-indicator * {
     cursor: none !important;
   }
 }

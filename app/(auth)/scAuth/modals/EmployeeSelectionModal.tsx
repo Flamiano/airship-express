@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     X,
@@ -18,6 +19,20 @@ import {
     Eye as EyeIcon,
     Lock
 } from 'lucide-react';
+
+const isUUID = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
+};
+
+const formatId = (id?: string | null): string => {
+    if (!id) return '';
+    const trimmed = id.trim();
+    if (isUUID(trimmed)) {
+        return trimmed.slice(0, 8) + '...';
+    }
+    return trimmed;
+};
 
 interface EmployeeSelectionModalProps {
     showEmployeeModal: boolean;
@@ -105,13 +120,36 @@ export default function EmployeeSelectionModal({
     setOtpSuccess,
     setIsRemembered,
 }: EmployeeSelectionModalProps) {
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+    const [isDebouncing, setIsDebouncing] = useState(false);
+
+    useEffect(() => {
+        if (!searchTerm) {
+            setDebouncedSearchTerm('');
+            setIsDebouncing(false);
+            return;
+        }
+        setIsDebouncing(true);
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+            setIsDebouncing(false);
+        }, 250);
+
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const isAdminOrExec = loggedInUser?.role === 'Admin' || loggedInUser?.role === 'Executive';
 
-    const filteredEmployees = employees.filter(emp =>
-        (emp.display_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (emp.employee_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredEmployees = useMemo(() => {
+        const query = debouncedSearchTerm.toLowerCase().trim();
+        if (!query) return employees;
+        return employees.filter(emp =>
+            (emp.display_name || '').toLowerCase().includes(query) ||
+            (emp.employee_id || '').toLowerCase().includes(query) ||
+            (emp.id || '').toLowerCase().includes(query) ||
+            (emp.email || '').toLowerCase().includes(query)
+        );
+    }, [employees, debouncedSearchTerm]);
 
     const displayedEmployees = filteredEmployees.length > 5
         ? filteredEmployees.slice(0, 5)
@@ -284,11 +322,26 @@ export default function EmployeeSelectionModal({
                                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 shrink-0 pointer-events-none" size={18} />
                                         <input
                                             type="text"
-                                            placeholder={isAdminOrExec ? "Search account by name or email..." : "Search employee by name, ID, or email..."}
+                                            placeholder={isAdminOrExec ? "Search account by name, ID, or email..." : "Search employee by name, ID, or email..."}
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                            className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                         />
+                                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                            {isDebouncing && (
+                                                <Loader2 className="animate-spin text-accent shrink-0" size={15} />
+                                            )}
+                                            {searchTerm && !isDebouncing && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSearchTerm('')}
+                                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5 rounded-full hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                                                    aria-label="Clear search"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -329,15 +382,18 @@ export default function EmployeeSelectionModal({
                                                                 : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_5px_#c4d0df,inset_-2px_-2px_5px_#ffffff] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.7)] border-white/70 dark:border-white/[0.06] hover:border-accent/30'
                                                             }`}
                                                     >
-                                                        <div className="flex justify-between items-start gap-3">
+                                                        <div className="flex items-center justify-between gap-3">
                                                             <div className="flex-1 min-w-0">
-                                                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                                                    <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                                                                {/* Row 1: Name + Short ID + Status */}
+                                                                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                                                    <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[180px] sm:max-w-[240px]">
                                                                         {emp.display_name}
                                                                     </span>
-                                                                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-[#EAF0F6] dark:bg-[#13161F] px-1.5 py-0.5 rounded-md border border-white/40 dark:border-white/[0.06] shrink-0">
-                                                                        {emp.employee_id}
-                                                                    </span>
+                                                                    {(emp.employee_id || emp.id) && (
+                                                                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-[#EAF0F6] dark:bg-[#13161F] px-1.5 py-0.5 rounded-md border border-white/40 dark:border-white/[0.06] shrink-0">
+                                                                            {formatId(emp.employee_id || emp.id)}
+                                                                        </span>
+                                                                    )}
 
                                                                     {emp.is_active && (
                                                                         <span className="text-[10px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-medium px-2 py-0.5 rounded-full flex items-center gap-1 border border-rose-200/60 dark:border-rose-900/40 shrink-0">
@@ -353,24 +409,32 @@ export default function EmployeeSelectionModal({
                                                                     )}
                                                                 </div>
 
-                                                                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1">{emp.email}</div>
+                                                                {/* Row 2: Email (+ Department/Position) on left, Role badge on right */}
+                                                                <div className="flex items-center justify-between gap-2 mt-1.5">
+                                                                    <div className="flex items-center gap-1.5 min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
+                                                                        <span className="truncate">{emp.email}</span>
+                                                                        {emp.department && emp.department.toLowerCase().trim() !== emp.role?.toLowerCase().trim() && (
+                                                                            <>
+                                                                                <span className="text-slate-300 dark:text-slate-600 shrink-0">•</span>
+                                                                                <span className="truncate">{emp.department}</span>
+                                                                            </>
+                                                                        )}
+                                                                        {emp.position && emp.position.toLowerCase().trim() !== emp.role?.toLowerCase().trim() && emp.position.toLowerCase().trim() !== emp.department?.toLowerCase().trim() && (
+                                                                            <>
+                                                                                <span className="text-slate-300 dark:text-slate-600 shrink-0">•</span>
+                                                                                <span className="truncate">{emp.position}</span>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
 
-                                                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
-                                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shadow-[1px_1px_3px_rgba(0,0,0,0.05)] shrink-0 ${getRoleColor(emp.role)}`}>
+                                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shadow-[1px_1px_3px_rgba(0,0,0,0.05)] shrink-0 ml-auto ${getRoleColor(emp.role)}`}>
                                                                         {emp.role}
-                                                                    </span>
-                                                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-[#EAF0F6] dark:bg-[#13161F] px-2 py-0.5 rounded-md truncate max-w-[120px] sm:max-w-none border border-white/40 dark:border-white/[0.06]">
-                                                                        {emp.department}
-                                                                    </span>
-                                                                    <span className="text-[10px] text-slate-400 dark:text-slate-600">•</span>
-                                                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[120px] sm:max-w-none">
-                                                                        {emp.position}
                                                                     </span>
                                                                 </div>
                                                             </div>
 
                                                             {isSelected && (
-                                                                <div className="mt-0.5 shrink-0 bg-accent/15 dark:bg-accent/20 p-1 rounded-full text-accent">
+                                                                <div className="shrink-0 bg-accent/15 dark:bg-accent/20 p-1 rounded-full text-accent ml-1">
                                                                     <CheckCircle size={18} />
                                                                 </div>
                                                             )}
@@ -500,8 +564,8 @@ export default function EmployeeSelectionModal({
                                         <div className="flex items-center justify-center gap-1.5 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                                             <span>{isAdminOrExec ? 'Account:' : 'HR Employee:'}</span>
                                             <span className="font-semibold text-slate-900 dark:text-white">{selectedEmployee?.display_name || loggedInUser?.display_name}</span>
-                                            {selectedEmployee?.employee_id && (
-                                                <span className="font-mono text-slate-400 dark:text-slate-500">({selectedEmployee.employee_id})</span>
+                                            {(selectedEmployee?.employee_id || selectedEmployee?.id) && (
+                                                <span className="font-mono text-slate-400 dark:text-slate-500">({formatId(selectedEmployee.employee_id || selectedEmployee.id)})</span>
                                             )}
                                         </div>
                                     </div>

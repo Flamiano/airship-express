@@ -17,6 +17,20 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const isUUID = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
+};
+
+const formatId = (id?: string | null): string => {
+    if (!id) return '';
+    const trimmed = id.trim();
+    if (isUUID(trimmed)) {
+        return trimmed.slice(0, 8) + '...';
+    }
+    return trimmed;
+};
+
 interface RememberedPasswordModalProps {
     showRememberedPasswordModal: boolean;
     selectedEmployee: any;
@@ -490,16 +504,24 @@ export default function RememberedPasswordModal({
                                         <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">
                                             {selectedEmployee.email}
                                         </p>
-                                        {selectedEmployee.employee_id && (
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                ID: {selectedEmployee.employee_id}
+                                        {(selectedEmployee.employee_id || selectedEmployee.id) && (
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                                                ID: {formatId(selectedEmployee.employee_id || selectedEmployee.id)}
                                             </p>
                                         )}
-                                        {selectedEmployee.department && (
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                                                {selectedEmployee.department} • {selectedEmployee.position}
-                                            </p>
-                                        )}
+                                        {(() => {
+                                            const hasDept = selectedEmployee.department && selectedEmployee.department.toLowerCase().trim() !== selectedEmployee.role?.toLowerCase().trim();
+                                            const hasPos = selectedEmployee.position && selectedEmployee.position.toLowerCase().trim() !== selectedEmployee.role?.toLowerCase().trim() && selectedEmployee.position.toLowerCase().trim() !== selectedEmployee.department?.toLowerCase().trim();
+
+                                            if (!hasDept && !hasPos) return null;
+                                            return (
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                    {hasDept && selectedEmployee.department}
+                                                    {hasDept && hasPos && ' • '}
+                                                    {hasPos && selectedEmployee.position}
+                                                </p>
+                                            );
+                                        })()}
                                         <span className={`inline-block mt-2 text-[10px] font-semibold px-2.5 py-0.5 rounded-lg shadow-[2px_2px_5px_rgba(0,0,0,0.08)] ${getRoleColor(selectedEmployee.role)}`}>
                                             {selectedEmployee.role}
                                         </span>

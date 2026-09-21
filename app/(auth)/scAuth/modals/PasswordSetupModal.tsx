@@ -4,6 +4,20 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Loader2, Check, X, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
+const isUUID = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
+};
+
+const formatId = (id?: string | null): string => {
+    if (!id) return '';
+    const trimmed = id.trim();
+    if (isUUID(trimmed)) {
+        return trimmed.slice(0, 8) + '...';
+    }
+    return trimmed;
+};
+
 interface PasswordSetupModalProps {
     showPasswordModal: boolean;
     selectedEmployeeForPassword: any;
@@ -107,12 +121,22 @@ export default function PasswordSetupModal({
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Employee</p>
                                 <p className="font-semibold text-slate-900 dark:text-white text-sm sm:text-base mt-0.5">{selectedEmployeeForPassword.display_name}</p>
                                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">{selectedEmployeeForPassword.email}</p>
-                                {selectedEmployeeForPassword.employee_id && (
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">ID: {selectedEmployeeForPassword.employee_id}</p>
+                                {(selectedEmployeeForPassword.employee_id || selectedEmployeeForPassword.id) && (
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">ID: {formatId(selectedEmployeeForPassword.employee_id || selectedEmployeeForPassword.id)}</p>
                                 )}
-                                {selectedEmployeeForPassword.department && (
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{selectedEmployeeForPassword.department} • {selectedEmployeeForPassword.position}</p>
-                                )}
+                                {(() => {
+                                    const hasDept = selectedEmployeeForPassword.department && selectedEmployeeForPassword.department.toLowerCase().trim() !== selectedEmployeeForPassword.role?.toLowerCase().trim();
+                                    const hasPos = selectedEmployeeForPassword.position && selectedEmployeeForPassword.position.toLowerCase().trim() !== selectedEmployeeForPassword.role?.toLowerCase().trim() && selectedEmployeeForPassword.position.toLowerCase().trim() !== selectedEmployeeForPassword.department?.toLowerCase().trim();
+
+                                    if (!hasDept && !hasPos) return null;
+                                    return (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            {hasDept && selectedEmployeeForPassword.department}
+                                            {hasDept && hasPos && ' • '}
+                                            {hasPos && selectedEmployeeForPassword.position}
+                                        </p>
+                                    );
+                                })()}
                                 <span className={`inline-block mt-2 text-[10px] font-semibold px-2.5 py-0.5 rounded-lg shadow-[2px_2px_5px_rgba(0,0,0,0.08)] ${getRoleColor(selectedEmployeeForPassword.role)}`}>
                                     {selectedEmployeeForPassword.role}
                                 </span>

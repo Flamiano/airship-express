@@ -23,6 +23,8 @@ import {
     Layers,
     LayoutGrid,
     List,
+    X,
+    ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { user } from '@/app/(supplyChain)/lib/services/Class/user';
@@ -38,6 +40,8 @@ import {
 import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
 import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
 import { SkeletonBlock } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
+
+const ALL_SECTIONS = ['all', 'Operations', 'Procurement', 'Intelligence', 'Others'] as const;
 
 const TIMEOUT_PRESETS = [
     { label: '30 sec (Test)', value: 30, desc: 'Fast test mode' },
@@ -104,6 +108,7 @@ export default function SettingsContentWrapper() {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [currentUserRole, setCurrentUserRole] = useState<string>('User');
     const [currentUserName, setCurrentUserName] = useState<string>('User');
+    const isExecutiveUser = currentUserRole?.toLowerCase() === 'executive';
 
     // View mode for matrix (auto responsive or toggleable on mobile)
     const [matrixViewMode, setMatrixViewMode] = useState<'auto' | 'cards' | 'table'>('auto');
@@ -211,6 +216,12 @@ export default function SettingsContentWrapper() {
 
     // --- Role Access & Redirection Handlers ---
     const handleRoleRedirectChange = (role: UserRole, route: string) => {
+        const isExecutiveUser = currentUserRole?.toLowerCase() === 'executive';
+        if (role === 'Executive' && !isExecutiveUser) {
+            toast.error('Only Executive accounts are authorized to modify Executive redirect settings.');
+            return;
+        }
+
         const isPrivileged = role === 'Admin' || role === 'Executive';
         if (!isPrivileged && !settingsService.canAccessPage(role, route)) {
             toast.warning(`Cannot set ${route} as landing page for ${role} because it is restricted in the permission matrix.`);
@@ -230,13 +241,15 @@ export default function SettingsContentWrapper() {
     };
 
     const handleToggleRoleForPage = (route: string, role: UserRole) => {
-        if (route === '/executive' && role !== 'Executive') {
-            toast.warning('Executive Overview is strictly restricted to the Executive role only.');
+        const isExecutiveUser = currentUserRole?.toLowerCase() === 'executive';
+
+        if (role === 'Executive' && !isExecutiveUser) {
+            toast.error('Only Executive accounts are authorized to modify Executive access permissions.');
             return;
         }
 
-        if (role === 'Executive') {
-            toast.warning('The Executive master role has complete access and cannot be restricted.');
+        if (route === '/executive' && role !== 'Executive') {
+            toast.warning('Executive Overview is strictly restricted to the Executive role only.');
             return;
         }
 
@@ -247,6 +260,10 @@ export default function SettingsContentWrapper() {
             // Prevent removing last administrative role from Settings page
             if (route === '/settings' && role === 'Admin' && !currentRoles.includes('Executive')) {
                 toast.error('At least one administrative role must retain access to Settings.');
+                return;
+            }
+            if (route === '/executive' && role === 'Executive') {
+                toast.warning('Executive Overview requires Executive role access.');
                 return;
             }
             newRoles = currentRoles.filter(r => r !== role);
@@ -819,12 +836,14 @@ export default function SettingsContentWrapper() {
                                             </label>
                                             <select
                                                 value={currentTarget}
+                                                disabled={isExecutive && !isExecutiveUser}
+                                                title={isExecutive && !isExecutiveUser ? "Executive redirect is protected. Only Executive accounts can modify this setting." : undefined}
                                                 onChange={(e) => handleRoleRedirectChange(role, e.target.value)}
                                                 className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] text-slate-900 dark:text-white outline-none border ${
                                                     !isAllowed
                                                         ? 'border-amber-500 focus:ring-1 focus:ring-amber-500'
                                                         : 'border-white/60 dark:border-white/[0.08] focus:border-accent'
-                                                }`}
+                                                } ${isExecutive && !isExecutiveUser ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             >
                                                 {DEFAULT_PAGE_PERMISSIONS.map((p) => {
                                                     const isPrivileged = role === 'Admin' || role === 'Executive';
@@ -856,269 +875,262 @@ export default function SettingsContentWrapper() {
                         </div>
                     </div>
 
-                    {/* Filter and Controls Toolbar */}
-                    <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => handleQuickGrantEmployeeAccess(true)}
-                                className="px-3 py-2 text-xs font-bold rounded-xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_2px_2px_4px_#cbd6e4] text-accent border border-accent/30 transition-all cursor-pointer flex items-center gap-1.5"
-                            >
-                                <UserCheck className="h-3.5 w-3.5 text-accent" />
-                                <span>Allow Employee Role</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleApplyPolicyTemplate('standard')}
-                                className="px-3 py-2 text-xs font-semibold rounded-xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_2px_2px_4px_#cbd6e4] text-slate-700 dark:text-slate-300 border border-white/60 dark:border-white/[0.08] transition-all cursor-pointer"
-                            >
-                                Standard Policy
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleApplyPolicyTemplate('open')}
-                                className="px-3 py-2 text-xs font-semibold rounded-xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_2px_2px_4px_#cbd6e4] text-slate-700 dark:text-slate-300 border border-white/60 dark:border-white/[0.08] transition-all cursor-pointer"
-                            >
-                                Open Collab
-                            </button>
-                        </div>
-
-                        {/* Search & Layout Selector */}
-                        <div className="flex items-center gap-2.5 w-full lg:w-auto">
-                            <div className="relative flex-1 lg:w-72">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                                <input
-                                    type="text"
-                                    value={pageSearch}
-                                    onChange={(e) => setPageSearch(e.target.value)}
-                                    placeholder="Search module or route..."
-                                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.6)] border border-white/40 dark:border-white/[0.06] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:border-accent"
-                                />
-                            </div>
-
-                            {/* View Switcher for mobile/desktop flexibility */}
-                            <div className="flex md:hidden p-1 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] border border-white/40 dark:border-white/[0.06]">
-                                <button
-                                    type="button"
-                                    onClick={() => setMatrixViewMode('cards')}
-                                    className={`p-1.5 rounded-lg transition-all ${
-                                        matrixViewMode === 'cards' || matrixViewMode === 'auto'
-                                            ? 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_4px_#cbd6e4] text-accent'
-                                            : 'text-slate-500'
-                                    }`}
-                                    title="Card View"
-                                >
-                                    <LayoutGrid className="h-4 w-4" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setMatrixViewMode('table')}
-                                    className={`p-1.5 rounded-lg transition-all ${
-                                        matrixViewMode === 'table'
-                                            ? 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_4px_#cbd6e4] text-accent'
-                                            : 'text-slate-500'
-                                    }`}
-                                    title="Table View"
-                                >
-                                    <List className="h-4 w-4" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section Filter Pills */}
-                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-                        {['all', 'Operations', 'Procurement', 'Intelligence', 'Others'].map((sec) => (
-                            <button
-                                key={sec}
-                                type="button"
-                                onClick={() => setSelectedSection(sec)}
-                                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                                    selectedSection === sec
-                                        ? 'bg-accent text-white shadow-[3px_3px_8px_rgba(234,88,12,0.35)]'
-                                        : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] text-slate-700 dark:text-slate-300 hover:text-accent border border-white/60 dark:border-white/[0.08]'
-                                }`}
-                            >
-                                {sec.charAt(0).toUpperCase() + sec.slice(1)}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Responsive Mobile Cards View (Visible on small screens or when cards mode selected) */}
-                    <div className={`${matrixViewMode === 'table' ? 'hidden' : 'block md:hidden'} space-y-3`}>
-                        {filteredPages.map((page) => {
-                            const allowedRoles = settings.pagePermissions[page.route] || page.allowedRoles;
-                            const hasAccess = allowedRoles.includes(currentUserRole as UserRole);
-
-                            return (
-                                <div
-                                    key={page.route}
-                                    className="p-4 rounded-2xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[4px_4px_10px_#d1dbe7,-4px_-4px_10px_#ffffff] dark:shadow-[5px_5px_12px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-3"
-                                >
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                                                    {page.label}
-                                                </h4>
-                                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#EAF0F6] dark:bg-[#13161F] text-slate-600 dark:text-slate-400 border border-white/40 dark:border-white/[0.06]">
-                                                    {page.section}
-                                                </span>
-                                            </div>
-                                            <code className="text-[11px] text-accent font-mono block mt-0.5">
-                                                {page.route}
-                                            </code>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                                                {page.description}
-                                            </p>
-                                        </div>
-
-                                        <div className="shrink-0">
-                                            {hasAccess ? (
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                                                    <CheckCircle2 className="h-3 w-3" />
-                                                    Access
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
-                                                    <UserX className="h-3 w-3" />
-                                                    Restricted
-                                                </span>
-                                            )}
-                                        </div>
+                    {/* Section 2: Page-by-Page Permissions Matrix */}
+                    <div className="space-y-4">
+                        {/* Matrix Header & Controls */}
+                        <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-4">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <Layers className="h-4 w-4 text-accent" />
+                                        <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                                            Access Permissions Matrix
+                                        </h3>
                                     </div>
-
-                                    {/* Role Buttons for Mobile */}
-                                    <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
-                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 block">
-                                            Allowed Roles:
-                                        </label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {ALL_ROLES.map((role) => {
-                                                const isExecutiveRole = role === 'Executive';
-                                                const isExecutiveRoute = page.route === '/executive';
-                                                const isChecked = isExecutiveRole || allowedRoles.includes(role);
-
-                                                if (isExecutiveRole) {
-                                                    return (
-                                                        <div
-                                                            key={role}
-                                                            className="px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-between bg-slate-900 dark:bg-[#11131a] text-amber-300 border border-amber-500/40 opacity-90"
-                                                        >
-                                                            <div className="flex items-center gap-1.5">
-                                                                <Shield className="h-3.5 w-3.5 text-amber-400" />
-                                                                <span>Executive</span>
-                                                            </div>
-                                                            <span className="text-[9px] px-1 rounded bg-amber-400/20 text-amber-300 font-mono">
-                                                                LOCKED
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                }
-
-                                                if (isExecutiveRoute) {
-                                                    return (
-                                                        <div
-                                                            key={role}
-                                                            className="px-2.5 py-2 rounded-xl text-xs font-semibold flex items-center justify-between opacity-50 bg-[#EAF0F6] dark:bg-[#13161F] text-slate-400 border border-slate-300/40 dark:border-slate-800"
-                                                        >
-                                                            <span>{role}</span>
-                                                            <span className="text-[9px] px-1 rounded bg-slate-300 dark:bg-slate-800 text-slate-500 font-mono">
-                                                                LOCKED
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                }
-
-                                                return (
-                                                    <button
-                                                        key={role}
-                                                        type="button"
-                                                        onClick={() => handleToggleRoleForPage(page.route, role)}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between border cursor-pointer ${
-                                                            isChecked
-                                                                ? 'bg-accent text-white shadow-[2px_2px_6px_rgba(234,88,12,0.35)] border-accent'
-                                                                : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] text-slate-500 dark:text-slate-400 border-white/60 dark:border-white/[0.06]'
-                                                        }`}
-                                                    >
-                                                        <span>{role}</span>
-                                                        {isChecked ? (
-                                                            <Check className="h-3.5 w-3.5" />
-                                                        ) : (
-                                                            <Lock className="h-3.5 w-3.5 opacity-40" />
-                                                        )}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                        Grant or revoke access per module. Changes apply instantly across navigation bars and route guards.
+                                    </p>
                                 </div>
-                            );
-                        })}
-                    </div>
 
-                    {/* Desktop & Tablet Neumorphic Matrix Table */}
-                    <div className={`${matrixViewMode === 'cards' ? 'hidden' : 'hidden md:block'} rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] overflow-hidden`}>
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left text-xs">
-                                <thead>
-                                    <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-[#EAF0F6]/80 dark:bg-[#13161F]/80 text-slate-700 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                        <th className="py-3.5 px-5">Page / Module</th>
-                                        <th className="py-3.5 px-3">Section</th>
-                                        <th className="py-3.5 px-5">Role Access Matrix</th>
-                                        <th className="py-3.5 px-4 text-center">Your Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04]">
-                                    {filteredPages.map((page) => {
-                                        const allowedRoles = settings.pagePermissions[page.route] || page.allowedRoles;
-                                        const hasAccess = allowedRoles.includes(currentUserRole as UserRole);
+                                {/* Quick Presets */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleQuickGrantEmployeeAccess(true)}
+                                        className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_7px_#cbd6e4,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_4px_#c4d0df,inset_-2px_-2px_4px_#ffffff] border border-white/60 dark:border-white/[0.08] transition-all cursor-pointer"
+                                    >
+                                        Allow Employee All Core
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleQuickGrantEmployeeAccess(false)}
+                                        className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_7px_#cbd6e4,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_4px_#c4d0df,inset_-2px_-2px_4px_#ffffff] border border-white/60 dark:border-white/[0.08] transition-all cursor-pointer"
+                                    >
+                                        Lock Down Employee
+                                    </button>
+                                </div>
+                            </div>
 
-                                        return (
-                                            <tr key={page.route} className="hover:bg-[#EAF0F6]/50 dark:hover:bg-[#1A1F2B]/40 transition-colors">
-                                                {/* Page Details */}
-                                                <td className="py-3.5 px-5 align-top">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
-                                                             {page.label}
-                                                        </span>
-                                                        <code className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#EAF0F6] dark:bg-[#13161F] text-accent font-mono border border-white/40 dark:border-white/[0.04]">
-                                                            {page.route}
-                                                        </code>
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                                                        {page.description}
-                                                    </p>
-                                                </td>
+                            {/* Search & Section Filter Bar */}
+                            <div className="pt-3 border-t border-slate-200/80 dark:border-white/[0.06] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={pageSearch}
+                                        onChange={(e) => setPageSearch(e.target.value)}
+                                        placeholder="Search module name, route path, or description..."
+                                        className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] text-slate-900 dark:text-white outline-none border border-white/60 dark:border-white/[0.08] focus:border-accent"
+                                    />
+                                    {pageSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPageSearch('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                                        >
+                                            <X className="h-3.5 w-3.5" />
+                                        </button>
+                                    )}
+                                </div>
 
-                                                {/* Section */}
-                                                <td className="py-3.5 px-3 align-top">
-                                                    <span className="inline-block px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_1px_1px_3px_#cbd6e4] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300 border border-white/40 dark:border-white/[0.04]">
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                                    {ALL_SECTIONS.map((sec) => (
+                                        <button
+                                            key={sec}
+                                            type="button"
+                                            onClick={() => setSelectedSection(sec)}
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap capitalize ${
+                                                selectedSection === sec
+                                                    ? 'bg-accent text-white shadow-[2px_2px_6px_rgba(234,88,12,0.35)]'
+                                                    : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-white/60 dark:border-white/[0.08]'
+                                            }`}
+                                        >
+                                            {sec}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Mobile Cards Matrix */}
+                        <div className={`${matrixViewMode === 'table' ? 'hidden' : 'block md:hidden'} space-y-3`}>
+                            {filteredPages.map((page) => {
+                                const allowedRoles = settings.pagePermissions[page.route] || page.allowedRoles;
+                                const hasAccess = allowedRoles.includes(currentUserRole as UserRole);
+
+                                return (
+                                    <div
+                                        key={page.route}
+                                        className="p-4 rounded-2xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[4px_4px_10px_#d1dbe7,-4px_-4px_10px_#ffffff] dark:shadow-[5px_5px_12px_rgba(0,0,0,0.6),-2px_-2px_8px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-3"
+                                    >
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                                                        {page.label}
+                                                    </h4>
+                                                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-[#EAF0F6] dark:bg-[#13161F] text-slate-500 dark:text-slate-400 border border-white/40 dark:border-white/[0.04]">
                                                         {page.section}
                                                     </span>
-                                                </td>
+                                                </div>
+                                                <code className="text-[10px] text-accent font-mono mt-0.5 block">
+                                                    {page.route}
+                                                </code>
+                                            </div>
 
-                                                {/* Role Toggles */}
-                                                <td className="py-3.5 px-5 align-top">
-                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                        {ALL_ROLES.map((role) => {
-                                                            const isExecutiveRole = role === 'Executive';
-                                                            const isExecutiveRoute = page.route === '/executive';
-                                                            const isChecked = isExecutiveRole || allowedRoles.includes(role);
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                                hasAccess
+                                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                                    : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                                            }`}>
+                                                {hasAccess ? <CheckCircle2 className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
+                                                {hasAccess ? 'Allowed' : 'Locked'}
+                                            </span>
+                                        </div>
 
-                                                            // Executive master role locked button
-                                                            if (isExecutiveRole) {
-                                                                return (
-                                                                    <button
-                                                                        key={role}
-                                                                        type="button"
-                                                                        disabled={true}
-                                                                        title="Executive master role has complete access across all modules and cannot be restricted."
-                                                                        className="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 border opacity-90 cursor-not-allowed bg-slate-900 dark:bg-slate-800 text-amber-300 border-amber-500/50 shadow-sm"
-                                                                    >
-                                                                        <Shield className="h-3 w-3 text-amber-400" />
-                                                                        <span>Executive</span>
-                                                                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400/20 text-amber-300 font-mono">
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            {page.description}
+                                        </p>
+
+                                        {/* Role Buttons for Mobile */}
+                                        <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
+                                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 block">
+                                                Allowed Roles:
+                                            </label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {ALL_ROLES.map((role) => {
+                                                    const isExecutiveRole = role === 'Executive';
+                                                    const isExecutiveRoute = page.route === '/executive';
+                                                    const isExecutiveUser = currentUserRole?.toLowerCase() === 'executive';
+                                                    const isChecked = allowedRoles.includes(role);
+
+                                                    if (isExecutiveRole && !isExecutiveUser) {
+                                                        return (
+                                                            <div
+                                                                key={role}
+                                                                title="Executive access is protected. Only Executive accounts can modify this role."
+                                                                className="px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-between bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border border-amber-300/80 dark:border-amber-500/40 shadow-sm opacity-90 cursor-not-allowed"
+                                                            >
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <Shield className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                                                    <span className="text-amber-900 dark:text-amber-200">Executive</span>
+                                                                </div>
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-200/80 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 font-mono font-bold tracking-wider">
+                                                                    LOCKED
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (isExecutiveRoute && !isExecutiveRole) {
+                                                        return (
+                                                            <div
+                                                                key={role}
+                                                                className="px-2.5 py-2 rounded-xl text-xs font-semibold flex items-center justify-between opacity-70 bg-slate-100 dark:bg-[#13161F] text-slate-600 dark:text-slate-400 border border-slate-300/70 dark:border-slate-800"
+                                                            >
+                                                                <span>{role}</span>
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 font-mono font-semibold">
+                                                                    LOCKED
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <button
+                                                            key={role}
+                                                            type="button"
+                                                            onClick={() => handleToggleRoleForPage(page.route, role)}
+                                                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between border cursor-pointer ${
+                                                                isChecked
+                                                                    ? isExecutiveRole
+                                                                        ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-[2px_2px_6px_rgba(245,158,11,0.35)] border-amber-500'
+                                                                        : 'bg-accent text-white shadow-[2px_2px_6px_rgba(234,88,12,0.35)] border-accent'
+                                                                    : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] text-slate-500 dark:text-slate-400 border-white/60 dark:border-white/[0.06]'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-1.5">
+                                                                {isExecutiveRole && <Shield className="h-3.5 w-3.5" />}
+                                                                <span>{role}</span>
+                                                            </div>
+                                                            {isChecked ? (
+                                                                <Check className="h-3.5 w-3.5" />
+                                                            ) : (
+                                                                <Lock className="h-3.5 w-3.5 opacity-40" />
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Desktop & Tablet Neumorphic Matrix Table */}
+                        <div className={`${matrixViewMode === 'cards' ? 'hidden' : 'hidden md:block'} rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] overflow-hidden`}>
+                            <div className="overflow-x-auto custom-scrollbar">
+                                <table className="w-full text-left text-xs">
+                                    <thead>
+                                        <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-[#EAF0F6]/80 dark:bg-[#13161F]/80 text-slate-700 dark:text-slate-300 font-bold uppercase text-[10px]">
+                                            <th className="py-3.5 px-5">Page / Module</th>
+                                            <th className="py-3.5 px-3">Section</th>
+                                            <th className="py-3.5 px-5">Role Access Matrix</th>
+                                            <th className="py-3.5 px-4 text-center">Your Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04]">
+                                        {filteredPages.map((page) => {
+                                            const allowedRoles = settings.pagePermissions[page.route] || page.allowedRoles;
+                                            const hasAccess = allowedRoles.includes(currentUserRole as UserRole);
+
+                                            return (
+                                                <tr key={page.route} className="hover:bg-[#EAF0F6]/50 dark:hover:bg-[#1A1F2B]/40 transition-colors">
+                                                    {/* Page Details */}
+                                                    <td className="py-3.5 px-5 align-top">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                                                                 {page.label}
+                                                            </span>
+                                                            <code className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#EAF0F6] dark:bg-[#13161F] text-accent font-mono border border-white/40 dark:border-white/[0.04]">
+                                                                {page.route}
+                                                            </code>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                                            {page.description}
+                                                        </p>
+                                                    </td>
+
+                                                    {/* Section */}
+                                                    <td className="py-3.5 px-3 align-top">
+                                                        <span className="inline-block px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_1px_1px_3px_#cbd6e4] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300 border border-white/40 dark:border-white/[0.04]">
+                                                            {page.section}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Role Toggles */}
+                                                    <td className="py-3.5 px-5 align-top">
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            {ALL_ROLES.map((role) => {
+                                                                const isExecutiveRole = role === 'Executive';
+                                                                const isExecutiveRoute = page.route === '/executive';
+                                                                const isExecutiveUser = currentUserRole?.toLowerCase() === 'executive';
+                                                                const isChecked = allowedRoles.includes(role);
+
+                                                                // Executive role is LOCKED for non-Executive users (Admin, etc.)
+                                                                if (isExecutiveRole && !isExecutiveUser) {
+                                                                    return (
+                                                                        <button
+                                                                            key={role}
+                                                                            type="button"
+                                                                            disabled={true}
+                                                                            title="Executive access is protected. Only Executive accounts can modify this role."
+                                                                            className="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-not-allowed bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300/80 dark:border-amber-500/40 shadow-sm"
+                                                                        >
+                                                                            <Shield className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                                                                            <span className="text-amber-900 dark:text-amber-200">Executive</span>
+                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-200/80 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 font-mono font-bold tracking-wider">
                                                                             LOCKED
                                                                         </span>
                                                                     </button>
@@ -1126,25 +1138,25 @@ export default function SettingsContentWrapper() {
                                                             }
 
                                                             // /executive route is strictly for Executive role only
-                                                            if (isExecutiveRoute) {
+                                                            if (isExecutiveRoute && !isExecutiveRole) {
                                                                 return (
                                                                     <button
                                                                         key={role}
                                                                         type="button"
                                                                         disabled={true}
                                                                         title="Executive Overview (/executive) is strictly restricted to the Executive role only."
-                                                                        className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 border opacity-50 cursor-not-allowed bg-[#EAF0F6] dark:bg-[#13161F] text-slate-400 dark:text-slate-500 border-slate-300/40 dark:border-slate-800"
+                                                                        className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border opacity-70 cursor-not-allowed bg-slate-100 dark:bg-[#13161F] text-slate-600 dark:text-slate-400 border-slate-300/70 dark:border-slate-800"
                                                                     >
-                                                                        <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                                                        <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-500" />
                                                                         <span>{role}</span>
-                                                                        <span className="text-[9px] px-1 py-0.2 rounded bg-slate-300 dark:bg-slate-800 text-slate-500 font-mono">
+                                                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 font-mono font-semibold">
                                                                             LOCKED
                                                                         </span>
                                                                     </button>
                                                                 );
                                                             }
 
-                                                            // Standard role toggle button
+                                                            // Role toggle button (Active for Executive on all roles, and active for Admin on all non-Executive roles)
                                                             return (
                                                                 <button
                                                                     key={role}
@@ -1152,10 +1164,13 @@ export default function SettingsContentWrapper() {
                                                                     onClick={() => handleToggleRoleForPage(page.route, role)}
                                                                     className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
                                                                         isChecked
-                                                                            ? 'bg-accent text-white shadow-[2px_2px_6px_rgba(234,88,12,0.35)] border-accent active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]'
+                                                                            ? isExecutiveRole
+                                                                                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-[2px_2px_6px_rgba(245,158,11,0.35)] border-amber-500 active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]'
+                                                                                : 'bg-accent text-white shadow-[2px_2px_6px_rgba(234,88,12,0.35)] border-accent active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]'
                                                                             : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] text-slate-500 dark:text-slate-400 border-white/60 dark:border-white/[0.08] hover:text-slate-900 dark:hover:text-white'
                                                                     }`}
                                                                 >
+                                                                    {isExecutiveRole && <Shield className="h-3 w-3" />}
                                                                     {isChecked ? (
                                                                         <Check className="h-3 w-3" />
                                                                     ) : (
@@ -1190,6 +1205,7 @@ export default function SettingsContentWrapper() {
                         </div>
                     </div>
                 </div>
+            </div>
             )}
 
             {/* TAB 3: Policy Summary & Audit */}
@@ -1215,7 +1231,7 @@ export default function SettingsContentWrapper() {
                                 Employee Modules
                             </span>
                             <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-bricolage">
-                                {Object.values(settings.pagePermissions).filter(roles => roles.includes('Employee')).length} Modules
+                                {Object.values(settings.pagePermissions).filter((roles: UserRole[]) => roles?.includes('Employee')).length} Modules
                             </div>
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
                                 Accessible by Employee role
