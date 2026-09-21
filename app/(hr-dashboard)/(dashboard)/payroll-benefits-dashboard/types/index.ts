@@ -190,6 +190,13 @@ export interface HR4Payslip {
   hours_worked: number | null;
   regular_hours: number | null;
   overtime_hours: number | null;
+  night_diff_hours: number | null;
+  night_diff_pay: number | null;
+  holiday_hours: number | null;
+  holiday_pay: number | null;
+  allowances_pay: number | null;
+  bonus_pay: number | null;
+  incentive_pay: number | null;
   created_at: string | null;
 }
 
@@ -467,4 +474,141 @@ export interface IncompleteBankEmployee {
   employee_name: string;
   employee_id_number: string;
   missing: string[];
+}
+
+export interface HR4PHHoliday {
+  id: string;
+  holiday_date: string;
+  name: string;
+  type: "regular" | "special_non_working" | "special_working";
+  year: number;
+  source: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HR4NightDiffSettings {
+  id: string | null;
+  night_diff_start: string;
+  night_diff_end: string;
+  night_diff_rate: number;
+  deduct_from_payroll: boolean;
+  is_active: boolean;
+  last_modified_by: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type HR4BenefitFrequency =
+  | "monthly"
+  | "quarterly"
+  | "semi_annual"
+  | "annual"
+  | "one_time";
+
+export type HR4BenefitType =
+  | "allowance"
+  | "bonus"
+  | "incentive"
+  | "commission"
+  | "overtime"
+  | "night_diff"
+  | "holiday_pay"
+  | "other";
+
+export interface HR4CompenEmployeeBenefit {
+  id: number;
+  employee_id: string;
+  benefit_type: HR4BenefitType;
+  benefit_name: string;
+  amount: number;
+  frequency: HR4BenefitFrequency;
+  payroll_run_id: number | null;
+  is_taxable: boolean;
+  deduct_from_payroll: boolean;
+  is_mandatory: boolean;
+  is_active: boolean;
+  effective_date: string;
+  expiry_date: string | null;
+  description: string | null;
+  holiday_multiplier: number;
+  approved_by: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  last_modified_by: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+}
+
+export interface HolidayPayConfig {
+  holiday_multiplier: number;
+}
+
+export interface LatestPerformanceRating {
+  employee_id: string;
+  appraisal_id: string;
+  performance_rating: number | null;
+  final_score: number | null;
+  letter_grade: string | null;
+  cycle_name: string | null;
+  cycle_year: number | null;
+  reviewed_at: string | null;
+  status: string | null;
+  comments: string | null;
+  strengths: string | null;
+  improvements: string | null;
+}
+
+export type LatestPerformanceRatingMap = Record<
+  string,
+  LatestPerformanceRating
+>;
+
+export interface EmployeeBankStatus {
+  employee_id: string;
+  has_complete_bank: boolean;
+  bank_name: string | null;
+  account_number: string | null;
+  account_name: string | null;
+}
+
+export interface HR4ClaimType {
+  id: number;
+  name: string;
+  description: string | null;
+  max_amount: number | null;
+  requires_receipt: boolean;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface HR4Claim {
+  id: string;
+  employee_id: string;
+  claim_type_id: number;
+  amount: number;
+  description: string | null;
+  receipt_url: string | null;
+  status: "pending" | "approved" | "rejected" | "reimbursed" | "cancelled";
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  payroll_run_id: number | null;
+  reimbursed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HR4ClaimFormatted extends HR4Claim {
+  employee_name: string | null;
+  employee_id_number: string | null;
+  claim_type_name: string | null;
+  reviewed_by_name: string | null;
 }

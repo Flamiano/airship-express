@@ -10,10 +10,17 @@ export async function PUT(
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const admin = authResult as {
+      id: string;
+      email: string;
+      fullName: string;
+      role: string;
+    };
+
     const body = await request.json();
-    const user = (request as any).user;
 
     const updateData: any = {
+      payroll_run_id: body.payroll_run_id || null,
       bonus_type: body.bonus_type,
       amount: body.amount,
       bonus_percentage: body.bonus_percentage || null,
@@ -23,9 +30,9 @@ export async function PUT(
       updated_at: new Date().toISOString(),
     };
 
-    if (body.status === "approved" || body.status === "paid") {
-      updateData.approved_by = user?.id || null;
-      updateData.approved_by_name = user?.fullName || null;
+    if (body.status === "approved") {
+      updateData.approved_by = admin.id;
+      updateData.approved_by_name = admin.fullName;
       updateData.approved_at = new Date().toISOString();
     }
 

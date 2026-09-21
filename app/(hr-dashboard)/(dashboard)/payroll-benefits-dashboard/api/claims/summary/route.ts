@@ -7,18 +7,9 @@ export async function GET(request: NextRequest) {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
-    const { searchParams } = new URL(request.url);
-    const includeArchived = searchParams.get("include_archived") === "true";
-
-    let query = supabaseAdmin
+    const { data: claims, error } = await supabaseAdmin
       .from("hr4_claims")
-      .select("id, amount, status, reimbursed_at, submitted_at, is_archived");
-
-    if (!includeArchived) {
-      query = query.eq("is_archived", false);
-    }
-
-    const { data: claims, error } = await query;
+      .select("id, amount, status, reimbursed_at, submitted_at");
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

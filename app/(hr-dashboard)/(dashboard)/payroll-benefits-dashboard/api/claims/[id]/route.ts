@@ -2,96 +2,106 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { requireAdmin } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/auth/requireAdmin";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeId(raw: any): string {
+  if (raw === null || raw === undefined) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  if (s === "undefined" || s === "null" || s === "NaN") return "";
+  return s;
+}
+
+function isValidUuid(id: string): boolean {
+  return id.length > 0 && UUID_RE.test(id);
+}
+
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
-    const { id } = await params;
-    if (!id) {
+    const rawId = params?.id;
+    const id = normalizeId(rawId);
+
+    if (!isValidUuid(id)) {
+      console.error("[claims PUT] invalid id received:", JSON.stringify(rawId));
       return NextResponse.json(
-        { error: "Claim ID is required" },
+        {
+          error:
+            "Invalid claim ID. The record you tried to update has a malformed identifier. Refresh the list and try again.",
+          received_id: rawId ?? null,
+        },
         { status: 400 }
       );
     }
 
-    const { data: existingClaim, error: fetchError } = await supabaseAdmin
-      .from("hr4_claims")
-      .select("id, status, is_archived")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (fetchError || !existingClaim) {
-      return NextResponse.json({ error: "Claim not found" }, { status: 404 });
-    }
-
-    const body = await request.json();
-    const { status, review_notes, payroll_run_id, is_archived } = body;
-
-    const updates: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
+    const admin = authResult as {
+      id: string;
+      email: string;
+      fullName: string;
+      role: string;
     };
 
-    if (is_archived !== undefined) {
-      updates.is_archived = is_archived;
-      if (is_archived) {
-        updates.archived_at = new Date().toISOString();
-        updates.archived_by = authResult.id;
-      } else {
-        updates.archived_at = null;
-        updates.archived_by = null;
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const update: any = { updated_at: new Date().toISOString() };
+
+    if (body.status) {
+      update.status = body.status;
+
+      if (body.status === "approved") {
+        update.reviewed_by = admin.id;
+        update.reviewed_at = new Date().toISOString();
+      }
+
+      if (body.status === "rejected") {
+        update.reviewed_by = admin.id;
+        update.reviewed_at = new Date().toISOString();
+        update.review_notes = body.review_notes ?? null;
+      }
+
+      if (body.status === "reimbursed") {
+        update.reimbursed_at = new Date().toISOString();
       }
     }
 
-    if (status) {
-      const validTransitions: Record<string, string[]> = {
-        pending: ["approved", "rejected", "cancelled"],
-        approved: ["reimbursed", "rejected"],
-        rejected: [],
-        reimbursed: [],
-        cancelled: [],
-      };
-
-      if (!validTransitions[existingClaim.status]?.includes(status)) {
-        return NextResponse.json(
-          {
-            error: `Cannot change claim from '${existingClaim.status}' to '${status}'`,
-          },
-          { status: 400 }
-        );
-      }
-
-      updates.status = status;
-
-      if (status === "approved" || status === "rejected") {
-        updates.reviewed_by = authResult.id;
-        updates.reviewed_at = new Date().toISOString();
-      }
-
-      if (status === "reimbursed") {
-        updates.reimbursed_at = new Date().toISOString();
-        if (payroll_run_id) {
-          updates.payroll_run_id = payroll_run_id;
-        }
-      }
+    if (body.review_notes !== undefined && !body.status) {
+      update.review_notes = body.review_notes;
     }
 
-    if (review_notes !== undefined) {
-      updates.review_notes = review_notes;
+    if (Object.keys(update).length === 1) {
+      return NextResponse.json(
+        { error: "No valid fields to update" },
+        { status: 400 }
+      );
     }
 
     const { data, error } = await supabaseAdmin
       .from("hr4_claims")
-      .update(updates)
+      .update(update)
       .eq("id", id)
       .select()
       .single();
 
     if (error) {
-      console.error("Error updating claim:", error);
+      console.error("[claims PUT] update error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -100,10 +110,10 @@ export async function PUT(
     }
 
     return NextResponse.json(data);
-  } catch (error) {
-    console.error("PUT /claims/[id] error:", error);
+  } catch (error: any) {
+    console.error("[claims PUT] unexpected error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: error?.message || "Failed to update claim" },
       { status: 500 }
     );
   }
@@ -111,28 +121,28 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
-    const { id } = await params;
-    if (!id) {
+    const rawId = params?.id;
+    const id = normalizeId(rawId);
+
+    if (!isValidUuid(id)) {
+      console.error(
+        "[claims DELETE] invalid id received:",
+        JSON.stringify(rawId)
+      );
       return NextResponse.json(
-        { error: "Claim ID is required" },
+        {
+          error:
+            "Invalid claim ID. The record you tried to delete has a malformed identifier. Refresh the list and try again.",
+          received_id: rawId ?? null,
+        },
         { status: 400 }
       );
-    }
-
-    const { data: existingClaim, error: checkError } = await supabaseAdmin
-      .from("hr4_claims")
-      .select("id")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (checkError || !existingClaim) {
-      return NextResponse.json({ error: "Claim not found" }, { status: 404 });
     }
 
     const { error } = await supabaseAdmin
@@ -141,18 +151,15 @@ export async function DELETE(
       .eq("id", id);
 
     if (error) {
-      console.error("Error deleting claim:", error);
+      console.error("[claims DELETE] error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Claim ${id} deleted successfully`,
-    });
-  } catch (error) {
-    console.error("DELETE /claims/[id] error:", error);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("[claims DELETE] unexpected error:", error);
     return NextResponse.json(
-      { error: "Internal server error: " + (error as Error).message },
+      { error: error?.message || "Failed to delete claim" },
       { status: 500 }
     );
   }

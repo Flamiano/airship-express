@@ -24,10 +24,10 @@ export const Alert: React.FC<AlertProps> = ({
     const [isVisible, setIsVisible] = useState(true);
 
     const variantClasses = {
-        info: 'bg-blue-50 border-blue-400 text-blue-800',
-        success: 'bg-green-50 border-green-400 text-green-800',
-        warning: 'bg-yellow-50 border-yellow-400 text-yellow-800',
-        error: 'bg-red-50 border-red-400 text-red-800',
+        info: 'bg-blue-50 dark:bg-blue-900/20 border-blue-400 dark:border-blue-500 text-blue-800 dark:text-blue-300',
+        success: 'bg-green-50 dark:bg-green-900/20 border-green-400 dark:border-green-500 text-green-800 dark:text-green-300',
+        warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400 dark:border-yellow-500 text-yellow-800 dark:text-yellow-300',
+        error: 'bg-red-50 dark:bg-red-900/20 border-red-400 dark:border-red-500 text-red-800 dark:text-red-300',
     };
 
     const iconMap = {
@@ -63,7 +63,7 @@ export const Alert: React.FC<AlertProps> = ({
             {dismissible && (
                 <button
                     onClick={handleDismiss}
-                    className="flex-shrink-0 p-1 hover:bg-white/20 rounded-full transition-colors"
+                    className="flex-shrink-0 p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors"
                     aria-label="Dismiss alert"
                 >
                     <X className="h-4 w-4" />

@@ -44,23 +44,30 @@ export async function POST(request: NextRequest) {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    // requireAdmin returns the admin object on success
+    const admin = authResult as {
+      id: string;
+      email: string;
+      fullName: string;
+      role: string;
+    };
+
     const body = await request.json();
-    const user = (request as any).user;
 
     const { data: meritPlan, error } = await supabaseAdmin
       .from("hr4_compen_merit_planning")
       .insert({
         employee_id: body.employee_id,
         fiscal_year: body.fiscal_year,
+        performance_appraisal_id: body.performance_appraisal_id || null,
         performance_rating: body.performance_rating,
         current_salary: body.current_salary,
         recommended_increase_percent: body.recommended_increase_percent,
         recommended_new_salary: body.recommended_new_salary,
         proposed_effective_date: body.proposed_effective_date,
         status: body.status || "draft",
-        manager_notes: body.manager_notes || null,
-        hr_notes: body.hr_notes || null,
-        created_by: user?.id || null,
+        approver_notes: body.approver_notes || null,
+        created_by: admin.id,
       })
       .select()
       .single();

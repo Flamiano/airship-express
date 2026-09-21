@@ -18,6 +18,41 @@ const PERIODS_PER_MONTH: Record<string, number> = {
   bi_weekly: 2,
 };
 
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function overlapMinutes(
+  startA: number,
+  endA: number,
+  startB: number,
+  endB: number
+): number {
+  let a1 = startA;
+  let a2 = endA;
+  let b1 = startB;
+  let b2 = endB;
+
+  if (a2 <= a1) a2 += 1440;
+  if (b2 <= b1) b2 += 1440;
+
+  const start = Math.max(a1, b1);
+  const end = Math.min(a2, b2);
+  return Math.max(0, end - start);
+}
+
+function minutesBetween(start: string, end: string): number {
+  const s = timeToMinutes(start);
+  let e = timeToMinutes(end);
+  if (e <= s) e += 1440;
+  return e - s;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authResult = await requireAdmin(request);
@@ -127,18 +162,10 @@ export async function POST(request: NextRequest) {
       if (!bank) {
         missing.push("No bank account on file");
       } else {
-        if (bank.is_active === false) {
-          missing.push("Bank account is inactive");
-        }
-        if (!bank.account_number) {
-          missing.push("Account number missing");
-        }
-        if (!bank.account_name) {
-          missing.push("Account name missing");
-        }
-        if (!bank.bank_type_id) {
-          missing.push("Bank type missing");
-        }
+        if (bank.is_active === false) missing.push("Bank account is inactive");
+        if (!bank.account_number) missing.push("Account number missing");
+        if (!bank.account_name) missing.push("Account name missing");
+        if (!bank.bank_type_id) missing.push("Bank type missing");
       }
 
       if (missing.length > 0) {
@@ -180,6 +207,8 @@ export async function POST(request: NextRequest) {
       { data: pagibigTiers },
       { data: jobSettings },
       { data: jobPositions },
+      { data: benefits },
+      { data: phHolidays },
     ] = await Promise.all([
       supabaseAdmin
         .from("hr4_employee_payroll_info")
@@ -218,6 +247,14 @@ export async function POST(request: NextRequest) {
         .order("salary_min", { ascending: true }),
       supabaseAdmin.from("hr4_job_position_settings").select("*"),
       supabaseAdmin.from("hr1_job_positions").select("*").eq("is_active", true),
+      supabaseAdmin
+        .from("hr4_compen_employee_benefits")
+        .select("*")
+        .eq("is_active", true),
+      supabaseAdmin
+        .from("hr4_ph_holidays")
+        .select("holiday_date, type, is_active")
+        .eq("is_active", true),
     ]);
 
     if (infoError) {
@@ -241,18 +278,33 @@ export async function POST(request: NextRequest) {
       positionMap.set(pos.id, pos);
     });
 
+    const benefitsByEmployee = new Map<string, any[]>();
+    (benefits || []).forEach((b: any) => {
+      if (!benefitsByEmployee.has(b.employee_id)) {
+        benefitsByEmployee.set(b.employee_id, []);
+      }
+      benefitsByEmployee.get(b.employee_id)!.push(b);
+    });
+
+    const holidayMap = new Map<string, string>();
+    (phHolidays || []).forEach((h: any) => {
+      holidayMap.set(h.holiday_date, h.type);
+    });
+
     const { data: attendanceLogs } = await supabaseAdmin
       .from("hr2_attendance_logs")
-      .select("employee_id, status, shift_start, shift_end, created_at")
+      .select(
+        "employee_id, status, shift_start, shift_end, time_in, time_out, created_at"
+      )
       .gte("created_at", `${run.period_start}T00:00:00`)
       .lte("created_at", `${run.period_end}T23:59:59`);
 
-    const attendanceByEmployee = new Map();
+    const attendanceByEmployee = new Map<string, any[]>();
     (attendanceLogs || []).forEach((log: any) => {
       if (!attendanceByEmployee.has(log.employee_id)) {
         attendanceByEmployee.set(log.employee_id, []);
       }
-      attendanceByEmployee.get(log.employee_id).push(log);
+      attendanceByEmployee.get(log.employee_id)!.push(log);
     });
 
     const periodsPerMonth = PERIODS_PER_MONTH[run.pay_schedule] ?? 1;
@@ -267,28 +319,9 @@ export async function POST(request: NextRequest) {
     const payslips = payrollInfos.map((info) => {
       const salary = Number(info.basic_salary);
       const employee = info.hr1_employees || {};
-      const jobPosition = employee.hr1_job_positions || {};
       const settings = settingsMap.get(employee.job_position_id) || {};
-      const position = positionMap.get(employee.job_position_id) || {};
       const employeeAttendance =
         attendanceByEmployee.get(info.employee_id) || [];
-
-      const daysWorked = employeeAttendance.filter(
-        (log: any) => log.status === "On-Shift"
-      ).length;
-
-      const totalHours = employeeAttendance.reduce(
-        (total: number, log: any) => {
-          if (log.status === "On-Shift") {
-            const start = new Date(`1970-01-01T${log.shift_start}`);
-            const end = new Date(`1970-01-01T${log.shift_end}`);
-            const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-            return total + hours;
-          }
-          return total;
-        },
-        0
-      );
 
       const customDailyRate = info.custom_daily_rate
         ? Number(info.custom_daily_rate)
@@ -304,15 +337,120 @@ export async function POST(request: NextRequest) {
 
       const hourlyRate = dailyRate / hoursPerDay;
 
-      const regularHours = Math.min(
-        totalHours,
-        daysWorked * (hoursPerDay - breakHours)
+      const daysWorked = employeeAttendance.filter(
+        (log: any) => log.status === "On-Shift"
+      ).length;
+
+      const employeeBenefits = (
+        benefitsByEmployee.get(info.employee_id) || []
+      ).filter((b: any) => isEffective(b));
+
+      const ndConfig = employeeBenefits.find(
+        (b: any) =>
+          b.night_diff_enabled === true &&
+          b.night_diff_start &&
+          b.night_diff_end &&
+          b.deduct_from_payroll === true
       );
-      const overtimeHours = Math.max(0, totalHours - regularHours);
+
+      let totalHours = 0;
+      let regularHours = 0;
+      let overtimeHours = 0;
+      let nightDiffHours = 0;
+      let holidayHours = 0;
+      let regularHolidayHours = 0;
+      let specialHolidayHours = 0;
+
+      employeeAttendance.forEach((log: any) => {
+        if (log.status !== "On-Shift") return;
+
+        const shiftMinutes = minutesBetween(log.shift_start, log.shift_end);
+        const hours = shiftMinutes / 60;
+        totalHours += hours;
+
+        const dailyRegularCap = hoursPerDay - breakHours;
+        const dayRegular = Math.min(hours, dailyRegularCap);
+        const dayOt = Math.max(0, hours - dailyRegularCap);
+        regularHours += dayRegular;
+        overtimeHours += dayOt;
+
+        if (ndConfig) {
+          const shiftStartMin = timeToMinutes(log.shift_start);
+          const shiftEndMin = timeToMinutes(log.shift_end);
+          const ndStartMin = timeToMinutes(ndConfig.night_diff_start);
+          const ndEndMin = timeToMinutes(ndConfig.night_diff_end);
+
+          const overlap = overlapMinutes(
+            shiftStartMin,
+            shiftEndMin,
+            ndStartMin,
+            ndEndMin
+          );
+          nightDiffHours += overlap / 60;
+        }
+
+        const logDate = String(log.created_at || "").slice(0, 10);
+        const holidayType = holidayMap.get(logDate);
+        if (holidayType) {
+          holidayHours += hours;
+          if (holidayType === "regular") regularHolidayHours += hours;
+          else if (holidayType === "special_non_working")
+            specialHolidayHours += hours;
+        }
+      });
 
       const regularPay = regularHours * hourlyRate;
       const overtimePay = overtimeHours * hourlyRate * overtimeRate;
+
+      let nightDiffPay = 0;
+      if (ndConfig && nightDiffHours > 0) {
+        const ndRate = Number(ndConfig.night_diff_rate) || 1.1;
+        nightDiffPay = nightDiffHours * hourlyRate * (ndRate - 1);
+      }
+
+      let holidayPay = 0;
+      const holidayBenefit = employeeBenefits.find(
+        (b: any) =>
+          b.benefit_type === "holiday_pay" && b.deduct_from_payroll === true
+      );
+      if (holidayBenefit) {
+        const regMultiplier = Number(holidayBenefit.holiday_multiplier) || 2.0;
+        holidayPay += regularHolidayHours * hourlyRate * (regMultiplier - 1);
+        holidayPay += specialHolidayHours * hourlyRate * 0.3;
+      }
+
+      let allowancesPay = 0;
+      let bonusPay = 0;
+      let incentivePay = 0;
+
+      employeeBenefits.forEach((b: any) => {
+        if (b.deduct_from_payroll !== true) return;
+
+        const monthly = Number(b.amount) || 0;
+        let perPeriod = 0;
+        if (b.frequency === "monthly") perPeriod = monthly / periodsPerMonth;
+        else if (b.frequency === "quarterly")
+          perPeriod = monthly / (periodsPerMonth * 3);
+        else if (b.frequency === "semi_annual")
+          perPeriod = monthly / (periodsPerMonth * 6);
+        else if (b.frequency === "annual")
+          perPeriod = monthly / (periodsPerMonth * 12);
+        else perPeriod = monthly;
+
+        if (b.benefit_type === "allowance") allowancesPay += perPeriod;
+        else if (b.benefit_type === "bonus") bonusPay += perPeriod;
+        else if (b.benefit_type === "incentive") incentivePay += perPeriod;
+      });
+
       const basicPay = round2(regularPay + overtimePay);
+      const grossPay = round2(
+        basicPay +
+          nightDiffPay +
+          holidayPay +
+          allowancesPay +
+          bonusPay +
+          incentivePay
+      );
 
       const sssBracket = (sssBrackets || []).find(
         (b) =>
@@ -407,7 +545,7 @@ export async function POST(request: NextRequest) {
           withholdingTax +
           otherDeductions
       );
-      const grossPay = basicPay;
+
       const netPay = round2(grossPay - totalDeductions);
 
       return {
@@ -430,6 +568,13 @@ export async function POST(request: NextRequest) {
         hours_worked: round2(totalHours),
         regular_hours: round2(regularHours),
         overtime_hours: round2(overtimeHours),
+        night_diff_hours: round2(nightDiffHours),
+        night_diff_pay: round2(nightDiffPay),
+        holiday_hours: round2(holidayHours),
+        holiday_pay: round2(holidayPay),
+        allowances_pay: round2(allowancesPay),
+        bonus_pay: round2(bonusPay),
+        incentive_pay: round2(incentivePay),
       };
     });
 
@@ -477,8 +622,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
 }

@@ -51,19 +51,19 @@ export const Dropdown: React.FC<DropdownProps> = ({
             <button
                 type="button"
                 className={cn(
-                    'w-full flex items-center justify-between px-4 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all',
+                    'w-full flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all',
                     disabled && 'opacity-50 cursor-not-allowed',
                     buttonClassName
                 )}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 disabled={disabled}
             >
-                <span className={cn('text-sm', !selectedItem && 'text-gray-400')}>
+                <span className={cn('text-sm text-gray-900 dark:text-gray-100', !selectedItem && 'text-gray-400 dark:text-gray-500')}>
                     {selectedItem ? selectedItem.label : placeholder}
                 </span>
                 <ChevronDown
                     className={cn(
-                        'h-4 w-4 text-gray-400 transition-transform duration-200',
+                        'h-4 w-4 text-gray-400 dark:text-gray-500 transition-transform duration-200',
                         isOpen && 'transform rotate-180'
                     )}
                 />
@@ -72,7 +72,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             {isOpen && (
                 <div
                     className={cn(
-                        'absolute z-50 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-auto',
+                        'absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-h-60 overflow-auto',
                         menuClassName
                     )}
                 >
@@ -80,9 +80,9 @@ export const Dropdown: React.FC<DropdownProps> = ({
                         <button
                             key={String(item.value)}
                             className={cn(
-                                'w-full flex items-center px-4 py-2 text-sm text-left hover:bg-gray-50 transition-colors',
-                                item.value === value && 'bg-blue-50 text-blue-700',
-                                item.disabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
+                                'w-full flex items-center px-4 py-2 text-sm text-left text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
+                                item.value === value && 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+                                item.disabled && 'opacity-50 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent'
                             )}
                             onClick={() => {
                                 if (!item.disabled) {

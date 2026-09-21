@@ -51,7 +51,7 @@ export const Search: React.FC<SearchProps> = ({
             onBlur={() => setIsFocused(false)}
         >
             <SearchIcon
-                className={`absolute left-3 h-4 w-4 transition-colors ${isFocused ? 'text-blue-500' : 'text-gray-400'
+                className={`absolute left-3 h-4 w-4 transition-colors ${isFocused ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
                     }`}
             />
             <input
@@ -60,15 +60,15 @@ export const Search: React.FC<SearchProps> = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={placeholder}
-                className="w-full pl-10 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white"
+                className="w-full pl-10 pr-10 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
             />
             {query && (
                 <button
                     onClick={handleClear}
-                    className="absolute right-3 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                    className="absolute right-3 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
                     aria-label="Clear search"
                 >
-                    <X className="h-4 w-4 text-gray-400" />
+                    <X className="h-4 w-4 text-gray-400 dark:text-gray-500" />
                 </button>
             )}
         </div>

@@ -10,23 +10,31 @@ export async function PUT(
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    // requireAdmin returns the admin object on success
+    const admin = authResult as {
+      id: string;
+      email: string;
+      fullName: string;
+      role: string;
+    };
+
     const body = await request.json();
-    const user = (request as any).user;
 
     const updateData: any = {
+      performance_appraisal_id: body.performance_appraisal_id || null,
       performance_rating: body.performance_rating,
+      current_salary: body.current_salary,
       recommended_increase_percent: body.recommended_increase_percent,
       recommended_new_salary: body.recommended_new_salary,
       proposed_effective_date: body.proposed_effective_date,
       status: body.status,
-      manager_notes: body.manager_notes || null,
-      hr_notes: body.hr_notes || null,
+      approver_notes: body.approver_notes || null,
       updated_at: new Date().toISOString(),
     };
 
     if (body.status === "approved" || body.status === "implemented") {
-      updateData.approved_by = user?.id || null;
-      updateData.approved_by_name = user?.fullName || null;
+      updateData.approved_by = admin.id;
+      updateData.approved_by_name = admin.fullName;
       updateData.approved_at = new Date().toISOString();
     }
 

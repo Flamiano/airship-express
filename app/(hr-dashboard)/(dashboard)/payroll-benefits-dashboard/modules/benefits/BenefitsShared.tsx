@@ -2,11 +2,6 @@
 
 import React from 'react';
 
-/**
- * Reads a CSS custom property off the document root, with a fallback for SSR
- * or if the variable isn't defined yet. Used to feed Chart.js colors that
- * automatically track the app's light/dark theme.
- */
 export function cssVar(name: string, fallback: string) {
     if (typeof window === 'undefined') return fallback;
     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -21,8 +16,6 @@ export const formatPercent = (rate: number | null | undefined, digits = 2) =>
 
 export type StatTint = 'blue' | 'amber' | 'emerald' | 'purple' | 'red' | 'gray' | 'pink';
 
-// Same tint recipe as PayrollDashboard's StatCard — literal Tailwind colors
-// need an explicit dark: variant since they don't ride on the theme's CSS vars.
 export const TINT_CLASSES: Record<StatTint, string> = {
     blue: 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400',
     amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400',
@@ -41,13 +34,6 @@ interface StatCardProps {
     hint?: string;
 }
 
-/**
- * Small metric tile used across the payroll & benefits dashboards.
- * Mirrors PayrollDashboard's StatCard exactly: bg-paper / border-line / text-ink
- * / text-muted already track the app's dark theme via CSS variables, so no
- * extra dark: overrides are needed on the card shell itself — only the
- * tint badge (a literal Tailwind color) gets one.
- */
 export function StatCard({ icon: Icon, label, value, tint, hint }: StatCardProps) {
     return (
         <div className="rounded-xl border border-line bg-paper p-4 dark:border-line/30">
@@ -63,7 +49,6 @@ export function StatCard({ icon: Icon, label, value, tint, hint }: StatCardProps
     );
 }
 
-/** Shared chart.js defaults so every chart in the module reads theme colors consistently. */
 export const chartAxisColor = () => cssVar('--muted', '#6b6b76');
 export const chartGridColor = () => cssVar('--line', '#eaeaea');
 export const chartInkColor = () => cssVar('--ink', '#1c1b1f');

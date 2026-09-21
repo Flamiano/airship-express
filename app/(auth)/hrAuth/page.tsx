@@ -21,7 +21,6 @@ function HRLoginContent() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [debugInfo, setDebugInfo] = useState<string>("");
 
-    // Check if user is already logged in
     useEffect(() => {
         const checkSession = async () => {
             try {

@@ -254,3 +254,15 @@ export function ConfirmModal({
     </Modal>
   );
 }
+
+export const findEmployeeById = (employees: any[], employeeId: string) =>
+  employees.find((e) => e.employee_id === employeeId);
+
+export const employeeHasBank = (employees: any[], employeeId: string) => {
+  const emp = findEmployeeById(employees, employeeId);
+  if (!emp) return false;
+  return (
+    emp.has_complete_bank === true ||
+    (!!emp.bank_account_no && !!emp.bank_name)
+  );
+};
