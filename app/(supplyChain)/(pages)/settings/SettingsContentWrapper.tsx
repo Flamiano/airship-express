@@ -1389,7 +1389,7 @@ export default function SettingsContentWrapper() {
                                     <div className="h-4 w-full rounded-full bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] p-0.5 flex overflow-hidden">
                                         <div
                                             style={{ width: `${execPct}%` }}
-                                            className="h-full bg-purple-500 rounded-l-full transition-all duration-300"
+                                            className="h-full bg-pink-500 rounded-l-full transition-all duration-300"
                                             title={`Executive & Admin: ${execSlots} slots (${execPct}%)`}
                                         />
                                         <div
@@ -1406,7 +1406,7 @@ export default function SettingsContentWrapper() {
 
                                     <div className="flex flex-wrap items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400 gap-2">
                                         <div className="flex items-center gap-1.5">
-                                            <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                                            <span className="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
                                             <span>Executive & Admin: <strong>{execSlots}</strong> ({execPct}%)</span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
@@ -1467,7 +1467,7 @@ export default function SettingsContentWrapper() {
                             >
                                 <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white text-sm">
                                     <span>Enterprise (500 Slots)</span>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold">5x Scale</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-600 dark:text-pink-400 font-bold">5x Scale</span>
                                 </div>
                                 <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                                     50 Executive • 100 Manager • 350 Employee
@@ -1482,7 +1482,7 @@ export default function SettingsContentWrapper() {
                         <div className="p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] flex flex-col justify-between space-y-4">
                             <div>
                                 <div className="flex items-center justify-between">
-                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30">
                                         Tier 1: Top VIP (Min: {getDynamicMinSlot('executiveSlots')}{activeSlotCounts.executiveSlots > 0 ? ` • ${activeSlotCounts.executiveSlots} Active` : ''} • Default: 10)
                                     </span>
                                     {!isExecutiveUser ? (
@@ -1521,7 +1521,7 @@ export default function SettingsContentWrapper() {
                                         disabled={!isExecutiveUser}
                                         value={settings.concurrencySlots?.executiveSlots || 10}
                                         onChange={(e) => handleSlotChange('executiveSlots', parseInt(e.target.value, 10))}
-                                        className="flex-1 py-2 px-3 text-center text-lg font-black text-purple-600 dark:text-purple-400 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-xl border border-white/40 dark:border-white/[0.04] focus:outline-none focus:ring-2 focus:ring-purple-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="flex-1 py-2 px-3 text-center text-lg font-black text-pink-600 dark:text-pink-400 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-xl border border-white/40 dark:border-white/[0.04] focus:outline-none focus:ring-2 focus:ring-pink-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
                                     />
                                     <button
                                         type="button"
@@ -1540,7 +1540,7 @@ export default function SettingsContentWrapper() {
                                     disabled={!isExecutiveUser}
                                     value={settings.concurrencySlots?.executiveSlots || 10}
                                     onChange={(e) => handleSlotChange('executiveSlots', parseInt(e.target.value, 10))}
-                                    className="w-full accent-purple-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full accent-pink-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 />
                                 <div className="text-[10px] text-right text-slate-400">Min: {getDynamicMinSlot('executiveSlots')}{activeSlotCounts.executiveSlots > 0 ? ` (${activeSlotCounts.executiveSlots} Active)` : ''} • Default: 10 • Max: 500</div>
                             </div>
