@@ -8,14 +8,15 @@ import { sendSupplyChainEmail } from "../../../lib/email/mailer";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { request_ids, action = "create_draft", send_email = false, role = "User", user_name = "AI Assistant" } = body;
+        const { request_ids, action = "create_draft", send_email = false, role = "User", user_name = "AI Assistant", pagePermissions } = body;
 
-        // Authorization check: Only Manager, Admin, Executive can generate POs
+        // Authorization check: Dynamic permissions for /purchase-orders or /procurement or Executive/Admin/Manager
         const normalizedRole = (role || "").toLowerCase().trim();
-        const allowedRoles = ["manager", "admin", "executive"];
-        if (normalizedRole && !allowedRoles.includes(normalizedRole)) {
+        const configuredRoles: string[] = pagePermissions?.['/purchase-orders'] || pagePermissions?.['/procurement'] || ["Executive", "Admin", "Manager"];
+        const isAllowed = normalizedRole === 'executive' || configuredRoles.some((r: string) => r.toLowerCase().trim() === normalizedRole);
+        if (normalizedRole && !isAllowed) {
             return NextResponse.json(
-                { success: false, error: "You are not authorized to create purchase orders from purchase requests." },
+                { success: false, error: "You do not have permission to create purchase orders." },
                 { status: 403 }
             );
         }

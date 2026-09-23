@@ -95,12 +95,6 @@ export async function GET(request: Request) {
         const { data: dbEmployees, error: dbError } = await supabase
             .from('mock_employees')
             .select('*')
-            .not('role', 'ilike', '%Admin%')
-            .not('role', 'ilike', '%Executive%')
-            .not('position', 'ilike', '%Rider%')
-            .not('position', 'ilike', '%Driver%')
-            .not('position', 'ilike', '%Drop-Off%')
-            .not('position', 'ilike', '%Pick-Up%')
             .order('display_name', { ascending: true });
 
         if (dbError) {
@@ -115,6 +109,13 @@ export async function GET(request: Request) {
             const pos = (emp.position || '').toLowerCase();
             const dept = (emp.department || '').toLowerCase();
             const role = (emp.role || '').toLowerCase();
+            const title = (emp.job_title || emp.title || '').toLowerCase();
+
+            // Exclude Admin and Executive accounts
+            if (role.includes('admin') || role.includes('executive')) {
+                return false;
+            }
+
             const isRiderOrDriver = (
                 pos.includes('rider') ||
                 pos.includes('driver') ||
@@ -122,6 +123,8 @@ export async function GET(request: Request) {
                 pos.includes('drop off') ||
                 pos.includes('pick-up') ||
                 pos.includes('pick up') ||
+                title.includes('rider') ||
+                title.includes('driver') ||
                 dept.includes('rider') ||
                 dept.includes('driver') ||
                 role.includes('rider') ||

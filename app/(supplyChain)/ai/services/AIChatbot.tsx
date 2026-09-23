@@ -10,6 +10,7 @@ import { RobotAvatar, RobotHeader } from "../components";
 import AppButton from "../../components/ui/AppButton";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { user } from "../../lib/services/Class/user";
+import { settingsService } from "../../lib/services/settingsService";
 import { ShieldAlert, Clock, AlertTriangle, GripVertical, Minus, Maximize2, Minimize2, X, Sparkles, Eye, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, FileText, Image as ImageIcon, FileCheck, Layers, Search, RefreshCw, Copy, Check } from "lucide-react";
 interface PendingRequestItem {
     name: string;
@@ -836,6 +837,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         role: currentRole,
                         userName: currentUserName,
                         userEmail: currentUserEmail,
+                        pagePermissions: settingsService.getSettings().pagePermissions,
                     })
                 });
                 const docData = await docRes.json();
@@ -934,6 +936,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         userId: currentUserId,
                         userEmail: currentUserEmail,
                         userName: currentUserName,
+                        pagePermissions: settingsService.getSettings().pagePermissions,
                     }),
                 });
                 if (!response.ok) {
@@ -1168,6 +1171,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     send_email: sendEmail,
                     role: currentRole,
                     user_name: currentUserName,
+                    pagePermissions: settingsService.getSettings().pagePermissions,
                 })
             });
             const data = await res.json();
@@ -1241,6 +1245,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     role: currentRole,
                     user_name: currentUserName,
                     user_email: currentUserEmail,
+                    pagePermissions: settingsService.getSettings().pagePermissions,
                 })
             });
             const data = await res.json();
@@ -1288,8 +1293,8 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const renderPendingRequestsWidget = (msg: Message) => {
         if (!msg.pendingRequests || msg.pendingRequests.length === 0)
             return null;
-        const currentRole = user.getRole().toLowerCase();
-        const canManagePOs = ['admin', 'manager', 'executive', 'employee', 'user'].includes(currentRole);
+        const currentRole = user.getRole();
+        const canManagePOs = settingsService.canAccessPage(currentRole, '/purchase-orders') || settingsService.canAccessPage(currentRole, '/procurement');
         const allSelected = msg.pendingRequests.length > 0 && msg.pendingRequests.every(pr => selectedPRIds.has(pr.id));
         return (<div className="mt-3.5 pt-3 border-t border-slate-200/90 dark:border-[#353746] space-y-3">
                 <div className="flex items-center justify-between gap-2">
@@ -1387,8 +1392,8 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const renderLowStockWidget = (msg: Message) => {
         if (!msg.lowStockItems || msg.lowStockItems.length === 0)
             return null;
-        const currentRole = user.getRole().toLowerCase();
-        const canManagePRs = ['admin', 'executive', 'manager'].includes(currentRole);
+        const currentRole = user.getRole();
+        const canManagePRs = settingsService.canAccessPage(currentRole, '/procurement');
         const outOfStockCount = msg.lowStockItems.filter(it => it.current_stock === 0).length;
         const lowStockCount = msg.lowStockItems.filter(it => it.current_stock > 0).length;
         const filteredItems = msg.lowStockItems.filter(it => {

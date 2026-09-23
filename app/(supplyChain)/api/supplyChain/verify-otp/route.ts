@@ -1,8 +1,19 @@
-// app/(supplyChain)/api/supplyChain/verify-otp/route.ts
-
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 import { createHash, randomBytes } from 'crypto';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 function generateTemporaryToken(): string {
     return randomBytes(16).toString('hex');
@@ -196,26 +207,141 @@ export async function POST(request: Request) {
                 }
             }
 
+            // Tiered Concurrency Slot Rate Limiter
+            const { data: settingsRow } = await supabaseAdmin
+                .from('sc_system_settings')
+                .select('concurrency_slots')
+                .eq('id', 'default_settings')
+                .maybeSingle();
+
+            const slots = settingsRow?.concurrency_slots || {
+                executiveSlots: 10,
+                managerSlots: 20,
+                employeeSlots: 70,
+            };
+
+            const executiveSlots = slots.executiveSlots ?? 10;
+            const managerSlots = slots.managerSlots ?? 20;
+            const employeeSlots = slots.employeeSlots ?? 70;
+            const totalCapacity = executiveSlots + managerSlots + employeeSlots;
+
+            // Fetch active sessions via supabaseAdmin
+            const { data: activeSessions } = await supabaseAdmin
+                .from('sessions')
+                .select('id, user_id, is_active, in_queue')
+                .eq('is_active', true);
+
+            // Exclude current user's existing session if re-authenticating
+            const activeList = (activeSessions || []).filter(s => s.user_id !== existingUser.id);
+            const userIds = activeList.map(s => s.user_id).filter(Boolean);
+
+            const userRolesMap: Record<string, string> = {};
+            if (userIds.length > 0) {
+                const { data: usersData } = await supabaseAdmin
+                    .from('users')
+                    .select('id, role')
+                    .in('id', userIds);
+
+                (usersData || []).forEach(u => {
+                    userRolesMap[u.id] = (u.role || 'Employee').toLowerCase();
+                });
+            }
+
+            const totalActive = activeList.length;
+
+            let activeExecAdmin = 0;
+            let activeManager = 0;
+            let activeEmployee = 0;
+
+            activeList.forEach((s) => {
+                const r = userRolesMap[s.user_id] || 'employee';
+                if (r === 'executive' || r === 'admin') activeExecAdmin++;
+                else if (r === 'manager') activeManager++;
+                else activeEmployee++;
+            });
+
+            const normEffectiveRole = effectiveRole.toLowerCase();
+            let isAdmitted = false;
+            let tierName = 'Employee';
+            let tierSlots = employeeSlots;
+            let tierActive = activeEmployee;
+
+            if (normEffectiveRole === 'executive' || normEffectiveRole === 'admin') {
+                tierName = 'Executive/Admin';
+                tierSlots = executiveSlots;
+                tierActive = activeExecAdmin;
+                isAdmitted = activeExecAdmin < executiveSlots;
+            } else if (normEffectiveRole === 'manager') {
+                tierName = 'Manager';
+                tierSlots = managerSlots;
+                tierActive = activeManager;
+                isAdmitted = activeManager < managerSlots;
+            } else {
+                tierName = 'Employee';
+                tierSlots = employeeSlots;
+                tierActive = activeEmployee;
+                isAdmitted = activeEmployee < employeeSlots;
+            }
+
+            if (!isAdmitted) {
+                // Record queued presence in sessions table
+                await supabaseAdmin
+                    .from('sessions')
+                    .upsert({
+                        user_id: existingUser.id,
+                        session_token: randomBytes(32).toString('hex'),
+                        expires_at: expiresAt.toISOString(),
+                        email: email,
+                        hr_employee_name: existingUser.display_name,
+                        is_active: false,
+                        in_queue: true,
+                        remember_me: rememberMe || false,
+                        user_agent: userAgent,
+                        ip_address: ipAddress,
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: 'email' });
+
+                const { count: inQueueCount } = await supabaseAdmin
+                    .from('sessions')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('in_queue', true);
+
+                return NextResponse.json(
+                    {
+                        queued: true,
+                        position: inQueueCount || 1,
+                        activeUsers: totalActive,
+                        maxCapacity: totalCapacity,
+                        tierName,
+                        tierActive,
+                        tierSlots,
+                        message: `The ${tierName} tier (${tierActive}/${tierSlots} slots occupied) is currently at capacity. You have been placed in the waiting queue.`
+                    },
+                    { status: 429 }
+                );
+            }
+
             const sessionToken = randomBytes(32).toString('hex');
 
             // deactivate existing sessions
-            await supabase
+            await supabaseAdmin
                 .from('sessions')
                 .update({
                     is_active: false,
+                    in_queue: false,
                     updated_at: new Date().toISOString()
                 })
                 .eq('user_id', existingUser.id)
                 .eq('is_active', true);
 
-            const { data: existingSession } = await supabase
+            const { data: existingSession } = await supabaseAdmin
                 .from('sessions')
                 .select('id')
                 .eq('email', email)
                 .maybeSingle();
 
             if (existingSession) {
-                const { error: updateError } = await supabase
+                const { error: updateError } = await supabaseAdmin
                     .from('sessions')
                     .update({
                         session_token: sessionToken,
@@ -223,6 +349,7 @@ export async function POST(request: Request) {
                         ip_address: ipAddress,
                         user_agent: userAgent,
                         is_active: true,
+                        in_queue: false,
                         remember_me: rememberMe || false,
                         hr_employee_name: existingUser.display_name,
                         updated_at: new Date().toISOString(),
@@ -237,7 +364,7 @@ export async function POST(request: Request) {
                 }
 
             } else {
-                const { error: insertError } = await supabase
+                const { error: insertError } = await supabaseAdmin
                     .from('sessions')
                     .insert({
                         user_id: existingUser.id,
@@ -246,6 +373,7 @@ export async function POST(request: Request) {
                         email: email,
                         hr_employee_name: existingUser.display_name,
                         is_active: true,
+                        in_queue: false,
                         remember_me: rememberMe || false,
                         user_agent: userAgent,
                         ip_address: ipAddress,

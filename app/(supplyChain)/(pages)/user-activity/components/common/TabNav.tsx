@@ -6,6 +6,7 @@ import { ActivityTab } from '../../types';
 interface TabNavProps {
     activeTab: ActivityTab;
     onTabChange: (tab: ActivityTab) => void;
+    activeUsersCount: number;
     sessionsCount: number;
     blockedCount: number;
     appealsCount: number;
@@ -15,12 +16,14 @@ interface TabNavProps {
 export const TabNav: React.FC<TabNavProps> = ({
     activeTab,
     onTabChange,
+    activeUsersCount,
     sessionsCount,
     blockedCount,
     appealsCount,
     activitiesCount,
 }) => {
     const tabs: { id: ActivityTab; label: string; icon: string; count: number }[] = [
+        { id: 'active_users', label: 'Active Users', icon: 'fa-user-check', count: activeUsersCount },
         { id: 'sessions', label: 'Sessions', icon: 'fa-laptop', count: sessionsCount },
         { id: 'blocked', label: 'Blocked', icon: 'fa-ban', count: blockedCount },
         { id: 'appeals', label: 'Appeals', icon: 'fa-message', count: appealsCount },

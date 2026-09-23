@@ -14,7 +14,7 @@ const STREAM_CONFIG = {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { question, history, role, userId, userEmail, userName } = body;
+        const { question, history, role, userId, userEmail, userName, pagePermissions } = body;
 
         if (!question || typeof question !== 'string') {
             return new Response(
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        const result = await buildSystemPrompt(question, history, role);
+        const result = await buildSystemPrompt(question, history, role, pagePermissions);
 
         if (!result.isRelated || (result.response && !result.prompt)) {
             const text = result.response || 'Out of scope';

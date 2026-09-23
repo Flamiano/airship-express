@@ -32,6 +32,8 @@ export interface Document {
         total_amount: number;
     } | null;
     force_user_name?: string | null;
+    Price?: string | null;
+    "Price"?: string | null;
 }
 
 export interface Supplier {

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Loader2, Check, X, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { maskEmail } from '../services/scAuthService';
 
 const isUUID = (str?: string | null): boolean => {
     if (!str) return false;
@@ -120,7 +121,7 @@ export default function PasswordSetupModal({
                             <div className="mb-4 p-3.5 sm:p-4 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.6),inset_-2px_-2px_6px_rgba(255,255,255,0.02)] rounded-2xl border border-white/40 dark:border-white/[0.06]">
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Employee</p>
                                 <p className="font-semibold text-slate-900 dark:text-white text-sm sm:text-base mt-0.5">{selectedEmployeeForPassword.display_name}</p>
-                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">{selectedEmployeeForPassword.email}</p>
+                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">{maskEmail(selectedEmployeeForPassword.email)}</p>
                                 {(selectedEmployeeForPassword.employee_id || selectedEmployeeForPassword.id) && (
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">ID: {formatId(selectedEmployeeForPassword.employee_id || selectedEmployeeForPassword.id)}</p>
                                 )}

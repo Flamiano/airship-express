@@ -1,5 +1,17 @@
-import { supabase } from '../../../lib/services/client/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 export async function POST(request: Request) {
     try {
@@ -25,11 +37,11 @@ export async function POST(request: Request) {
         }
 
         // find session
-        const { data: session, error: sessionError } = await supabase
+        const { data: session, error: sessionError } = await supabaseAdmin
             .from('sessions')
             .select('*')
             .eq('session_token', sessionToken)
-            .single();
+            .maybeSingle();
 
         if (sessionError || !session) {
             return NextResponse.json(
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
         }
 
         // deactivate session but keep for reuse
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
             .from('sessions')
             .update({
                 is_active: false,
@@ -63,7 +75,7 @@ export async function POST(request: Request) {
 
         // log activity
         try {
-            await supabase
+            await supabaseAdmin
                 .from('user_activity')
                 .insert({
                     user_id: session.user_id,

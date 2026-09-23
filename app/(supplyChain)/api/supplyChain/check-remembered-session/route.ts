@@ -1,5 +1,17 @@
-import { supabase } from '../../../lib/services/client/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 export async function GET(request: Request) {
     try {
@@ -14,7 +26,7 @@ export async function GET(request: Request) {
         }
 
         // find session by token
-        const { data: session, error } = await supabase
+        const { data: session, error } = await supabaseAdmin
             .from('sessions')
             .select('*')
             .eq('session_token', sessionToken)
@@ -36,7 +48,7 @@ export async function GET(request: Request) {
 
         // check expiration
         if (new Date(session.expires_at) < new Date()) {
-            await supabase
+            await supabaseAdmin
                 .from('sessions')
                 .update({ is_active: false })
                 .eq('id', session.id);
@@ -56,7 +68,7 @@ export async function GET(request: Request) {
         }
 
         // get user info
-        const { data: userData, error: userError } = await supabase
+        const { data: userData, error: userError } = await supabaseAdmin
             .from('users')
             .select('id, display_name, email, role')
             .eq('id', session.user_id)
@@ -105,7 +117,7 @@ export async function GET(request: Request) {
 
         // reactivate if inactive
         if (!session.is_active) {
-            await supabase
+            await supabaseAdmin
                 .from('sessions')
                 .update({
                     is_active: true,

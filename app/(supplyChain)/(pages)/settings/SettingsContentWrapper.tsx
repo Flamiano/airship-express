@@ -25,6 +25,7 @@ import {
     List,
     X,
     ShieldAlert,
+    Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { user } from '../../lib/services/Class/user';
@@ -35,16 +36,19 @@ import {
     ALL_ROLES,
     DEFAULT_PAGE_PERMISSIONS,
     DEFAULT_ROLE_REDIRECTS,
+    DEFAULT_CONCURRENCY_SLOTS,
+    ConcurrencySlotSettings,
     PagePermission
 } from '../../lib/services/settingsService';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useConfirm } from '../../components/ui/ConfirmModal';
 import { SkeletonBlock } from '../../components/ui/SkeletonLoader';
+import { supabase } from '../../lib/services/client/supabase';
 
 const ALL_SECTIONS = ['all', 'Operations', 'Procurement', 'Intelligence', 'Others'] as const;
 
 const TIMEOUT_PRESETS = [
-    { label: '30 sec (Test)', value: 30, desc: 'Fast test mode' },
+    { label: '30 sec', value: 30, desc: 'Fast test mode' },
     { label: '1 min', value: 60, desc: 'Ultra-secure' },
     { label: '2 min (Default)', value: 120, desc: 'Standard security' },
     { label: '5 min', value: 300, desc: 'Workstation' },
@@ -102,7 +106,7 @@ function SettingsSkeleton() {
 export default function SettingsContentWrapper() {
     const { confirm } = useConfirm();
     const [isLoading, setIsLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'inactivity' | 'roles' | 'audit'>('inactivity');
+    const [activeTab, setActiveTab] = useState<'inactivity' | 'roles' | 'slots' | 'audit'>('inactivity');
     const [settings, setSettings] = useState<SystemSettings>(() => settingsService.getSettings());
     const [isSaving, setIsSaving] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -135,6 +139,52 @@ export default function SettingsContentWrapper() {
             return () => unsubscribe();
         }
     }, []);
+
+    // Active user counts per slot tier
+    const [activeSlotCounts, setActiveSlotCounts] = useState<{
+        executiveSlots: number;
+        managerSlots: number;
+        employeeSlots: number;
+    }>({
+        executiveSlots: 0,
+        managerSlots: 0,
+        employeeSlots: 0,
+    });
+
+    const fetchLiveSlotUsage = useCallback(async () => {
+        try {
+            const res = await fetch('/api/supplyChain/queue-status');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.slots) {
+                    setActiveSlotCounts({
+                        executiveSlots: data.slots.executive?.active || 0,
+                        managerSlots: data.slots.manager?.active || 0,
+                        employeeSlots: data.slots.employee?.active || 0,
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching live slot usage:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchLiveSlotUsage();
+        const interval = setInterval(fetchLiveSlotUsage, 4000);
+
+        const channel = supabase
+            .channel(`settings_slot_realtime_${Date.now()}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => {
+                fetchLiveSlotUsage();
+            })
+            .subscribe();
+
+        return () => {
+            clearInterval(interval);
+            supabase.removeChannel(channel);
+        };
+    }, [fetchLiveSlotUsage]);
 
     // Dirty check memoized
     const markDirty = useCallback((newVal: SystemSettings) => {
@@ -212,6 +262,82 @@ export default function SettingsContentWrapper() {
         };
         setSettings(updated);
         markDirty(updated);
+    };
+
+    // --- Concurrency Slots Handlers ---
+    const DEFAULT_SLOTS = {
+        executiveSlots: 10,
+        managerSlots: 20,
+        employeeSlots: 70,
+    } as const;
+
+    const getDynamicMinSlot = (tier: keyof ConcurrencySlotSettings) => {
+        const active = activeSlotCounts[tier] || 0;
+        return Math.max(1, active);
+    };
+
+    const handleSlotChange = (tier: keyof ConcurrencySlotSettings, value: number) => {
+        const isExecutive = currentUserRole?.toLowerCase() === 'executive';
+        if (tier === 'executiveSlots' && !isExecutive) {
+            toast.error('Only Executive accounts are authorized to modify Executive & Admin slots.');
+            return;
+        }
+
+        const activeCount = activeSlotCounts[tier] || 0;
+        const minVal = Math.max(1, activeCount);
+        const defaultVal = DEFAULT_SLOTS[tier];
+        const numVal = isNaN(value) ? defaultVal : value;
+        const sanitized = Math.max(minVal, Math.min(1000, numVal));
+
+        const tierName = tier === 'executiveSlots' ? 'Executive & Admin' : tier === 'managerSlots' ? 'Manager' : 'Employee';
+
+        if (numVal < minVal) {
+            if (activeCount > 0) {
+                toast.warning(`Cannot lessen ${tierName} slots below ${minVal} because ${activeCount} ${tierName} user${activeCount === 1 ? ' is' : 's are'} currently active.`);
+            } else {
+                toast.warning(`Minimum allowed for ${tierName} slots is ${minVal}.`);
+            }
+        }
+
+        const updatedSlots: ConcurrencySlotSettings = {
+            ...(settings.concurrencySlots || DEFAULT_CONCURRENCY_SLOTS),
+            [tier]: sanitized,
+        };
+        const updated: SystemSettings = {
+            ...settings,
+            concurrencySlots: updatedSlots,
+        };
+        setSettings(updated);
+        markDirty(updated);
+    };
+
+    const handleApplySlotPreset = (exec: number, mgr: number, emp: number) => {
+        const isExecutive = currentUserRole?.toLowerCase() === 'executive';
+        const currentExec = settings.concurrencySlots?.executiveSlots ?? 10;
+        const minExec = getDynamicMinSlot('executiveSlots');
+        const minMgr = getDynamicMinSlot('managerSlots');
+        const minEmp = getDynamicMinSlot('employeeSlots');
+
+        const targetExec = isExecutive ? Math.max(minExec, exec) : currentExec;
+        const targetMgr = Math.max(minMgr, mgr);
+        const targetEmp = Math.max(minEmp, emp);
+
+        if (!isExecutive && exec !== currentExec) {
+            toast.info(`Executive slots remained at ${currentExec} (Executive role required to alter VIP quota).`);
+        }
+
+        const updatedSlots: ConcurrencySlotSettings = {
+            executiveSlots: targetExec,
+            managerSlots: targetMgr,
+            employeeSlots: targetEmp,
+        };
+        const updated: SystemSettings = {
+            ...settings,
+            concurrencySlots: updatedSlots,
+        };
+        setSettings(updated);
+        markDirty(updated);
+        toast.success(`Applied ${targetExec + targetMgr + targetEmp} total slots preset (${targetExec} Exec / ${targetMgr} Mgr / ${targetEmp} Emp).`);
     };
 
     // --- Role Access & Redirection Handlers ---
@@ -562,6 +688,19 @@ export default function SettingsContentWrapper() {
                 >
                     <Shield className="h-4 w-4 shrink-0" />
                     <span>Role Access Matrix</span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('slots')}
+                    className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        activeTab === 'slots'
+                            ? 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_7px_#cbd6e4,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] text-accent border border-white/60 dark:border-white/[0.08]'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                >
+                    <Users className="h-4 w-4 shrink-0" />
+                    <span>Concurrency Slots</span>
                 </button>
 
                 <button
@@ -1208,10 +1347,363 @@ export default function SettingsContentWrapper() {
             </div>
             )}
 
-            {/* TAB 3: Policy Summary & Audit */}
+            {/* TAB: Concurrency Slots Configuration */}
+            {activeTab === 'slots' && (
+                <div className="space-y-4 sm:space-y-6">
+                    {/* Capacity Overview Card */}
+                    {(() => {
+                        const slots = settings.concurrencySlots || DEFAULT_CONCURRENCY_SLOTS;
+                        const execSlots = slots.executiveSlots || 10;
+                        const mgrSlots = slots.managerSlots || 20;
+                        const empSlots = slots.employeeSlots || 70;
+                        const total = execSlots + mgrSlots + empSlots;
+                        const execPct = Math.round((execSlots / total) * 100);
+                        const mgrPct = Math.round((mgrSlots / total) * 100);
+                        const empPct = 100 - execPct - mgrPct;
+
+                        return (
+                            <div className="p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <Users className="h-5 w-5 text-accent" />
+                                            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white font-bricolage">
+                                                System Concurrency Capacity
+                                            </h3>
+                                        </div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            Manage concurrent active session quotas per role tier. If total logged-in users reach capacity, subsequent users enter the login queue until a slot frees up.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        <div className="px-4 py-2 rounded-2xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] border border-white/40 dark:border-white/[0.06] text-right">
+                                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Total Concurrent Slots</span>
+                                            <span className="text-2xl font-black text-accent font-bricolage">{total}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Visual Proportion Bar */}
+                                <div className="space-y-2 pt-2">
+                                    <div className="h-4 w-full rounded-full bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_4px_#cbd6e4,inset_-2px_-2px_4px_#ffffff] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] p-0.5 flex overflow-hidden">
+                                        <div
+                                            style={{ width: `${execPct}%` }}
+                                            className="h-full bg-purple-500 rounded-l-full transition-all duration-300"
+                                            title={`Executive & Admin: ${execSlots} slots (${execPct}%)`}
+                                        />
+                                        <div
+                                            style={{ width: `${mgrPct}%` }}
+                                            className="h-full bg-amber-500 transition-all duration-300"
+                                            title={`Manager: ${mgrSlots} slots (${mgrPct}%)`}
+                                        />
+                                        <div
+                                            style={{ width: `${empPct}%` }}
+                                            className="h-full bg-blue-500 rounded-r-full transition-all duration-300"
+                                            title={`Employee: ${empSlots} slots (${empPct}%)`}
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400 gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                                            <span>Executive & Admin: <strong>{execSlots}</strong> ({execPct}%)</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                                            <span>Manager: <strong>{mgrSlots}</strong> ({mgrPct}%)</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                            <span>Employee & Operator: <strong>{empSlots}</strong> ({empPct}%)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Quick Capacity Presets */}
+                    <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-3">
+                        <div className="flex items-center gap-2">
+                            <SlidersHorizontal className="h-4 w-4 text-accent" />
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-bricolage">
+                                Quick Capacity Presets
+                            </h4>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => handleApplySlotPreset(10, 20, 70)}
+                                className="p-3.5 rounded-2xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_7px_#cbd6e4,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6)] hover:border-accent/40 border border-white/60 dark:border-white/[0.08] text-left transition-all active:scale-[0.98] cursor-pointer"
+                            >
+                                <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white text-sm">
+                                    <span>Standard (100 Slots)</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-bold">Default</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                    10 Executive • 20 Manager • 70 Employee
+                                </div>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => handleApplySlotPreset(20, 40, 140)}
+                                className="p-3.5 rounded-2xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_7px_#cbd6e4,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6)] hover:border-accent/40 border border-white/60 dark:border-white/[0.08] text-left transition-all active:scale-[0.98] cursor-pointer"
+                            >
+                                <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white text-sm">
+                                    <span>High Traffic (200 Slots)</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">2x Scale</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                    20 Executive • 40 Manager • 140 Employee
+                                </div>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => handleApplySlotPreset(50, 100, 350)}
+                                className="p-3.5 rounded-2xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_7px_#cbd6e4,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6)] hover:border-accent/40 border border-white/60 dark:border-white/[0.08] text-left transition-all active:scale-[0.98] cursor-pointer"
+                            >
+                                <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white text-sm">
+                                    <span>Enterprise (500 Slots)</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold">5x Scale</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                    50 Executive • 100 Manager • 350 Employee
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Tier Adjustment Controls Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Executive Slot Control */}
+                        <div className="p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] flex flex-col justify-between space-y-4">
+                            <div>
+                                <div className="flex items-center justify-between">
+                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                                        Tier 1: Top VIP (Min: {getDynamicMinSlot('executiveSlots')}{activeSlotCounts.executiveSlots > 0 ? ` • ${activeSlotCounts.executiveSlots} Active` : ''} • Default: 10)
+                                    </span>
+                                    {!isExecutiveUser ? (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-200/80 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 font-mono font-bold tracking-wider">
+                                            LOCKED (EXEC ONLY)
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-mono font-bold text-slate-400">PRIORITY 1</span>
+                                    )}
+                                </div>
+                                <h4 className="text-base font-bold text-slate-900 dark:text-white mt-2">
+                                    Executive & Admin Slots
+                                </h4>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    {!isExecutiveUser
+                                        ? `Executive & Admin slots are protected. Only Executive accounts can modify this tier (Default: 10 slots • Min: ${getDynamicMinSlot('executiveSlots')}).`
+                                        : `Reserved exclusively for Executive and Admin roles. Even if standard slots are exhausted, executive slots remain open (Default: 10 slots • Min: ${getDynamicMinSlot('executiveSlots')}).`}
+                                </p>
+                            </div>
+
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSlotChange('executiveSlots', ((settings.concurrencySlots?.executiveSlots || 10) - 1))}
+                                        disabled={!isExecutiveUser || (settings.concurrencySlots?.executiveSlots || 10) <= getDynamicMinSlot('executiveSlots')}
+                                        title={!isExecutiveUser ? 'Only Executive accounts can modify Executive slots' : (settings.concurrencySlots?.executiveSlots || 10) <= getDynamicMinSlot('executiveSlots') ? (activeSlotCounts.executiveSlots > 0 ? `Cannot lessen below ${activeSlotCounts.executiveSlots} active users` : 'Minimum 1 slot') : 'Subtract slot'}
+                                        className="w-10 h-10 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] font-black text-base text-slate-700 dark:text-slate-200 hover:text-accent disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed active:scale-95"
+                                    >
+                                        -
+                                    </button>
+                                    <input
+                                        type="number"
+                                        min={getDynamicMinSlot('executiveSlots')}
+                                        max={500}
+                                        disabled={!isExecutiveUser}
+                                        value={settings.concurrencySlots?.executiveSlots || 10}
+                                        onChange={(e) => handleSlotChange('executiveSlots', parseInt(e.target.value, 10))}
+                                        className="flex-1 py-2 px-3 text-center text-lg font-black text-purple-600 dark:text-purple-400 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-xl border border-white/40 dark:border-white/[0.04] focus:outline-none focus:ring-2 focus:ring-purple-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSlotChange('executiveSlots', ((settings.concurrencySlots?.executiveSlots || 10) + 1))}
+                                        disabled={!isExecutiveUser}
+                                        title={!isExecutiveUser ? 'Only Executive accounts can modify Executive slots' : 'Add slot'}
+                                        className="w-10 h-10 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] font-black text-base text-slate-700 dark:text-slate-200 hover:text-accent disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed active:scale-95"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={getDynamicMinSlot('executiveSlots')}
+                                    max={100}
+                                    disabled={!isExecutiveUser}
+                                    value={settings.concurrencySlots?.executiveSlots || 10}
+                                    onChange={(e) => handleSlotChange('executiveSlots', parseInt(e.target.value, 10))}
+                                    className="w-full accent-purple-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                                <div className="text-[10px] text-right text-slate-400">Min: {getDynamicMinSlot('executiveSlots')}{activeSlotCounts.executiveSlots > 0 ? ` (${activeSlotCounts.executiveSlots} Active)` : ''} • Default: 10 • Max: 500</div>
+                            </div>
+                        </div>
+
+                        {/* Manager Slot Control */}
+                        <div className="p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] flex flex-col justify-between space-y-4">
+                            <div>
+                                <div className="flex items-center justify-between">
+                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                        Tier 2: Leadership (Min: {getDynamicMinSlot('managerSlots')}{activeSlotCounts.managerSlots > 0 ? ` • ${activeSlotCounts.managerSlots} Active` : ''} • Default: 20)
+                                    </span>
+                                    <span className="text-[10px] font-mono font-bold text-slate-400">PRIORITY 2</span>
+                                </div>
+                                <h4 className="text-base font-bold text-slate-900 dark:text-white mt-2">
+                                    Manager Reserved Slots
+                                </h4>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    Reserved for Managers, Executives, and Admins. Managers can also utilize any surplus employee slots (Default: 20 slots • Min: {getDynamicMinSlot('managerSlots')}).
+                                </p>
+                            </div>
+
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSlotChange('managerSlots', ((settings.concurrencySlots?.managerSlots || 20) - 1))}
+                                        disabled={(settings.concurrencySlots?.managerSlots || 20) <= getDynamicMinSlot('managerSlots')}
+                                        title={(settings.concurrencySlots?.managerSlots || 20) <= getDynamicMinSlot('managerSlots') ? (activeSlotCounts.managerSlots > 0 ? `Cannot lessen below ${activeSlotCounts.managerSlots} active users` : 'Minimum 1 slot') : 'Subtract slot'}
+                                        className="w-10 h-10 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] font-black text-base text-slate-700 dark:text-slate-200 hover:text-accent disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed active:scale-95"
+                                    >
+                                        -
+                                    </button>
+                                    <input
+                                        type="number"
+                                        min={getDynamicMinSlot('managerSlots')}
+                                        max={500}
+                                        value={settings.concurrencySlots?.managerSlots || 20}
+                                        onChange={(e) => handleSlotChange('managerSlots', parseInt(e.target.value, 10))}
+                                        className="flex-1 py-2 px-3 text-center text-lg font-black text-amber-600 dark:text-amber-400 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-xl border border-white/40 dark:border-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSlotChange('managerSlots', ((settings.concurrencySlots?.managerSlots || 20) + 1))}
+                                        className="w-10 h-10 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] font-black text-base text-slate-700 dark:text-slate-200 hover:text-accent cursor-pointer active:scale-95"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={getDynamicMinSlot('managerSlots')}
+                                    max={200}
+                                    value={settings.concurrencySlots?.managerSlots || 20}
+                                    onChange={(e) => handleSlotChange('managerSlots', parseInt(e.target.value, 10))}
+                                    className="w-full accent-amber-500 cursor-pointer"
+                                />
+                                <div className="text-[10px] text-right text-slate-400">Min: {getDynamicMinSlot('managerSlots')}{activeSlotCounts.managerSlots > 0 ? ` (${activeSlotCounts.managerSlots} Active)` : ''} • Default: 20 • Max: 500</div>
+                            </div>
+                        </div>
+
+                        {/* Employee Slot Control */}
+                        <div className="p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] flex flex-col justify-between space-y-4">
+                            <div>
+                                <div className="flex items-center justify-between">
+                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                                        Tier 3: Standard Pool (Min: {getDynamicMinSlot('employeeSlots')}{activeSlotCounts.employeeSlots > 0 ? ` • ${activeSlotCounts.employeeSlots} Active` : ''} • Default: 70)
+                                    </span>
+                                    <span className="text-[10px] font-mono font-bold text-slate-400">GENERAL</span>
+                                </div>
+                                <h4 className="text-base font-bold text-slate-900 dark:text-white mt-2">
+                                    Employee & Operator Slots
+                                </h4>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    Standard concurrency allocation. Employees and Operators are strictly constrained to this slot capacity (Default: 70 slots • Min: {getDynamicMinSlot('employeeSlots')}).
+                                </p>
+                            </div>
+
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSlotChange('employeeSlots', ((settings.concurrencySlots?.employeeSlots || 70) - 1))}
+                                        disabled={(settings.concurrencySlots?.employeeSlots || 70) <= getDynamicMinSlot('employeeSlots')}
+                                        title={(settings.concurrencySlots?.employeeSlots || 70) <= getDynamicMinSlot('employeeSlots') ? (activeSlotCounts.employeeSlots > 0 ? `Cannot lessen below ${activeSlotCounts.employeeSlots} active users` : 'Minimum 1 slot') : 'Subtract slot'}
+                                        className="w-10 h-10 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] font-black text-base text-slate-700 dark:text-slate-200 hover:text-accent disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed active:scale-95"
+                                    >
+                                        -
+                                    </button>
+                                    <input
+                                        type="number"
+                                        min={getDynamicMinSlot('employeeSlots')}
+                                        max={1000}
+                                        value={settings.concurrencySlots?.employeeSlots || 70}
+                                        onChange={(e) => handleSlotChange('employeeSlots', parseInt(e.target.value, 10))}
+                                        className="flex-1 py-2 px-3 text-center text-lg font-black text-blue-600 dark:text-blue-400 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-xl border border-white/40 dark:border-white/[0.04] focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSlotChange('employeeSlots', ((settings.concurrencySlots?.employeeSlots || 70) + 1))}
+                                        className="w-10 h-10 rounded-xl bg-[#EAF0F6] dark:bg-[#13161F] shadow-[2px_2px_5px_#cbd6e4,-2px_-2px_5px_#ffffff] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] font-black text-base text-slate-700 dark:text-slate-200 hover:text-accent cursor-pointer active:scale-95"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={getDynamicMinSlot('employeeSlots')}
+                                    max={500}
+                                    value={settings.concurrencySlots?.employeeSlots || 70}
+                                    onChange={(e) => handleSlotChange('employeeSlots', parseInt(e.target.value, 10))}
+                                    className="w-full accent-blue-500 cursor-pointer"
+                                />
+                                <div className="text-[10px] text-right text-slate-400">Min: {getDynamicMinSlot('employeeSlots')}{activeSlotCounts.employeeSlots > 0 ? ` (${activeSlotCounts.employeeSlots} Active)` : ''} • Default: 70 • Max: 1000</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Cascading Hierarchy & Queue Logic Explanation */}
+                    <div className="p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-3">
+                        <div className="flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider font-bricolage">
+                                Cascading Slot & Login Queue Logic
+                            </h4>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-slate-600 dark:text-slate-400">
+                            <div className="p-3.5 rounded-2xl bg-[#EAF0F6] dark:bg-[#13161F] border border-white/40 dark:border-white/[0.04] space-y-1">
+                                <span className="font-bold text-purple-600 dark:text-purple-400 block">1. Executive & Admin VIP</span>
+                                <p className="text-[11px] leading-relaxed">
+                                    Can occupy any open slot (Executive, Manager, or Employee pools) as long as total concurrent capacity is not exceeded.
+                                </p>
+                            </div>
+
+                            <div className="p-3.5 rounded-2xl bg-[#EAF0F6] dark:bg-[#13161F] border border-white/40 dark:border-white/[0.04] space-y-1">
+                                <span className="font-bold text-amber-600 dark:text-amber-400 block">2. Manager Flexibility</span>
+                                <p className="text-[11px] leading-relaxed">
+                                    Can occupy Manager slots and overflow into unused Employee slots. Cannot push into unused Executive reserved slots.
+                                </p>
+                            </div>
+
+                            <div className="p-3.5 rounded-2xl bg-[#EAF0F6] dark:bg-[#13161F] border border-white/40 dark:border-white/[0.04] space-y-1">
+                                <span className="font-bold text-blue-600 dark:text-blue-400 block">3. Login Queue (Overflow)</span>
+                                <p className="text-[11px] leading-relaxed">
+                                    When the relevant pool is full, user sessions are created with <code className="font-mono text-accent">in_queue = true</code> in the <code className="font-mono text-accent">sessions</code> database table until active users log out.
+                                </p>
+                            </div>
+
+                            <div className="p-3.5 rounded-2xl bg-[#EAF0F6] dark:bg-[#13161F] border border-emerald-500/30 dark:border-emerald-500/20 bg-emerald-500/5 space-y-1">
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400 block">4. Safe Slot Downscaling</span>
+                                <p className="text-[11px] leading-relaxed">
+                                    Reducing slots (e.g., from 70 to 50) <strong>never forcefully disconnects</strong> currently active users. The new ceiling reflects on new logins once active sessions naturally drop to ≤ 50.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 4: Policy Summary & Audit */}
             {activeTab === 'audit' && (
                 <div className="space-y-4 sm:space-y-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
                         <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-1.5">
                             <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                                 <Clock className="h-3.5 w-3.5 text-accent" />
@@ -1222,6 +1714,22 @@ export default function SettingsContentWrapper() {
                             </div>
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
                                 Warning countdown at {settings.inactivity.warningSeconds}s
+                            </span>
+                        </div>
+
+                        <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#EEF2F6] dark:bg-[#161A23] shadow-[5px_5px_12px_#d1dbe7,-5px_-5px_12px_#ffffff] dark:shadow-[6px_6px_16px_rgba(0,0,0,0.6),-3px_-3px_10px_rgba(255,255,255,0.03)] border border-white/80 dark:border-white/[0.08] space-y-1.5">
+                            <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                <Users className="h-3.5 w-3.5 text-accent" />
+                                Concurrency Slots
+                            </span>
+                            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-bricolage">
+                                {(() => {
+                                    const s = settings.concurrencySlots || DEFAULT_CONCURRENCY_SLOTS;
+                                    return (s.executiveSlots || 10) + (s.managerSlots || 20) + (s.employeeSlots || 70);
+                                })()} Slots
+                            </div>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
+                                {settings.concurrencySlots?.executiveSlots || 10} Exec • {settings.concurrencySlots?.managerSlots || 20} Mgr • {settings.concurrencySlots?.employeeSlots || 70} Emp
                             </span>
                         </div>
 

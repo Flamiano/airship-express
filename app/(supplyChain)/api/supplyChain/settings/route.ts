@@ -43,6 +43,12 @@ const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
     '/settings': ['Executive', 'Admin'],
 };
 
+const DEFAULT_CONCURRENCY_SLOTS = {
+    executiveSlots: 10, // Reserved exclusively for Executives & Admins
+    managerSlots: 20,   // Reserved for Managers + Executives/Admins
+    employeeSlots: 70,  // For Employees & Operators + Managers/Executives/Admins
+};
+
 export async function GET() {
     try {
         const { data, error } = await supabaseAdmin
@@ -61,6 +67,7 @@ export async function GET() {
             const initialRow = {
                 id: 'default_settings',
                 inactivity: DEFAULT_INACTIVITY,
+                concurrency_slots: DEFAULT_CONCURRENCY_SLOTS,
                 page_permissions: DEFAULT_PAGE_PERMISSIONS,
                 role_redirects: DEFAULT_ROLE_REDIRECTS,
                 updated_at: new Date().toISOString(),
@@ -82,6 +89,7 @@ export async function GET() {
                 ok: true,
                 data: {
                     inactivity: row.inactivity,
+                    concurrencySlots: row.concurrency_slots || DEFAULT_CONCURRENCY_SLOTS,
                     pagePermissions: row.page_permissions,
                     roleRedirects: row.role_redirects,
                     updatedAt: row.updated_at,
@@ -94,6 +102,7 @@ export async function GET() {
             ok: true,
             data: {
                 inactivity: data.inactivity || DEFAULT_INACTIVITY,
+                concurrencySlots: data.concurrency_slots || DEFAULT_CONCURRENCY_SLOTS,
                 pagePermissions: data.page_permissions || DEFAULT_PAGE_PERMISSIONS,
                 roleRedirects: data.role_redirects || DEFAULT_ROLE_REDIRECTS,
                 updatedAt: data.updated_at,
@@ -109,11 +118,50 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { inactivity, pagePermissions, roleRedirects, updatedBy } = body;
+        const { inactivity, concurrencySlots, pagePermissions, roleRedirects, updatedBy } = body;
+
+        // Fetch active sessions to ensure slots cannot be reduced below currently active users
+        const { data: activeSessions } = await supabaseAdmin
+            .from('sessions')
+            .select('id, user_id, is_active')
+            .eq('is_active', true);
+
+        const sessionsList = activeSessions || [];
+        const userIds = sessionsList.map(s => s.user_id).filter(Boolean);
+
+        const userRolesMap: Record<string, string> = {};
+        if (userIds.length > 0) {
+            const { data: usersData } = await supabaseAdmin
+                .from('users')
+                .select('id, role')
+                .in('id', userIds);
+
+            (usersData || []).forEach(u => {
+                userRolesMap[u.id] = (u.role || 'Employee').toLowerCase();
+            });
+        }
+
+        let activeExecAdmin = 0;
+        let activeManager = 0;
+        let activeEmployee = 0;
+
+        sessionsList.forEach((s) => {
+            const r = userRolesMap[s.user_id] || 'employee';
+            if (r === 'executive' || r === 'admin') activeExecAdmin++;
+            else if (r === 'manager') activeManager++;
+            else activeEmployee++;
+        });
+
+        const sanitizedSlots = {
+            executiveSlots: Math.max(activeExecAdmin, Math.max(1, concurrencySlots?.executiveSlots ?? 10)),
+            managerSlots: Math.max(activeManager, Math.max(1, concurrencySlots?.managerSlots ?? 20)),
+            employeeSlots: Math.max(activeEmployee, Math.max(1, concurrencySlots?.employeeSlots ?? 70)),
+        };
 
         const payload = {
             id: 'default_settings',
             inactivity: inactivity || DEFAULT_INACTIVITY,
+            concurrency_slots: sanitizedSlots,
             page_permissions: pagePermissions || DEFAULT_PAGE_PERMISSIONS,
             role_redirects: roleRedirects || DEFAULT_ROLE_REDIRECTS,
             updated_at: new Date().toISOString(),
@@ -135,6 +183,7 @@ export async function POST(request: Request) {
             ok: true,
             data: {
                 inactivity: data.inactivity,
+                concurrencySlots: data.concurrency_slots || DEFAULT_CONCURRENCY_SLOTS,
                 pagePermissions: data.page_permissions,
                 roleRedirects: data.role_redirects,
                 updatedAt: data.updated_at,

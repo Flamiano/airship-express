@@ -888,17 +888,66 @@ export default function MonthlyIntelligencePanel() {
                         </div>
                     </div>
 
-                    {/* Documents & Trash Summary */}
+                    {/* Documents Flow by Category */}
                     <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
                         <div className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center justify-between">
-                            <span>Documents &amp; Trash Deletions</span>
+                            <span>Documents Flow ({metrics.documents.total} Total)</span>
+                            <i className="fa-solid fa-file-lines text-pink-500" />
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                            {Object.entries(metrics.documents.categoryCounts).length === 0 ? (
+                                <div className="text-slate-400">No documents filed for this month.</div>
+                            ) : (
+                                Object.entries(metrics.documents.categoryCounts).map(([category, cnt]) => {
+                                    const pct = metrics.documents.total > 0 ? Math.round((cnt / metrics.documents.total) * 100) : 0;
+                                    return (
+                                        <div key={category} className="space-y-1">
+                                            <div className="flex justify-between text-[11px]">
+                                                <span className="font-medium text-slate-700 dark:text-slate-300 capitalize">{category}</span>
+                                                <span className="text-slate-500">{cnt} ({pct}%)</span>
+                                            </div>
+                                            <div className="w-full bg-[#f0f3f8] dark:bg-[#191a24] border border-slate-200/60 dark:border-slate-800 h-2 rounded-full overflow-hidden shadow-[inset_1px_1px_2px_rgba(0,0,0,0.15)]">
+                                                <div className="bg-pink-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+
+                    {/* User Operations & Workload */}
+                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center justify-between">
+                            <span>User Activity &amp; Top Operators</span>
+                            <i className="fa-solid fa-users-gear text-pink-500" />
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                            {metrics.userActivity.topActiveUsers.length === 0 ? (
+                                <div className="text-slate-400">No user activity recorded for this month.</div>
+                            ) : (
+                                metrics.userActivity.topActiveUsers.map((u, idx) => (
+                                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-200/40 dark:border-slate-800/40 last:border-none text-[11px]">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-slate-400 font-mono">#{idx + 1}</span>
+                                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[140px]">{u.name}</span>
+                                        </div>
+                                        <span className="font-bold text-pink-600 dark:text-pink-400">
+                                            {u.count} actions
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Trash & Archival Summary */}
+                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center justify-between">
+                            <span>Trash &amp; Archival Deletions</span>
                             <i className="fa-solid fa-trash-can text-pink-500" />
                         </div>
                         <div className="space-y-2 pt-1">
-                            <div className="flex justify-between items-center text-[11px]">
-                                <span className="text-slate-500">Documents Filed:</span>
-                                <span className="font-bold text-slate-800 dark:text-slate-200">{metrics.documents.total}</span>
-                            </div>
                             <div className="flex justify-between items-center text-[11px]">
                                 <span className="text-slate-500">Parcels Deleted:</span>
                                 <span className="font-semibold text-pink-600 dark:text-pink-400">{metrics.trashArchival.parcels}</span>
@@ -912,9 +961,29 @@ export default function MonthlyIntelligencePanel() {
                                 <span className="font-semibold text-pink-600 dark:text-pink-400">{metrics.trashArchival.documents}</span>
                             </div>
                             <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-slate-200/60 dark:border-slate-800/80">
-                                <span className="font-bold text-slate-700 dark:text-slate-300">Total Deletions:</span>
+                                <span className="font-bold text-slate-700 dark:text-slate-300">Total System Deletions:</span>
                                 <span className="font-bold text-pink-600 dark:text-pink-400">{metrics.trashArchival.total}</span>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Equipment Category Distribution */}
+                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center justify-between">
+                            <span>Equipment Categories Monitored</span>
+                            <i className="fa-solid fa-boxes-stacked text-pink-500" />
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                            {Object.entries(metrics.inventoryVelocity.categoryCounts).length === 0 ? (
+                                <div className="text-slate-400">No active inventory categories.</div>
+                            ) : (
+                                Object.entries(metrics.inventoryVelocity.categoryCounts).slice(0, 5).map(([category, cnt]) => (
+                                    <div key={category} className="flex justify-between items-center py-1 border-b border-slate-200/40 dark:border-slate-800/40 last:border-none text-[11px]">
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{category}</span>
+                                        <span className="font-medium text-slate-500">{cnt} items</span>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>

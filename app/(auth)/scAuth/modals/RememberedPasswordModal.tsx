@@ -16,6 +16,7 @@ import {
     ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { maskEmail } from '../services/scAuthService';
 
 const isUUID = (str?: string | null): boolean => {
     if (!str) return false;
@@ -38,7 +39,7 @@ interface RememberedPasswordModalProps {
     setRememberedPassword: (v: string) => void;
     isLoggingInWithRemembered: boolean;
     getRoleColor: (role: string) => string;
-    handleVerifyRememberedPassword: () => Promise<boolean> | void;
+    handleVerifyRememberedPassword: () => Promise<boolean | string | void> | boolean | string | void;
     setShowRememberedPasswordModal: (v: boolean) => void;
 }
 
@@ -216,6 +217,11 @@ export default function RememberedPasswordModal({
 
         const email = selectedEmployee.email;
         const result = await handleVerifyRememberedPassword();
+
+        if (result === 'queued') {
+            // Password was correct, but user is placed in the concurrency queue
+            return;
+        }
 
         if (result === false) {
             // increment failed attempts
@@ -502,7 +508,7 @@ export default function RememberedPasswordModal({
                                             {selectedEmployee.display_name}
                                         </p>
                                         <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">
-                                            {selectedEmployee.email}
+                                            {maskEmail(selectedEmployee.email)}
                                         </p>
                                         {(selectedEmployee.employee_id || selectedEmployee.id) && (
                                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
@@ -619,7 +625,7 @@ export default function RememberedPasswordModal({
                                             Verify Your Identity
                                         </h3>
                                         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-                                            A 6-digit verification code was sent to <strong className="text-slate-800 dark:text-slate-200 font-semibold">{selectedEmployee.email}</strong>
+                                            A 6-digit verification code was sent to <strong className="text-slate-800 dark:text-slate-200 font-semibold">{maskEmail(selectedEmployee.email)}</strong>
                                         </p>
                                     </div>
 

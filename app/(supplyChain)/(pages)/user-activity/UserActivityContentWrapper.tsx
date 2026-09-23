@@ -8,6 +8,7 @@ import { ActivityTab, Appeal } from './types';
 
 import { HeaderStats } from './components/common/HeaderStats';
 import { TabNav } from './components/common/TabNav';
+import { ActiveUsersTab } from './components/tabs/ActiveUsersTab';
 import { SessionsTab } from './components/tabs/SessionsTab';
 import { BlockedDevicesTab } from './components/tabs/BlockedDevicesTab';
 import { AppealsTab } from './components/tabs/AppealsTab';
@@ -18,14 +19,16 @@ export default function UserActivityContentWrapper() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    const initialTab = (searchParams.get('tab') as ActivityTab) || 'sessions';
+    const initialTab = (searchParams.get('tab') as ActivityTab) || 'active_users';
     const [activeTab, setActiveTab] = useState<ActivityTab>(initialTab);
 
     // search and filters
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeUserSearchTerm, setActiveUserSearchTerm] = useState('');
     const [activitySearchTerm, setActivitySearchTerm] = useState('');
     const [activityFilter, setActivityFilter] = useState<string>('all');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    const debouncedActiveUserSearchTerm = useDebounce(activeUserSearchTerm, 300);
     const debouncedActivitySearchTerm = useDebounce(activitySearchTerm, 300);
 
     // appeal response modal
@@ -36,15 +39,22 @@ export default function UserActivityContentWrapper() {
     const {
         sessions,
         filteredSessions,
+        activeUsers,
+        filteredActiveUsers,
         blockedDevices,
         activities,
         filteredActivities,
         appeals,
         isLoading,
         userRole,
+        queuedUsersCount,
+        queuedRolesCount,
+        slotStats,
 
         selectedSessions,
         setSelectedSessions,
+        selectedActiveUsers,
+        setSelectedActiveUsers,
         selectedBlockedDevices,
         setSelectedBlockedDevices,
         selectedAppeals,
@@ -54,6 +64,8 @@ export default function UserActivityContentWrapper() {
 
         sessionPage,
         setSessionPage,
+        activeUserPage,
+        setActiveUserPage,
         blockedPage,
         setBlockedPage,
         appealPage,
@@ -62,12 +74,14 @@ export default function UserActivityContentWrapper() {
         setActivityPage,
 
         sessionTotalPages,
+        activeUserTotalPages,
         blockedTotalPages,
         appealTotalPages,
         activityTotalPages,
 
         getPaginatedData,
         filterSessions,
+        filterActiveUsers,
         filterActivities,
 
         handleBlockDevice,
@@ -78,11 +92,13 @@ export default function UserActivityContentWrapper() {
         handleRejectAppeal,
         handleDeleteAppeal,
         handleSendResponse,
+        handleTerminateSession,
 
         handleBulkBlock,
         handleBulkUnblock,
         handleBulkDeleteBlocked,
         handleBulkDeleteSessions,
+        handleBulkTerminateActiveUsers,
         handleBulkDeleteActivities,
         handleBulkDeleteAppeals,
         handleBulkApproveAppeals,
@@ -94,11 +110,13 @@ export default function UserActivityContentWrapper() {
 
     const handleTabChange = (tab: ActivityTab) => {
         setActiveTab(tab);
-        if (tab === 'sessions') setSessionPage(1);
+        if (tab === 'active_users') setActiveUserPage(1);
+        else if (tab === 'sessions') setSessionPage(1);
         else if (tab === 'blocked') setBlockedPage(1);
         else if (tab === 'appeals') setAppealPage(1);
         else if (tab === 'activity') setActivityPage(1);
 
+        setSelectedActiveUsers(new Set());
         setSelectedSessions(new Set());
         setSelectedBlockedDevices(new Set());
         setSelectedAppeals(new Set());
@@ -108,6 +126,12 @@ export default function UserActivityContentWrapper() {
         params.set('tab', tab);
         router.replace(`?${params.toString()}`, { scroll: false });
     };
+
+    // filter active users on debounced search
+    useEffect(() => {
+        filterActiveUsers(debouncedActiveUserSearchTerm);
+        setActiveUserPage(1);
+    }, [debouncedActiveUserSearchTerm, filterActiveUsers, setActiveUserPage]);
 
     // filter sessions on debounced search
     useEffect(() => {
@@ -120,6 +144,28 @@ export default function UserActivityContentWrapper() {
         filterActivities(debouncedActivitySearchTerm, activityFilter);
         setActivityPage(1);
     }, [debouncedActivitySearchTerm, activityFilter, filterActivities, setActivityPage]);
+
+    // selection handlers for active users
+    const handleToggleSelectActiveUser = (id: string, isProtected: boolean) => {
+        if (isProtected) return;
+        const next = new Set(selectedActiveUsers);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setSelectedActiveUsers(next);
+    };
+
+    const handleSelectAllActiveUsers = () => {
+        const isProtectedRole = (role?: string) => {
+            const normalized = (role || '').toLowerCase();
+            return ['executive', 'admin', 'manager'].includes(normalized);
+        };
+        const selectableUsers = filteredActiveUsers.filter(s => !isProtectedRole(s.users?.role));
+        if (selectedActiveUsers.size === selectableUsers.length) {
+            setSelectedActiveUsers(new Set());
+        } else {
+            setSelectedActiveUsers(new Set(selectableUsers.map(s => s.id)));
+        }
+    };
 
     // selection handlers
     const handleToggleSelectSession = (id: string, isDisabled: boolean) => {
@@ -203,6 +249,7 @@ export default function UserActivityContentWrapper() {
         }
     };
 
+    const paginatedActiveUsers = getPaginatedData(filteredActiveUsers, activeUserPage);
     const paginatedSessions = getPaginatedData(filteredSessions, sessionPage);
     const paginatedBlockedDevices = getPaginatedData(blockedDevices, blockedPage);
     const paginatedAppeals = getPaginatedData(appeals, appealPage);
@@ -233,6 +280,7 @@ export default function UserActivityContentWrapper() {
             <TabNav
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
+                activeUsersCount={activeUsers.length}
                 sessionsCount={sessions.length}
                 blockedCount={blockedDevices.length}
                 appealsCount={appeals.length}
@@ -240,6 +288,27 @@ export default function UserActivityContentWrapper() {
             />
 
             {/* active tab view */}
+            {activeTab === 'active_users' && (
+                <ActiveUsersTab
+                    activeUsers={paginatedActiveUsers}
+                    isLoading={isLoading}
+                    searchTerm={activeUserSearchTerm}
+                    onSearchTermChange={setActiveUserSearchTerm}
+                    selectedActiveUsers={selectedActiveUsers}
+                    onToggleSelectActiveUser={handleToggleSelectActiveUser}
+                    onSelectAllActiveUsers={handleSelectAllActiveUsers}
+                    onTerminateSession={handleTerminateSession}
+                    onBulkTerminate={handleBulkTerminateActiveUsers}
+                    currentPage={activeUserPage}
+                    totalPages={activeUserTotalPages}
+                    onPageChange={setActiveUserPage}
+                    userRole={userRole}
+                    queuedUsersCount={queuedUsersCount}
+                    queuedRolesCount={queuedRolesCount}
+                    slotStats={slotStats}
+                />
+            )}
+
             {activeTab === 'sessions' && (
                 <SessionsTab
                     sessions={paginatedSessions}

@@ -43,6 +43,7 @@ interface DocumentsTableProps {
     onEditDocument: (doc: Document) => void;
     onDownloadDocument: (doc: Document) => void;
     onDeleteDocument: (doc: Document) => void;
+    onAttachFile?: (doc: Document) => void;
     currentPage: number;
     totalPages: number;
     totalItems: number;
@@ -81,6 +82,7 @@ export function DocumentsTable({
     onEditDocument,
     onDownloadDocument,
     onDeleteDocument,
+    onAttachFile,
     currentPage,
     totalPages,
     totalItems,
@@ -263,10 +265,11 @@ export function DocumentsTable({
                                 <th className="w-12 text-center! py-3 px-3">Format</th>
                                 <th className="py-3 px-4">Document Title</th>
                                 <th className="py-3 px-4">Category</th>
+                                <th className="py-3 px-4">Price</th>
                                 <th className="py-3 px-4">Size</th>
                                 <th className="py-3 px-4">Supplier</th>
                                 <th className="py-3 px-4">Date Uploaded</th>
-                                <th className="text-right! py-3 px-4 w-[170px] min-w-[170px]">Actions</th>
+                                <th className="text-right! py-3 px-4 w-[190px] min-w-[190px]">Actions</th>
                             </tr>
                         </thead>
 
@@ -281,13 +284,14 @@ export function DocumentsTable({
                                         { type: 'badge' },
                                         { type: 'text' },
                                         { type: 'text' },
+                                        { type: 'text' },
                                         { type: 'date' },
-                                        { type: 'actions', align: 'right', width: 'w-[170px]' },
+                                        { type: 'actions', align: 'right', width: 'w-[190px]' },
                                     ]}
                                 />
                             ) : documents.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center">
+                                    <td colSpan={9} className="py-12 text-center">
                                         <div className="flex flex-col items-center justify-center text-center p-4">
                                             <div className="w-16 h-16 rounded-3xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] flex items-center justify-center text-pink-500 dark:text-pink-400 mb-3 transition-transform duration-300 hover:scale-105">
                                                 <i className="fas fa-folder-open text-2xl"></i>
@@ -300,10 +304,12 @@ export function DocumentsTable({
                             ) : (
                                 documents.map((doc) => {
                                     const isSelected = selectedDocIds.has(doc.id);
+                                    const isPending = doc.file_type === 'pending' || !doc.storage_path || doc.file_size === 0;
+
                                     return (
                                         <tr
                                             key={doc.id}
-                                            onClick={() => onViewDocument(doc)}
+                                            onClick={() => isPending ? (onAttachFile ? onAttachFile(doc) : onEditDocument(doc)) : onViewDocument(doc)}
                                             className={`hover:bg-white/60 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer ${isSelected ? 'bg-pink-500/10 dark:bg-pink-500/20' : ''}`}
                                         >
                                             <td data-label="Select" className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
@@ -324,15 +330,28 @@ export function DocumentsTable({
                                             </td>
                                             <td data-label="Format" className="py-3 px-3">
                                                 <div className="flex justify-end md:justify-center w-full">
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm border ${getFileColor(doc.file_type)}`}>
-                                                        <i className={`fas ${getFileIcon(doc.file_type)}`}></i>
-                                                    </div>
+                                                    {isPending ? (
+                                                        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm border bg-amber-500/10 text-amber-600 border-amber-300 dark:border-amber-700" title="Pending Attachment">
+                                                            <i className="fas fa-paperclip animate-pulse"></i>
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm border ${getFileColor(doc.file_type)}`}>
+                                                            <i className={`fas ${getFileIcon(doc.file_type)}`}></i>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td data-label="Document Title" className="py-3 px-4">
                                                 <div className="text-right sm:text-left min-w-0 max-w-[220px] sm:max-w-none ml-auto sm:ml-0">
-                                                    <div className="font-semibold text-slate-900 dark:text-white truncate" title={doc.title}>
-                                                        {doc.title}
+                                                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                                        <span className="font-semibold text-slate-900 dark:text-white truncate" title={doc.title}>
+                                                            {doc.title}
+                                                        </span>
+                                                        {isPending && (
+                                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                                                                No File Attached
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="text-[10px] text-slate-400 font-mono tracking-tight mt-0.5">ID: {doc.id.substring(0, 8)}</div>
 
@@ -367,8 +386,21 @@ export function DocumentsTable({
                                                     </StatusBadge>
                                                 </div>
                                             </td>
+                                            <td data-label="Price" className="py-3 px-4 text-slate-900 dark:text-white font-medium text-right sm:text-left font-mono">
+                                                {doc.Price || (doc as any)["Price"] ? (
+                                                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                                        ₱{doc.Price || (doc as any)["Price"]}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400">—</span>
+                                                )}
+                                            </td>
                                             <td data-label="Size" className="py-3 px-4 text-slate-900 dark:text-white font-medium text-right sm:text-left">
-                                                {formatFileSize(doc.file_size)}
+                                                {isPending ? (
+                                                    <span className="text-amber-600 dark:text-amber-400 text-xs italic">Pending</span>
+                                                ) : (
+                                                    formatFileSize(doc.file_size)
+                                                )}
                                             </td>
                                             <td data-label="Supplier" className="py-3 px-4 text-slate-900 dark:text-white text-right sm:text-left">
                                                 <span className="truncate max-w-[180px] sm:max-w-none inline-block" title={doc.supplier || doc.purchase_orders?.supplier_name || ''}>
@@ -378,26 +410,43 @@ export function DocumentsTable({
                                             <td data-label="Date Uploaded" className="py-3 px-4 text-slate-400 whitespace-nowrap text-right sm:text-left">
                                                 {new Date(doc.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                             </td>
-                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap sm:w-[170px] sm:min-w-[170px] w-full" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex items-center justify-end gap-2.5 flex-wrap sm:flex-nowrap w-full sm:w-auto">
-                                                    <CrudActionButton
-                                                        action="view"
-                                                        ariaLabel={`View ${doc.title}`}
-                                                        title="View File"
-                                                        onClick={() => onViewDocument(doc)}
-                                                    />
+                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap sm:w-[190px] sm:min-w-[190px] w-full" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+                                                    {isPending && onAttachFile && (
+                                                        <AppButton
+                                                            type="button"
+                                                            variant="primary"
+                                                            size="xs"
+                                                            onClick={() => onAttachFile(doc)}
+                                                            title="Attach File to this Document"
+                                                            className="text-xs px-2.5 py-1"
+                                                        >
+                                                            <i className="fas fa-paperclip text-[11px]"></i>
+                                                            <span className="hidden sm:inline">Attach</span>
+                                                        </AppButton>
+                                                    )}
+                                                    {!isPending && (
+                                                        <CrudActionButton
+                                                            action="view"
+                                                            ariaLabel={`View ${doc.title}`}
+                                                            title="View File"
+                                                            onClick={() => onViewDocument(doc)}
+                                                        />
+                                                    )}
                                                     <CrudActionButton
                                                         action="edit"
                                                         ariaLabel={`Edit metadata for ${doc.title}`}
                                                         title="Edit Metadata"
                                                         onClick={() => onEditDocument(doc)}
                                                     />
-                                                    <CrudActionButton
-                                                        action="download"
-                                                        ariaLabel={`Download ${doc.title}`}
-                                                        title="Download File"
-                                                        onClick={() => onDownloadDocument(doc)}
-                                                    />
+                                                    {!isPending && (
+                                                        <CrudActionButton
+                                                            action="download"
+                                                            ariaLabel={`Download ${doc.title}`}
+                                                            title="Download File"
+                                                            onClick={() => onDownloadDocument(doc)}
+                                                        />
+                                                    )}
                                                     <CrudActionButton
                                                         action="delete"
                                                         ariaLabel={`Delete ${doc.title}`}

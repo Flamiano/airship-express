@@ -72,31 +72,183 @@ function analyzeQuery(query: string): QueryAnalysis {
         needsComparison: lower.includes('compare') || lower.includes('versus') || lower.includes('vs'),
     };
 }
+export interface ModuleAccessRule {
+    route: string;
+    label: string;
+    description: string;
+    keywords: string[];
+    actions: string[];
+    knowledgeFiles: string[];
+}
+
+export const SYSTEM_MODULES: ModuleAccessRule[] = [
+    {
+        route: '/executive',
+        label: 'Executive Overview & KPIs',
+        description: 'Executive KPIs, business intelligence, executive financial summaries, macro metrics, leadership overview',
+        keywords: ['executive', 'executive overview', 'kpi', 'kpis', 'macro metric', 'financial summary', 'executive analytics', 'executive metrics', 'leadership report'],
+        actions: [],
+        knowledgeFiles: ['executive-overview.md'],
+    },
+    {
+        route: '/procurement',
+        label: 'Procurement',
+        description: 'Purchase requests, requisitions, supplier requisitions, procurement budgeting, RFQs',
+        keywords: ['procurement', 'purchase request', 'purchase requests', 'requisition', 'requisitions', 'rfq', 'procurement budget'],
+        actions: [],
+        knowledgeFiles: ['procurement.md'],
+    },
+    {
+        route: '/suppliers',
+        label: 'Suppliers',
+        description: 'Vendor directory, partner ratings, supplier agreements, vendor profiles',
+        keywords: ['supplier', 'suppliers', 'vendor', 'vendors', 'contractor', 'partner', 'supply agreement'],
+        actions: ['get_suppliers', 'get_suppliers_summary'],
+        knowledgeFiles: ['procurement.md'],
+    },
+    {
+        route: '/purchase-orders',
+        label: 'Purchase Orders',
+        description: 'Purchase orders, order fulfillment, invoicing, purchase authorization, PO costs, PO spend',
+        keywords: ['purchase order', 'purchase orders', 'po', 'pos', 'po spend', 'create purchase order', 'create po', 'generate po', 'pending purchase request', 'unfulfilled request'],
+        actions: ['get_purchase_orders', 'get_purchase_orders_summary', 'get_pending_purchase_requests'],
+        knowledgeFiles: ['procurement.md'],
+    },
+    {
+        route: '/warehousing',
+        label: 'Warehousing Operations',
+        description: 'Facility management, bays, racks, storage layouts, receiving queue, sorting, outgoing dispatch, dwell times',
+        keywords: ['warehousing', 'warehouse', 'receiving', 'receiving queue', 'sorting', 'dispatch', 'bays', 'racks', 'dwell time'],
+        actions: ['get_receiving_queue', 'get_receiving_queue_summary'],
+        knowledgeFiles: ['warehousing.md', 'operations.md'],
+    },
+    {
+        route: '/inventory',
+        label: 'Parcel & Stock Inventory',
+        description: 'Parcel tracking, couriers, item classifications, stock counts, low stock items, out of stock alerts',
+        keywords: ['inventory', 'parcel', 'parcels', 'shipment', 'shipments', 'stock', 'stock level', 'low stock', 'out of stock', 'courier', 'item count'],
+        actions: ['get_parcels', 'get_parcel_stats', 'get_today_parcels', 'get_low_stock', 'get_low_stock_items', 'get_out_of_stock_items', 'get_inventory', 'get_inventory_summary', 'get_inventory_items'],
+        knowledgeFiles: ['inventory.md'],
+    },
+    {
+        route: '/documents',
+        label: 'Documents',
+        description: 'Compliance files, shipping docs, records archive, uploaded files',
+        keywords: ['document', 'documents', 'receipt', 'compliance file', 'shipping doc', 'document tracking'],
+        actions: [],
+        knowledgeFiles: ['document-tracking.md'],
+    },
+    {
+        route: '/forecast',
+        label: 'Forecast',
+        description: 'Demand forecasting and algorithmic predictive models',
+        keywords: ['forecast', 'forecasting', 'predictive model', 'predictive demand', 'demand forecast'],
+        actions: [],
+        knowledgeFiles: [],
+    },
+    {
+        route: '/gallery',
+        label: 'Gallery',
+        description: 'Media archive, logistics photos, inspection snapshots',
+        keywords: ['gallery', 'logistics photo', 'inspection snapshot', 'media archive'],
+        actions: [],
+        knowledgeFiles: ['gallery.md'],
+    },
+    {
+        route: '/trash',
+        label: 'Trash & Recycle Bin',
+        description: 'Deleted records recovery and permanent purge controls',
+        keywords: ['trash', 'recycle bin', 'deleted records', 'purge'],
+        actions: [],
+        knowledgeFiles: ['archive-management.md'],
+    },
+    {
+        route: '/user-activity',
+        label: 'User Activities & Security Audits',
+        description: 'Audit logs, active sessions, blocked device management, security controls',
+        keywords: ['user activity', 'user activities', 'audit log', 'audit logs', 'active sessions', 'blocked device', 'security log'],
+        actions: [],
+        knowledgeFiles: [],
+    },
+    {
+        route: '/settings',
+        label: 'System Settings',
+        description: 'Inactivity timeouts, role access policies, system preferences',
+        keywords: ['settings', 'system settings', 'inactivity timeout', 'role access policy', 'role permissions'],
+        actions: [],
+        knowledgeFiles: [],
+    },
+];
+
+export const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
+    '/executive': ['Executive'],
+    '/warehousing': ['Executive', 'Admin', 'Manager', 'Operator'],
+    '/inventory': ['Executive', 'Admin', 'Manager', 'Operator'],
+    '/procurement': ['Executive', 'Admin', 'Manager'],
+    '/suppliers': ['Executive', 'Admin', 'Manager'],
+    '/purchase-orders': ['Executive', 'Admin', 'Manager'],
+    '/documents': ['Executive', 'Admin', 'Manager', 'Employee'],
+    '/forecast': ['Executive', 'Admin'],
+    '/gallery': ['Executive', 'Admin', 'Manager', 'Employee'],
+    '/trash': ['Executive', 'Admin', 'Manager', 'Employee', 'Operator'],
+    '/user-activity': ['Executive', 'Admin'],
+    '/settings': ['Executive', 'Admin'],
+};
+
 /**
  * Build a flexible prompt based on query analysis and user role access
  */
-function buildFlexiblePrompt(query: string, analysis: QueryAnalysis, knowledgeContext: string, actionResults: any, historyContext: string, resourcesUsed: any[], userRole: string = "User"): string {
+function buildFlexiblePrompt(
+    query: string, 
+    analysis: QueryAnalysis, 
+    knowledgeContext: string, 
+    actionResults: any, 
+    historyContext: string, 
+    resourcesUsed: any[], 
+    userRole: string = "User",
+    pagePermissions?: Record<string, string[]>
+): string {
+    const effectivePermissions = pagePermissions || DEFAULT_PAGE_PERMISSIONS;
+    const isExecutive = userRole.toLowerCase() === 'executive';
+
+    const allowedModules: ModuleAccessRule[] = [];
+    const forbiddenModules: ModuleAccessRule[] = [];
+
+    for (const mod of SYSTEM_MODULES) {
+        const allowedRoles = effectivePermissions[mod.route] || DEFAULT_PAGE_PERMISSIONS[mod.route] || [];
+        const hasAccess = isExecutive || allowedRoles.some(r => r.toLowerCase() === userRole.toLowerCase());
+        if (hasAccess) {
+            allowedModules.push(mod);
+        } else {
+            forbiddenModules.push(mod);
+        }
+    }
+
     let systemPrompt = `You are an AI assistant for the Airship Express Supply Chain Management system.
 
-**Role-Based Access Control Rules:**
-You are communicating with a user whose authorized system access level is "${userRole}".
-Each functional module and page has strict access permissions:
-- Executive Overview (KPIs, executive intelligence, overall macro metrics, executive financial summaries): Accessible ONLY to Executive or Admin.
-- User Activities, System Sessions, Device Audits, Security Controls: Accessible ONLY to Executive or Admin.
-- Procurement & Purchase Orders (Supplier contracts, PO costs, approvals): Accessible to Executive, Admin, Manager, and authorized Employee.
-- Warehousing (Receiving, Sorting, Outgoing, Dispatch, Inventory): Accessible to Executive, Admin, Manager, Operator, Employee.
+**Dynamic Role-Based Access Control:**
+The user is currently accessing the system with authorized role: "${userRole}".
+This system uses dynamic role-based access control configured in Settings.
 
-**CRITICAL INSTRUCTIONS FOR ACCESS CONTROL:**
-1. If the user asks about a page, dataset, metrics, or information that is outside their authorized access level (for example, if a non-Executive/non-Admin asks about the Executive Overview or financial KPIs, or an unauthorized role asks about protected areas):
-   - You MUST deny access dynamically and naturally.
+- ALLOWED / PERMITTED Modules for this user:
+${allowedModules.map(m => `  • ${m.label} (${m.route}): ${m.description}`).join('\n')}
+
+- RESTRICTED / FORBIDDEN Modules for this user:
+${forbiddenModules.map(m => `  • ${m.label} (${m.route}): ${m.description}`).join('\n')}
+
+**CRITICAL ACCESS CONTROL RULES:**
+1. If the user asks about ANY page, dataset, metrics, KPIs, financial summaries, or processes belonging to a RESTRICTED / FORBIDDEN module:
+   - You MUST STRICTLY and IMMEDIATELY DENY access.
    - Example responses:
-     - "You are not authorized to view or access this information."
      - "You do not have permission to view this page or its records."
-     - "I cannot find this information or you may not have access to view it."
+     - "You do not have permission to view this information."
+     - "You are not authorized to view or access this information."
      - "This section is not accessible from your current account."
-   - NEVER mention role names (e.g. do NOT say "You need to be an Executive" or "Your role is Operator").
-   - NEVER explain which roles have access to what. Simply state that the page/data is not accessible or not permitted.
-2. If the user is authorized for the requested data/page, provide a clear, helpful, and accurate response based on the Knowledge Base and Live Data.
+   - State the denial politely and clearly.
+   - NEVER mention role internal names (e.g., do NOT say "You need to be an Executive" or "Your role is Employee").
+   - NEVER explain which other roles have access to what. Simply state that the user does not have permission to view or access this information.
+2. If the user asks about an ALLOWED / PERMITTED module (for example, if an Administrator changed the system settings to grant an Employee access to Executive Overview or Procurement):
+   - You MUST answer their question thoroughly, provide live data and knowledge base insights, and assist them fully without denying them.
 
 **User Query Analysis:**
 - Type: ${analysis.type}
@@ -360,7 +512,12 @@ ${knowledgeSummaries || 'No knowledge files loaded'}
 /**
  * Build the system prompt (EXPORTED for streaming)
  */
-export async function buildSystemPrompt(query: string, history: any[] = [], userRole: string = "User") {
+export async function buildSystemPrompt(
+    query: string, 
+    history: any[] = [], 
+    userRole: string = "User",
+    pagePermissions?: Record<string, string[]>
+) {
     const systemResponse = handleSystemQuestion(query);
     if (systemResponse) {
         return {
@@ -393,11 +550,29 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             resourcesUsed: [],
         };
     }
+
+    // Determine forbidden routes for the current user based on dynamic pagePermissions
+    const effectivePermissions = pagePermissions || DEFAULT_PAGE_PERMISSIONS;
+    const isExecutive = userRole.toLowerCase() === 'executive';
+    const forbiddenRoutes = new Set<string>();
+    const forbiddenActions = new Set<string>();
+    const forbiddenKnowledgeFiles = new Set<string>();
+
+    for (const mod of SYSTEM_MODULES) {
+        const allowedRoles = effectivePermissions[mod.route] || DEFAULT_PAGE_PERMISSIONS[mod.route] || [];
+        const hasAccess = isExecutive || allowedRoles.some(r => r.toLowerCase() === userRole.toLowerCase());
+        if (!hasAccess) {
+            forbiddenRoutes.add(mod.route);
+            mod.actions.forEach(a => forbiddenActions.add(a));
+            mod.knowledgeFiles.forEach(k => forbiddenKnowledgeFiles.add(k));
+        }
+    }
+
     const actionResults = await executeMatchingActions(query);
     // Also execute any specific tools directly identified by classification
     const toolResources = classification.resources?.filter(r => r.type === 'tool') || [];
     for (const tool of toolResources) {
-        if (!actionResults[tool.name]) {
+        if (!actionResults[tool.name] && !forbiddenActions.has(tool.name)) {
             try {
                 const res = await executeAction(tool.name, query);
                 actionResults[tool.name] = res;
@@ -407,18 +582,29 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             }
         }
     }
+
+    // Filter out forbidden live action results so data isn't leaked to unauthorized roles
+    for (const forbiddenAction of forbiddenActions) {
+        delete actionResults[forbiddenAction];
+    }
+
     let knowledgeResults: any[] = [];
     const knowledgeResources = classification.resources?.filter(r => r.type === 'knowledge') || [];
     for (const knowledge of knowledgeResources) {
-        const content = getKnowledge(knowledge.name.replace('.md', ''));
-        if (content) {
-            knowledgeResults.push(content);
+        const fileName = knowledge.name.endsWith('.md') ? knowledge.name : `${knowledge.name}.md`;
+        if (!forbiddenKnowledgeFiles.has(fileName)) {
+            const content = getKnowledge(knowledge.name.replace('.md', ''));
+            if (content) {
+                knowledgeResults.push(content);
+            }
         }
     }
     if (knowledgeResults.length === 0) {
         const searchResults = searchKnowledge(query);
         if (searchResults.length > 0) {
-            knowledgeResults = searchResults.slice(0, 5);
+            knowledgeResults = searchResults
+                .filter(k => !forbiddenKnowledgeFiles.has(`${k.name}.md`))
+                .slice(0, 5);
         }
     }
     const knowledgeContext = knowledgeResults.map(k => k.content).join('\n\n---\n\n');
@@ -429,7 +615,16 @@ export async function buildSystemPrompt(query: string, history: any[] = [], user
             .map((msg: any) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
             .join('\n');
     }
-    const systemPrompt = buildFlexiblePrompt(query, analysis, knowledgeContext, actionResults, historyContext, classification.resources || [], userRole);
+    const systemPrompt = buildFlexiblePrompt(
+        query, 
+        analysis, 
+        knowledgeContext, 
+        actionResults, 
+        historyContext, 
+        classification.resources || [], 
+        userRole, 
+        pagePermissions
+    );
     return {
         classification,
         prompt: systemPrompt,
@@ -448,7 +643,8 @@ export async function orchestrator(
     query: string, 
     history: any[] = [], 
     userRole: string = "User",
-    context: ModerationContext = {}
+    context: ModerationContext = {},
+    pagePermissions?: Record<string, string[]>
 ): Promise<OrchestratorResult> {
     try {
         // 1. Content Moderation & 5-minute Lockout Pre-check
@@ -484,8 +680,15 @@ export async function orchestrator(
                 .map((msg: any) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
                 .join('\n');
             const genAI = new GoogleGenAI({ apiKey });
+            const effectivePermissions = pagePermissions || DEFAULT_PAGE_PERMISSIONS;
+            const isExecutive = userRole.toLowerCase() === 'executive';
+            const forbiddenLabels = SYSTEM_MODULES
+                .filter(m => !isExecutive && !(effectivePermissions[m.route] || DEFAULT_PAGE_PERMISSIONS[m.route] || []).some(r => r.toLowerCase() === userRole.toLowerCase()))
+                .map(m => m.label);
+
             const contextualPrompt = `You are a warehouse management assistant for Airship Express. Continue the conversation naturally.
-The user has system access level "${userRole}". If they follow up asking about unauthorized or restricted areas, dynamically state that the page/data is not accessible without mentioning role names.
+The user is accessing the system with role "${userRole}".
+${forbiddenLabels.length > 0 ? `The following modules are restricted for this user: ${forbiddenLabels.join(', ')}. If the user asks about these, state that they do not have permission to view this page or information.` : ''}
 
 Previous conversation:
 ${context}
@@ -496,9 +699,10 @@ Instructions:
 1. If the user said "yes", provide more details about the previous topic
 2. If they said "no", ask what they'd like to know instead
 3. If they said "tell me more", elaborate on the previous topic
-4. Keep the response natural and conversational
-5. Do NOT list out-of-scope topics
-6. Do NOT mention roles or permission level names in the answer
+4. If they follow up asking about unauthorized or restricted areas, respond politely: "You do not have permission to view this information."
+5. Keep the response natural and conversational
+6. Do NOT list out-of-scope topics
+7. Do NOT mention internal roles or permission level names in the answer
 
 Response:`;
             const response = await genAI.interactions.create({
@@ -517,7 +721,7 @@ Response:`;
                 suggestions: ['Tell me more', 'What else?', 'Explain that further'],
             };
         }
-        const result = await buildSystemPrompt(query, history, userRole);
+        const result = await buildSystemPrompt(query, history, userRole, pagePermissions);
         if (!result.isRelated) {
             return {
                 success: true,

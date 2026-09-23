@@ -20,6 +20,7 @@ import {
     PasswordSetupModal,
     RememberedPasswordModal,
     AppealModal,
+    LoginQueueModal,
 } from './modals';
 import { user } from '../../(supplyChain)/lib/services/Class/user';
 import {
@@ -40,6 +41,7 @@ import {
     submitAppeal,
     updateAppeal,
     deleteAppeal,
+    maskEmail,
 } from './services';
 import { settingsService } from '../../(supplyChain)/lib/services/settingsService';
 
@@ -105,6 +107,12 @@ export default function SupplyChainLoginPage() {
     // remembered password modal
     const [showRememberedPasswordModal, setShowRememberedPasswordModal] = useState(false);
     const [rememberedPassword, setRememberedPassword] = useState('');
+
+    // login queue modal (100-user concurrency limit)
+    const [showQueueModal, setShowQueueModal] = useState(false);
+    const [queuePosition, setQueuePosition] = useState(1);
+    const [queueActiveUsers, setQueueActiveUsers] = useState(1);
+    const [queueMaxCapacity, setQueueMaxCapacity] = useState(1);
 
     const lastCheckRef = useRef<number>(0);
     const isCheckingRef = useRef<boolean>(false);
@@ -474,7 +482,7 @@ export default function SupplyChainLoginPage() {
         setRememberedPassword('');
     };
 
-    const handleVerifyRememberedPassword = async (): Promise<boolean> => {
+    const handleVerifyRememberedPassword = async (): Promise<boolean | string> => {
         if (!rememberedPassword.trim()) {
             toast.error('Please enter your password');
             return false;
@@ -525,10 +533,19 @@ export default function SupplyChainLoginPage() {
                     return false;
                 }
 
-                const { ok } = await activateSessionApi(sessionToken, currentUserAgent);
+                const { ok, status, data: activateData } = await activateSessionApi(sessionToken, currentUserAgent);
 
                 if (!ok) {
-                    toast.error('Session activation failed. Please login with OTP.');
+                    if (activateData?.queued || status === 429) {
+                        setQueuePosition(activateData?.position || 1);
+                        setQueueActiveUsers(activateData?.tierActive ?? activateData?.activeUsers ?? 1);
+                        setQueueMaxCapacity(activateData?.tierSlots ?? activateData?.maxCapacity ?? 1);
+                        setShowQueueModal(true);
+                        setIsLoggingInWithRemembered(false);
+                        setShowRememberedPasswordModal(false);
+                        return 'queued';
+                    }
+                    toast.error(activateData?.message || 'Session activation failed. Please login with OTP.');
                     setIsLoggingInWithRemembered(false);
                     setShowRememberedPasswordModal(false);
                     return false;
@@ -731,8 +748,8 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            toast.success(`OTP sent to ${targetEmail}`);
-            setOtpSuccess(`OTP sent to ${targetEmail}`);
+            toast.success(`OTP sent to ${maskEmail(targetEmail)}`);
+            setOtpSuccess(`OTP sent to ${maskEmail(targetEmail)}`);
 
             setOtpSent(true);
             setCountdown(30); // 30s resend cooldown
@@ -796,8 +813,8 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            toast.success(`New OTP sent to ${targetEmail}`);
-            setOtpSuccess(`New OTP sent to ${targetEmail}`);
+            toast.success(`New OTP sent to ${maskEmail(targetEmail)}`);
+            setOtpSuccess(`New OTP sent to ${maskEmail(targetEmail)}`);
             setCountdown(30); // 30s resend cooldown
             setOtpExpiresIn(300); // 5 minutes code validity
         } catch (err: any) {
@@ -842,7 +859,7 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            const { ok, data } = await verifyOtpApi({
+            const { ok, status, data } = await verifyOtpApi({
                 userId: loggedInUser.id,
                 otp: otpString,
                 targetUserId: selectedEmployee.id,
@@ -853,6 +870,14 @@ export default function SupplyChainLoginPage() {
             });
 
             if (!ok) {
+                if (data?.queued || status === 429) {
+                    setQueuePosition(data?.position || 1);
+                    setQueueActiveUsers(data?.tierActive ?? data?.activeUsers ?? 1);
+                    setQueueMaxCapacity(data?.tierSlots ?? data?.maxCapacity ?? 1);
+                    setShowQueueModal(true);
+                    setIsVerifying(false);
+                    return;
+                }
                 throw new Error(data.message || 'Invalid OTP');
             }
 
@@ -1367,6 +1392,23 @@ export default function SupplyChainLoginPage() {
                     handleSubmitAppeal={handleSubmitAppeal}
                     handleUpdateAppeal={handleUpdateAppeal}
                     handleDeleteAppeal={handleDeleteAppeal}
+                />
+
+                <LoginQueueModal
+                    isOpen={showQueueModal}
+                    role={selectedEmployee?.role}
+                    initialPosition={queuePosition}
+                    initialActiveUsers={queueActiveUsers}
+                    maxCapacity={queueMaxCapacity}
+                    onRetry={() => {
+                        setShowQueueModal(false);
+                        if (isRemembered && rememberedPassword) {
+                            handleVerifyRememberedPassword();
+                        } else if (otpSent) {
+                            verifyOTP();
+                        }
+                    }}
+                    onClose={() => setShowQueueModal(false)}
                 />
             </OfflineDetector>
         </>

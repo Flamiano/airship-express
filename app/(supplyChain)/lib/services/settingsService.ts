@@ -11,6 +11,12 @@ export interface InactivitySettings {
     enableCountdownSound?: boolean;
 }
 
+export interface ConcurrencySlotSettings {
+    executiveSlots: number; // Reserved exclusively for Executives & Admins (default: 10)
+    managerSlots: number;   // Reserved for Managers + Executive/Admin (default: 20)
+    employeeSlots: number;  // For Employees & Operators + Manager/Executive/Admin (default: 70)
+}
+
 export interface PagePermission {
     route: string;
     label: string;
@@ -21,11 +27,18 @@ export interface PagePermission {
 
 export interface SystemSettings {
     inactivity: InactivitySettings;
+    concurrencySlots: ConcurrencySlotSettings;
     pagePermissions: Record<string, UserRole[]>;
     roleRedirects: Record<UserRole, string>;
     updatedAt: string;
     updatedBy?: string;
 }
+
+export const DEFAULT_CONCURRENCY_SLOTS: ConcurrencySlotSettings = {
+    executiveSlots: 10,
+    managerSlots: 20,
+    employeeSlots: 70,
+};
 
 export const ALL_ROLES: UserRole[] = ['Executive', 'Admin', 'Manager', 'Operator', 'Employee'];
 
@@ -126,13 +139,14 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
 
 export const DEFAULT_INACTIVITY_SETTINGS: InactivitySettings = {
     enabled: true,
-    timeoutSeconds: 120, // 2 minutes default
-    warningSeconds: 10,  // 10 seconds warning
+    timeoutSeconds: 120, 
+    warningSeconds: 10,  
     enableCountdownSound: false,
 };
 
 export const DEFAULT_SETTINGS: SystemSettings = {
     inactivity: DEFAULT_INACTIVITY_SETTINGS,
+    concurrencySlots: DEFAULT_CONCURRENCY_SLOTS,
     pagePermissions: DEFAULT_PAGE_PERMISSIONS.reduce((acc, curr) => {
         acc[curr.route] = curr.allowedRoles;
         return acc;
@@ -242,6 +256,10 @@ class SettingsService {
                         ...DEFAULT_INACTIVITY_SETTINGS,
                         ...(parsed.inactivity || {}),
                     },
+                    concurrencySlots: {
+                        ...DEFAULT_CONCURRENCY_SLOTS,
+                        ...(parsed.concurrencySlots || {}),
+                    },
                     pagePermissions: {
                         ...DEFAULT_SETTINGS.pagePermissions,
                         ...(parsed.pagePermissions || {}),
@@ -273,6 +291,10 @@ class SettingsService {
             inactivity: {
                 ...current.inactivity,
                 ...(newSettings.inactivity || {}),
+            },
+            concurrencySlots: {
+                ...current.concurrencySlots,
+                ...(newSettings.concurrencySlots || {}),
             },
             pagePermissions: {
                 ...current.pagePermissions,
@@ -311,6 +333,7 @@ class SettingsService {
     public resetToDefaults(updatedBy: string = 'User'): SystemSettings {
         const resetSettings: SystemSettings = {
             inactivity: { ...DEFAULT_INACTIVITY_SETTINGS },
+            concurrencySlots: { ...DEFAULT_CONCURRENCY_SLOTS },
             pagePermissions: { ...DEFAULT_SETTINGS.pagePermissions },
             roleRedirects: { ...DEFAULT_ROLE_REDIRECTS },
             updatedAt: new Date().toISOString(),
@@ -332,6 +355,21 @@ class SettingsService {
         this.syncToBackend(resetSettings).catch(() => {});
 
         return resetSettings;
+    }
+
+    /**
+     * Helper to get concurrency slot allocation
+     */
+    public getConcurrencySlots(): ConcurrencySlotSettings {
+        return this.getSettings().concurrencySlots || DEFAULT_CONCURRENCY_SLOTS;
+    }
+
+    /**
+     * Helper to calculate total active user capacity across all tiers
+     */
+    public getTotalSlots(): number {
+        const slots = this.getConcurrencySlots();
+        return (slots.executiveSlots || 10) + (slots.managerSlots || 20) + (slots.employeeSlots || 70);
     }
 
     /**
@@ -440,6 +478,10 @@ class SettingsService {
                             ...DEFAULT_INACTIVITY_SETTINGS,
                             ...(json.data.inactivity || {}),
                         },
+                        concurrencySlots: {
+                            ...DEFAULT_CONCURRENCY_SLOTS,
+                            ...(json.data.concurrencySlots || {}),
+                        },
                         pagePermissions: {
                             ...DEFAULT_SETTINGS.pagePermissions,
                             ...(json.data.pagePermissions || {}),
@@ -493,6 +535,10 @@ class SettingsService {
                             inactivity: {
                                 ...DEFAULT_INACTIVITY_SETTINGS,
                                 ...(row.inactivity || {}),
+                            },
+                            concurrencySlots: {
+                                ...DEFAULT_CONCURRENCY_SLOTS,
+                                ...(row.concurrency_slots || {}),
                             },
                             pagePermissions: {
                                 ...DEFAULT_SETTINGS.pagePermissions,

@@ -19,6 +19,7 @@ import {
     Eye as EyeIcon,
     Lock
 } from 'lucide-react';
+import { maskEmail } from '../services/scAuthService';
 
 const isUUID = (str?: string | null): boolean => {
     if (!str) return false;
@@ -178,10 +179,7 @@ export default function EmployeeSelectionModal({
         );
     }, [employees, debouncedSearchTerm]);
 
-    const displayedEmployees = filteredEmployees.length > 5
-        ? filteredEmployees.slice(0, 5)
-        : filteredEmployees;
-    const remainingCount = filteredEmployees.length - 5;
+    const displayedEmployees = filteredEmployees;
 
     return (
         <AnimatePresence>
@@ -237,7 +235,7 @@ export default function EmployeeSelectionModal({
                             <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                                 <span className="text-slate-500 dark:text-slate-400 font-medium">Logged in as:</span>
                                 <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-none">
-                                    {loggedInUser?.display_name || loggedInUser?.email}
+                                    {loggedInUser?.display_name || maskEmail(loggedInUser?.email)}
                                 </span>
                                 <span className={`px-2.5 py-0.5 rounded-lg font-semibold text-[10px] sm:text-[11px] tracking-wide shadow-[1px_1px_3px_rgba(0,0,0,0.05)] ${getRoleColor(loggedInUser?.role)}`}>
                                     {loggedInUser?.role}
@@ -453,7 +451,7 @@ export default function EmployeeSelectionModal({
                                                                 {/* Row 2: Email (+ Department/Position) on left, Role badge on right */}
                                                                 <div className="flex items-center justify-between gap-2 mt-1.5">
                                                                     <div className="flex items-center gap-1.5 min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
-                                                                        <span className="truncate">{emp.email}</span>
+                                                                        <span className="truncate">{maskEmail(emp.email)}</span>
                                                                         {emp.department && emp.department.toLowerCase().trim() !== emp.role?.toLowerCase().trim() && (
                                                                             <>
                                                                                 <span className="text-slate-300 dark:text-slate-600 shrink-0">•</span>
@@ -483,12 +481,6 @@ export default function EmployeeSelectionModal({
                                                     </button>
                                                 );
                                             })}
-
-                                            {remainingCount > 0 && (
-                                                <div className="text-center py-2.5 text-xs text-slate-500 dark:text-slate-400 border-t border-dashed border-white/60 dark:border-white/10 mt-3 font-medium">
-                                                    + {remainingCount} more {remainingCount === 1 ? 'employee' : 'employees'} available
-                                                </div>
-                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -600,7 +592,7 @@ export default function EmployeeSelectionModal({
                                             Enter the 6-digit verification code sent to
                                         </p>
                                         <p className="text-xs font-bold text-accent mt-0.5 tracking-tight break-all">
-                                            {selectedEmployee?.email}
+                                            {maskEmail(selectedEmployee?.email)}
                                         </p>
                                         <div className="flex items-center justify-center gap-1.5 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                                             <span>{isAdminOrExec ? 'Account:' : 'HR Employee:'}</span>

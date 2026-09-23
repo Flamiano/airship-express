@@ -297,10 +297,51 @@ async function attachLatestPOToItems(items: any[]) {
             }
         }
 
-        return items.map(item => ({
-            ...item,
-            latest_po: latestActivityMap.get(String(item.id)) || null,
-        }));
+        // 3. fetch active inventory_requests (approved & pending) to compute exporting_stock and available_stock
+        let exportingMap = new Map<string, number>();
+        let pendingCountMap = new Map<string, number>();
+        try {
+            const { data: reqData } = await supabase
+                .from('inventory_requests')
+                .select('*')
+                .or('status.ilike.approved,status.ilike.pending');
+
+            if (reqData && reqData.length > 0) {
+                for (const req of reqData) {
+                    const status = (req.status || '').toLowerCase();
+                    const qty = Number(req.quantity_requested || req.quantity || 0);
+                    const idKey = req.item_id ? String(req.item_id) : null;
+                    const nameKey = (req.item_name || '').toLowerCase().trim();
+
+                    if (status === 'approved') {
+                        if (idKey) exportingMap.set(idKey, (exportingMap.get(idKey) || 0) + qty);
+                        if (nameKey) exportingMap.set(nameKey, (exportingMap.get(nameKey) || 0) + qty);
+                    } else if (status === 'pending') {
+                        if (idKey) pendingCountMap.set(idKey, (pendingCountMap.get(idKey) || 0) + 1);
+                        if (nameKey) pendingCountMap.set(nameKey, (pendingCountMap.get(nameKey) || 0) + 1);
+                    }
+                }
+            }
+        } catch (reqErr) {
+            console.warn('Error fetching inventory_requests for stock metadata:', reqErr);
+        }
+
+        return items.map(item => {
+            const idKey = String(item.id);
+            const nameKey = (item.item_name || '').toLowerCase().trim();
+            const exporting = exportingMap.get(idKey) ?? exportingMap.get(nameKey) ?? 0;
+            const pendingCount = pendingCountMap.get(idKey) ?? pendingCountMap.get(nameKey) ?? 0;
+            const currentStock = Number(item.current_stock || 0);
+            const availableStock = Math.max(0, currentStock - exporting);
+
+            return {
+                ...item,
+                exporting_stock: exporting,
+                available_stock: availableStock,
+                pending_requests_count: pendingCount,
+                latest_po: latestActivityMap.get(idKey) || null,
+            };
+        });
     }
     catch (err) {
         console.warn('Error attaching latest PO to items:', err);
@@ -975,6 +1016,512 @@ export async function fetchInventoryPageData(params: {
         return {
             success: false,
             error: 'Failed to fetch inventory page data',
+            status: 500,
+        };
+    }
+}
+
+// ==========================================
+// INVENTORY REQUESTS SERVER ACTIONS
+// ==========================================
+
+export async function fetchInventoryRequests(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    type?: 'all' | 'internal' | 'external';
+}) {
+    try {
+        const page = params.page || 1;
+        const limit = params.limit || 50;
+        const offset = (page - 1) * limit;
+
+        // Try primary dbClient first, fallback to supabase
+        const client = dbClient || supabase;
+
+        let query = client
+            .from('inventory_requests')
+            .select('*', { count: 'exact' })
+            .order('created_at', { ascending: false });
+
+        if (params.status && params.status !== 'all') {
+            query = query.ilike('status', params.status);
+        }
+
+        if (params.type === 'internal') {
+            query = query.or('Internal_request.eq.true,requested_by.not.is.null');
+        } else if (params.type === 'external') {
+            query = query.or('Internal_request.eq.false,Internal_request.is.null');
+        }
+
+        if (params.search && params.search.trim()) {
+            const s = sanitizeSearch(params.search.trim());
+            query = query.or(`item_name.ilike.%${s}%,department.ilike.%${s}%,message.ilike.%${s}%`);
+        }
+
+        query = query.range(offset, offset + limit - 1);
+
+        let { data: requests, count, error } = await query;
+
+        // If filtering by Internal_request caused an issue (e.g. column missing), retry without type filter
+        if (error && (error.message?.includes('Internal_request') || error.message?.includes('column'))) {
+            console.warn('Retrying fetchInventoryRequests without type filter:', error.message);
+            let fallbackQuery = client
+                .from('inventory_requests')
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false });
+
+            if (params.status && params.status !== 'all') {
+                fallbackQuery = fallbackQuery.ilike('status', params.status);
+            }
+
+            if (params.search && params.search.trim()) {
+                const s = sanitizeSearch(params.search.trim());
+                fallbackQuery = fallbackQuery.or(`item_name.ilike.%${s}%,department.ilike.%${s}%`);
+            }
+
+            fallbackQuery = fallbackQuery.range(offset, offset + limit - 1);
+            const retryResult = await fallbackQuery;
+            requests = retryResult.data;
+            count = retryResult.count;
+            error = retryResult.error;
+        }
+
+        if (error) {
+            console.error('Error fetching inventory_requests:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to fetch inventory requests',
+                status: 500,
+            };
+        }
+
+        // Fetch current inventory items to match real-time stock & feasibility
+        const { data: allItems } = await client
+            .from('inventory_items')
+            .select('id, item_code, item_name, current_stock, minimum_stock, unit, status');
+
+        // Fetch all approved requests to determine exporting stock per item
+        const { data: approvedReqs } = await client
+            .from('inventory_requests')
+            .select('id, inventory_items_id, item_name, quantity_requested')
+            .ilike('status', 'approved');
+
+        const exportingMap = new Map<string, number>();
+        for (const ar of approvedReqs || []) {
+            const qty = Number(ar.quantity_requested || 0);
+            if (ar.inventory_items_id) {
+                const idKey = String(ar.inventory_items_id);
+                exportingMap.set(idKey, (exportingMap.get(idKey) || 0) + qty);
+            }
+            if (ar.item_name) {
+                const nameKey = ar.item_name.toLowerCase().trim();
+                exportingMap.set(nameKey, (exportingMap.get(nameKey) || 0) + qty);
+            }
+        }
+
+        const itemMapById = new Map<string, any>();
+        const itemMapByName = new Map<string, any>();
+        for (const it of allItems || []) {
+            const idKey = String(it.id);
+            const nameKey = (it.item_name || '').toLowerCase().trim();
+            const exporting = exportingMap.get(idKey) ?? exportingMap.get(nameKey) ?? 0;
+            const currentStock = Number(it.current_stock || 0);
+            const availableStock = Math.max(0, currentStock - exporting);
+            
+            const enrichedItem = {
+                ...it,
+                exporting_stock: exporting,
+                available_stock: availableStock,
+            };
+            itemMapById.set(idKey, enrichedItem);
+            itemMapByName.set(nameKey, enrichedItem);
+        }
+
+        // Resolve user names for requested_by & approved_or_rejected_by
+        const userIdsToResolve = (requests || [])
+            .map((r: any) => [r.requested_by, r.approved_or_rejected_by])
+            .flat()
+            .filter((id): id is string => Boolean(id) && typeof id === 'string');
+        const resolvedUsers = await resolveScannerUsers(userIdsToResolve);
+
+        // Attach live item feasibility & resolved user info to each request
+        const enrichedRequests = (requests || []).map((req: any) => {
+            const idKey = req.inventory_items_id ? String(req.inventory_items_id) : (req.item_id ? String(req.item_id) : null);
+            const nameKey = (req.item_name || '').toLowerCase().trim();
+            const matchedItem = (idKey && itemMapById.get(idKey)) || itemMapByName.get(nameKey) || null;
+
+            const isInternal = req.Internal_request === true || req.internal_request === true || req.is_internal === true || Boolean(req.requested_by);
+            const reqUserInfo = req.requested_by ? resolvedUsers.get(String(req.requested_by).trim()) : null;
+            const approverInfo = req.approved_or_rejected_by ? resolvedUsers.get(String(req.approved_or_rejected_by).trim()) : null;
+
+            const requesterName = reqUserInfo?.name || (isInternal ? (req.department ? `${req.department} Staff` : 'Internal Staff') : (req.requester_system || 'External Integration'));
+            const approverName = approverInfo?.name || req.approved_by || 'Authorized Personnel';
+
+            const requestedQty = Number(req.quantity_requested || 1);
+            const currentStock = matchedItem ? Number(matchedItem.current_stock || 0) : 0;
+            const availableStock = matchedItem ? Number(matchedItem.available_stock || 0) : 0;
+            const isStockFeasible = matchedItem ? (availableStock >= requestedQty && currentStock > 0) : false;
+
+            return {
+                ...req,
+                is_internal: isInternal,
+                requester_name: requesterName,
+                approver_name: approverName,
+                quantity_requested: requestedQty,
+                inventory_item: matchedItem,
+                current_stock: currentStock,
+                available_stock: availableStock,
+                is_stock_feasible: isStockFeasible,
+            };
+        });
+
+        // Compute summary counts
+        const { data: countData } = await client
+            .from('inventory_requests')
+            .select('status');
+
+        let pendingCount = 0;
+        let approvedCount = 0;
+        let receivedCount = 0;
+        let rejectedCount = 0;
+
+        for (const r of countData || []) {
+            const st = (r.status || '').toLowerCase();
+            if (st === 'pending') pendingCount++;
+            else if (st === 'approved') approvedCount++;
+            else if (st === 'received' || st === 'fulfilled') receivedCount++;
+            else if (st === 'rejected') rejectedCount++;
+        }
+
+        return {
+            success: true,
+            data: {
+                requests: enrichedRequests,
+                totalItems: count || (requests?.length || 0),
+                totalPages: Math.ceil((count || (requests?.length || 0)) / limit) || 1,
+                page,
+                stats: {
+                    total: countData?.length || (requests?.length || 0),
+                    pending: pendingCount,
+                    approved: approvedCount,
+                    received: receivedCount,
+                    rejected: rejectedCount,
+                }
+            },
+            status: 200,
+        };
+    } catch (error: any) {
+        console.error('Error in fetchInventoryRequests:', error);
+        return {
+            success: false,
+            error: error?.message || 'Failed to fetch requests',
+            status: 500,
+        };
+    }
+}
+
+export async function createInternalInventoryRequest(formData: {
+    item_id: string;
+    item_name: string;
+    item_code?: string;
+    quantity_requested: number;
+    department: string;
+    requested_by?: string;
+    purpose?: string;
+    remarks?: string;
+    message?: string;
+    possible_delivery_date?: string;
+}) {
+    try {
+        if (!formData.item_name || !formData.quantity_requested || formData.quantity_requested <= 0) {
+            return {
+                success: false,
+                error: 'Please specify a valid item and quantity greater than 0',
+                status: 400,
+            };
+        }
+
+        // Check if requested_by is a valid UUID
+        const isValidUUID = (str?: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+        const requestedByUuid = isValidUUID(formData.requested_by) ? formData.requested_by : null;
+
+        const payload: any = {
+            inventory_items_id: formData.item_id ? Number(formData.item_id) : null,
+            item_name: formData.item_name,
+            quantity_requested: formData.quantity_requested,
+            department: formData.department || 'Internal',
+            status: 'pending',
+            message: formData.purpose || formData.message || 'Internal requisition',
+            remarks: formData.remarks?.trim() || null,
+            Internal_request: true,
+            requested_by: requestedByUuid,
+            possible_delivery_date: formData.possible_delivery_date || null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        };
+
+        let { data, error } = await dbClient
+            .from('inventory_requests')
+            .insert([payload])
+            .select()
+            .single();
+
+        // Fallback: If 'remarks' column has not been added to the database yet, merge into 'message'
+        if (error && (error.message?.includes('remarks') || error.details?.includes('remarks') || error.code === '42703')) {
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.remarks;
+            fallbackPayload.message = [formData.purpose, formData.remarks].filter(Boolean).join(' — ') || 'Internal requisition';
+            
+            const retry = await dbClient
+                .from('inventory_requests')
+                .insert([fallbackPayload])
+                .select()
+                .single();
+            data = retry.data;
+            error = retry.error;
+        }
+
+        if (error) {
+            console.error('Error creating internal request:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to create internal request',
+                status: 500,
+            };
+        }
+
+        return {
+            success: true,
+            data,
+            message: `Internal request created successfully`,
+            status: 200,
+        };
+    } catch (error: any) {
+        console.error('Error in createInternalInventoryRequest:', error);
+        return {
+            success: false,
+            error: error?.message || 'Failed to create internal request',
+            status: 500,
+        };
+    }
+}
+
+export async function approveInventoryRequest(requestId: string, approvedBy?: string) {
+    try {
+        const { data: request, error: fetchErr } = await dbClient
+            .from('inventory_requests')
+            .select('*')
+            .eq('id', requestId)
+            .single();
+
+        if (fetchErr || !request) {
+            return {
+                success: false,
+                error: 'Request not found',
+                status: 404,
+            };
+        }
+
+        if (request.status?.toLowerCase() === 'approved') {
+            return {
+                success: false,
+                error: 'This request is already approved',
+                status: 400,
+            };
+        }
+
+        const isValidUUID = (str?: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+        const approverUuid = isValidUUID(approvedBy) ? approvedBy : null;
+
+        const updatePayload: any = {
+            status: 'approved',
+            updated_at: new Date().toISOString(),
+        };
+        if (approverUuid) {
+            updatePayload.approved_or_rejected_by = approverUuid;
+        }
+
+        const { data: updated, error: updateErr } = await dbClient
+            .from('inventory_requests')
+            .update(updatePayload)
+            .eq('id', requestId)
+            .select()
+            .single();
+
+        if (updateErr) {
+            return {
+                success: false,
+                error: updateErr.message || 'Failed to approve request',
+                status: 500,
+            };
+        }
+
+        return {
+            success: true,
+            data: updated,
+            message: `Request for ${request.item_name} approved and stock allocated for export`,
+            status: 200,
+        };
+    } catch (error: any) {
+        console.error('Error in approveInventoryRequest:', error);
+        return {
+            success: false,
+            error: error?.message || 'Failed to approve request',
+            status: 500,
+        };
+    }
+}
+
+export async function rejectInventoryRequest(requestId: string, reason: string, rejectedBy?: string) {
+    try {
+        const isValidUUID = (str?: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+        const rejectorUuid = isValidUUID(rejectedBy) ? rejectedBy : null;
+
+        const updatePayload: any = {
+            status: 'rejected',
+            updated_at: new Date().toISOString(),
+        };
+        if (rejectorUuid) {
+            updatePayload.approved_or_rejected_by = rejectorUuid;
+        }
+
+        const { data: updated, error } = await dbClient
+            .from('inventory_requests')
+            .update(updatePayload)
+            .eq('id', requestId)
+            .select()
+            .single();
+
+        if (error) {
+            return {
+                success: false,
+                error: error.message || 'Failed to reject request',
+                status: 500,
+            };
+        }
+
+        return {
+            success: true,
+            data: updated,
+            message: 'Request rejected',
+            status: 200,
+        };
+    } catch (error: any) {
+        console.error('Error in rejectInventoryRequest:', error);
+        return {
+            success: false,
+            error: error?.message || 'Failed to reject request',
+            status: 500,
+        };
+    }
+}
+
+export async function fulfillInventoryRequest(requestId: string, releasedBy: string = 'Staff', quantityToRelease?: number) {
+    try {
+        const { data: request, error: reqErr } = await dbClient
+            .from('inventory_requests')
+            .select('*')
+            .eq('id', requestId)
+            .single();
+
+        if (reqErr || !request) {
+            return {
+                success: false,
+                error: 'Request not found',
+                status: 404,
+            };
+        }
+
+        if (request.status?.toLowerCase() === 'received' || request.status?.toLowerCase() === 'fulfilled') {
+            return {
+                success: false,
+                error: 'This request has already been released/received',
+                status: 400,
+            };
+        }
+
+        const deductQty = quantityToRelease && quantityToRelease > 0 
+            ? Math.min(quantityToRelease, Number(request.quantity_requested || 1))
+            : Number(request.quantity_requested || 1);
+
+        // Find matching inventory item by inventory_items_id or item_name
+        let itemQuery = dbClient.from('inventory_items').select('*');
+        if (request.inventory_items_id) {
+            itemQuery = itemQuery.eq('id', request.inventory_items_id);
+        } else if (request.item_id) {
+            itemQuery = itemQuery.eq('id', request.item_id);
+        } else if (request.item_name) {
+            itemQuery = itemQuery.ilike('item_name', request.item_name.trim());
+        }
+
+        const { data: itemData, error: itemErr } = await itemQuery.single();
+
+        if (itemErr || !itemData) {
+            return {
+                success: false,
+                error: `Inventory item '${request.item_name}' was not found in the warehouse catalog`,
+                status: 404,
+            };
+        }
+
+        const currentStock = Number(itemData.current_stock || 0);
+        const newStock = Math.max(0, currentStock - deductQty);
+        const minStock = Number(itemData.minimum_stock || 10);
+
+        let newStatus = 'available';
+        if (newStock <= 0) newStatus = 'out-of-stock';
+        else if (newStock < minStock) newStatus = 'low-stock';
+
+        // 1. Deduct stock from inventory_items
+        const { error: stockUpdateErr } = await dbClient
+            .from('inventory_items')
+            .update({
+                current_stock: newStock,
+                status: newStatus,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', itemData.id);
+
+        if (stockUpdateErr) {
+            return {
+                success: false,
+                error: `Failed to deduct warehouse stock: ${stockUpdateErr.message}`,
+                status: 500,
+            };
+        }
+
+        // 2. Mark request as received
+        const { data: updatedReq, error: reqUpdateErr } = await dbClient
+            .from('inventory_requests')
+            .update({
+                status: 'received',
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', requestId)
+            .select()
+            .single();
+
+        if (reqUpdateErr) {
+            console.warn('Could not update request status after stock deduction:', reqUpdateErr);
+        }
+
+        return {
+            success: true,
+            data: updatedReq,
+            deductedQuantity: deductQty,
+            remainingStock: newStock,
+            itemName: itemData.item_name,
+            unit: itemData.unit || 'pcs',
+            message: `Successfully released ${deductQty} ${itemData.unit || 'pcs'} for ${request.item_name}. Stock deducted from inventory (${currentStock} -> ${newStock} ${itemData.unit || 'pcs'}).`,
+            status: 200,
+        };
+    } catch (error: any) {
+        console.error('Error in fulfillInventoryRequest:', error);
+        return {
+            success: false,
+            error: error?.message || 'Failed to fulfill inventory request',
             status: 500,
         };
     }
