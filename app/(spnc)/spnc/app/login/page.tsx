@@ -40,7 +40,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch("/spnc/app/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -53,7 +53,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/spnc/app/dashboard");
       router.refresh();
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -105,7 +105,7 @@ export default function LoginPage() {
       >
         {/* Logo mark */}
         <img
-          src="/logo.png"
+          src="/images/logo-remove-bg.png"
           alt="Airship Express"
           width={220}
           height={80}

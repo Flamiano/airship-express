@@ -23,6 +23,7 @@ import PageHeader from "../../components/PageHeader";
 const CATEGORY_OPTIONS = ["handling", "documentation", "customs", "safety", "storage", "transport", "general"];
 const STATUS_OPTIONS = ["draft", "published", "under_review", "archived"];
 const FILTERS = ["All", ...CATEGORY_OPTIONS];
+const sopsApiBase = "/spnc/app/api/sops";
 const PAGE_SIZE = 5;
 
 type SOP = {
@@ -90,7 +91,8 @@ export default function SOPsPage() {
   async function fetchSops() {
     setLoading(true);
     try {
-      const res = await fetch("/api/sops");
+      const res = await fetch(sopsApiBase);
+      if (!res.ok) throw new Error(`SOP request failed (${res.status})`);
       const data = await res.json();
       setSops(data.sops || []);
     } catch (err) {
@@ -225,7 +227,7 @@ export default function SOPsPage() {
     };
 
     try {
-      const url = editingId ? `/api/sops/${editingId}` : "/api/sops";
+      const url = editingId ? `${sopsApiBase}/${editingId}` : sopsApiBase;
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -255,7 +257,7 @@ export default function SOPsPage() {
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/sops/${id}`, { method: "DELETE" });
+      const res = await fetch(`${sopsApiBase}/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setDeleteError(data.message || "Could not delete SOP.");

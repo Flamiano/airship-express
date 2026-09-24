@@ -38,7 +38,7 @@ export default function ServiceProviderDetailPage() {
   useEffect(() => {
     async function fetchProvider() {
       try {
-        const response = await fetch(`/api/service-providers/${params.id}`);
+        const response = await fetch(`/spnc/app/api/service-providers/${params.id}`);
         const data = await response.json();
         setProvider(response.ok ? data.provider || null : null);
       } catch (error) {
@@ -63,7 +63,7 @@ export default function ServiceProviderDetailPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">
         <p className="text-sm text-gray-500">Service provider not found.</p>
-        <button onClick={() => router.push("/service-providers")} className="text-sm text-[#F2419B] hover:underline">
+        <button onClick={() => router.push("/spnc/app/service-providers")} className="text-sm text-[#F2419B] hover:underline">
           Back to Service Providers
         </button>
       </div>
@@ -75,7 +75,7 @@ export default function ServiceProviderDetailPage() {
       <div className="print-hidden mb-8 flex items-center justify-between">
         <button
           type="button"
-          onClick={() => router.push("/service-providers")}
+          onClick={() => router.push("/spnc/app/service-providers")}
           className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
         >
           <ArrowLeft size={16} />

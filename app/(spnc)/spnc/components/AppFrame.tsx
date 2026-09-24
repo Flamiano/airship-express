@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 
-const NO_SIDEBAR_ROUTES = ["/login", "/register"];
+const NO_SIDEBAR_ROUTES = ["/spnc/app/login", "/spnc/app/register"];
 
 export default function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

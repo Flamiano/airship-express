@@ -18,7 +18,7 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch("/spnc/app/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -31,7 +31,7 @@ export default function LoginForm() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/spnc/app/dashboard");
       router.refresh();
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -155,7 +155,7 @@ export default function LoginForm() {
       >
         Don&apos;t have an account?{" "}
         <Link
-          href="/register"
+          href="/spnc/app/register"
           className="font-medium text-[#F2A23B] hover:text-[#F5B25C] underline-offset-2 hover:underline"
         >
           Create one

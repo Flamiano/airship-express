@@ -164,14 +164,14 @@ export default function RoutesPage() {
 
   async function loadRoutes() {
     setLoading(true);
-    const res = await fetch("/api/routes");
+    const res = await fetch("/spnc/app/api/routes");
     const data = await res.json();
     setRoutes(data.routes || []);
     setLoading(false);
   }
 
   async function loadProviders() {
-    const res = await fetch("/api/service-providers");
+    const res = await fetch("/spnc/app/api/service-providers");
     const data = await res.json();
     setProviders(data.providers || []);
   }
@@ -293,7 +293,7 @@ export default function RoutesPage() {
     setSaveError(null);
 
     try {
-      const url = editingId ? `/api/routes/${editingId}` : "/api/routes";
+      const url = editingId ? `/spnc/app/api/routes/${editingId}` : "/spnc/app/api/routes";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -335,7 +335,7 @@ export default function RoutesPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this route?")) return;
-    await fetch(`/api/routes/${id}`, { method: "DELETE" });
+    await fetch(`/spnc/app/api/routes/${id}`, { method: "DELETE" });
     loadRoutes();
   }
 

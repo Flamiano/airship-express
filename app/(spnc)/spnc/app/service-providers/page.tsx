@@ -164,7 +164,7 @@ export default function ServiceProvidersPage() {
 
   async function loadProviders() {
     setLoading(true);
-    const res = await fetch("/api/service-providers");
+    const res = await fetch("/spnc/app/api/service-providers");
     const data = await res.json();
     setProviders(data.providers || []);
     setLoading(false);
@@ -271,7 +271,7 @@ export default function ServiceProvidersPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const url = editingId ? `/api/service-providers/${editingId}` : "/api/service-providers";
+      const url = editingId ? `/spnc/app/api/service-providers/${editingId}` : "/spnc/app/api/service-providers";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -301,7 +301,7 @@ export default function ServiceProvidersPage() {
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/service-providers/${id}`, { method: "DELETE" });
+      const res = await fetch(`/spnc/app/api/service-providers/${id}`, { method: "DELETE" });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

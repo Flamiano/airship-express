@@ -164,7 +164,8 @@ export default function SchedulesPage() {
   async function fetchSchedules() {
     setLoading(true);
     try {
-      const res = await fetch("/api/schedules", { cache: "no-store" });
+      const res = await fetch("/spnc/app/api/schedules", { cache: "no-store" });
+      if (!res.ok) throw new Error(`Schedules request failed (${res.status})`);
       const data = await res.json();
       setSchedules(data.schedules || []);
       setPage(1);
@@ -177,7 +178,7 @@ export default function SchedulesPage() {
 
   async function fetchProviders() {
     try {
-      const res = await fetch("/api/service-providers", { cache: "no-store" });
+      const res = await fetch("/spnc/app/api/service-providers", { cache: "no-store" });
       const data = await res.json();
       setProviders(data.providers || []);
     } catch {
@@ -187,7 +188,7 @@ export default function SchedulesPage() {
 
   async function fetchRoutes() {
     try {
-      const res = await fetch("/api/routes", { cache: "no-store" });
+      const res = await fetch("/spnc/app/api/routes", { cache: "no-store" });
       const data = await res.json();
       setRoutes(data.routes || []);
     } catch {
@@ -339,7 +340,7 @@ export default function SchedulesPage() {
     };
 
     try {
-      const url = editingId ? `/api/schedules/${editingId}` : "/api/schedules";
+      const url = editingId ? `/spnc/app/api/schedules/${editingId}` : "/spnc/app/api/schedules";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -369,7 +370,7 @@ export default function SchedulesPage() {
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/schedules/${id}`, { method: "DELETE" });
+      const res = await fetch(`/spnc/app/api/schedules/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setDeleteError(data.message || "Could not delete schedule.");

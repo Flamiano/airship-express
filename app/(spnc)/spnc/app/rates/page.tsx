@@ -92,6 +92,8 @@ const emptyForm = {
   notes: "",
 };
 
+const ratesApiBase = "/spnc/app/api";
+
 function routeLabel(r: Rate["routes"]) {
   if (!r) return null;
   if (r.origin && r.destination) {
@@ -137,7 +139,10 @@ export default function RatesPage() {
   async function fetchRates() {
     setLoading(true);
     try {
-      const res = await fetch("/api/rates");
+      const res = await fetch(`${ratesApiBase}/rates`);
+      if (!res.ok) {
+        throw new Error(`Rates request failed (${res.status})`);
+      }
       const data = await res.json();
       setRates(data.rates || []);
     } catch (err) {
@@ -149,7 +154,8 @@ export default function RatesPage() {
 
   async function fetchProviders() {
     try {
-      const res = await fetch("/api/service-providers");
+      const res = await fetch(`${ratesApiBase}/service-providers`);
+      if (!res.ok) return;
       const data = await res.json();
       setProviders(data.providers || []);
     } catch {
@@ -159,7 +165,8 @@ export default function RatesPage() {
 
   async function fetchRoutes() {
     try {
-      const res = await fetch("/api/routes");
+      const res = await fetch(`${ratesApiBase}/routes`);
+      if (!res.ok) return;
       const data = await res.json();
       setRoutesList(data.routes || []);
     } catch {
@@ -299,7 +306,7 @@ export default function RatesPage() {
     };
 
     try {
-      const url = editingId ? `/api/rates/${editingId}` : "/api/rates";
+      const url = editingId ? `${ratesApiBase}/rates/${editingId}` : `${ratesApiBase}/rates`;
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -329,7 +336,7 @@ export default function RatesPage() {
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/rates/${id}`, { method: "DELETE" });
+      const res = await fetch(`${ratesApiBase}/rates/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setDeleteError(data.message || "Could not delete rate.");

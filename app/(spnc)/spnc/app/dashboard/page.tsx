@@ -15,11 +15,11 @@ import { useShell } from "../../components/ShellContext"
 import PageHeader from "../../components/PageHeader";
 
 const modules = [
-  { title: "Service Providers", desc: "Carriers, forwarders & vendors", icon: Building2, bg: "bg-[#12203A]", color: "text-[#5B8CF2]", lightBg: "bg-[#E4ECFC]", lightColor: "text-[#3B6BE0]", href: "/service-providers" },
-  { title: "Network & Routes", desc: "Origin-destination planning", icon: Map, bg: "bg-[#0F2E22]", color: "text-[#3BD68A]", lightBg: "bg-[#E1F7EC]", lightColor: "text-[#1FA968]", href: "/routes" },
-  { title: "Rates & Tariffs", desc: "Pricing & validity", icon: DollarSign, bg: "bg-[#3A2A0F]", color: "text-[#F2A23B]", lightBg: "bg-[#FDF0DD]", lightColor: "text-[#C9791A]", href: "/rates" },
-  { title: "SOPs", desc: "Standard operating procedures", icon: ClipboardList, bg: "bg-[#2A123A]", color: "text-[#B25BF2]", lightBg: "bg-[#F3E7FC]", lightColor: "text-[#9A3BE0]", href: "/sops" },
-  { title: "Schedules", desc: "Upcoming departures", icon: Calendar, bg: "bg-[#0F2A33]", color: "text-[#3BC6E8]", lightBg: "bg-[#DFF4FA]", lightColor: "text-[#1B9FC2]", href: "/schedules" },
+  { title: "Service Providers", desc: "Carriers, forwarders & vendors", icon: Building2, bg: "bg-[#12203A]", color: "text-[#5B8CF2]", lightBg: "bg-[#E4ECFC]", lightColor: "text-[#3B6BE0]", href: "/spnc/app/service-providers" },
+  { title: "Network & Routes", desc: "Origin-destination planning", icon: Map, bg: "bg-[#0F2E22]", color: "text-[#3BD68A]", lightBg: "bg-[#E1F7EC]", lightColor: "text-[#1FA968]", href: "/spnc/app/routes" },
+  { title: "Rates & Tariffs", desc: "Pricing & validity", icon: DollarSign, bg: "bg-[#3A2A0F]", color: "text-[#F2A23B]", lightBg: "bg-[#FDF0DD]", lightColor: "text-[#C9791A]", href: "/spnc/app/rates" },
+  { title: "SOPs", desc: "Standard operating procedures", icon: ClipboardList, bg: "bg-[#2A123A]", color: "text-[#B25BF2]", lightBg: "bg-[#F3E7FC]", lightColor: "text-[#9A3BE0]", href: "/spnc/app/sops" },
+  { title: "Schedules", desc: "Upcoming departures", icon: Calendar, bg: "bg-[#0F2A33]", color: "text-[#3BC6E8]", lightBg: "bg-[#DFF4FA]", lightColor: "text-[#1B9FC2]", href: "/spnc/app/schedules" },
 ];
 
 const userFullName = "ADMIN"; // TODO: replace with real session user's full_name
@@ -50,27 +50,27 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    fetch("/api/service-providers", { cache: "no-store" })
+    fetch("/spnc/app/api/service-providers", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => setProviderCount(getArrayLength(data, "providers")))
       .catch(() => setProviderCount(0));
 
-    fetch("/api/routes", { cache: "no-store" })
+    fetch("/spnc/app/api/routes", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => setRouteCount(getArrayLength(data, "routes")))
       .catch(() => setRouteCount(0));
 
-    fetch("/api/rates", { cache: "no-store" })
+    fetch("/spnc/app/api/rates", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => setRateCount(getArrayLength(data, "rates")))
       .catch(() => setRateCount(0));
 
-    fetch("/api/schedules", { cache: "no-store" })
+    fetch("/spnc/app/api/schedules", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => setScheduleCount(getArrayLength(data, "schedules")))
       .catch(() => setScheduleCount(0));
 
-    fetch("/api/sops", { cache: "no-store" })
+    fetch("/spnc/app/api/sops", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => setSopCount(getArrayLength(data, "sops")))
       .catch(() => setSopCount(0));
