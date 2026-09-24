@@ -14,7 +14,7 @@ export async function POST(request: Request) {
             );
         }
 
-        // 1. Look up employee in fms_users table using Admin client
+        // 1. Look up employee in FMS users table
         const { data: fmsUser, error: fmsError } = await supabaseAdmin
             .from('fms_users')
             .select('id, employee_id, role')
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
             );
         }
 
-        // 2. Look up Supabase Auth user email using Admin client
+        // 2. Get the Supabase Auth user email for FMS
         const { data: authUser, error: authError } =
             await supabaseAdmin.auth.admin.getUserById(fmsUser.id);
 
@@ -39,13 +39,18 @@ export async function POST(request: Request) {
             );
         }
 
-        // 3. Collect cookies generated during authentication
+        // 3. Collect FMS authentication cookies
         const cookieStore = await cookies();
-        const cookiesToApply: { name: string; value: string; options: any }[] = [];
+
+        const cookiesToApply: {
+            name: string;
+            value: string;
+            options: any;
+        }[] = [];
 
         const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            process.env.NEXT_PUBLIC_FMS_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_FMS_SUPABASE_ANON_KEY!,
             {
                 cookies: {
                     getAll() {
@@ -56,16 +61,21 @@ export async function POST(request: Request) {
                             try {
                                 cookieStore.set(name, value, options);
                             } catch {
-                                // Handled in final response headers
+                                // Applied to final response below
                             }
-                            cookiesToApply.push({ name, value, options });
+
+                            cookiesToApply.push({
+                                name,
+                                value,
+                                options,
+                            });
                         });
                     },
                 },
             }
         );
 
-        // 4. Authenticate password
+        // 4. Authenticate against FMS Supabase
         const { data: signInData, error: signInError } =
             await supabase.auth.signInWithPassword({
                 email: authUser.user.email,
@@ -79,7 +89,7 @@ export async function POST(request: Request) {
             );
         }
 
-        // 5. Construct final response with session payload
+        // 5. Construct final response
         const response = NextResponse.json({
             success: true,
             session: signInData.session,
@@ -91,7 +101,7 @@ export async function POST(request: Request) {
             redirectTo: '/dashboard',
         });
 
-        // 6. Explicitly attach all generated session cookies to the final response
+        // 6. Attach FMS authentication cookies
         cookiesToApply.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
         });
