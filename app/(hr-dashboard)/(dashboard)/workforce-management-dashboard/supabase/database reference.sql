@@ -158,16 +158,26 @@ create index idx_hr2_rfid_uid on public.hr2_rfid_bind using btree (rfid_uid);
 create table public.hr2_shifts (
   id uuid not null default gen_random_uuid (),
   title text not null,
-  driver_id uuid null,
-  vehicle text not null,
+  employee_id uuid null,
   shift_date date not null,
-  shift_time text not null,
+  
+  -- Office Specific
+  shift_time text null,
+  
+  -- Rider Specific
+  vehicle text null,
+  expected_arrival text null,
+  gate_in text null,
+  gate_out text null,
+  
   status text not null,
   priority text not null,
+  override_reason text null,
   created_at timestamp with time zone null default now(),
   is_deleted boolean not null default false,
+  
   constraint hr2_shifts_pkey primary key (id),
-  constraint hr2_shifts_driver_id_fkey foreign key (driver_id) references public.hr1_employees (id) on delete set null,
+  constraint hr2_shifts_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete set null,
   constraint hr2_shifts_priority_check check (
     priority in ('Normal', 'High', 'Critical')
   ),
@@ -176,7 +186,7 @@ create table public.hr2_shifts (
   )
 ) TABLESPACE pg_default;
 
-create index idx_hr2_shifts_driver on public.hr2_shifts using btree (driver_id);
+create index idx_hr2_shifts_employee on public.hr2_shifts using btree (employee_id);
 
 -- 9. Timesheets
 create table public.hr2_timesheets (
