@@ -104,6 +104,7 @@ export interface Shift {
   // Office Specific
   shift_time?: string; 
   break_duration_minutes?: number; // e.g. 0, 30, 60
+  break_time?: string; // e.g. 12:00 PM - 01:00 PM
   
   // Rider Specific
   expected_arrival?: string;

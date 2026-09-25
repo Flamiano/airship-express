@@ -18,7 +18,7 @@ import type { CreateShiftPayload } from '../../types/api';
 export default function ShiftsPage() {
   const { role } = useAuth();
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; role?: string }>>([]);
+  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; role?: string; department?: string }>>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export default function ShiftsPage() {
 
   useEffect(() => {
     load();
-    apiFetch<Array<{ id: string; full_name: string; role?: string }>>('/api/drivers')
+    apiFetch<Array<{ id: string; full_name: string; role?: string; department?: string }>>('/api/drivers')
       .then(res => setDrivers(res || []))
       .catch(() => setDrivers([]));
   }, [load]);
@@ -91,9 +91,9 @@ export default function ShiftsPage() {
           <Clock size={14} className="text-muted" />
           <span className="font-medium">{shift.shift_time || '08:00 AM - 05:00 PM'}</span>
         </div>
-        {shift.break_duration_minutes ? (
-          <span className="text-[10px] text-muted font-medium bg-ink/5 px-2 py-0.5 rounded-full border border-line">
-            {shift.break_duration_minutes}m break
+        {shift.break_time ? (
+          <span className="text-[10px] text-muted font-medium bg-ink/5 px-2 py-0.5 rounded-full border border-line truncate max-w-[120px]" title={`Break: ${shift.break_time}`}>
+            Break: {shift.break_time}
           </span>
         ) : null}
       </div>

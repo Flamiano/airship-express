@@ -163,7 +163,7 @@ create table public.hr2_shifts (
   
   -- Office Specific
   shift_time text null,
-  break_duration_minutes integer null default 0,
+  break_time text null,
   
   -- Rider Specific
   vehicle text null,

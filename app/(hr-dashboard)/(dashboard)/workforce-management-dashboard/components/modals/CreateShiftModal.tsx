@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit3 } from 'lucide-react';
+import { Plus, Edit3, Search, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { SHIFT_PRIORITIES } from '../../utils/constants';
@@ -10,25 +10,27 @@ interface CreateShiftModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateShiftPayload | UpdateShiftPayload) => Promise<void>;
-  drivers: Array<{ id: string; full_name: string; role?: string }>;
+  drivers: Array<{ id: string; full_name: string; role?: string; department?: string }>;
   initialData?: Shift | null;
 }
 
-/**
- * Form modal for creating a new shift assignment. Called from the shifts page.
- * Submits to POST /api/shifts.
- */
 export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData }: CreateShiftModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'office' | 'rider'>('office');
   const defaulted = useRef(false);
 
+  // Search Filter State
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<{ type: 'department' | 'role', value: string } | null>(null);
+
   const [form, setForm] = useState<Partial<UpdateShiftPayload>>({
     title: '',
-    driver_id: drivers.length ? drivers[0].id : '',
+    driver_id: '',
     shift_date: new Date().toISOString().split('T')[0],
     shift_time: '08:00 AM - 05:00 PM',
+    break_time: '12:00 PM - 01:00 PM',
     vehicle: 'Freightliner Cascadia #902',
     expected_arrival: '09:00 AM',
     priority: 'Normal',
@@ -47,7 +49,7 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           driver_id: initialData.employee_id,
           shift_date: initialData.shift_date,
           shift_time: initialData.shift_time || '08:00 AM - 05:00 PM',
-          break_duration_minutes: initialData.break_duration_minutes,
+          break_time: initialData.break_time || '',
           vehicle: initialData.vehicle || '',
           expected_arrival: initialData.expected_arrival || '',
           priority: initialData.priority || 'Normal',
@@ -57,22 +59,31 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
       } else if (!defaulted.current) {
         defaulted.current = true;
         setMode('office');
-        setForm({
-          title: '',
-          driver_id: drivers.length ? drivers[0].id : '',
-          shift_date: new Date().toISOString().split('T')[0],
-          shift_time: '08:00 AM - 05:00 PM',
-          vehicle: 'Freightliner Cascadia #902',
-          expected_arrival: '09:00 AM',
-          priority: 'Normal',
-          override_reason: '',
-          status: 'Scheduled',
-        });
+        setForm(f => ({ ...f, driver_id: '' }));
       }
     } else {
       defaulted.current = false;
+      setIsSearching(false);
+      setSearchQuery('');
+      setActiveFilter(null);
     }
-  }, [open, drivers, initialData]);
+  }, [open, initialData]);
+
+  // Derived state for filtering employees
+  const modeFilteredDrivers = drivers.filter(d => {
+    const group = getEmployeeGroup(d.role);
+    if (mode === 'office') return group === 'Office';
+    return group !== 'Office'; // Riders
+  });
+
+  const finalDrivers = modeFilteredDrivers.filter(d => {
+    if (!activeFilter) return true;
+    if (activeFilter.type === 'department') return d.department === activeFilter.value;
+    if (activeFilter.type === 'role') return d.role === activeFilter.value;
+    return true;
+  });
+
+  const selectedDriver = drivers.find(d => d.id === form.driver_id);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,13 +91,14 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
     setError(null);
     try {
       const payload: CreateShiftPayload | UpdateShiftPayload = {
-        title: form.title!,
+        title: form.title || (mode === 'office' ? (selectedDriver?.role || 'Office Shift') : 'Rider Dispatch'),
         driver_id: form.driver_id || null,
         shift_date: form.shift_date!,
       };
 
       if (mode === 'office') {
         payload.shift_time = form.shift_time;
+        payload.break_time = form.break_time;
       } else {
         payload.vehicle = form.vehicle;
         payload.expected_arrival = form.expected_arrival;
@@ -108,11 +120,87 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
     }
   };
 
+  const renderModalTitle = () => {
+    if (!isSearching && !activeFilter) {
+      return (
+        <div className="flex items-center gap-3 w-full group">
+          <span>{initialData ? "Edit Assignment" : "Create Assignment"}</span>
+          <button 
+            type="button" 
+            onClick={(e) => { e.stopPropagation(); setIsSearching(true); }}
+            className="p-1.5 rounded hover:bg-ink/5 dark:hover:bg-paper/10 text-muted group-hover:text-ink transition-colors ml-auto mr-4 flex items-center gap-1.5 border border-transparent hover:border-line"
+            title="Filter Employees"
+          >
+            <Search size={14} />
+            <span className="text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">Filter</span>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2 w-full pr-8 text-sm font-normal">
+        {activeFilter ? (
+          <div className="flex items-center gap-2 w-full">
+            <div className="flex items-center bg-accent/10 text-accent px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-accent/20">
+              <span className="uppercase text-[9px] tracking-wider opacity-70 mr-1.5">{activeFilter.type}</span>
+              <select 
+                value={activeFilter.value}
+                onChange={(e) => setActiveFilter({ ...activeFilter, value: e.target.value })}
+                className="bg-transparent border-none outline-none cursor-pointer text-accent font-bold"
+              >
+                {Array.from(new Set(modeFilteredDrivers.map(d => activeFilter.type === 'department' ? d.department : d.role).filter(Boolean))).map(val => (
+                  <option key={val} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+            <button type="button" onClick={() => setActiveFilter(null)} className="text-muted hover:text-ink p-1"><X size={14} /></button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 w-full relative">
+            <Search size={14} className="text-muted absolute left-3" />
+            <input 
+              autoFocus
+              type="text" 
+              placeholder="Type 'department' or 'role'..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-ink/5 dark:bg-paper/5 border border-line rounded-lg py-1.5 pl-8 pr-8 text-xs focus:outline-none focus:border-accent transition-colors"
+            />
+            <button type="button" onClick={() => setIsSearching(false)} className="text-muted hover:text-ink absolute right-2"><X size={14} /></button>
+            
+            {searchQuery.length > 0 && (
+              <div className="absolute top-full left-0 w-full mt-2 bg-paper border border-line rounded-xl shadow-xl overflow-hidden z-50 text-xs">
+                {['department', 'role'].filter(f => f.includes(searchQuery.toLowerCase())).map(f => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const firstVal = modeFilteredDrivers.find(d => f === 'department' ? d.department : d.role);
+                      const val = (f === 'department' ? firstVal?.department : firstVal?.role) || '';
+                      setActiveFilter({ type: f as any, value: val });
+                      setIsSearching(false);
+                      setSearchQuery('');
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-ink/5 dark:hover:bg-white/5 border-b border-line last:border-0 transition-colors"
+                  >
+                    Filter by <span className="font-bold capitalize text-accent">{f}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={initialData ? "Edit Assignment / Override" : "Create Assignment"}
+      title={renderModalTitle()}
       icon={initialData ? <Edit3 size={20} /> : <Plus size={20} />}
     >
       <div className="flex bg-ink/5 dark:bg-paper/5 p-1 rounded-xl mb-4">
@@ -145,43 +233,9 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           </div>
         )}
 
-        <div>
-          <label className="font-medium text-xs text-muted block mb-1">
-            {mode === 'office' ? 'Shift Title / Role' : 'Route / Dispatch Title'}
-          </label>
-          {mode === 'office' ? (
-            form.driver_id ? (
-              <div className="w-full bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-2.5 text-xs text-muted/70 cursor-not-allowed flex items-center gap-2">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                {form.title || 'Auto-linked to Employee Profile'}
-              </div>
-            ) : (
-              <select
-                required
-                value={form.title || ''}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-              >
-                <option value="" disabled>Select Role for Unassigned Shift...</option>
-                {Array.from(new Set(drivers.filter(d => d.role && getEmployeeGroup(d.role) === 'Office').map(d => d.role))).map(role => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            )
-          ) : (
-            <input
-              type="text"
-              required
-              placeholder="e.g. Mid-West Grain Transit"
-              value={form.title || ''}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-            />
-          )}
-        </div>
-
-        <div>
-          <label className="font-medium text-xs text-muted block mb-1">
+        {/* 1. Assign Employee (Moved to Top) */}
+        <div className="bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-3">
+          <label className="font-medium text-xs text-muted block mb-2">
             {mode === 'office' ? 'Assign Employee' : 'Assign Rider'}
           </label>
           <select
@@ -191,22 +245,66 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
               const updates: any = { driver_id: selectedId };
               if (selectedId && mode === 'office') {
                 const driver = drivers.find(d => d.id === selectedId);
-                if (driver?.role) {
-                  updates.title = driver.role;
-                }
+                if (driver?.role) updates.title = driver.role;
               }
               setForm({ ...form, ...updates });
             }}
-            className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+            className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
           >
             <option value="">Unassigned</option>
-            {drivers.map((d) => (
+            {finalDrivers.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.full_name}
+                {d.full_name} {d.role ? `(${d.role})` : ''}
               </option>
             ))}
           </select>
+
+          {selectedDriver && (
+            <div className="mt-3 flex items-center justify-between text-[11px] bg-white/50 dark:bg-black/20 p-2.5 rounded-lg border border-line/50">
+              <div className="flex flex-col">
+                <span className="text-muted/70 uppercase font-semibold tracking-wider">Department</span>
+                <span className="font-medium text-ink mt-0.5">{selectedDriver.department || 'N/A'}</span>
+              </div>
+              <div className="h-6 w-px bg-line/50" />
+              <div className="flex flex-col text-right">
+                <span className="text-muted/70 uppercase font-semibold tracking-wider">Role</span>
+                <span className="font-medium text-ink mt-0.5">{selectedDriver.role || 'N/A'}</span>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* 2. Shift Title / Role (Moved to Bottom) */}
+        {mode === 'office' ? (
+          !form.driver_id && (
+            <div>
+              <label className="font-medium text-xs text-muted block mb-1">Role Needed (For Unassigned Shift)</label>
+              <select
+                required
+                value={form.title || ''}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+              >
+                <option value="" disabled>Select Role...</option>
+                {Array.from(new Set(modeFilteredDrivers.map(d => d.role).filter(Boolean))).map(role => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            </div>
+          )
+        ) : (
+          <div>
+            <label className="font-medium text-xs text-muted block mb-1">Route / Dispatch Title</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Mid-West Grain Transit"
+              value={form.title || ''}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -250,19 +348,14 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
               />
             </div>
             <div>
-              <label className="font-medium text-xs text-muted block mb-1">Break Duration</label>
-              <select
-                value={form.break_duration_minutes ?? ''}
-                onChange={(e) => setForm({ ...form, break_duration_minutes: e.target.value ? parseInt(e.target.value) : undefined })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-              >
-                <option value="">No Break</option>
-                <option value="15">15 mins</option>
-                <option value="30">30 mins</option>
-                <option value="45">45 mins</option>
-                <option value="60">1 hour</option>
-                <option value="90">1.5 hours</option>
-              </select>
+              <label className="font-medium text-xs text-muted block mb-1">Break Time Block</label>
+              <input
+                type="text"
+                placeholder="e.g. 12:00 PM - 01:00 PM"
+                value={form.break_time || ''}
+                onChange={(e) => setForm({ ...form, break_time: e.target.value })}
+                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+              />
             </div>
           </div>
         )}
