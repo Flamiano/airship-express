@@ -44,7 +44,7 @@ export const SprintChart: React.FC<Props> = ({ shifts, onShiftClick }) => {
     }
     
     // Rider
-    const expected = getPositionForTime(shift.expected_arrival);
+    const expected = getPositionForTime(shift.fleet_data?.expected_arrival);
     const inTime = getPositionForTime(shift.gate_in);
     const outTime = getPositionForTime(shift.gate_out);
     return { type: 'markers', expected, inTime, outTime };
@@ -115,7 +115,7 @@ export const SprintChart: React.FC<Props> = ({ shifts, onShiftClick }) => {
                             <div 
                               className="absolute top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-amber-500 rotate-45 bg-paper z-10"
                               style={{ left: `calc(${(pos.expected / HOURS.length) * 100}% - 8px)` }}
-                              title={`Expected: ${shift.expected_arrival}`}
+                              title={`Expected: ${shift.fleet_data?.expected_arrival}`}
                             />
                           )}
                           {pos.inTime !== undefined && pos.inTime !== -1 && (

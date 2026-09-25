@@ -212,6 +212,8 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
 
           if (bStart.getTime() === bEnd.getTime()) throw new Error("Break start and end time cannot be exactly the same.");
           if (bStart < sStart || bEnd > sEnd) throw new Error("Break time must be strictly within the shift time block.");
+        }
+        
         basePayload.shift_time = formatTimeBlock(startTime, endTime);
         basePayload.break_time = hasBreak ? formatTimeBlock(breakStartTime, breakEndTime) : undefined;
       }

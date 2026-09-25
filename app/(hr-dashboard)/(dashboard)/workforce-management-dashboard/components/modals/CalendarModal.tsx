@@ -128,7 +128,7 @@ export function CalendarModal({ open, onClose, shifts = [], onShiftClick }: Cale
                               }`}
                             >
                               <span className="font-bold">{shift.employee?.full_name?.split(' ')[0]}:</span>{' '}
-                              {shift.shift_time || shift.expected_arrival}
+                              {shift.shift_time || shift.fleet_data?.expected_arrival || 'Pending'}
                               {shift.break_time ? ` (Break: ${shift.break_time})` : ''}
                             </div>
                         ))}

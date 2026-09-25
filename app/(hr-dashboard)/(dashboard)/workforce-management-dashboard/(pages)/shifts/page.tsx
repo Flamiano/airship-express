@@ -131,7 +131,7 @@ export default function ShiftsPage() {
           <span className="text-[10px] text-muted font-medium uppercase tracking-wider">Target Time</span>
           <div className="flex items-center gap-1.5 text-ink font-medium">
             <Clock size={12} className="text-amber-500" />
-            {shift.expected_arrival || 'N/A'}
+            {shift.fleet_data?.expected_arrival || 'N/A'}
           </div>
         </div>
         <div className="bg-paper-dark rounded-lg p-2 flex flex-col gap-1 border border-line">
@@ -143,10 +143,10 @@ export default function ShiftsPage() {
         </div>
       </div>
       
-      {shift.vehicle && (
+      {shift.fleet_data?.vehicle && (
         <div className="flex items-center gap-2 text-[11px] text-muted">
           <Truck size={12} />
-          <span>Assigned: <span className="font-medium text-ink">{shift.vehicle}</span></span>
+          <span>Assigned: <span className="font-medium text-ink">{shift.fleet_data.vehicle}</span></span>
         </div>
       )}
       {shift.override_reason && (
