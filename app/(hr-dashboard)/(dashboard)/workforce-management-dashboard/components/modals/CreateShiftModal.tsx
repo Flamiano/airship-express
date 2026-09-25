@@ -158,21 +158,33 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
       if (initialData || dateMode === 'single') {
         if (!singleDate) throw new Error("Please select a date.");
         datesToCreate = [singleDate];
-      } else {
+      } else if (dateMode === 'range') {
         if (!startDate || !endDate) throw new Error("Please select both start and end dates.");
         let curr = new Date(startDate);
         const end = new Date(endDate);
         if (curr > end) throw new Error("Start date must be before end date.");
         
         while (curr <= end) {
-          if (dateMode === 'range' || (dateMode === 'recurring' && recurringDays.includes(curr.getDay()))) {
+          datesToCreate.push(curr.toISOString().split('T')[0]);
+          curr.setDate(curr.getDate() + 1);
+        }
+      } else if (dateMode === 'recurring') {
+        if (!singleDate) throw new Error("Please select a start date.");
+        if (recurringDays.length === 0) throw new Error("Please select at least one day for the recurring schedule.");
+        
+        let curr = new Date(singleDate);
+        const end = new Date(curr);
+        end.setDate(end.getDate() + 28); // 4 weeks range
+        
+        while (curr <= end) {
+          if (recurringDays.includes(curr.getDay())) {
             datesToCreate.push(curr.toISOString().split('T')[0]);
           }
           curr.setDate(curr.getDate() + 1);
         }
       }
 
-      if (datesToCreate.length === 0) throw new Error("No dates match your recurring selection.");
+      if (datesToCreate.length === 0) throw new Error("No dates match your selection.");
 
       const basePayload: Partial<CreateShiftPayload> = {
         title: shiftTitle || (mode === 'office' ? (selectedDriver?.role || 'Office Shift') : 'Rider Dispatch'),
@@ -180,6 +192,37 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
       };
 
       if (mode === 'office') {
+        const parseTimeObjToDate = (t: TimeObj) => {
+          const d = new Date();
+          let h = parseInt(t.h);
+          if (t.p === 'PM' && h < 12) h += 12;
+          if (t.p === 'AM' && h === 12) h = 0;
+          d.setHours(h, parseInt(t.m), 0, 0);
+          return d;
+        };
+
+        const sStart = parseTimeObjToDate(startTime);
+        let sEnd = parseTimeObjToDate(endTime);
+        const isOvernight = sStart > sEnd;
+        if (isOvernight) sEnd.setDate(sEnd.getDate() + 1);
+
+        if (sStart.getTime() === sEnd.getTime()) throw new Error("Shift start and end time cannot be exactly the same.");
+
+        if (hasBreak) {
+          let bStart = parseTimeObjToDate(breakStartTime);
+          let bEnd = parseTimeObjToDate(breakEndTime);
+
+          // Adjust overnight breaks
+          if (isOvernight) {
+             if (bStart < sStart) bStart.setDate(bStart.getDate() + 1);
+             if (bEnd < sStart) bEnd.setDate(bEnd.getDate() + 1);
+          }
+          if (bStart > bEnd) bEnd.setDate(bEnd.getDate() + 1); // Break crosses midnight
+
+          if (bStart.getTime() === bEnd.getTime()) throw new Error("Break start and end time cannot be exactly the same.");
+          if (bStart < sStart || bEnd > sEnd) throw new Error("Break time must be strictly within the shift time block.");
+        }
+
         basePayload.shift_time = formatTimeBlock(startTime, endTime);
         basePayload.break_time = hasBreak ? formatTimeBlock(breakStartTime, breakEndTime) : undefined;
       } else {
@@ -188,7 +231,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
         basePayload.priority = priority as 'Normal'|'High'|'Critical';
       }
 
-      // If it's an edit, we only update the single shift
       if (initialData) {
         const payload: UpdateShiftPayload = {
           ...(basePayload as CreateShiftPayload),
@@ -199,7 +241,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
         };
         await onSubmit(payload);
       } else {
-        // Loop and create multiple if recurring/range
         for (const date of datesToCreate) {
           const payload: CreateShiftPayload = {
             ...(basePayload as CreateShiftPayload),
@@ -384,9 +425,9 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
                 }}
                 className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
               >
-                <option value="">Unassigned</option>
+                <option value="" className="bg-white dark:bg-paper text-ink">Unassigned</option>
                 {finalDrivers.map((d) => (
-                  <option key={d.id} value={d.id}>
+                  <option key={d.id} value={d.id} className="bg-white dark:bg-paper text-ink">
                     {d.full_name} {d.role ? `(${d.role})` : ''}
                   </option>
                 ))}
@@ -420,7 +461,7 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
                   >
                     <option value="" disabled>Select Role...</option>
                     {Array.from(new Set(modeFilteredDrivers.map(d => d.role).filter(Boolean))).map(role => (
-                      <option key={role} value={role}>{role}</option>
+                      <option key={role} value={role} className="bg-white dark:bg-paper text-ink">{role}</option>
                     ))}
                   </select>
                 </div>
@@ -467,39 +508,46 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
                   onChange={e => setSingleDate(e.target.value)} 
                   className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
                 />
+              ) : dateMode === 'range' ? (
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="date" 
+                    required
+                    value={startDate} 
+                    onChange={e => setStartDate(e.target.value)} 
+                    className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
+                  />
+                  <span className="text-muted text-[10px] uppercase font-bold">to</span>
+                  <input 
+                    type="date" 
+                    required
+                    value={endDate} 
+                    onChange={e => setEndDate(e.target.value)} 
+                    className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
+                  />
+                </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="date" 
-                      required
-                      value={startDate} 
-                      onChange={e => setStartDate(e.target.value)} 
-                      className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
-                    />
-                    <span className="text-muted text-[10px] uppercase font-bold">to</span>
-                    <input 
-                      type="date" 
-                      required
-                      value={endDate} 
-                      onChange={e => setEndDate(e.target.value)} 
-                      className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
-                    />
+                  <p className="text-muted text-[10px] uppercase font-semibold">Start generating 4 weeks from:</p>
+                  <input 
+                    type="date" 
+                    required
+                    value={singleDate} 
+                    onChange={e => setSingleDate(e.target.value)} 
+                    className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
+                  />
+                  <div className="flex items-center justify-between pt-2">
+                    {['Su', 'M', 'Tu', 'We', 'Th', 'F', 'Sa'].map((day, i) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setRecurringDays(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort())}
+                        className={`h-8 w-8 rounded-full text-[10px] font-bold border transition-colors ${recurringDays.includes(i) ? 'bg-accent text-white border-accent' : 'bg-transparent border-line text-muted hover:border-accent/50 hover:text-ink'}`}
+                      >
+                        {day}
+                      </button>
+                    ))}
                   </div>
-                  {dateMode === 'recurring' && (
-                    <div className="flex items-center justify-between pt-2">
-                      {['Su', 'M', 'Tu', 'We', 'Th', 'F', 'Sa'].map((day, i) => (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => setRecurringDays(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort())}
-                          className={`h-8 w-8 rounded-full text-[10px] font-bold border transition-colors ${recurringDays.includes(i) ? 'bg-accent text-white border-accent' : 'bg-transparent border-line text-muted hover:border-accent/50 hover:text-ink'}`}
-                        >
-                          {day}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
