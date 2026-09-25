@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit3, Search, X } from 'lucide-react';
+import { Plus, Edit3, Search, X, ChevronUp, ChevronDown, Clock } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { SHIFT_PRIORITIES } from '../../utils/constants';
@@ -14,6 +14,30 @@ interface CreateShiftModalProps {
   initialData?: Shift | null;
 }
 
+type TimeObj = { h: string; m: string; p: string };
+type PickerMode = 'shift_start' | 'shift_end' | 'break_start' | 'break_end' | 'expected_arrival' | null;
+
+const formatTime = (t: TimeObj) => `${t.h}:${t.m} ${t.p}`;
+const formatTimeBlock = (s: TimeObj, e: TimeObj) => `${formatTime(s)} - ${formatTime(e)}`;
+
+const parseTimeStr = (t: string): TimeObj => {
+  try {
+    const [hm, p] = t.trim().split(' ');
+    const [h, m] = hm.split(':');
+    return { h: h.padStart(2, '0'), m: m.padStart(2, '0'), p: p.toUpperCase() };
+  } catch {
+    return { h: '12', m: '00', p: 'AM' };
+  }
+};
+
+const parseTimeBlock = (str: string) => {
+  const [start, end] = str.split('-');
+  if (start && end) {
+    return { s: parseTimeStr(start), e: parseTimeStr(end) };
+  }
+  return null;
+};
+
 export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData }: CreateShiftModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,51 +49,91 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<{ type: 'department' | 'role', value: string } | null>(null);
 
-  const [form, setForm] = useState<Partial<UpdateShiftPayload>>({
-    title: '',
-    driver_id: '',
-    shift_date: new Date().toISOString().split('T')[0],
-    shift_time: '08:00 AM - 05:00 PM',
-    break_time: '12:00 PM - 01:00 PM',
-    vehicle: 'Freightliner Cascadia #902',
-    expected_arrival: '09:00 AM',
-    priority: 'Normal',
-    override_reason: '',
-    status: 'Scheduled',
-  });
+  // Core Form State
+  const [driverId, setDriverId] = useState<string>('');
+  const [shiftTitle, setShiftTitle] = useState<string>('');
+  const [vehicle, setVehicle] = useState('Freightliner Cascadia #902');
+  const [priority, setPriority] = useState('Normal');
+  const [status, setStatus] = useState<ShiftStatus>('Scheduled');
+  const [overrideReason, setOverrideReason] = useState('');
+
+  // Date State
+  const [dateMode, setDateMode] = useState<'single' | 'range' | 'recurring'>('single');
+  const [singleDate, setSingleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState('');
+  const [recurringDays, setRecurringDays] = useState<number[]>([]); 
+
+  // Time State
+  const [startTime, setStartTime] = useState<TimeObj>({ h: '08', m: '00', p: 'AM' });
+  const [endTime, setEndTime] = useState<TimeObj>({ h: '05', m: '00', p: 'PM' });
+  
+  const [hasBreak, setHasBreak] = useState(true);
+  const [breakStartTime, setBreakStartTime] = useState<TimeObj>({ h: '12', m: '00', p: 'PM' });
+  const [breakEndTime, setBreakEndTime] = useState<TimeObj>({ h: '01', m: '00', p: 'PM' });
+
+  const [expectedArrival, setExpectedArrival] = useState<TimeObj>({ h: '09', m: '00', p: 'AM' });
+
+  // Time Picker Panel State
+  const [activePicker, setActivePicker] = useState<PickerMode>(null);
+  const [tempTime, setTempTime] = useState<TimeObj>({ h: '12', m: '00', p: 'AM' });
 
   useEffect(() => {
     if (open) {
       if (initialData) {
         const isOffice = getEmployeeGroup(initialData.employee?.role) === 'Office';
         setMode(isOffice ? 'office' : 'rider');
-        setForm({
-          id: initialData.id,
-          title: initialData.title || '',
-          driver_id: initialData.employee_id,
-          shift_date: initialData.shift_date,
-          shift_time: initialData.shift_time || '08:00 AM - 05:00 PM',
-          break_time: initialData.break_time || '',
-          vehicle: initialData.vehicle || '',
-          expected_arrival: initialData.expected_arrival || '',
-          priority: initialData.priority || 'Normal',
-          override_reason: initialData.override_reason || '',
-          status: initialData.status || 'Scheduled',
-        });
+        setDriverId(initialData.employee_id || '');
+        setShiftTitle(initialData.title || '');
+        setSingleDate(initialData.shift_date || '');
+        setDateMode('single');
+        setVehicle(initialData.vehicle || '');
+        setPriority(initialData.priority || 'Normal');
+        setStatus(initialData.status || 'Scheduled');
+        setOverrideReason(initialData.override_reason || '');
+
+        if (initialData.shift_time) {
+          const parsed = parseTimeBlock(initialData.shift_time);
+          if (parsed) {
+            setStartTime(parsed.s);
+            setEndTime(parsed.e);
+          }
+        }
+        if (initialData.break_time) {
+          setHasBreak(true);
+          const parsed = parseTimeBlock(initialData.break_time);
+          if (parsed) {
+            setBreakStartTime(parsed.s);
+            setBreakEndTime(parsed.e);
+          }
+        } else {
+          setHasBreak(false);
+        }
+        if (initialData.expected_arrival) {
+          setExpectedArrival(parseTimeStr(initialData.expected_arrival));
+        }
+
       } else if (!defaulted.current) {
         defaulted.current = true;
         setMode('office');
-        setForm(f => ({ ...f, driver_id: '' }));
+        setDriverId('');
+        setShiftTitle('');
+        setDateMode('single');
+        setSingleDate(new Date().toISOString().split('T')[0]);
+        setStartDate(new Date().toISOString().split('T')[0]);
+        setEndDate('');
+        setRecurringDays([]);
       }
     } else {
       defaulted.current = false;
       setIsSearching(false);
       setSearchQuery('');
       setActiveFilter(null);
+      setActivePicker(null);
     }
   }, [open, initialData]);
 
-  // Derived state for filtering employees
+  // Filtering
   const modeFilteredDrivers = drivers.filter(d => {
     const group = getEmployeeGroup(d.role);
     if (mode === 'office') return group === 'Office';
@@ -83,35 +147,68 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
     return true;
   });
 
-  const selectedDriver = drivers.find(d => d.id === form.driver_id);
+  const selectedDriver = drivers.find(d => d.id === driverId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const payload: CreateShiftPayload | UpdateShiftPayload = {
-        title: form.title || (mode === 'office' ? (selectedDriver?.role || 'Office Shift') : 'Rider Dispatch'),
-        driver_id: form.driver_id || null,
-        shift_date: form.shift_date!,
+      let datesToCreate: string[] = [];
+      if (initialData || dateMode === 'single') {
+        if (!singleDate) throw new Error("Please select a date.");
+        datesToCreate = [singleDate];
+      } else {
+        if (!startDate || !endDate) throw new Error("Please select both start and end dates.");
+        let curr = new Date(startDate);
+        const end = new Date(endDate);
+        if (curr > end) throw new Error("Start date must be before end date.");
+        
+        while (curr <= end) {
+          if (dateMode === 'range' || (dateMode === 'recurring' && recurringDays.includes(curr.getDay()))) {
+            datesToCreate.push(curr.toISOString().split('T')[0]);
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+
+      if (datesToCreate.length === 0) throw new Error("No dates match your recurring selection.");
+
+      const basePayload: Partial<CreateShiftPayload> = {
+        title: shiftTitle || (mode === 'office' ? (selectedDriver?.role || 'Office Shift') : 'Rider Dispatch'),
+        driver_id: driverId || null,
       };
 
       if (mode === 'office') {
-        payload.shift_time = form.shift_time;
-        payload.break_time = form.break_time;
+        basePayload.shift_time = formatTimeBlock(startTime, endTime);
+        basePayload.break_time = hasBreak ? formatTimeBlock(breakStartTime, breakEndTime) : undefined;
       } else {
-        payload.vehicle = form.vehicle;
-        payload.expected_arrival = form.expected_arrival;
-        payload.priority = form.priority as 'Normal'|'High'|'Critical';
+        basePayload.vehicle = vehicle;
+        basePayload.expected_arrival = formatTime(expectedArrival);
+        basePayload.priority = priority as 'Normal'|'High'|'Critical';
       }
 
+      // If it's an edit, we only update the single shift
       if (initialData) {
-        (payload as UpdateShiftPayload).id = initialData.id;
-        (payload as UpdateShiftPayload).override_reason = form.override_reason;
-        (payload as UpdateShiftPayload).status = form.status;
+        const payload: UpdateShiftPayload = {
+          ...(basePayload as CreateShiftPayload),
+          id: initialData.id,
+          shift_date: datesToCreate[0],
+          override_reason: overrideReason,
+          status: status,
+        };
+        await onSubmit(payload);
+      } else {
+        // Loop and create multiple if recurring/range
+        for (const date of datesToCreate) {
+          const payload: CreateShiftPayload = {
+            ...(basePayload as CreateShiftPayload),
+            shift_date: date,
+          };
+          await onSubmit(payload);
+        }
       }
 
-      await onSubmit(payload);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save shift');
@@ -119,6 +216,28 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
       setLoading(false);
     }
   };
+
+  const openPicker = (picker: PickerMode, currentVal: TimeObj) => {
+    setTempTime(currentVal);
+    setActivePicker(picker);
+  };
+
+  const closePicker = () => setActivePicker(null);
+
+  const applyPicker = () => {
+    if (activePicker === 'shift_start') setStartTime(tempTime);
+    else if (activePicker === 'shift_end') setEndTime(tempTime);
+    else if (activePicker === 'break_start') setBreakStartTime(tempTime);
+    else if (activePicker === 'break_end') setBreakEndTime(tempTime);
+    else if (activePicker === 'expected_arrival') setExpectedArrival(tempTime);
+    closePicker();
+  };
+
+  const incH = () => setTempTime(t => ({ ...t, h: String((parseInt(t.h) % 12) + 1).padStart(2, '0') }));
+  const decH = () => setTempTime(t => ({ ...t, h: String(parseInt(t.h) === 1 ? 12 : parseInt(t.h) - 1).padStart(2, '0') }));
+  const incM = () => setTempTime(t => ({ ...t, m: String((parseInt(t.m) + 5) % 60).padStart(2, '0') }));
+  const decM = () => setTempTime(t => ({ ...t, m: String(parseInt(t.m) === 0 ? 55 : parseInt(t.m) - 5).padStart(2, '0') }));
+  const toggleP = () => setTempTime(t => ({ ...t, p: t.p === 'AM' ? 'PM' : 'AM' }));
 
   const renderModalTitle = () => {
     if (!isSearching && !activeFilter) {
@@ -196,234 +315,365 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
     );
   };
 
+  const getPickerLabel = () => {
+    switch(activePicker) {
+      case 'shift_start': return 'Set Shift Start';
+      case 'shift_end': return 'Set Shift End';
+      case 'break_start': return 'Set Break Start';
+      case 'break_end': return 'Set Break End';
+      case 'expected_arrival': return 'Set Expected Arrival';
+      default: return 'Set Time';
+    }
+  };
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={renderModalTitle()}
       icon={initialData ? <Edit3 size={20} /> : <Plus size={20} />}
+      maxWidth={activePicker ? 'max-w-4xl' : 'max-w-md'}
     >
-      <div className="flex bg-ink/5 dark:bg-paper/5 p-1 rounded-xl mb-4">
-        <button
-          type="button"
-          onClick={() => !initialData && setMode('office')}
-          disabled={!!initialData}
-          className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-            mode === 'office' ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink'
-          } ${initialData ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          Office Schedule
-        </button>
-        <button
-          type="button"
-          onClick={() => !initialData && setMode('rider')}
-          disabled={!!initialData}
-          className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-            mode === 'rider' ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink'
-          } ${initialData ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          Rider Dispatch
-        </button>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl text-xs text-rose-600 dark:text-rose-400">
-            {error}
+      <div className="flex">
+        {/* Main Form Left Side */}
+        <div className="w-full max-w-md flex-shrink-0 transition-all duration-300">
+          <div className="flex bg-ink/5 dark:bg-paper/5 p-1 rounded-xl mb-4">
+            <button
+              type="button"
+              onClick={() => !initialData && setMode('office')}
+              disabled={!!initialData}
+              className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                mode === 'office' ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink'
+              } ${initialData ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              Office Schedule
+            </button>
+            <button
+              type="button"
+              onClick={() => !initialData && setMode('rider')}
+              disabled={!!initialData}
+              className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                mode === 'rider' ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink'
+              } ${initialData ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              Rider Dispatch
+            </button>
           </div>
-        )}
 
-        {/* 1. Assign Employee (Moved to Top) */}
-        <div className="bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-3">
-          <label className="font-medium text-xs text-muted block mb-2">
-            {mode === 'office' ? 'Assign Employee' : 'Assign Rider'}
-          </label>
-          <select
-            value={form.driver_id ?? ''}
-            onChange={(e) => {
-              const selectedId = e.target.value || null;
-              const updates: any = { driver_id: selectedId };
-              if (selectedId && mode === 'office') {
-                const driver = drivers.find(d => d.id === selectedId);
-                if (driver?.role) updates.title = driver.role;
-              }
-              setForm({ ...form, ...updates });
-            }}
-            className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
-          >
-            <option value="">Unassigned</option>
-            {finalDrivers.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.full_name} {d.role ? `(${d.role})` : ''}
-              </option>
-            ))}
-          </select>
-
-          {selectedDriver && (
-            <div className="mt-3 flex items-center justify-between text-[11px] bg-white/50 dark:bg-black/20 p-2.5 rounded-lg border border-line/50">
-              <div className="flex flex-col">
-                <span className="text-muted/70 uppercase font-semibold tracking-wider">Department</span>
-                <span className="font-medium text-ink mt-0.5">{selectedDriver.department || 'N/A'}</span>
+          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            {error && (
+              <div className="bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl text-xs text-rose-600 dark:text-rose-400">
+                {error}
               </div>
-              <div className="h-6 w-px bg-line/50" />
-              <div className="flex flex-col text-right">
-                <span className="text-muted/70 uppercase font-semibold tracking-wider">Role</span>
-                <span className="font-medium text-ink mt-0.5">{selectedDriver.role || 'N/A'}</span>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* 2. Shift Title / Role (Moved to Bottom) */}
-        {mode === 'office' ? (
-          !form.driver_id && (
-            <div>
-              <label className="font-medium text-xs text-muted block mb-1">Role Needed (For Unassigned Shift)</label>
+            {/* 1. Assign Employee */}
+            <div className="bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-3">
+              <label className="font-medium text-xs text-muted block mb-2">
+                {mode === 'office' ? 'Assign Employee' : 'Assign Rider'}
+              </label>
               <select
-                required
-                value={form.title || ''}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+                value={driverId}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  setDriverId(selectedId);
+                  if (selectedId && mode === 'office') {
+                    const driver = drivers.find(d => d.id === selectedId);
+                    if (driver?.role) setShiftTitle(driver.role);
+                  }
+                }}
+                className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
               >
-                <option value="" disabled>Select Role...</option>
-                {Array.from(new Set(modeFilteredDrivers.map(d => d.role).filter(Boolean))).map(role => (
-                  <option key={role} value={role}>{role}</option>
+                <option value="">Unassigned</option>
+                {finalDrivers.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.full_name} {d.role ? `(${d.role})` : ''}
+                  </option>
                 ))}
               </select>
-            </div>
-          )
-        ) : (
-          <div>
-            <label className="font-medium text-xs text-muted block mb-1">Route / Dispatch Title</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Mid-West Grain Transit"
-              value={form.title || ''}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-            />
-          </div>
-        )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="font-medium text-xs text-muted block mb-1">Date</label>
-            <input
-              type="date"
-              required
-              value={form.shift_date || ''}
-              onChange={(e) => setForm({ ...form, shift_date: e.target.value })}
-              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-            />
-          </div>
-          {initialData && (
-            <div>
-              <label className="font-medium text-xs text-muted block mb-1">Force Status</label>
-              <select
-                value={form.status || 'Scheduled'}
-                onChange={(e) => setForm({ ...form, status: e.target.value as ShiftStatus })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-              >
-                <option value="Scheduled">Scheduled</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="Pending Driver">Pending Driver</option>
-              </select>
+              {selectedDriver && (
+                <div className="mt-3 flex items-center justify-between text-[11px] bg-white/50 dark:bg-black/20 p-2.5 rounded-lg border border-line/50">
+                  <div className="flex flex-col">
+                    <span className="text-muted/70 uppercase font-semibold tracking-wider">Department</span>
+                    <span className="font-medium text-ink mt-0.5">{selectedDriver.department || 'N/A'}</span>
+                  </div>
+                  <div className="h-6 w-px bg-line/50" />
+                  <div className="flex flex-col text-right">
+                    <span className="text-muted/70 uppercase font-semibold tracking-wider">Role</span>
+                    <span className="font-medium text-ink mt-0.5">{selectedDriver.role || 'N/A'}</span>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {mode === 'office' && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-medium text-xs text-muted block mb-1">Time Block</label>
-              <input
-                type="text"
-                required
-                placeholder="08:00 AM - 05:00 PM"
-                value={form.shift_time || ''}
-                onChange={(e) => setForm({ ...form, shift_time: e.target.value })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-              />
-            </div>
-            <div>
-              <label className="font-medium text-xs text-muted block mb-1">Break Time Block</label>
-              <input
-                type="text"
-                placeholder="e.g. 12:00 PM - 01:00 PM"
-                value={form.break_time || ''}
-                onChange={(e) => setForm({ ...form, break_time: e.target.value })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-              />
-            </div>
-          </div>
-        )}
-
-        {mode === 'rider' && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
+            {/* 2. Shift Title / Role */}
+            {mode === 'office' ? (
+              !driverId && (
+                <div>
+                  <label className="font-medium text-xs text-muted block mb-1">Role Needed (For Unassigned Shift)</label>
+                  <select
+                    required
+                    value={shiftTitle}
+                    onChange={(e) => setShiftTitle(e.target.value)}
+                    className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+                  >
+                    <option value="" disabled>Select Role...</option>
+                    {Array.from(new Set(modeFilteredDrivers.map(d => d.role).filter(Boolean))).map(role => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                </div>
+              )
+            ) : (
               <div>
-                <label className="font-medium text-xs text-muted block mb-1">Expected Arrival</label>
+                <label className="font-medium text-xs text-muted block mb-1">Route / Dispatch Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 09:00 AM"
-                  value={form.expected_arrival || ''}
-                  onChange={(e) => setForm({ ...form, expected_arrival: e.target.value })}
+                  placeholder="e.g. Mid-West Grain Transit"
+                  value={shiftTitle}
+                  onChange={(e) => setShiftTitle(e.target.value)}
                   className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
                 />
               </div>
+            )}
+
+            {/* 3. Date Selection */}
+            <div className="bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-3">
+              <div className="flex items-center justify-between mb-3">
+                <label className="font-medium text-xs text-muted block">Date(s)</label>
+                {!initialData && (
+                  <div className="flex gap-1 bg-ink/5 dark:bg-paper/10 p-0.5 rounded-md">
+                    {['single', 'range', 'recurring'].map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setDateMode(m as any)}
+                        className={`px-2 py-1 text-[10px] rounded font-medium capitalize transition-colors ${dateMode === m ? 'bg-paper dark:bg-black text-ink shadow-sm' : 'text-muted hover:text-ink'}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {dateMode === 'single' || initialData ? (
+                <input 
+                  type="date" 
+                  required
+                  value={singleDate} 
+                  onChange={e => setSingleDate(e.target.value)} 
+                  className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
+                />
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="date" 
+                      required
+                      value={startDate} 
+                      onChange={e => setStartDate(e.target.value)} 
+                      className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
+                    />
+                    <span className="text-muted text-[10px] uppercase font-bold">to</span>
+                    <input 
+                      type="date" 
+                      required
+                      value={endDate} 
+                      onChange={e => setEndDate(e.target.value)} 
+                      className="w-full bg-white dark:bg-paper border border-line rounded-lg p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all shadow-sm"
+                    />
+                  </div>
+                  {dateMode === 'recurring' && (
+                    <div className="flex items-center justify-between pt-2">
+                      {['Su', 'M', 'Tu', 'We', 'Th', 'F', 'Sa'].map((day, i) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => setRecurringDays(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort())}
+                          className={`h-8 w-8 rounded-full text-[10px] font-bold border transition-colors ${recurringDays.includes(i) ? 'bg-accent text-white border-accent' : 'bg-transparent border-line text-muted hover:border-accent/50 hover:text-ink'}`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {mode === 'office' && (
+              <div className="bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-3 space-y-4">
+                {/* Time Block */}
+                <div>
+                  <label className="font-medium text-xs text-muted block mb-2">Shift Time</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openPicker('shift_start', startTime)}
+                      className={`flex-1 flex items-center justify-center gap-2 bg-white dark:bg-paper border rounded-lg p-2.5 text-xs font-mono transition-colors ${activePicker === 'shift_start' ? 'border-accent text-accent shadow-sm' : 'border-line text-ink hover:border-accent/50'}`}
+                    >
+                      <Clock size={14} /> {formatTime(startTime)}
+                    </button>
+                    <span className="text-muted text-[10px] uppercase font-bold">to</span>
+                    <button
+                      type="button"
+                      onClick={() => openPicker('shift_end', endTime)}
+                      className={`flex-1 flex items-center justify-center gap-2 bg-white dark:bg-paper border rounded-lg p-2.5 text-xs font-mono transition-colors ${activePicker === 'shift_end' ? 'border-accent text-accent shadow-sm' : 'border-line text-ink hover:border-accent/50'}`}
+                    >
+                      <Clock size={14} /> {formatTime(endTime)}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Break Time */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="font-medium text-xs text-muted block">Break Time</label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={!hasBreak}
+                        onChange={(e) => setHasBreak(!e.target.checked)}
+                        className="rounded border-line text-accent focus:ring-accent/30" 
+                      />
+                      <span className="text-[10px] text-muted font-medium uppercase tracking-wider">No Break</span>
+                    </label>
+                  </div>
+                  {hasBreak && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openPicker('break_start', breakStartTime)}
+                        className={`flex-1 flex items-center justify-center gap-2 bg-white dark:bg-paper border rounded-lg p-2.5 text-xs font-mono transition-colors ${activePicker === 'break_start' ? 'border-amber-500 text-amber-600 shadow-sm' : 'border-line text-ink hover:border-amber-500/50'}`}
+                      >
+                        <Clock size={14} /> {formatTime(breakStartTime)}
+                      </button>
+                      <span className="text-muted text-[10px] uppercase font-bold">to</span>
+                      <button
+                        type="button"
+                        onClick={() => openPicker('break_end', breakEndTime)}
+                        className={`flex-1 flex items-center justify-center gap-2 bg-white dark:bg-paper border rounded-lg p-2.5 text-xs font-mono transition-colors ${activePicker === 'break_end' ? 'border-amber-500 text-amber-600 shadow-sm' : 'border-line text-ink hover:border-amber-500/50'}`}
+                      >
+                        <Clock size={14} /> {formatTime(breakEndTime)}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {mode === 'rider' && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-medium text-xs text-muted block mb-2">Expected Arrival</label>
+                    <button
+                      type="button"
+                      onClick={() => openPicker('expected_arrival', expectedArrival)}
+                      className={`w-full flex items-center justify-center gap-2 bg-white dark:bg-paper border rounded-lg p-2.5 text-xs font-mono transition-colors ${activePicker === 'expected_arrival' ? 'border-amber-500 text-amber-600 shadow-sm' : 'border-line text-ink hover:border-amber-500/50'}`}
+                    >
+                      <Clock size={14} /> {formatTime(expectedArrival)}
+                    </button>
+                  </div>
+                  <div>
+                    <label className="font-medium text-xs text-muted block mb-2">Priority</label>
+                    <select
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value)}
+                      className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+                    >
+                      {SHIFT_PRIORITIES.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="font-medium text-xs text-muted block mb-1">Vehicle Assignment</label>
+                  <input
+                    type="text"
+                    required
+                    value={vehicle}
+                    onChange={(e) => setVehicle(e.target.value)}
+                    className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+                  />
+                </div>
+              </>
+            )}
+
+            {initialData && (
               <div>
-                <label className="font-medium text-xs text-muted block mb-1">Priority</label>
-                <select
-                  value={form.priority || 'Normal'}
-                  onChange={(e) => setForm({ ...form, priority: e.target.value as 'Normal' | 'High' | 'Critical' })}
-                  className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-                >
-                  {SHIFT_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+                <label className="font-medium text-xs text-muted block mb-1">Reason for Override (Audit Log)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sick leave coverage, Vehicle breakdown"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-amber-500/30 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-line mt-4">
+              <Button type="button" onClick={onClose} variant="ghost" disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={loading}>
+                {loading ? 'Saving...' : initialData ? 'Save Override' : 'Save Assignment(s)'}
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        {/* Side Panel: Time Picker Alarm Clock UI */}
+        <div 
+          className={`overflow-hidden transition-all duration-300 ease-in-out flex flex-col justify-center ${
+            activePicker ? 'w-[320px] ml-6 opacity-100' : 'w-0 opacity-0 ml-0'
+          }`}
+        >
+          {activePicker && (
+            <div className="bg-paper border border-line rounded-2xl shadow-sm p-6 w-[320px] flex-shrink-0 animate-in slide-in-from-right-8 duration-300">
+              <h4 className="text-sm font-semibold text-ink mb-6 flex items-center gap-2">
+                <Clock size={16} className={activePicker.includes('break') || activePicker.includes('expected') ? 'text-amber-500' : 'text-accent'} /> 
+                {getPickerLabel()}
+              </h4>
+              
+              <div className="flex items-center justify-center gap-4 text-4xl font-bold font-mono bg-ink/5 dark:bg-black/20 py-8 px-4 rounded-2xl border border-line mb-8">
+                {/* Hours */}
+                <div className="flex flex-col items-center">
+                   <button type="button" onClick={incH} className="text-muted hover:text-ink pb-2 transition-colors"><ChevronUp size={32}/></button>
+                   <span className="text-ink">{tempTime.h}</span>
+                   <button type="button" onClick={decH} className="text-muted hover:text-ink pt-2 transition-colors"><ChevronDown size={32}/></button>
+                </div>
+                
+                <span className="text-muted/50 pb-1">:</span>
+                
+                {/* Minutes */}
+                <div className="flex flex-col items-center">
+                   <button type="button" onClick={incM} className="text-muted hover:text-ink pb-2 transition-colors"><ChevronUp size={32}/></button>
+                   <span className="text-ink">{tempTime.m}</span>
+                   <button type="button" onClick={decM} className="text-muted hover:text-ink pt-2 transition-colors"><ChevronDown size={32}/></button>
+                </div>
+                
+                {/* AM/PM */}
+                <div className="flex flex-col items-center ml-2 text-2xl">
+                   <button type="button" onClick={toggleP} className="text-muted hover:text-ink pb-2 transition-colors"><ChevronUp size={24}/></button>
+                   <span className={activePicker.includes('break') || activePicker.includes('expected') ? 'text-amber-500' : 'text-accent'}>{tempTime.p}</span>
+                   <button type="button" onClick={toggleP} className="text-muted hover:text-ink pt-2 transition-colors"><ChevronDown size={24}/></button>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 w-full">
+                <Button type="button" onClick={closePicker} variant="ghost" className="flex-1 border border-line text-xs py-2 h-auto">Cancel</Button>
+                <Button type="button" onClick={applyPicker} variant="primary" className="flex-1 text-xs py-2 h-auto">Set Time</Button>
               </div>
             </div>
-            <div>
-              <label className="font-medium text-xs text-muted block mb-1">Vehicle Assignment</label>
-              <input
-                type="text"
-                required
-                value={form.vehicle || ''}
-                onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
-                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-              />
-            </div>
-          </>
-        )}
-
-        {initialData && (
-          <div>
-            <label className="font-medium text-xs text-muted block mb-1">Reason for Override (Audit Log)</label>
-            <input
-              type="text"
-              placeholder="e.g. Sick leave coverage, Vehicle breakdown"
-              value={form.override_reason || ''}
-              onChange={(e) => setForm({ ...form, override_reason: e.target.value })}
-              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-amber-500/30 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
-            />
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-4 border-t border-line mt-4">
-          <Button type="button" onClick={onClose} variant="ghost" disabled={loading}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={loading}>
-            {loading ? 'Saving...' : initialData ? 'Save Override' : 'Save Assignment'}
-          </Button>
+          )}
         </div>
-      </form>
+      </div>
     </Modal>
   );
 }
