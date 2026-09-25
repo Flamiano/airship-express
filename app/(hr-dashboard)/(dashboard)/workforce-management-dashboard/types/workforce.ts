@@ -101,6 +101,7 @@ export interface Shift {
 
   status: ShiftStatus;
   priority: ShiftPriority;
+  override_reason?: string;
   created_at: string;
   employee?: Employee; 
 }

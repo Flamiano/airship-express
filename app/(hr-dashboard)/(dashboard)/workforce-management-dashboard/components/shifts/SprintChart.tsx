@@ -3,11 +3,12 @@ import type { Shift } from '../../types/workforce';
 
 interface Props {
   shifts: Shift[];
+  onShiftClick?: (shift: Shift) => void;
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 6); // 6 AM to 7 PM (19:00)
 
-export const SprintChart: React.FC<Props> = ({ shifts }) => {
+export const SprintChart: React.FC<Props> = ({ shifts, onShiftClick }) => {
   // Group by Department
   const grouped = shifts.reduce((acc, shift) => {
     const dept = shift.employee?.department || 'Unassigned';
@@ -79,9 +80,13 @@ export const SprintChart: React.FC<Props> = ({ shifts }) => {
               {deptShifts.map(shift => {
                 const pos = getShiftPosition(shift);
                 return (
-                  <div key={shift.id} className="grid grid-cols-[200px_1fr] border-b border-line hover:bg-paper-dark/30 transition-colors group">
+                  <div 
+                    key={shift.id} 
+                    className="grid grid-cols-[200px_1fr] border-b border-line hover:bg-paper-dark/30 transition-colors group cursor-pointer"
+                    onClick={() => onShiftClick?.(shift)}
+                  >
                     <div className="p-3 border-r border-line flex flex-col justify-center">
-                      <span className="text-xs font-medium text-ink truncate">{shift.employee?.full_name || 'Unassigned'}</span>
+                      <span className="text-xs font-medium text-ink truncate group-hover:text-accent transition-colors">{shift.employee?.full_name || 'Unassigned'}</span>
                       <span className="text-[10px] text-muted truncate">{shift.employee?.employee_group}</span>
                     </div>
                     <div className="relative grid" style={{ gridTemplateColumns: `repeat(${HOURS.length}, minmax(40px, 1fr))` }}>

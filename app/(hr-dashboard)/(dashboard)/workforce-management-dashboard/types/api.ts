@@ -17,6 +17,12 @@ export interface CreateShiftPayload {
   priority?: 'Normal' | 'High' | 'Critical';
 }
 
+export interface UpdateShiftPayload extends Partial<CreateShiftPayload> {
+  id: string;
+  override_reason?: string;
+  status?: string;
+}
+
 // Payload for creating a freight load (POST /api/loads)
 export interface CreateLoadPayload {
   load_ref: string;

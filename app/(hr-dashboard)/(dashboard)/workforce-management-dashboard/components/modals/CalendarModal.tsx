@@ -9,9 +9,10 @@ interface CalendarModalProps {
   open: boolean;
   onClose: () => void;
   shifts?: Shift[];
+  onShiftClick?: (shift: Shift) => void;
 }
 
-export function CalendarModal({ open, onClose, shifts = [] }: CalendarModalProps) {
+export function CalendarModal({ open, onClose, shifts = [], onShiftClick }: CalendarModalProps) {
   const [view, setView] = useState<'sprint' | 'month' | 'week' | 'day'>('sprint');
 
   // Static mock data for the calendar grid
@@ -77,7 +78,7 @@ export function CalendarModal({ open, onClose, shifts = [] }: CalendarModalProps
 
         {view === 'sprint' ? (
           <div className="mt-4">
-            <SprintChart shifts={shifts} />
+            <SprintChart shifts={shifts} onShiftClick={onShiftClick} />
           </div>
         ) : (
           <div className="bg-ink/[0.02] dark:bg-paper/[0.02] rounded-xl border border-line overflow-hidden mt-4">

@@ -22,6 +22,8 @@ export default function ShiftsPage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+
   const load = useCallback(async () => {
     try {
       const data = await apiFetch<Shift[]>('/api/shifts');
@@ -38,11 +40,19 @@ export default function ShiftsPage() {
       .catch(() => setDrivers([]));
   }, [load]);
 
-  const handleCreate = async (payload: CreateShiftPayload) => {
-    await apiFetch<Shift>('/api/shifts', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  const handleCreateOrUpdate = async (payload: any) => {
+    if (editingShift) {
+      // Mock update path since we intercept this anyway
+      await apiFetch<Shift>(`/api/shifts/${editingShift.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await apiFetch<Shift>('/api/shifts', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    }
     await load();
   };
 
@@ -56,14 +66,18 @@ export default function ShiftsPage() {
   );
 
   const renderOfficeCard = (shift: Shift) => (
-    <Card key={shift.id} className="p-4 space-y-3 border-l-4 border-l-accent hover:border-l-accent/80 transition-colors">
+    <Card 
+      key={shift.id} 
+      className="p-4 space-y-3 border-l-4 border-l-accent hover:border-l-accent/80 transition-colors cursor-pointer group"
+      onClick={() => setEditingShift(shift)}
+    >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10 text-[11px] font-bold text-accent">
             {shift.employee?.avatar_initials}
           </div>
           <div>
-            <h3 className="font-semibold text-ink text-sm">{shift.employee?.full_name || 'Unassigned'}</h3>
+            <h3 className="font-semibold text-ink text-sm group-hover:text-accent transition-colors">{shift.employee?.full_name || 'Unassigned'}</h3>
             <p className="text-[10px] text-muted uppercase tracking-wider">{shift.employee?.department || 'Office'}</p>
           </div>
         </div>
@@ -77,14 +91,21 @@ export default function ShiftsPage() {
           <span className="font-medium">{shift.shift_time || '08:00 AM - 05:00 PM'}</span>
         </div>
       </div>
+      {shift.override_reason && (
+        <p className="text-[10px] text-amber-600/80 italic mt-2">Override: {shift.override_reason}</p>
+      )}
     </Card>
   );
 
   const renderRiderCard = (shift: Shift, isExpected: boolean) => (
-    <Card key={shift.id} className={`p-4 space-y-3 border-l-4 transition-colors ${isExpected ? 'border-l-amber-500' : 'border-l-emerald-500'}`}>
+    <Card 
+      key={shift.id} 
+      className={`p-4 space-y-3 border-l-4 transition-colors cursor-pointer group ${isExpected ? 'border-l-amber-500 hover:border-l-amber-600' : 'border-l-emerald-500 hover:border-l-emerald-600'}`}
+      onClick={() => setEditingShift(shift)}
+    >
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="font-semibold text-ink text-sm flex items-center gap-2">
+          <h3 className="font-semibold text-ink text-sm flex items-center gap-2 group-hover:text-amber-600 transition-colors">
             {shift.employee?.full_name || 'Unassigned'}
             {shift.employee?.employee_group === 'Third-Party Rider' && (
               <span className="text-[9px] bg-slate-500/10 text-slate-500 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-slate-500/20">
@@ -122,6 +143,9 @@ export default function ShiftsPage() {
           <span>Assigned: <span className="font-medium text-ink">{shift.vehicle}</span></span>
         </div>
       )}
+      {shift.override_reason && (
+        <p className="text-[10px] text-amber-600/80 italic mt-2">Override: {shift.override_reason}</p>
+      )}
     </Card>
   );
 
@@ -141,7 +165,7 @@ export default function ShiftsPage() {
             View Calendar
           </Button>
           {canCreateShifts(role) && (
-            <Button onClick={() => setModalOpen(true)} variant="primary">
+            <Button onClick={() => { setEditingShift(null); setModalOpen(true); }} variant="primary">
               <Plus size={16} />
               Create Shift Assignment
             </Button>
@@ -209,16 +233,21 @@ export default function ShiftsPage() {
       </div>
 
       <CreateShiftModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSubmit={handleCreate}
+        open={modalOpen || !!editingShift}
+        onClose={() => { setModalOpen(false); setEditingShift(null); }}
+        onSubmit={handleCreateOrUpdate}
         drivers={drivers}
+        initialData={editingShift}
       />
 
       <CalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
         shifts={shifts}
+        onShiftClick={(shift) => {
+          setCalendarOpen(false);
+          setEditingShift(shift);
+        }}
       />
     </>
   );
