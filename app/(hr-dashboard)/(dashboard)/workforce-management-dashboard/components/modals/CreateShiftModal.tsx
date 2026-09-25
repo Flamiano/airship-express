@@ -373,11 +373,11 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
       onClose={onClose}
       title={renderModalTitle()}
       icon={initialData ? <Edit3 size={20} /> : <Plus size={20} />}
-      maxWidth={activePicker ? 'max-w-4xl' : 'max-w-md'}
+      maxWidth={activePicker ? 'max-w-[792px]' : 'max-w-md'}
     >
       <div className="flex">
         {/* Main Form Left Side */}
-        <div className="w-full max-w-md flex-shrink-0 transition-all duration-300">
+        <div className="w-[400px] flex-shrink-0 transition-all duration-300">
           <div className="flex bg-ink/5 dark:bg-paper/5 p-1 rounded-xl mb-4">
             <button
               type="button"
