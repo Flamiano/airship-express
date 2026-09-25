@@ -23,7 +23,9 @@ export type UserRole =
   | 'HR Officer'
   | 'Marketing/Admin Staff'
   | 'Drop-Off Pick-Up Rider'
-  | 'Manila Rider';
+  | 'Manila Rider'
+  | 'Delivery Rider'
+  | 'Courier Driver';
 
 // Attendance status enum
 export type AttendanceStatus = 'On-Shift' | 'On-Break' | 'Tardy' | 'Absent' | 'Clocked Out';
@@ -53,6 +55,16 @@ export type LeaveType = 'Mandatory Fatigue Rest' | 'Paid Time Off (PTO)' | 'Medi
 // Employee grouping classification
 export type EmployeeGroup = 'Office' | 'Employed Rider' | 'Third-Party Rider';
 
+export function getEmployeeGroup(role: UserRole | string | undefined): EmployeeGroup {
+  if (!role) return 'Office';
+  if (role === 'Courier Driver') return 'Third-Party Rider';
+  if (role === 'Delivery Rider') return 'Employed Rider';
+  // Fallbacks for other mock roles if they sneak in
+  if (role.includes('JNT') || role.includes('3rd Party')) return 'Third-Party Rider';
+  if (role.toLowerCase().includes('rider') || role.toLowerCase().includes('driver')) return 'Employed Rider';
+  return 'Office';
+}
+
 // Employee/Profile interface
 export interface Employee {
   id: string;
@@ -60,7 +72,6 @@ export interface Employee {
   full_name: string;
   role: UserRole;
   department: string;
-  employee_group: EmployeeGroup;
   avatar_initials: string;
   terminal: string;
   created_at: string;

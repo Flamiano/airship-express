@@ -7,31 +7,16 @@ const formatShift = (row: any) => {
   if (!row) return row;
   const emp = row.driver;
   const mappedDriver = emp
-    ? (() => {
-        const roleStr = emp.job_position?.title || emp.role || 'Fleet Driver';
-        const deptStr = emp.job_position?.department || emp.department || 'Operations';
-        let group = 'Office';
-        const lowerRole = roleStr.toLowerCase();
-        
-        if (lowerRole.includes('courier driver') || lowerRole.includes('jnt') || lowerRole.includes('3rd party') || lowerRole.includes('drop-off')) {
-          group = 'Third-Party Rider';
-        } else if (lowerRole.includes('delivery rider') || lowerRole.includes('rider') || lowerRole.includes('driver')) {
-          group = 'Employed Rider';
-        }
-        
-        return {
-          id: emp.id,
-          email: emp.email || '',
-          full_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Driver',
-          role: roleStr,
-          department: deptStr,
-          employee_group: group,
-          avatar_initials: `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase() || 'D',
-          terminal: deptStr,
-          created_at: emp.date_hired || row.created_at,
-          rfid_uid: null,
-        };
-      })()
+    ? {
+        id: emp.id,
+        email: emp.email || '',
+        full_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Driver',
+        role: emp.job_position?.title || emp.department || 'Fleet Driver',
+        avatar_initials: `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase() || 'D',
+        terminal: emp.department || 'HQ',
+        created_at: emp.date_hired || row.created_at,
+        rfid_uid: null,
+      }
     : undefined;
   return { ...row, employee: mappedDriver, employee_id: row.driver_id };
 };

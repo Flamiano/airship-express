@@ -11,6 +11,7 @@ import { CalendarModal } from '../../components/modals/CalendarModal';
 import { useAuth } from '../../hooks/useAuth';
 import { canCreateShifts } from '../../utils/rbac';
 import { apiFetch } from '../../lib/apiFetch';
+import { getEmployeeGroup } from '../../types/workforce';
 import type { Shift } from '../../types/workforce';
 import type { CreateShiftPayload } from '../../types/api';
 
@@ -56,13 +57,13 @@ export default function ShiftsPage() {
     await load();
   };
 
-  // Group shifts by category
-  const officeShifts = shifts.filter(s => s.employee?.employee_group === 'Office');
+  // Group shifts by category using dynamic helper
+  const officeShifts = shifts.filter(s => getEmployeeGroup(s.employee?.role) === 'Office');
   const expectedRiders = shifts.filter(
-    s => (s.employee?.employee_group === 'Employed Rider' || s.employee?.employee_group === 'Third-Party Rider') && !s.gate_in
+    s => (getEmployeeGroup(s.employee?.role) === 'Employed Rider' || getEmployeeGroup(s.employee?.role) === 'Third-Party Rider') && !s.gate_in
   );
   const activeRiders = shifts.filter(
-    s => (s.employee?.employee_group === 'Employed Rider' || s.employee?.employee_group === 'Third-Party Rider') && s.gate_in
+    s => (getEmployeeGroup(s.employee?.role) === 'Employed Rider' || getEmployeeGroup(s.employee?.role) === 'Third-Party Rider') && s.gate_in
   );
 
   const renderOfficeCard = (shift: Shift) => (
@@ -107,7 +108,7 @@ export default function ShiftsPage() {
         <div>
           <h3 className="font-semibold text-ink text-sm flex items-center gap-2 group-hover:text-amber-600 transition-colors">
             {shift.employee?.full_name || 'Unassigned'}
-            {shift.employee?.employee_group === 'Third-Party Rider' && (
+            {getEmployeeGroup(shift.employee?.role) === 'Third-Party Rider' && (
               <span className="text-[9px] bg-slate-500/10 text-slate-500 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-slate-500/20">
                 3rd Party
               </span>

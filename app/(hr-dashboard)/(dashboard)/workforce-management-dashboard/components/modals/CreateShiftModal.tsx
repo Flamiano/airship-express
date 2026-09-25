@@ -4,7 +4,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { SHIFT_PRIORITIES } from '../../utils/constants';
 import type { CreateShiftPayload, UpdateShiftPayload } from '../../types/api';
-import type { Shift, ShiftStatus } from '../../types/workforce';
+import { getEmployeeGroup, type Shift, type ShiftStatus } from '../../types/workforce';
 
 interface CreateShiftModalProps {
   open: boolean;
@@ -39,7 +39,7 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
   useEffect(() => {
     if (open) {
       if (initialData) {
-        const isOffice = initialData.employee?.employee_group === 'Office';
+        const isOffice = getEmployeeGroup(initialData.employee?.role) === 'Office';
         setMode(isOffice ? 'office' : 'rider');
         setForm({
           id: initialData.id,

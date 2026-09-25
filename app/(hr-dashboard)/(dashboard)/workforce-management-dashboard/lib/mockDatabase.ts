@@ -5,27 +5,26 @@ export interface Employee {
   name: string;
   role: string;
   department: string;
-  employee_group: EmployeeGroup;
   avatar: string;
 }
 
 export const MOCK_EMPLOYEES: Employee[] = [
-  { id: '1', name: 'Rome Louis Salvador', role: 'Office-in-Charge', department: 'Management', employee_group: 'Office', avatar: 'RL' },
-  { id: '2', name: 'Merilou Reyes', role: 'Project Coordinator', department: 'Management', employee_group: 'Office', avatar: 'MR' },
-  { id: '3', name: 'Ivie Temonio', role: 'HR Officer', department: 'Human Resources', employee_group: 'Office', avatar: 'IT' },
-  { id: '4', name: 'Meliza Bangkok', role: 'HR Generalist', department: 'Human Resources', employee_group: 'Office', avatar: 'MB' },
-  { id: '5', name: 'Chenchen Martinez', role: 'Sales Representative', department: 'Sales', employee_group: 'Office', avatar: 'CM' },
-  { id: '6', name: 'Welberto Arriesgado', role: 'Appraiser', department: 'Appraisal', employee_group: 'Office', avatar: 'WA' },
-  { id: '7', name: 'Kirl Patrick Trinidad', role: 'Office Staff', department: 'Office Operations', employee_group: 'Office', avatar: 'KT' },
-  { id: '8', name: 'Angelo Egos', role: 'Airship Driver', department: 'Fleet', employee_group: 'Employed Rider', avatar: 'AE' },
-  { id: '9', name: 'Raymond Manozo', role: 'Manila Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'RM' },
-  { id: '10', name: 'Nowei Altarejos', role: 'JNT Pick-Up Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'NA' },
-  { id: '11', name: 'Mc Aldee Bernardo', role: 'JNT Pick-Up Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'MB' },
-  { id: '12', name: 'Wilbert Cabanayan', role: 'JNT Pick-Up Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'WC' },
-  { id: '13', name: 'Mark Anthony Batucan', role: 'Appraiser / Rider', department: 'Appraisal', employee_group: 'Employed Rider', avatar: 'MB' },
-  { id: '14', name: 'Kimberly Ganace', role: 'Admin Assistant', department: 'Management', employee_group: 'Office', avatar: 'KG' },
-  { id: '15', name: 'Carl Fornis', role: 'CSR / Marketing Staff', department: 'Sales', employee_group: 'Office', avatar: 'CF' },
-  { id: '16', name: 'Krishen Cafe', role: 'Hybrid Rider', department: 'Fleet', employee_group: 'Employed Rider', avatar: 'KC' },
+  { id: '1', name: 'Rome Louis Salvador', role: 'Office-in-Charge', department: 'Management', avatar: 'RL' },
+  { id: '2', name: 'Merilou Reyes', role: 'Project Coordinator', department: 'Management', avatar: 'MR' },
+  { id: '3', name: 'Ivie Temonio', role: 'HR Officer', department: 'Human Resources', avatar: 'IT' },
+  { id: '4', name: 'Meliza Bangkok', role: 'HR Generalist', department: 'Human Resources', avatar: 'MB' },
+  { id: '5', name: 'Chenchen Martinez', role: 'Sales Representative', department: 'Sales', avatar: 'CM' },
+  { id: '6', name: 'Welberto Arriesgado', role: 'Appraiser', department: 'Appraisal', avatar: 'WA' },
+  { id: '7', name: 'Kirl Patrick Trinidad', role: 'Office Staff', department: 'Office Operations', avatar: 'KT' },
+  { id: '8', name: 'Angelo Egos', role: 'Airship Driver', department: 'Fleet', avatar: 'AE' },
+  { id: '9', name: 'Raymond Manozo', role: 'Delivery Rider', department: 'Fleet', avatar: 'RM' },
+  { id: '10', name: 'Nowei Altarejos', role: 'Courier Driver', department: 'Fleet', avatar: 'NA' },
+  { id: '11', name: 'Mc Aldee Bernardo', role: 'Courier Driver', department: 'Fleet', avatar: 'MB' },
+  { id: '12', name: 'Wilbert Cabanayan', role: 'Courier Driver', department: 'Fleet', avatar: 'WC' },
+  { id: '13', name: 'Mark Anthony Batucan', role: 'Delivery Rider', department: 'Appraisal', avatar: 'MB' },
+  { id: '14', name: 'Kimberly Ganace', role: 'Admin Assistant', department: 'Management', avatar: 'KG' },
+  { id: '15', name: 'Carl Fornis', role: 'CSR / Marketing Staff', department: 'Sales', avatar: 'CF' },
+  { id: '16', name: 'Krishen Cafe', role: 'Delivery Rider', department: 'Fleet', avatar: 'KC' },
 ];
 
 export const MOCK_DB = {
@@ -41,7 +40,7 @@ export const MOCK_DB = {
 
   leaveRequests: [
     { id: 'R1', name: 'Angelo Egos', role: 'Airship Driver', type: 'Sick Leave', duration: 'Oct 15 (1 day)', balance: 2 },
-    { id: 'R2', name: 'Raymond Manozo', role: 'Manila Rider', type: 'Vacation', duration: 'Oct 20 - Oct 25 (5 days)', balance: 5 },
+    { id: 'R2', name: 'Raymond Manozo', role: 'Delivery Rider', type: 'Vacation', duration: 'Oct 20 - Oct 25 (5 days)', balance: 5 },
   ],
 
   shifts: [
@@ -54,7 +53,7 @@ export const MOCK_DB = {
       priority: 'Normal',
       status: 'Scheduled',
       created_at: '2026-10-10T00:00:00Z',
-      employee: { id: '1', full_name: 'Rome Louis Salvador', department: 'Management', employee_group: 'Office' },
+      employee: { id: '1', full_name: 'Rome Louis Salvador', department: 'Management', role: 'Office-in-Charge' },
     },
     {
       id: 'S2',
@@ -64,7 +63,7 @@ export const MOCK_DB = {
       priority: 'Normal',
       status: 'In Progress',
       created_at: '2026-10-10T00:00:00Z',
-      employee: { id: '3', full_name: 'Ivie Temonio', department: 'Human Resources', employee_group: 'Office' },
+      employee: { id: '3', full_name: 'Ivie Temonio', department: 'Human Resources', role: 'HR Officer' },
     },
     // Rider Arrivals
     {
@@ -79,7 +78,7 @@ export const MOCK_DB = {
       status: 'In Progress',
       vehicle: 'Van 1',
       created_at: '2026-10-10T00:00:00Z',
-      employee: { id: '8', full_name: 'Angelo Egos', department: 'Fleet', employee_group: 'Employed Rider' },
+      employee: { id: '8', full_name: 'Angelo Egos', department: 'Fleet', role: 'Airship Driver' },
     },
     {
       id: 'S4',
@@ -93,7 +92,7 @@ export const MOCK_DB = {
       status: 'Pending Driver',
       vehicle: 'Truck 3',
       created_at: '2026-10-10T00:00:00Z',
-      employee: { id: '9', full_name: 'Raymond Manozo', department: 'Fleet', employee_group: 'Third-Party Rider' },
+      employee: { id: '9', full_name: 'Raymond Manozo', department: 'Fleet', role: 'Delivery Rider' },
     },
   ] as Shift[],
 

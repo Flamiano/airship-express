@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Shift } from '../../types/workforce';
+import { getEmployeeGroup, type Shift } from '../../types/workforce';
 
 interface Props {
   shifts: Shift[];
@@ -34,7 +34,7 @@ export const SprintChart: React.FC<Props> = ({ shifts, onShiftClick }) => {
   };
 
   const getShiftPosition = (shift: Shift) => {
-    if (shift.employee?.employee_group === 'Office' && shift.shift_time) {
+    if (getEmployeeGroup(shift.employee?.role) === 'Office' && shift.shift_time) {
       const parts = shift.shift_time.split('-');
       if (parts.length === 2) {
         const start = getPositionForTime(parts[0].trim());
@@ -87,7 +87,7 @@ export const SprintChart: React.FC<Props> = ({ shifts, onShiftClick }) => {
                   >
                     <div className="p-3 border-r border-line flex flex-col justify-center">
                       <span className="text-xs font-medium text-ink truncate group-hover:text-accent transition-colors">{shift.employee?.full_name || 'Unassigned'}</span>
-                      <span className="text-[10px] text-muted truncate">{shift.employee?.employee_group}</span>
+                      <span className="text-[10px] text-muted truncate">{getEmployeeGroup(shift.employee?.role)}</span>
                     </div>
                     <div className="relative grid" style={{ gridTemplateColumns: `repeat(${HOURS.length}, minmax(40px, 1fr))` }}>
                       {/* Grid lines */}
