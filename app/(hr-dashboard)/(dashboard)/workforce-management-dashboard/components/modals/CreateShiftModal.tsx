@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit3, Search, X, ChevronUp, ChevronDown, Clock } from 'lucide-react';
+import { Plus, Edit3, Search, X, ChevronUp, ChevronDown, Clock, Calendar } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { SHIFT_PRIORITIES } from '../../utils/constants';

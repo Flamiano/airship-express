@@ -176,9 +176,6 @@ create table public.hr2_shifts (
   
   constraint hr2_shifts_pkey primary key (id),
   constraint hr2_shifts_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete set null,
-  constraint hr2_shifts_priority_check check (
-    priority in ('Normal', 'High', 'Critical')
-  ),
   constraint hr2_shifts_status_check check (
     status in ('Pending Driver', 'Scheduled', 'In Progress', 'Completed')
   )
@@ -233,3 +230,36 @@ create table ai_analytics.employee_summaries (
   constraint ai_employee_summaries_pkey primary key (id),
   constraint ai_employee_summaries_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete CASCADE
 ) TABLESPACE pg_default;
+-- =========================================================================
+-- DATABASE TRIGGERS
+-- =========================================================================
+
+-- Trigger function to automatically unassign future shifts when an employee transfers departments or roles.
+CREATE OR REPLACE FUNCTION public.handle_employee_transfer()
+RETURNS TRIGGER AS $FUN$
+BEGIN
+  -- Check if department or job_position_id has changed
+  IF OLD.department IS DISTINCT FROM NEW.department OR OLD.job_position_id IS DISTINCT FROM NEW.job_position_id THEN
+    
+    -- Unassign all future shifts (or shifts today that haven't started/completed).
+    -- We assume any shift >= CURRENT_DATE should be stripped of the employee to avoid schedule conflicts.
+    UPDATE public.hr2_shifts
+    SET 
+      employee_id = NULL,
+      status = 'Pending Driver', -- Reset status to indicate it needs reassignment
+      override_reason = 'AUTO-UNASSIGNED: Employee transferred to new department/role (' || NEW.department || '). Please reassign.'
+    WHERE 
+      employee_id = NEW.id
+      AND shift_date >= CURRENT_DATE
+      AND status NOT IN ('Completed', 'In Progress'); -- Don't touch shifts they are currently working
+      
+  END IF;
+  
+  RETURN NEW;
+END;
+$FUN$ LANGUAGE plpgsql;
+
+CREATE TRIGGER hr1_employee_transfer_trigger
+AFTER UPDATE ON public.hr1_employees
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_employee_transfer();
