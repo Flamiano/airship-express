@@ -15,7 +15,7 @@ interface CreateShiftModalProps {
 }
 
 type TimeObj = { h: string; m: string; p: string };
-type PickerMode = 'shift_start' | 'shift_end' | 'break_start' | 'break_end' | 'expected_arrival' | null;
+type PickerMode = 'shift_start' | 'shift_end' | 'break_start' | 'break_end' | null;
 
 const formatTime = (t: TimeObj) => `${t.h}:${t.m} ${t.p}`;
 const formatTimeBlock = (s: TimeObj, e: TimeObj) => `${formatTime(s)} - ${formatTime(e)}`;
@@ -52,8 +52,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
   // Core Form State
   const [driverId, setDriverId] = useState<string>('');
   const [shiftTitle, setShiftTitle] = useState<string>('');
-  const [vehicle, setVehicle] = useState('Freightliner Cascadia #902');
-  const [priority, setPriority] = useState('Normal');
   const [status, setStatus] = useState<ShiftStatus>('Scheduled');
   const [overrideReason, setOverrideReason] = useState('');
 
@@ -72,8 +70,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
   const [breakStartTime, setBreakStartTime] = useState<TimeObj>({ h: '12', m: '00', p: 'PM' });
   const [breakEndTime, setBreakEndTime] = useState<TimeObj>({ h: '01', m: '00', p: 'PM' });
 
-  const [expectedArrival, setExpectedArrival] = useState<TimeObj>({ h: '09', m: '00', p: 'AM' });
-
   // Time Picker Panel State
   const [activePicker, setActivePicker] = useState<PickerMode>(null);
   const [tempTime, setTempTime] = useState<TimeObj>({ h: '12', m: '00', p: 'AM' });
@@ -87,8 +83,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
         setShiftTitle(initialData.title || '');
         setSingleDate(initialData.shift_date || '');
         setDateMode('single');
-        setVehicle(initialData.vehicle || '');
-        setPriority(initialData.priority || 'Normal');
         setStatus(initialData.status || 'Scheduled');
         setOverrideReason(initialData.override_reason || '');
 
@@ -108,9 +102,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           }
         } else {
           setHasBreak(false);
-        }
-        if (initialData.expected_arrival) {
-          setExpectedArrival(parseTimeStr(initialData.expected_arrival));
         }
 
       } else if (!defaulted.current) {
@@ -221,16 +212,10 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
 
           if (bStart.getTime() === bEnd.getTime()) throw new Error("Break start and end time cannot be exactly the same.");
           if (bStart < sStart || bEnd > sEnd) throw new Error("Break time must be strictly within the shift time block.");
-        }
-
         basePayload.shift_time = formatTimeBlock(startTime, endTime);
         basePayload.break_time = hasBreak ? formatTimeBlock(breakStartTime, breakEndTime) : undefined;
-      } else {
-        basePayload.vehicle = vehicle;
-        basePayload.expected_arrival = formatTime(expectedArrival);
-        basePayload.priority = priority as 'Normal'|'High'|'Critical';
       }
-
+      
       if (initialData) {
         const payload: UpdateShiftPayload = {
           ...(basePayload as CreateShiftPayload),
@@ -270,7 +255,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
     else if (activePicker === 'shift_end') setEndTime(tempTime);
     else if (activePicker === 'break_start') setBreakStartTime(tempTime);
     else if (activePicker === 'break_end') setBreakEndTime(tempTime);
-    else if (activePicker === 'expected_arrival') setExpectedArrival(tempTime);
     closePicker();
   };
 
@@ -362,7 +346,6 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
       case 'shift_end': return 'Set Shift End';
       case 'break_start': return 'Set Break Start';
       case 'break_end': return 'Set Break End';
-      case 'expected_arrival': return 'Set Expected Arrival';
       default: return 'Set Time';
     }
   };
@@ -614,42 +597,37 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
             )}
 
             {mode === 'rider' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-medium text-xs text-muted block mb-2">Expected Arrival</label>
-                    <button
-                      type="button"
-                      onClick={() => openPicker('expected_arrival', expectedArrival)}
-                      className={`w-full flex items-center justify-center gap-2 bg-white dark:bg-paper border rounded-lg p-2.5 text-xs font-mono transition-colors ${activePicker === 'expected_arrival' ? 'border-amber-500 text-amber-600 shadow-sm' : 'border-line text-ink hover:border-amber-500/50'}`}
-                    >
-                      <Clock size={14} /> {formatTime(expectedArrival)}
-                    </button>
-                  </div>
-                  <div>
-                    <label className="font-medium text-xs text-muted block mb-2">Priority</label>
-                    <select
-                      value={priority}
-                      onChange={(e) => setPriority(e.target.value)}
-                      className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-                    >
-                      {SHIFT_PRIORITIES.map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                    </select>
-                  </div>
+              <div className="bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3 text-accent">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                  <h3 className="font-semibold text-[10px] uppercase tracking-wider">Live Fleet Integration</h3>
                 </div>
-                <div>
-                  <label className="font-medium text-xs text-muted block mb-1">Vehicle Assignment</label>
-                  <input
-                    type="text"
-                    required
-                    value={vehicle}
-                    onChange={(e) => setVehicle(e.target.value)}
-                    className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-                  />
-                </div>
-              </>
+                
+                {initialData ? (
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <p className="text-muted mb-1">Vehicle Assignment</p>
+                      <p className="font-medium text-ink">{initialData.fleet_data?.vehicle || 'Pending'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted mb-1">Expected Arrival</p>
+                      <p className="font-medium text-ink">{initialData.fleet_data?.expected_arrival || 'Pending'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted mb-1">Priority</p>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-bold">{initialData.fleet_data?.priority || 'Normal'}</span>
+                    </div>
+                    <div>
+                      <p className="text-muted mb-1">Dispatch Status</p>
+                      <p className="font-medium text-emerald-500">Linked to Fleet DB</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 bg-white/50 dark:bg-black/20 rounded-lg border border-line/50">
+                    <p className="text-muted text-[10px] italic">Once this schedule is assigned, the Fleet Department will assign a vehicle and route via their system.</p>
+                  </div>
+                )}
+              </div>
             )}
 
             {initialData && (
@@ -685,7 +663,7 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           {activePicker && (
             <div className="bg-paper border border-line rounded-2xl shadow-sm p-6 w-[320px] flex-shrink-0 animate-in slide-in-from-right-8 duration-300">
               <h4 className="text-sm font-semibold text-ink mb-6 flex items-center gap-2">
-                <Clock size={16} className={activePicker.includes('break') || activePicker.includes('expected') ? 'text-amber-500' : 'text-accent'} /> 
+                <Clock size={16} className={activePicker.includes('break') ? 'text-amber-500' : 'text-accent'} /> 
                 {getPickerLabel()}
               </h4>
               

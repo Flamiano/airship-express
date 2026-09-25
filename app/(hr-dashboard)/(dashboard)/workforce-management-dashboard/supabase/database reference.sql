@@ -165,14 +165,11 @@ create table public.hr2_shifts (
   shift_time text null,
   break_time text null,
   
-  -- Rider Specific
-  vehicle text null,
-  expected_arrival text null,
+  -- Rider Specific Tracking (Managed by Fleet DB, but HR logs gate timings)
   gate_in text null,
   gate_out text null,
   
   status text not null,
-  priority text not null,
   override_reason text null,
   created_at timestamp with time zone null default now(),
   is_deleted boolean not null default false,

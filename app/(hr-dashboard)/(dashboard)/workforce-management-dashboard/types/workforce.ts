@@ -107,13 +107,17 @@ export interface Shift {
   break_time?: string; // e.g. 12:00 PM - 01:00 PM
   
   // Rider Specific
-  expected_arrival?: string;
   gate_in?: string | null;
   gate_out?: string | null;
-  vehicle?: string;
+  
+  // Mapped Fleet Data (Read-only, fetched from Fleet DB)
+  fleet_data?: {
+    vehicle: string;
+    expected_arrival: string;
+    priority: 'Normal' | 'High' | 'Critical';
+  };
 
   status: ShiftStatus;
-  priority: ShiftPriority;
   override_reason?: string;
   created_at: string;
   employee?: Employee; 

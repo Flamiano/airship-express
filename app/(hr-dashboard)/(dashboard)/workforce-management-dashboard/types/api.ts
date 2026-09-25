@@ -12,11 +12,6 @@ export interface CreateShiftPayload {
   shift_time?: string;
   break_duration_minutes?: number;
   break_time?: string;
-  
-  // Rider fields
-  vehicle?: string;
-  expected_arrival?: string;
-  priority?: 'Normal' | 'High' | 'Critical';
 }
 
 export interface UpdateShiftPayload extends Partial<CreateShiftPayload> {
