@@ -1,336 +1,217 @@
 'use client';
 
-import React, { useState } from 'react';
-import {
-  TrendingUp,
-  Award,
-  Users,
-  Clock,
-  Download,
-  AlertTriangle,
-  CheckCircle2,
-  Filter,
-  Layers,
-  ChevronDown,
-} from 'lucide-react';
-import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card, CardHeader } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
-import { Table, THead, TBody, TR, TH, TD } from '../../components/ui/Table';
+import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/apiFetch';
+import { ExportPrintDropdown } from '../../components/ui/ExportPrintDropdown';
+import { UniversalCalendar, CalendarEvent } from '../../components/ui/UniversalCalendar';
+import { Search, Sparkles, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-// In-depth sample analytics data for Workforce Full Analytics
-const STAFFING_PROJECTIONS = [
-  { month: 'Jan 2026', freight_volume: 4200, current_staff: 120, required_staff: 120, deficit: 0, status: 'Optimal' },
-  { month: 'Feb 2026', freight_volume: 4550, current_staff: 122, required_staff: 125, deficit: 3, status: 'Moderate Deficit' },
-  { month: 'Mar 2026', freight_volume: 5100, current_staff: 125, required_staff: 132, deficit: 7, status: 'Moderate Deficit' },
-  { month: 'Apr 2026', freight_volume: 5400, current_staff: 128, required_staff: 138, deficit: 10, status: 'Critical Deficit' },
-  { month: 'May 2026', freight_volume: 6000, current_staff: 130, required_staff: 145, deficit: 15, status: 'Critical Deficit' },
-  { month: 'Jun 2026', freight_volume: 6600, current_staff: 133, required_staff: 152, deficit: 19, status: 'Critical Deficit' },
-  { month: 'Jul 2026', freight_volume: 7200, current_staff: 135, required_staff: 160, deficit: 25, status: 'Critical Deficit' },
-  { month: 'Aug 2026', freight_volume: 7900, current_staff: 138, required_staff: 169, deficit: 31, status: 'Critical Deficit' },
-  { month: 'Sep 2026', freight_volume: 8600, current_staff: 140, required_staff: 180, deficit: 40, status: 'Peak Deficit' },
-];
+export default function AnalyticsPage() {
+  const [filter, setFilter] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
+  const [employeesData, setEmployeesData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-const DEPARTMENT_SKILLING = [
-  { department: 'Long-Haul Drivers', total: 100, certified: 84, rate: 84, gap: 16, riskLevel: 'Low' },
-  { department: 'Regional Dispatch', total: 72, certified: 58, rate: 80.5, gap: 14, riskLevel: 'Low' },
-  { department: 'Warehouse Ops', total: 60, certified: 45, rate: 75, gap: 15, riskLevel: 'Medium' },
-  { department: 'Hazmat Certified Handlers', total: 40, certified: 22, rate: 55, gap: 18, riskLevel: 'High' },
-  { department: 'New Driver Recruits', total: 35, certified: 12, rate: 34.3, gap: 23, riskLevel: 'Critical' },
-];
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await apiFetch<any[]>('/api/employee_analytics').catch(() => []);
+        setEmployeesData(data || []);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
 
-const TERMINAL_EFFICIENCY = [
-  { terminal: 'North Hub Chicago', drivers: 48, onTime: 98.2, avgRating: 4.85, overtimePct: 4.2 },
-  { terminal: 'Central Port Freight', drivers: 36, onTime: 96.5, avgRating: 4.72, overtimePct: 6.1 },
-  { terminal: 'East Logistics Bay', drivers: 32, onTime: 95.1, avgRating: 4.68, overtimePct: 5.8 },
-  { terminal: 'South Depot Texas', drivers: 24, onTime: 95.8, avgRating: 4.65, overtimePct: 7.0 },
-];
+  const filteredEmployees = employeesData.filter(e => e.name?.toLowerCase().includes(filter.toLowerCase()));
+  const tardyEmployees = filteredEmployees.filter(e => e.category === 'Tardy');
+  const onTimeEmployees = filteredEmployees.filter(e => e.category === 'On-Time');
 
-export default function WorkforceFullAnalyticsPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState<'all' | 'q1' | 'q2' | 'q3'>('all');
-  const [activeSubTab, setActiveSubTab] = useState<'hiring' | 'skilling' | 'terminals'>('hiring');
-
-  const exportData = () => {
-    alert('Exporting Workforce Full Analytics Report (CSV)...');
+  // Generate mock events for the selected employee
+  const getMockEvents = (emp: any): CalendarEvent[] => {
+    if (!emp) return [];
+    const evts: CalendarEvent[] = [];
+    const today = new Date();
+    
+    // Always add a shift today
+    evts.push({ id: 'e1', title: 'Shift', date: today, type: 'shift', description: '08:00 AM - 05:00 PM' });
+    
+    if (emp.category === 'Tardy') {
+      // Add some late events in the past days
+      const d1 = new Date(today); d1.setDate(d1.getDate() - 2);
+      const d2 = new Date(today); d2.setDate(d2.getDate() - 5);
+      evts.push({ id: 'l1', title: 'Late (45m)', date: d1, type: 'late' });
+      evts.push({ id: 'l2', title: 'Late (15m)', date: d2, type: 'late' });
+    }
+    
+    return evts;
   };
 
   return (
-    <DashboardLayout>
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-paper p-5 rounded-2xl border border-line shadow-sm">
+    <>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-paper p-5 rounded-2xl border border-line shadow-sm mb-6">
         <div>
-          <h1 className="text-xl font-bold text-ink flex items-center gap-2">
-            Workforce Full Analytics
-            <span className="text-xs bg-accent/10 text-accent px-2.5 py-0.5 rounded-full font-medium border border-accent/20">
-              Deep-Dive Report
-            </span>
-          </h1>
+          <h1 className="text-xl font-bold text-ink">Workforce Analytics</h1>
           <p className="text-xs text-muted mt-1">
-            In-depth analytics for staffing projections, department certifications, terminal performance, and compliance audits.
+            Deep dive into employee attendance history and behavior patterns.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={exportData} variant="secondary" className="flex items-center gap-1.5 text-xs py-2 px-3">
-            <Download size={14} /> Export CSV
-          </Button>
+          <ExportPrintDropdown />
         </div>
       </div>
 
-      {/* Top Level Metric KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider">
-            <span>Peak Staffing Deficit</span>
-            <AlertTriangle size={15} className="text-rose-500" />
+      <div className="flex flex-col lg:flex-row items-start gap-6">
+        {/* Left Column: Lists and Search (Fixed height, internally scrollable) */}
+        <div className="w-full lg:w-1/3 flex flex-col gap-4 border border-line rounded-2xl bg-paper p-4 h-[550px]">
+          <div className="relative shrink-0">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="text"
+              placeholder="Search employees..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="text-xs bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl pl-9 pr-3 py-2 text-ink placeholder:text-muted focus:outline-none focus:border-accent w-full transition-all"
+            />
           </div>
-          <p className="text-2xl font-bold text-rose-500 mt-1">40 Drivers</p>
-          <p className="text-[11px] text-muted">Projected spike in September 2026</p>
+
+          <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+            <div>
+              <h3 className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <AlertCircle size={14} /> Attention Needed (Tardy)
+              </h3>
+              <div className="space-y-2">
+                {tardyEmployees.map(emp => (
+                  <div
+                    key={emp.id}
+                    onClick={() => setSelectedEmployee(emp)}
+                    className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${
+                      selectedEmployee?.id === emp.id ? 'bg-accent/10 border-accent/30' : 'bg-ink/5 dark:bg-paper/5 border-transparent hover:border-line'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold text-xs shrink-0">
+                      {emp.avatar}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink truncate">{emp.name}</p>
+                      <p className="text-[10px] text-muted truncate">{emp.role}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-bold text-rose-500">{emp.lates} Lates</p>
+                    </div>
+                  </div>
+                ))}
+                {tardyEmployees.length === 0 && <p className="text-xs text-muted italic">No tardy employees.</p>}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <CheckCircle2 size={14} /> On-Time Performers
+              </h3>
+              <div className="space-y-2">
+                {onTimeEmployees.map(emp => (
+                  <div
+                    key={emp.id}
+                    onClick={() => setSelectedEmployee(emp)}
+                    className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${
+                      selectedEmployee?.id === emp.id ? 'bg-accent/10 border-accent/30' : 'bg-ink/5 dark:bg-paper/5 border-transparent hover:border-line'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0">
+                      {emp.avatar}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink truncate">{emp.name}</p>
+                      <p className="text-[10px] text-muted truncate">{emp.role}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-bold text-emerald-500">{emp.onTimeRate}</p>
+                    </div>
+                  </div>
+                ))}
+                {onTimeEmployees.length === 0 && <p className="text-xs text-muted italic">No on-time employees.</p>}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider">
-            <span>Avg Training Coverage</span>
-            <Award size={15} className="text-accent" />
+        {/* Center: Universal Calendar for Employee History (Dynamic sizing with margin/padding) */}
+        <div className="w-full lg:w-1/3 flex flex-col gap-4">
+          <div className="bg-paper border border-line rounded-2xl p-4 shadow-sm">
+            {selectedEmployee ? (
+              <UniversalCalendar 
+                events={getMockEvents(selectedEmployee)} 
+                initialView="month"
+                readOnly 
+                className="border border-line rounded-xl overflow-hidden shadow-none bg-transparent" 
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center border border-dashed border-line rounded-xl bg-paper/50 py-16">
+                <User size={32} className="text-muted/50 mb-2" />
+                <p className="text-xs text-muted font-medium">Select an employee to view history</p>
+              </div>
+            )}
           </div>
-          <p className="text-2xl font-bold text-ink mt-1">71.8%</p>
-          <p className="text-[11px] text-muted">161 of 307 roster personnel certified</p>
         </div>
 
-        <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider">
-            <span>On-Time Dispatch Rate</span>
-            <CheckCircle2 size={15} className="text-emerald-500" />
-          </div>
-          <p className="text-2xl font-bold text-ink mt-1">96.4%</p>
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Above DOT standard benchmark</p>
-        </div>
+        {/* Right Column: Detail Card & AI Summary (Dynamic sizing) */}
+        <div className="w-full lg:w-1/3 flex flex-col gap-4">
+          {selectedEmployee ? (
+            <div className="bg-paper border border-line p-5 rounded-2xl shrink-0 shadow-sm">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-accent/10 text-accent flex items-center justify-center font-bold text-lg">
+                  {selectedEmployee.avatar}
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-ink">{selectedEmployee.name}</h2>
+                  <p className="text-xs text-muted">{selectedEmployee.role}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 py-4 border-y border-line">
+                <div>
+                  <p className="text-[10px] text-muted uppercase">On-Time Rate</p>
+                  <p className="text-lg font-semibold text-ink">{selectedEmployee.onTimeRate}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted uppercase">Recent Lates</p>
+                  <p className="text-lg font-semibold text-rose-500">{selectedEmployee.lates}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="h-[160px] border border-dashed border-line rounded-2xl bg-paper/50 shrink-0" />
+          )}
 
-        <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider">
-            <span>Overtime Allocation</span>
-            <Clock size={15} className="text-amber-500" />
+          <div className="bg-gradient-to-b from-accent/5 to-transparent border border-accent/20 rounded-2xl p-5 relative overflow-hidden flex flex-col pb-12 shadow-sm">
+            <div className="flex items-center gap-2 text-accent mb-4">
+              <Sparkles size={16} />
+              <h3 className="text-sm font-semibold">AI Behavioral Summary</h3>
+            </div>
+            
+            {selectedEmployee ? (
+              <div className="space-y-4">
+                <div className="h-3 bg-accent/10 rounded-full w-full animate-pulse" />
+                <div className="h-3 bg-accent/10 rounded-full w-5/6 animate-pulse" />
+                <div className="h-3 bg-accent/10 rounded-full w-4/5 animate-pulse" />
+                <div className="h-3 bg-accent/10 rounded-full w-2/3 animate-pulse" />
+              </div>
+            ) : (
+              <p className="text-xs text-accent/60 mt-4 mb-4">Waiting for employee selection...</p>
+            )}
+
+            <div className="absolute bottom-4 left-0 w-full flex justify-center">
+              <span className="text-[10px] font-medium bg-accent/10 text-accent px-2 py-1 rounded-full border border-accent/20">
+                AI Auto-Summarization
+              </span>
+            </div>
           </div>
-          <p className="text-2xl font-bold text-ink mt-1">5.8%</p>
-          <p className="text-[11px] text-muted">Controlled fatigue rest compliance</p>
         </div>
       </div>
-
-      {/* Navigation Sub-Tabs */}
-      <Card className="p-5 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-4">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveSubTab('hiring')}
-              className={`text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
-                activeSubTab === 'hiring'
-                  ? 'bg-accent text-paper shadow-sm shadow-accent/25'
-                  : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
-              }`}
-            >
-              📈 Staffing & Load Projections
-            </button>
-            <button
-              onClick={() => setActiveSubTab('skilling')}
-              className={`text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
-                activeSubTab === 'skilling'
-                  ? 'bg-accent text-paper shadow-sm shadow-accent/25'
-                  : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
-              }`}
-            >
-              🎓 Department Skilling Matrix
-            </button>
-            <button
-              onClick={() => setActiveSubTab('terminals')}
-              className={`text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
-                activeSubTab === 'terminals'
-                  ? 'bg-accent text-paper shadow-sm shadow-accent/25'
-                  : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
-              }`}
-            >
-              🏢 Terminal Operational Efficiency
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted font-medium">Filter:</span>
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value as any)}
-              className="bg-ink/[0.03] dark:bg-paper/[0.05] border border-line text-ink rounded-xl px-2.5 py-1.5 font-medium focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-            >
-              <option value="all">Full 9 Months (2026)</option>
-              <option value="q1">Q1 (Jan - Mar)</option>
-              <option value="q2">Q2 (Apr - Jun)</option>
-              <option value="q3">Q3 (Jul - Sep)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Tab 1: Staffing & Hiring Projections */}
-        {activeSubTab === 'hiring' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-sm text-ink">12-Month Projected Headcount vs Demand</h3>
-                <p className="text-xs text-muted">Comparison of projected freight loads, active driver capacity, and calculated deficit.</p>
-              </div>
-            </div>
-
-            <Table>
-              <THead>
-                <TR header>
-                  <TH>Forecast Month</TH>
-                  <TH>Projected Freight Volume</TH>
-                  <TH>Active Drivers</TH>
-                  <TH>Required Drivers</TH>
-                  <TH>Headcount Deficit</TH>
-                  <TH>Status Assessment</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {STAFFING_PROJECTIONS.map((row) => (
-                  <TR key={row.month}>
-                    <TD className="font-semibold text-ink">{row.month}</TD>
-                    <TD className="font-mono text-ink">{row.freight_volume.toLocaleString()} loads</TD>
-                    <TD className="font-mono text-muted">{row.current_staff}</TD>
-                    <TD className="font-mono text-muted">{row.required_staff}</TD>
-                    <TD className="font-mono font-semibold">
-                      {row.deficit === 0 ? (
-                        <span className="text-emerald-600 dark:text-emerald-400">0 drivers</span>
-                      ) : (
-                        <span className="text-rose-500">-{row.deficit} drivers</span>
-                      )}
-                    </TD>
-                    <TD>
-                      <span
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                          row.status === 'Optimal'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                            : row.status === 'Moderate Deficit'
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                        }`}
-                      >
-                        {row.status}
-                      </span>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </div>
-        )}
-
-        {/* Tab 2: Department Skilling Matrix */}
-        {activeSubTab === 'skilling' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-sm text-ink">Department Mandatory Certification & Training Matrix</h3>
-                <p className="text-xs text-muted">Detailed compliance breakdown by role, highlighting priority skill gaps.</p>
-              </div>
-            </div>
-
-            <Table>
-              <THead>
-                <TR header>
-                  <TH>Department / Unit</TH>
-                  <TH>Certified Count</TH>
-                  <TH>Total Headcount</TH>
-                  <TH>Completion Rate</TH>
-                  <TH>Remaining Skill Gap</TH>
-                  <TH>Risk Level</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {DEPARTMENT_SKILLING.map((dept) => (
-                  <TR key={dept.department}>
-                    <TD className="font-semibold text-ink">{dept.department}</TD>
-                    <TD className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{dept.certified}</TD>
-                    <TD className="font-mono text-muted">{dept.total}</TD>
-                    <TD>
-                      <div className="w-full max-w-[140px] space-y-1">
-                        <div className="flex justify-between text-[10px] font-semibold text-ink">
-                          <span>{dept.rate}%</span>
-                        </div>
-                        <div className="w-full bg-ink/[0.06] dark:bg-paper/[0.08] rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              dept.rate >= 80
-                                ? 'bg-accent'
-                                : dept.rate >= 60
-                                ? 'bg-amber-500'
-                                : 'bg-rose-500'
-                            }`}
-                            style={{ width: `${dept.rate}%` }}
-                          />
-                        </div>
-                      </div>
-                    </TD>
-                    <TD className="font-mono text-rose-500 font-semibold">{dept.gap} uncertified</TD>
-                    <TD>
-                      <span
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                          dept.riskLevel === 'Low'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                            : dept.riskLevel === 'Medium'
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                        }`}
-                      >
-                        {dept.riskLevel} Priority
-                      </span>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </div>
-        )}
-
-        {/* Tab 3: Terminal Operational Efficiency */}
-        {activeSubTab === 'terminals' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-sm text-ink">Terminal Hub Performance & Ratings</h3>
-                <p className="text-xs text-muted">On-time dispatch performance, driver ratings, and overtime percentages across hubs.</p>
-              </div>
-            </div>
-
-            <Table>
-              <THead>
-                <TR header>
-                  <TH>Terminal Location</TH>
-                  <TH>Active Drivers</TH>
-                  <TH>On-Time Delivery %</TH>
-                  <TH>Average Driver Rating</TH>
-                  <TH>Overtime Ratio</TH>
-                  <TH>Operational Status</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {TERMINAL_EFFICIENCY.map((term) => (
-                  <TR key={term.terminal}>
-                    <TD className="font-semibold text-ink">{term.terminal}</TD>
-                    <TD className="font-mono text-muted">{term.drivers}</TD>
-                    <TD className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{term.onTime}%</TD>
-                    <TD className="font-mono text-amber-500 font-semibold">★ {term.avgRating} / 5.0</TD>
-                    <TD className="font-mono text-muted">{term.overtimePct}%</TD>
-                    <TD>
-                      <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        Operational
-                      </span>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </div>
-        )}
-      </Card>
-    </DashboardLayout>
-
+    </>
   );
 }
+

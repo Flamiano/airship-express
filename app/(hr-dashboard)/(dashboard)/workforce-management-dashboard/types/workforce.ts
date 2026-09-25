@@ -37,15 +37,6 @@ export type ShiftPriority = 'Normal' | 'High' | 'Critical';
 // Timesheet status enum
 export type TimesheetStatus = 'Pending Approval' | 'Approved' | 'Flagged Overtime' | 'Rejected';
 
-// Freight load status enum (matches hr2_freight_loads status check constraint)
-export type LoadStatus =
-  | 'Pending Driver'
-  | 'Scheduled'
-  | 'In Transit'
-  | 'Delivered'
-  | 'On Hold'
-  | 'Cancelled';
-
 // Performance doughnut segment interface
 export interface PerformanceSegment {
   name: string;
@@ -140,6 +131,9 @@ export interface PerformanceMetrics {
   on_time_rate: number;
   task_completion_rate: number;
   active_courses: number;
+  top_performers_pct?: number;
+  steady_workers_pct?: number;
+  needs_review_pct?: number;
   created_at: string;
 }
 
@@ -157,51 +151,4 @@ export interface WorkforceForecast {
   created_at: string;
 }
 
-// Skilling progress interface (matches hr2_skilling_progress table)
-export interface SkillingProgress {
-  id: string;
-  department: string;
-  certified_count: number;
-  total_count: number;
-  completion_rate: number;
-  completion_pct?: number; // Computed in API
-  updated_at?: string;
-  created_at?: string;
-}
 
-// Compliance audit item interface
-export interface ComplianceAuditItem {
-  id: string;
-  type: string;
-  severity: 'Compliant' | 'Low' | 'Medium' | 'High' | 'Critical';
-  description: string;
-  timestamp: string;
-  status: 'Open' | 'Resolved' | 'In Progress';
-}
-
-// Active load tracking (Card 4 on Dashboard)
-export interface ActiveLoad {
-  id: string;
-  load_ref: string;
-  origin: string;
-  destination: string;
-  driver_name: string;
-  driver_initials: string;
-  eta: string;
-  status: 'In Transit' | 'Delayed' | 'Dispatched' | 'Delivered';
-  progress_pct: number;
-}
-
-// Freight load interface (matches hr2_freight_loads table)
-export interface FreightLoad {
-  id: string;
-  load_ref: string;
-  origin: string;
-  destination: string;
-  pickup_date: string;
-  status: LoadStatus;
-  priority: ShiftPriority;
-  driver_id: string | null;
-  created_at: string;
-  driver?: Employee;
-}

@@ -134,23 +134,47 @@ export default function AttendancePage() {
     } catch {}
   };
 
-  const filteredScans = attendance.filter((a) =>
-    (a.employee?.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-    (a.employee?.role ?? '').toLowerCase().includes(filter.toLowerCase())
-  );
+  const officeRoles = ['HR Admin', 'Operations Manager', 'Office Staff', 'CSR/Marketing Staff', 'Project Coordinator', 'Office-in-Charge', 'Admin Assistant', 'HR Generalist', 'HR Officer', 'Marketing/Admin Staff'];
+  const employedDriverRoles = ['Fleet Driver', 'Hybrid/Rider', 'Appraiser/Rider', 'Rider', 'In-House Rider', 'Airship Driver', 'Manila Rider'];
+  const thirdPartyDriverRoles = ['JNT Pick-Up Rider', 'Drop-Off Pick-Up Rider'];
 
-  const filteredRoster = profiles.filter((p) =>
-    (p.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-    (p.role ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-    (p.email ?? '').toLowerCase().includes(filter.toLowerCase())
-  );
+  const [roleFilter, setRoleFilter] = useState<'all' | 'office' | 'employed' | 'third_party'>('all');
+
+  const filteredScans = attendance.filter((a) => {
+    const roleMatch = 
+      roleFilter === 'all' ? true :
+      roleFilter === 'office' ? officeRoles.includes(a.employee?.role || '') :
+      roleFilter === 'employed' ? employedDriverRoles.includes(a.employee?.role || '') :
+      thirdPartyDriverRoles.includes(a.employee?.role || '');
+
+    const textMatch = 
+      (a.employee?.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
+      (a.employee?.role ?? '').toLowerCase().includes(filter.toLowerCase());
+
+    return roleMatch && textMatch;
+  });
+
+  const filteredRoster = profiles.filter((p) => {
+    const roleMatch = 
+      roleFilter === 'all' ? true :
+      roleFilter === 'office' ? officeRoles.includes(p.role || '') :
+      roleFilter === 'employed' ? employedDriverRoles.includes(p.role || '') :
+      thirdPartyDriverRoles.includes(p.role || '');
+
+    const textMatch = 
+      (p.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
+      (p.role ?? '').toLowerCase().includes(filter.toLowerCase()) ||
+      (p.email ?? '').toLowerCase().includes(filter.toLowerCase());
+
+    return roleMatch && textMatch;
+  });
 
   const onShiftCount = attendance.filter((a) => a.status === 'On-Shift').length;
   const onBreakCount = attendance.filter((a) => a.status === 'On-Break').length;
   const tardyCount = attendance.filter((a) => a.status === 'Tardy').length;
 
   return (
-    <DashboardLayout realtimeConnected={connected}>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-paper p-5 rounded-2xl border border-line shadow-sm">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -294,6 +318,42 @@ export default function AttendancePage() {
           />
         </div>
 
+        {/* Role Filters */}
+        <div className="flex items-center gap-2 pb-2">
+          <button
+            onClick={() => setRoleFilter('all')}
+            className={`text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
+              roleFilter === 'all' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
+            }`}
+          >
+            All Roles
+          </button>
+          <button
+            onClick={() => setRoleFilter('office')}
+            className={`text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
+              roleFilter === 'office' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
+            }`}
+          >
+            Office Employees
+          </button>
+          <button
+            onClick={() => setRoleFilter('employed')}
+            className={`text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
+              roleFilter === 'employed' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
+            }`}
+          >
+            Employed Drivers
+          </button>
+          <button
+            onClick={() => setRoleFilter('third_party')}
+            className={`text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
+              roleFilter === 'third_party' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
+            }`}
+          >
+            Third-Party Drivers
+          </button>
+        </div>
+
         {activeTab === 'live_scans' && (
           <Table>
             <THead>
@@ -391,7 +451,7 @@ export default function AttendancePage() {
           <p className="text-xs text-muted text-center py-8">No matching roster employees found.</p>
         )}
       </Card>
-    </DashboardLayout>
+    </>
 
   );
 }
