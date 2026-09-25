@@ -150,17 +150,24 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
             {mode === 'office' ? 'Shift Title / Role' : 'Route / Dispatch Title'}
           </label>
           {mode === 'office' ? (
-            <select
-              required
-              value={form.title || ''}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-            >
-              <option value="" disabled>Select Role...</option>
-              {Array.from(new Set(drivers.filter(d => d.role && getEmployeeGroup(d.role) === 'Office').map(d => d.role))).map(role => (
-                <option key={role} value={role}>{role}</option>
-              ))}
-            </select>
+            form.driver_id ? (
+              <div className="w-full bg-ink/[0.02] dark:bg-paper/[0.02] border border-line rounded-xl p-2.5 text-xs text-muted/70 cursor-not-allowed flex items-center gap-2">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                {form.title || 'Auto-linked to Employee Profile'}
+              </div>
+            ) : (
+              <select
+                required
+                value={form.title || ''}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+              >
+                <option value="" disabled>Select Role for Unassigned Shift...</option>
+                {Array.from(new Set(drivers.filter(d => d.role && getEmployeeGroup(d.role) === 'Office').map(d => d.role))).map(role => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            )
           ) : (
             <input
               type="text"
