@@ -36,9 +36,10 @@ const GROUP_META: Record<SearchResultType, { label: string; icon: React.ReactNod
   shift: { label: 'Shifts & Schedules', icon: <Truck size={13} /> },
   timesheet: { label: 'Timesheets', icon: <FileText size={13} /> },
   leave: { label: 'Leave & Rest', icon: <UserCheck size={13} /> },
+  load: { label: 'Loads & Freight', icon: <Package size={13} /> },
 };
 
-const GROUP_ORDER: SearchResultType[] = ['person', 'shift', 'timesheet', 'leave'];
+const GROUP_ORDER: SearchResultType[] = ['person', 'shift', 'timesheet', 'leave', 'load'];
 
 const NOTIF_ICON: Record<NotificationType, React.ReactNode> = {
   timesheet: <FileText size={14} className="text-accent" />,
