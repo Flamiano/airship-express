@@ -29,6 +29,7 @@ export async function GET() {
         email: emp.email || '',
         full_name: fullName,
         role,
+        department: emp.department || 'Unassigned',
         avatar_initials: initials,
         terminal: emp.department || 'HQ — Operations',
         created_at: emp.date_hired || new Date().toISOString(),

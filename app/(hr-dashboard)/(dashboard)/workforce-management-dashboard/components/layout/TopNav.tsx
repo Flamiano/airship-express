@@ -26,7 +26,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useSidebar } from './SidebarContext';
 import { useAiSplit } from './AiSplitContext';
 import UserMenu from './UserMenu';
-import ThemeToggle from '@/app/components/ThemeToggle';
+import ThemeToggle from '../../../../../components/ThemeToggle';
 import { useSearch } from '../../hooks/useSearch';
 import { useNotifications, type NotificationType } from '../../hooks/useNotifications';
 import type { SearchResult, SearchResultType } from '../../types/api';

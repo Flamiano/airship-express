@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar';
 import { SidebarProvider } from './SidebarContext';
 import { AiSplitProvider, useAiSplit } from './AiSplitContext';
 import { AiConversationSplit } from './AiConversationSplit';
-import { ThemeProvider } from '@/app/components/ThemeProvider';
+import { ThemeProvider } from '../../../../../components/ThemeProvider';
 import '../../hrWorkforce.css';
 
 interface DashboardLayoutProps {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Clock, Radio, Key, CheckCircle, AlertCircle, RefreshCw, LogIn, LogOut, ArrowRightCircle } from 'lucide-react';
+import { Clock, Radio, Key, CheckCircle, AlertCircle, RefreshCw, LogIn, LogOut, ArrowRightCircle, Users } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -320,7 +320,7 @@ export default function AttendancePage() {
                   : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
               }`}
             >
-              <Clock size={16} /> Attendance Logs ({filteredScans.length})
+              <Clock size={16} /> Attendance Logs
             </button>
             <button
               onClick={() => setActiveTab('roster')}
@@ -330,7 +330,7 @@ export default function AttendancePage() {
                   : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
               }`}
             >
-              <Users size={16} /> Employee & ID Setup ({filteredRoster.length})
+              <Users size={16} /> Employee & ID Setup
             </button>
           </div>
           <input
@@ -421,7 +421,7 @@ export default function AttendancePage() {
           <Table>
             <THead>
               <TR header>
-                <TH>Employee</TH><TH>Role & Terminal</TH><TH>Device Station</TH><TH>Time In</TH><TH>Time Out</TH><TH>Status</TH>
+                <TH>Employee</TH><TH>Role & Department</TH><TH>Device Station</TH><TH>Time In</TH><TH>Time Out</TH><TH>Status</TH>
               </TR>
             </THead>
             <TBody>
@@ -440,11 +440,11 @@ export default function AttendancePage() {
                   </TD>
                   <TD>
                     <div className="font-medium text-xs text-ink">{row.employee?.role || 'Staff'}</div>
-                    <div className="text-[11px] text-muted">{row.terminal}</div>
+                    <div className="text-[11px] text-muted font-semibold">{row.employee?.department || 'Unassigned'}</div>
                   </TD>
                   <TD>
                     <span className="font-mono text-[11px] bg-ink/[0.04] dark:bg-paper/[0.06] border border-line px-2 py-0.5 rounded text-ink font-medium">
-                      {row.terminal.includes('ESP32') ? row.terminal : 'ESP32-GATE-01'}
+                      {row.terminal?.includes('ESP') ? row.terminal : 'ESP32-GATE-01'}
                     </span>
                   </TD>
                   <TD className="text-emerald-600 dark:text-emerald-400 font-mono text-xs font-semibold">{formatScan(row.time_in || row.last_scan)}</TD>
@@ -464,7 +464,7 @@ export default function AttendancePage() {
           <Table>
             <THead>
               <TR header>
-                <TH>Employee Name</TH><TH>Role</TH><TH>Terminal Location</TH><TH>Registered Card UID</TH><TH className="text-right">Card Assignment</TH>
+                <TH>Employee Name</TH><TH>Role</TH><TH>Department</TH><TH>Registered Card UID</TH><TH className="text-right">Card Assignment</TH>
               </TR>
             </THead>
             <TBody>
@@ -479,7 +479,7 @@ export default function AttendancePage() {
                     </div>
                   </TD>
                   <TD className="text-xs text-muted font-medium">{emp.role}</TD>
-                  <TD className="text-xs text-muted">{emp.terminal || 'Manila Hub'}</TD>
+                  <TD className="text-xs text-muted font-semibold">{emp.department || 'Unassigned'}</TD>
                   <TD>
                     {emp.rfid_uid ? (
                       <div className="flex items-center gap-1.5 font-mono text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-lg font-bold w-max">

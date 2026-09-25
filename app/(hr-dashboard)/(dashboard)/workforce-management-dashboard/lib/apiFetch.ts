@@ -19,7 +19,7 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
         else if (url.includes('/api/analytics')) resolve(MOCK_DB.dashboardAnalytics as any);
         else if (url.includes('/api/timesheets')) resolve(MOCK_DB.timesheets as any);
         else if (url.includes('/api/attendance')) resolve(MOCK_DB.attendance as any);
-        else if (url.includes('/api/drivers') || url.includes('/api/employees')) resolve(MOCK_DB.employees as any);
+        else if (url.includes('/api/drivers') || url.includes('/api/employees') || url.includes('/api/profiles')) resolve(MOCK_DB.employees as any);
         else resolve([] as any);
       }, 400); // Simulate network delay
     });
