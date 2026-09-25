@@ -1,18 +1,16 @@
 -- ==================================================================================================
 -- WORKFORCE MANAGEMENT DATABASE REFERENCE (LOCKED-IN VERSION)
 -- Scope: HR/Workforce Submodule + Basic HR1 Integration
--- Note: 'IF NOT EXISTS' is used safely so it won't overwrite or crash when 
---       pasted into the main Supabase SQL Editor.
 -- ==================================================================================================
 
--- 1. Create AI schema for pgvector (As per TechnicalDocs.md)
-create schema if not exists ai_analytics;
+-- 1. Create AI schema for pgvector
+create schema ai_analytics;
 
 -- ==================================================================================================
 -- HR1 INTEGRATIONS (Core Employee & Positions)
 -- ==================================================================================================
 
-create table if not exists public.hr1_job_positions (
+create table public.hr1_job_positions (
   id uuid not null default gen_random_uuid (),
   title character varying not null,
   department character varying not null,
@@ -24,7 +22,7 @@ create table if not exists public.hr1_job_positions (
   constraint hr1_job_positions_pkey primary key (id)
 ) TABLESPACE pg_default;
 
-create table if not exists public.hr1_employees (
+create table public.hr1_employees (
   id uuid not null default gen_random_uuid (),
   email text not null,
   full_name text not null,
@@ -34,17 +32,16 @@ create table if not exists public.hr1_employees (
   terminal text null,
   rfid_uid text null,
   created_at timestamp with time zone null default now(),
-  is_deleted boolean not null default false,
   constraint hr1_employees_pkey primary key (id),
-  constraint hr1_employees_position_id_fkey foreign key (position_id) references hr1_job_positions (id) on delete set null
+  constraint hr1_employees_position_id_fkey foreign key (position_id) references public.hr1_job_positions (id) on delete set null
 ) TABLESPACE pg_default;
 
 -- ==================================================================================================
 -- HR2 WORKFORCE MANAGEMENT
 -- ==================================================================================================
 
--- 2. Audit Logs (Added per TechnicalDocs.md requirement for manual overrides)
-create table if not exists public.hr2_audit_logs (
+-- 2. Audit Logs
+create table public.hr2_audit_logs (
   id uuid not null default gen_random_uuid (),
   admin_id uuid not null,
   action_type text not null,
@@ -56,8 +53,8 @@ create table if not exists public.hr2_audit_logs (
   constraint hr2_audit_logs_pkey primary key (id)
 ) TABLESPACE pg_default;
 
--- 3. System Settings (Added to persist settings from /settings page)
-create table if not exists public.hr2_system_settings (
+-- 3. System Settings
+create table public.hr2_system_settings (
   id uuid not null default gen_random_uuid (),
   setting_key text not null,
   setting_value text not null,
@@ -67,7 +64,7 @@ create table if not exists public.hr2_system_settings (
   constraint hr2_system_settings_key_unique unique (setting_key)
 ) TABLESPACE pg_default;
 
--- Initialize default settings based on frontend UI
+-- Initialize default settings
 insert into public.hr2_system_settings (setting_key, setting_value, description) values
   ('late_threshold_minutes', '15', 'Minutes past schedule before an employee is tagged as Tardy.'),
   ('absent_threshold_minutes', '120', 'Minutes past schedule before an employee is tagged as Absent.'),
@@ -75,7 +72,7 @@ insert into public.hr2_system_settings (setting_key, setting_value, description)
 on conflict (setting_key) do nothing;
 
 -- 4. Attendance Logs
-create table if not exists public.hr2_attendance_logs (
+create table public.hr2_attendance_logs (
   id uuid not null default gen_random_uuid (),
   employee_id uuid not null,
   status text not null,
@@ -88,16 +85,16 @@ create table if not exists public.hr2_attendance_logs (
   time_out timestamp with time zone null,
   is_deleted boolean not null default false,
   constraint hr2_attendance_logs_pkey primary key (id),
-  constraint hr2_attendance_logs_employee_id_fkey foreign key (employee_id) references hr1_employees (id) on delete CASCADE,
+  constraint hr2_attendance_logs_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete CASCADE,
   constraint hr2_attendance_logs_status_check check (
     status in ('On-Shift', 'On-Break', 'Tardy', 'Absent', 'Clocked Out')
   )
 ) TABLESPACE pg_default;
 
-create index if not exists idx_hr2_attendance_employee on public.hr2_attendance_logs using btree (employee_id);
+create index idx_hr2_attendance_employee on public.hr2_attendance_logs using btree (employee_id);
 
 -- 5. Leave Requests
-create table if not exists public.hr2_leave_requests (
+create table public.hr2_leave_requests (
   id uuid not null default gen_random_uuid (),
   employee_id uuid not null,
   leave_type text not null,
@@ -110,16 +107,16 @@ create table if not exists public.hr2_leave_requests (
   created_at timestamp with time zone null default now(),
   is_deleted boolean not null default false,
   constraint hr2_leave_requests_pkey primary key (id),
-  constraint hr2_leave_requests_employee_id_fkey foreign key (employee_id) references hr1_employees (id) on delete CASCADE,
+  constraint hr2_leave_requests_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete CASCADE,
   constraint hr2_leave_requests_status_check check (
     status in ('Pending HR Review', 'Approved', 'Rejected', 'Cancelled')
   )
 ) TABLESPACE pg_default;
 
-create index if not exists idx_hr2_leave_employee on public.hr2_leave_requests using btree (employee_id);
+create index idx_hr2_leave_employee on public.hr2_leave_requests using btree (employee_id);
 
 -- 6. Performance Metrics
-create table if not exists public.hr2_performance_metrics (
+create table public.hr2_performance_metrics (
   id uuid not null default gen_random_uuid (),
   snapshot_date date not null default CURRENT_DATE,
   avg_rating numeric(2, 1) not null,
@@ -134,8 +131,8 @@ create table if not exists public.hr2_performance_metrics (
   constraint hr2_performance_metrics_pkey primary key (id)
 ) TABLESPACE pg_default;
 
--- 7. RFID Bindings (Hardware Edge Node)
-create table if not exists public.hr2_rfid_bind (
+-- 7. RFID Bindings
+create table public.hr2_rfid_bind (
   id uuid not null default gen_random_uuid (),
   employee_id uuid not null,
   rfid_uid text not null,
@@ -148,17 +145,17 @@ create table if not exists public.hr2_rfid_bind (
   constraint hr2_rfid_bind_pkey primary key (id),
   constraint hr2_rfid_bind_employee_id_key unique (employee_id),
   constraint hr2_rfid_bind_rfid_uid_key unique (rfid_uid),
-  constraint hr2_rfid_bind_employee_id_fkey foreign key (employee_id) references hr1_employees (id) on delete CASCADE,
+  constraint hr2_rfid_bind_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete CASCADE,
   constraint hr2_rfid_bind_card_status_check check (
     card_status in ('Active', 'Suspended', 'Lost')
   )
 ) TABLESPACE pg_default;
 
-create index if not exists idx_hr2_rfid_employee on public.hr2_rfid_bind using btree (employee_id);
-create index if not exists idx_hr2_rfid_uid on public.hr2_rfid_bind using btree (rfid_uid);
+create index idx_hr2_rfid_employee on public.hr2_rfid_bind using btree (employee_id);
+create index idx_hr2_rfid_uid on public.hr2_rfid_bind using btree (rfid_uid);
 
 -- 8. Shifts
-create table if not exists public.hr2_shifts (
+create table public.hr2_shifts (
   id uuid not null default gen_random_uuid (),
   title text not null,
   driver_id uuid null,
@@ -170,7 +167,7 @@ create table if not exists public.hr2_shifts (
   created_at timestamp with time zone null default now(),
   is_deleted boolean not null default false,
   constraint hr2_shifts_pkey primary key (id),
-  constraint hr2_shifts_driver_id_fkey foreign key (driver_id) references hr1_employees (id) on delete set null,
+  constraint hr2_shifts_driver_id_fkey foreign key (driver_id) references public.hr1_employees (id) on delete set null,
   constraint hr2_shifts_priority_check check (
     priority in ('Normal', 'High', 'Critical')
   ),
@@ -179,10 +176,10 @@ create table if not exists public.hr2_shifts (
   )
 ) TABLESPACE pg_default;
 
-create index if not exists idx_hr2_shifts_driver on public.hr2_shifts using btree (driver_id);
+create index idx_hr2_shifts_driver on public.hr2_shifts using btree (driver_id);
 
 -- 9. Timesheets
-create table if not exists public.hr2_timesheets (
+create table public.hr2_timesheets (
   id uuid not null default gen_random_uuid (),
   employee_id uuid not null,
   week_start date not null,
@@ -195,16 +192,16 @@ create table if not exists public.hr2_timesheets (
   created_at timestamp with time zone null default now(),
   is_deleted boolean not null default false,
   constraint hr2_timesheets_pkey primary key (id),
-  constraint hr2_timesheets_employee_id_fkey foreign key (employee_id) references hr1_employees (id) on delete CASCADE,
+  constraint hr2_timesheets_employee_id_fkey foreign key (employee_id) references public.hr1_employees (id) on delete CASCADE,
   constraint hr2_timesheets_status_check check (
     status in ('Pending Approval', 'Approved', 'Rejected', 'Flagged Overtime')
   )
 ) TABLESPACE pg_default;
 
-create index if not exists idx_hr2_timesheets_employee on public.hr2_timesheets using btree (employee_id);
+create index idx_hr2_timesheets_employee on public.hr2_timesheets using btree (employee_id);
 
 -- 10. Workforce Forecast
-create table if not exists public.hr2_workforce_forecast (
+create table public.hr2_workforce_forecast (
   id uuid not null default gen_random_uuid (),
   month text not null,
   freight_volume integer not null,
@@ -218,8 +215,8 @@ create table if not exists public.hr2_workforce_forecast (
   constraint hr2_workforce_forecast_pkey primary key (id)
 ) TABLESPACE pg_default;
 
--- 11. AI Analytics (Vector Store for Gemma E2B)
-create table if not exists ai_analytics.employee_summaries (
+-- 11. AI Analytics (Vector Store for Gemma)
+create table ai_analytics.employee_summaries (
   id uuid not null default gen_random_uuid(),
   employee_id uuid not null,
   summary_text text not null,

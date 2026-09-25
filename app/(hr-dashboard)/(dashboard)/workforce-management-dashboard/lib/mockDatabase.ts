@@ -1,30 +1,31 @@
-import type { Shift } from '../types/workforce';
+import type { Shift, EmployeeGroup } from '../types/workforce';
 
 export interface Employee {
   id: string;
   name: string;
   role: string;
   department: string;
+  employee_group: EmployeeGroup;
   avatar: string;
 }
 
 export const MOCK_EMPLOYEES: Employee[] = [
-  { id: '1', name: 'Rome Louis Salvador', role: 'Office-in-Charge', department: 'Management', avatar: 'RL' },
-  { id: '2', name: 'Merilou Reyes', role: 'Project Coordinator', department: 'Management', avatar: 'MR' },
-  { id: '3', name: 'Ivie Temonio', role: 'HR Officer', department: 'Human Resources', avatar: 'IT' },
-  { id: '4', name: 'Meliza Bangkok', role: 'HR Generalist', department: 'Human Resources', avatar: 'MB' },
-  { id: '5', name: 'Chenchen Martinez', role: 'Sales Representative', department: 'Sales', avatar: 'CM' },
-  { id: '6', name: 'Welberto Arriesgado', role: 'Appraiser', department: 'Appraisal', avatar: 'WA' },
-  { id: '7', name: 'Kirl Patrick Trinidad', role: 'Office Staff', department: 'Office Operations', avatar: 'KT' },
-  { id: '8', name: 'Angelo Egos', role: 'Airship Driver', department: 'Logistics', avatar: 'AE' },
-  { id: '9', name: 'Raymond Manozo', role: 'Manila Rider', department: 'Logistics', avatar: 'RM' },
-  { id: '10', name: 'Nowei Altarejos', role: 'JNT Pick-Up Rider', department: 'Logistics', avatar: 'NA' },
-  { id: '11', name: 'Mc Aldee Bernardo', role: 'JNT Pick-Up Rider', department: 'Logistics', avatar: 'MB' },
-  { id: '12', name: 'Wilbert Cabanayan', role: 'JNT Pick-Up Rider', department: 'Logistics', avatar: 'WC' },
-  { id: '13', name: 'Mark Anthony Batucan', role: 'Appraiser / Rider', department: 'Appraisal', avatar: 'MB' },
-  { id: '14', name: 'Kimberly Ganace', role: 'Admin Assistant', department: 'Management', avatar: 'KG' },
-  { id: '15', name: 'Carl Fornis', role: 'CSR / Marketing Staff', department: 'Sales', avatar: 'CF' },
-  { id: '16', name: 'Krishen Cafe', role: 'Hybrid Rider', department: 'Logistics', avatar: 'KC' },
+  { id: '1', name: 'Rome Louis Salvador', role: 'Office-in-Charge', department: 'Management', employee_group: 'Office', avatar: 'RL' },
+  { id: '2', name: 'Merilou Reyes', role: 'Project Coordinator', department: 'Management', employee_group: 'Office', avatar: 'MR' },
+  { id: '3', name: 'Ivie Temonio', role: 'HR Officer', department: 'Human Resources', employee_group: 'Office', avatar: 'IT' },
+  { id: '4', name: 'Meliza Bangkok', role: 'HR Generalist', department: 'Human Resources', employee_group: 'Office', avatar: 'MB' },
+  { id: '5', name: 'Chenchen Martinez', role: 'Sales Representative', department: 'Sales', employee_group: 'Office', avatar: 'CM' },
+  { id: '6', name: 'Welberto Arriesgado', role: 'Appraiser', department: 'Appraisal', employee_group: 'Office', avatar: 'WA' },
+  { id: '7', name: 'Kirl Patrick Trinidad', role: 'Office Staff', department: 'Office Operations', employee_group: 'Office', avatar: 'KT' },
+  { id: '8', name: 'Angelo Egos', role: 'Airship Driver', department: 'Fleet', employee_group: 'Employed Rider', avatar: 'AE' },
+  { id: '9', name: 'Raymond Manozo', role: 'Manila Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'RM' },
+  { id: '10', name: 'Nowei Altarejos', role: 'JNT Pick-Up Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'NA' },
+  { id: '11', name: 'Mc Aldee Bernardo', role: 'JNT Pick-Up Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'MB' },
+  { id: '12', name: 'Wilbert Cabanayan', role: 'JNT Pick-Up Rider', department: 'Fleet', employee_group: 'Third-Party Rider', avatar: 'WC' },
+  { id: '13', name: 'Mark Anthony Batucan', role: 'Appraiser / Rider', department: 'Appraisal', employee_group: 'Employed Rider', avatar: 'MB' },
+  { id: '14', name: 'Kimberly Ganace', role: 'Admin Assistant', department: 'Management', employee_group: 'Office', avatar: 'KG' },
+  { id: '15', name: 'Carl Fornis', role: 'CSR / Marketing Staff', department: 'Sales', employee_group: 'Office', avatar: 'CF' },
+  { id: '16', name: 'Krishen Cafe', role: 'Hybrid Rider', department: 'Fleet', employee_group: 'Employed Rider', avatar: 'KC' },
 ];
 
 export const MOCK_DB = {
@@ -44,25 +45,55 @@ export const MOCK_DB = {
   ],
 
   shifts: [
+    // Office Block
     {
       id: 'S1',
-      title: 'Morning Route - North',
+      employee_id: '1',
       shift_date: '2026-10-15',
       shift_time: '08:00 AM - 05:00 PM',
-      priority: 'High',
+      priority: 'Normal',
       status: 'Scheduled',
-      vehicle: 'Van 1',
-      driver: { id: '8', full_name: 'Angelo Egos' },
+      created_at: '2026-10-10T00:00:00Z',
+      employee: { id: '1', full_name: 'Rome Louis Salvador', department: 'Management', employee_group: 'Office' },
     },
     {
       id: 'S2',
-      title: 'Afternoon Deliveries',
+      employee_id: '3',
       shift_date: '2026-10-15',
-      shift_time: '01:00 PM - 09:00 PM',
-      priority: 'Medium',
+      shift_time: '09:00 AM - 06:00 PM',
+      priority: 'Normal',
       status: 'In Progress',
+      created_at: '2026-10-10T00:00:00Z',
+      employee: { id: '3', full_name: 'Ivie Temonio', department: 'Human Resources', employee_group: 'Office' },
+    },
+    // Rider Arrivals
+    {
+      id: 'S3',
+      title: 'Morning Route - North',
+      employee_id: '8',
+      shift_date: '2026-10-15',
+      expected_arrival: '07:30 AM',
+      gate_in: '07:25 AM',
+      gate_out: null,
+      priority: 'High',
+      status: 'In Progress',
+      vehicle: 'Van 1',
+      created_at: '2026-10-10T00:00:00Z',
+      employee: { id: '8', full_name: 'Angelo Egos', department: 'Fleet', employee_group: 'Employed Rider' },
+    },
+    {
+      id: 'S4',
+      title: 'Afternoon Deliveries',
+      employee_id: '9',
+      shift_date: '2026-10-15',
+      expected_arrival: '01:00 PM',
+      gate_in: null,
+      gate_out: null,
+      priority: 'Medium',
+      status: 'Pending Driver',
       vehicle: 'Truck 3',
-      driver: { id: '9', full_name: 'Raymond Manozo' },
+      created_at: '2026-10-10T00:00:00Z',
+      employee: { id: '9', full_name: 'Raymond Manozo', department: 'Fleet', employee_group: 'Third-Party Rider' },
     },
   ] as Shift[],
 

@@ -50,12 +50,17 @@ export type LeaveStatus = 'Pending HR Review' | 'Approved' | 'Rejected';
 // Leave type enum
 export type LeaveType = 'Mandatory Fatigue Rest' | 'Paid Time Off (PTO)' | 'Medical Leave' | 'Unpaid Leave';
 
+// Employee grouping classification
+export type EmployeeGroup = 'Office' | 'Employed Rider' | 'Third-Party Rider';
+
 // Employee/Profile interface
 export interface Employee {
   id: string;
   email: string;
   full_name: string;
   role: UserRole;
+  department: string;
+  employee_group: EmployeeGroup;
   avatar_initials: string;
   terminal: string;
   created_at: string;
@@ -78,18 +83,26 @@ export interface AttendanceLog {
   employee?: Employee; // Joined employee data
 }
 
-// Shift interface (matches shifts table)
+// Core Schedule Interface (replaces raw Shift)
 export interface Shift {
   id: string;
-  title: string;
-  driver_id: string | null;
-  vehicle: string;
+  title?: string;
+  employee_id: string; // Rename driver_id to employee_id
   shift_date: string;
-  shift_time: string;
+  
+  // Office Specific
+  shift_time?: string; 
+  
+  // Rider Specific
+  expected_arrival?: string;
+  gate_in?: string | null;
+  gate_out?: string | null;
+  vehicle?: string;
+
   status: ShiftStatus;
   priority: ShiftPriority;
   created_at: string;
-  driver?: Employee; // Joined driver data
+  employee?: Employee; 
 }
 
 // Timesheet interface (matches timesheets table)

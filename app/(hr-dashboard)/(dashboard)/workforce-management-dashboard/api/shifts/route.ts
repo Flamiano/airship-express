@@ -18,7 +18,7 @@ const formatShift = (row: any) => {
         rfid_uid: null,
       }
     : undefined;
-  return { ...row, driver: mappedDriver };
+  return { ...row, employee: mappedDriver, employee_id: row.driver_id };
 };
 
 export async function GET() {
