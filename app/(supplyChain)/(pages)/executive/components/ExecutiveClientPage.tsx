@@ -1,11 +1,11 @@
 "use client";
 
-import Cards from '@/app/(supplyChain)/components/global/Cards';
-import { DownloadBtn } from "@/app/(supplyChain)/components/global/Buttons";
-import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
+import Cards from '../../../components/global/Cards';
+import { DownloadBtn } from "../../../components/global/Buttons";
+import AiQuestions from "../../../components/global/AiQuestions";
 import ExecutiveCharts from './ExecutiveCharts';
 import { useExecutiveData } from '../hooks/useExecutiveData';
-import { CardsSkeleton, ChartsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
+import { CardsSkeleton, ChartsSkeleton } from '../../../components/ui/SkeletonLoader';
 import ExecutivePdfExportModal from './modals/ExecutivePdfExportModal';
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';

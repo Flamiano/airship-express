@@ -2,16 +2,16 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import Chart from "chart.js/auto";
-import Cards from '@/app/(supplyChain)/components/global/Cards';
-import { LinkBtn } from '@/app/(supplyChain)/components/global/Buttons';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { CardsSkeleton, WarehouseChartSkeleton, AiQuestionsSkeleton, ModelForecastingSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-import AiQuestions from "@/app/(supplyChain)/components/global/AiQuestions";
-import { useAI } from "@/app/(supplyChain)/ai/services/AIContext";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import UnauthorizedEmptyState, { useUserRole } from "@/app/(supplyChain)/components/global/UnauthorizedEmptyState";
+import Cards from '../../../../components/global/Cards';
+import { LinkBtn } from '../../../../components/global/Buttons';
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { supabase } from "../../../../lib/services/client/supabase";
+import { CardsSkeleton, WarehouseChartSkeleton, AiQuestionsSkeleton, ModelForecastingSkeleton } from "../../../../components/ui/SkeletonLoader";
+import AiQuestions from "../../../../components/global/AiQuestions";
+import { useAI } from "../../../../ai/services/AIContext";
+import Portal from "../../../../components/client/Portal";
+import UnauthorizedEmptyState, { useUserRole } from "../../../../components/global/UnauthorizedEmptyState";
 
 interface DashboardStats {
     scannedParcels: number;

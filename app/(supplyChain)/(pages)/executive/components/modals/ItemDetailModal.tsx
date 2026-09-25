@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import Portal from "../../../../components/client/Portal";
 import { toast } from "sonner";
-import AppButton from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { ParcelTrackingCard } from "@/app/(supplyChain)/(pages)/inventory/components/tracking/ParcelTrackingCard";
+import AppButton from "../../../../components/ui/AppButton";
+import { StatusBadge } from "../../../../components/ui/StatusBadge";
+import { ParcelTrackingCard } from "../../../inventory/components/tracking/ParcelTrackingCard";
 
 export interface ItemDetailRecord {
     title: string;

@@ -281,7 +281,7 @@ export default function VrdsBookingsPage() {
         courier: undefined as any,
         weightKg: 0,
         notes: undefined,
-        status: "RECEIVED" as const,
+        status: "PICKED_UP" as const,
         receivedAt: new Date().toISOString(),
         bookingId: selectedBooking!.id,
       }))

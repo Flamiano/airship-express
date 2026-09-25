@@ -14,10 +14,10 @@ import {
     ArcElement,
     DoughnutController,
 } from "chart.js";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../lib/services/client/supabase";
 import { toast } from "sonner";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import { sanitizeText } from "@/app/(supplyChain)/components/global/sanitize";
+import { useConfirm } from "../../../components/ui/ConfirmModal";
+import { sanitizeText } from "../../../components/global/sanitize";
 import {
     Supplier,
     PurchaseOrder,

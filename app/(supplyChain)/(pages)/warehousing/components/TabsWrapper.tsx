@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback, ReactNode, Children, cloneElement, isValidElement } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { NavBtn } from '@/app/(supplyChain)/components/global/Buttons';
-import { useUserRole } from "@/app/(supplyChain)/components/global/UnauthorizedEmptyState";
+import { NavBtn } from '../../../components/global/Buttons';
+import { useUserRole } from "../../../components/global/UnauthorizedEmptyState";
 
 interface TabsWrapperProps {
     children: ReactNode;

@@ -2,11 +2,11 @@
 
 import React from 'react';
 import { Search, Ban, Trash2, AlertTriangle, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { Pagination } from '../../../../components/global/pagination';
+import { TableRowsSkeleton } from '../../../../components/ui/SkeletonLoader';
+import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { AppButton } from '../../../../components/ui/AppButton';
 import { Session } from '../../types';
 import { formatDate } from '../../utils/formatters';
 

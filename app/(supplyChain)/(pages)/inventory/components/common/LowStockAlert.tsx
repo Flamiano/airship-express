@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { InventoryItem } from '../../types';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { AppButton } from '../../../../components/ui/AppButton';
 
 interface LowStockAlertProps {
     items: InventoryItem[];

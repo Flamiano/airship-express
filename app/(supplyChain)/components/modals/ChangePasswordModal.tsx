@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import Portal from "../client/Portal";
+import { user } from "../../lib/services/Class/user";
 
 interface ChangePasswordModalProps {
     isOpen: boolean;

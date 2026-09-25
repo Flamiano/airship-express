@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { toast } from "sonner";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import Portal from "../../../../../components/client/Portal";
+import { AppButton } from "../../../../../components/ui/AppButton";
 
 interface BarcodeScannerProps {
     onScan: (barcode: string) => void;

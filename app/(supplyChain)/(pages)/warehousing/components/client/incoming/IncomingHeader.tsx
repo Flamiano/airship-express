@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { receiveAllParcels } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/parcels";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { receiveAllParcels } from "../../../actions/incoming/parcels";
+import { user } from "../../../../../lib/services/Class/user";
+import { AppButton } from "../../../../../components/ui/AppButton";
+import { StatusBadge } from "../../../../../components/ui/StatusBadge";
 
 interface IncomingHeaderProps {
     onReceiveAll?: () => void;
@@ -21,7 +21,8 @@ export default function IncomingHeader({ onReceiveAll }: IncomingHeaderProps) {
         const toastId = toast.loading('Processing receive all...');
 
         try {
-            const result = await receiveAllParcels();
+            const currentUserId = user.getUserId();
+            const result = await receiveAllParcels(currentUserId || undefined);
 
             if (!result.success) {
                 toast.error(result.error || 'Failed to receive parcels', {

@@ -1,4 +1,4 @@
-import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
+import { SessionGuard } from '../../components/server/SessionGuard';
 import ExecutiveClientPage from './components/ExecutiveClientPage';
 
 export default function Home() {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { InventoryItem } from '../../types';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
 
 // Guard against duplicate registrations during Next.js Hot Reloads
 let isRegistered = false;

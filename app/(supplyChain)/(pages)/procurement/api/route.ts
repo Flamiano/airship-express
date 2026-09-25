@@ -1,8 +1,8 @@
 //app/(supplyChain)/procurement/api/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
+import { supabase } from '../../../lib/services/client/supabase';
+import { sanitizeText, sanitizeNumber } from '../../../components/global/sanitize';
 import { headers } from 'next/headers';
 
 // types
@@ -459,16 +459,18 @@ export async function PUT(request: NextRequest) {
         // When approved: only admin and executive can edit
         // When pending: managers, admins, executives can edit
         const callerRole = (headersList.get('x-user-role') || updateData.role || '').trim().toLowerCase();
+        const isAdminOrExec = ['admin', 'executive', 'super_admin', 'superadmin', 'administrator'].includes(callerRole);
+        const isManager = ['manager', 'warehouse_manager', 'inventory_manager'].includes(callerRole);
 
         if (statusLower === 'approved') {
-            if (!['admin', 'executive'].includes(callerRole)) {
+            if (!isAdminOrExec) {
                 return NextResponse.json(
                     { success: false, error: 'When approved, only Admin and Executive can edit this request' },
                     { status: 403 }
                 );
             }
         } else if (statusLower === 'pending') {
-            if (!['admin', 'executive', 'manager'].includes(callerRole)) {
+            if (!isAdminOrExec && !isManager) {
                 return NextResponse.json(
                     { success: false, error: 'Only managers, admins, and executives can edit pending requests' },
                     { status: 403 }
@@ -577,8 +579,8 @@ export async function DELETE(request: NextRequest) {
         const ids = searchParams.get('ids');
 
         const callerRole = (headersList.get('x-user-role') || '').trim().toLowerCase();
-        const isAdminOrExec = ['admin', 'executive'].includes(callerRole);
-        const isManager = callerRole === 'manager';
+        const isAdminOrExec = ['admin', 'executive', 'super_admin', 'superadmin', 'administrator'].includes(callerRole);
+        const isManager = ['manager', 'warehouse_manager', 'inventory_manager'].includes(callerRole);
 
         if (!isAdminOrExec && !isManager) {
             return NextResponse.json(
@@ -767,7 +769,8 @@ export async function PATCH(request: NextRequest) {
 
         // Role check: Only Admin or Executive can approve or reject
         const callerRole = (headersList.get('x-user-role') || body.role || '').trim().toLowerCase();
-        if (!['admin', 'executive'].includes(callerRole)) {
+        const isAdminOrExec = ['admin', 'executive', 'super_admin', 'superadmin', 'administrator'].includes(callerRole);
+        if (!isAdminOrExec) {
             return NextResponse.json(
                 { success: false, error: 'Approval and rejection are only enabled for Admin or Executive roles' },
                 { status: 403 }

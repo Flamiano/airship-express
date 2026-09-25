@@ -1,24 +1,36 @@
 'use client';
 import { toast } from "sonner";
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { useInventory } from '@/app/(supplyChain)/(pages)/inventory/hooks/useInventory';
+import { useConfirm } from '../../components/ui/ConfirmModal';
+import { useInventory } from './hooks/useInventory';
 import { useSearchParams } from 'next/navigation';
-import { DashboardTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/DashboardTab';
-import { InventoryTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/InventoryTab';
-import { ParcelsTab } from '@/app/(supplyChain)/(pages)/inventory/components/tabs/ParcelsTab';
-import { AddItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/AddItemModal';
-import { EditItemModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/EditItemModal';
-import { StockInModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockInModal';
-import { StockOutModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/StockOutModal';
-import { ScopedPORequestModal } from '@/app/(supplyChain)/(pages)/inventory/components/modals/ScopedPORequestModal';
-import { PurchaseRequestDetailModal } from '@/app/(supplyChain)/components/modals/PurchaseRequestDetailModal';
-import { GroupedParcels, InventoryItem } from '@/app/(supplyChain)/(pages)/inventory/types';
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { fetchInventoryPageData, type Parcel } from '@/app/(supplyChain)/(pages)/inventory/server/query';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import UnauthorizedEmptyState, { useUserRole } from '@/app/(supplyChain)/components/global/UnauthorizedEmptyState';
+import { DashboardTab } from './components/tabs/DashboardTab';
+import { InventoryTab } from './components/tabs/InventoryTab';
+import { ParcelsTab } from './components/tabs/ParcelsTab';
+import { RequestsTab } from './components/tabs/RequestsTab';
+import { AddItemModal } from './components/modals/AddItemModal';
+import { EditItemModal } from './components/modals/EditItemModal';
+import { StockInModal } from './components/modals/StockInModal';
+import { StockOutModal } from './components/modals/StockOutModal';
+import { ScopedPORequestModal } from './components/modals/ScopedPORequestModal';
+import { InternalRequestModal } from './components/modals/InternalRequestModal';
+import { ReleaseApprovedRequestModal } from './components/modals/ReleaseApprovedRequestModal';
+import { PurchaseRequestDetailModal } from '../../components/modals/PurchaseRequestDetailModal';
+import { GroupedParcels, InventoryItem, ScannerUser, DriverOption, InventoryRequest } from './types';
+import { useDebounce } from "../../hooks/useDebounce";
+import { 
+    fetchInventoryItems, 
+    fetchParcels, 
+    fetchSuppliers, 
+    fetchDashboardStats, 
+    fetchScannersSummary, 
+    fetchDriversSummary, 
+    fetchInventoryRequests, 
+    type Parcel 
+} from './server/query';
+import { AppButton } from '../../components/ui/AppButton';
+import { supabase } from '../../lib/services/client/supabase';
+import UnauthorizedEmptyState, { useUserRole } from '../../components/global/UnauthorizedEmptyState';
 
 // SWR Cache Manager for Inventory data
 interface CacheEntry<T> {
@@ -61,7 +73,7 @@ export const inventoryCache = new InventoryCacheManager();
 
 export default function InventoryClient() {
     const searchParams = useSearchParams();
-    const { role: userRole, isPrivileged, isLoaded } = useUserRole();
+    const { role: userRole, userId: currentUserId, isPrivileged, isLoaded } = useUserRole();
     const urlTab = searchParams.get('tab');
     const initialTab = urlTab || (isLoaded && !isPrivileged ? 'parcels' : 'dashboard');
     const [activeTab, setActiveTab] = useState<string>(initialTab);
@@ -70,8 +82,10 @@ export default function InventoryClient() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [parcelSearchTerm, setParcelSearchTerm] = useState('');
     const [parcelStatusFilter, setParcelStatusFilter] = useState('');
+    const [parcelDriverFilter, setParcelDriverFilter] = useState('');
     const [parcelDateFrom, setParcelDateFrom] = useState('');
     const [parcelDateTo, setParcelDateTo] = useState('');
+    const [parcelScannedByFilter, setParcelScannedByFilter] = useState('');
     const [inventoryPage, setInventoryPage] = useState(1);
     const [parcelPage, setParcelPage] = useState(1);
     const itemsPerPage = 30;
@@ -96,52 +110,121 @@ export default function InventoryClient() {
     const [totalInventoryItems, setTotalInventoryItems] = useState(0);
     const [inventoryTotalPages, setInventoryTotalPages] = useState(1);
     const [parcels, setParcels] = useState<Parcel[]>([]);
+    const [scanners, setScanners] = useState<ScannerUser[]>([]);
+    const [drivers, setDrivers] = useState<DriverOption[]>([]);
     const [totalParcels, setTotalParcels] = useState(0);
     const [parcelTotalPages, setParcelTotalPages] = useState(1);
     const [suppliers, setSuppliers] = useState<any[]>([]);
+    const [requests, setRequests] = useState<InventoryRequest[]>([]);
+    const [totalRequests, setTotalRequests] = useState<number>(0);
+    const [requestsTotalPages, setRequestsTotalPages] = useState<number>(1);
+    const [requestsPage, setRequestsPage] = useState<number>(1);
+    const [requestsSearchTerm, setRequestsSearchTerm] = useState<string>('');
+    const [requestsStatusFilter, setRequestsStatusFilter] = useState<string>('all');
+    const [requestsTypeFilter, setRequestsTypeFilter] = useState<'all' | 'internal' | 'external'>('all');
+    const [requestsStats, setRequestsStats] = useState<{ total: number; pending: number; approved: number; received: number; rejected: number } | null>(null);
+    const [loadingRequests, setLoadingRequests] = useState<boolean>(false);
+    const [showInternalRequestModal, setShowInternalRequestModal] = useState<boolean>(false);
+    const [showReleaseModal, setShowReleaseModal] = useState<boolean>(false);
+    const [selectedRequestForRelease, setSelectedRequestForRelease] = useState<InventoryRequest | null>(null);
+
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const debouncedParcelSearch = useDebounce(parcelSearchTerm, 300);
+    const debouncedRequestsSearch = useDebounce(requestsSearchTerm, 300);
+    const loadedTabsRef = useRef<Set<string>>(new Set());
     const isInitialLoad = useRef(true);
     const { confirm } = useConfirm();
     const { saving, deleting, addItem, updateItem, deleteItem, deleteMultipleItems, stockIn, stockOut } = useInventory();
 
-    const fetchDashboardData = useCallback(async (forceRefresh = false) => {
-        const cacheKey = 'inventory_dashboard_data';
+    const fetchRequestsData = useCallback(async (showLoading = true, forceRefresh = false) => {
+        const cacheKey = JSON.stringify({
+            rp: requestsPage,
+            rs: debouncedRequestsSearch.trim().toLowerCase(),
+            rst: requestsStatusFilter,
+            rt: requestsTypeFilter,
+        });
+
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
             if (cached.data) {
-                setDashboardItems(cached.data.inventory?.items || []);
+                setRequests(cached.data.requests || []);
+                setTotalRequests(cached.data.totalItems || 0);
+                setRequestsTotalPages(cached.data.totalPages || 1);
+                setRequestsStats(cached.data.stats || null);
+                setLoadingRequests(false);
+                if (!cached.isStale) return; // instant 0ms response
+            }
+        }
+
+        if (showLoading) setLoadingRequests(true);
+        try {
+            const res = await fetchInventoryRequests({
+                page: requestsPage,
+                limit: 20,
+                search: debouncedRequestsSearch,
+                status: requestsStatusFilter,
+                type: requestsTypeFilter,
+            });
+            if (res.success && res.data) {
+                setRequests(res.data.requests || []);
+                setTotalRequests(res.data.totalItems || 0);
+                setRequestsTotalPages(res.data.totalPages || 1);
+                setRequestsStats(res.data.stats || null);
+                inventoryCache.set(cacheKey, res.data);
+            } else if (!res.success && res.error) {
+                console.error('fetchInventoryRequests error:', res.error);
+            }
+            // Ensure lightweight inventory items are available for requisition modals
+            if (inventoryItems.length === 0) {
+                fetchInventoryItems({ page: 1, limit: 100 }).then(r => {
+                    if (r.success && r.data?.items) setInventoryItems(r.data.items);
+                }).catch(() => {});
+            }
+        } catch (err) {
+            console.error('Error fetching inventory requests:', err);
+        } finally {
+            if (showLoading) setLoadingRequests(false);
+        }
+    }, [requestsPage, debouncedRequestsSearch, requestsStatusFilter, requestsTypeFilter, inventoryItems.length]);
+
+    const fetchDashboardData = useCallback(async (forceRefresh = false) => {
+        const cacheKey = `inventory_dashboard_data_${currentUserId || 'all'}`;
+        if (!forceRefresh) {
+            const cached = inventoryCache.get<any>(cacheKey);
+            if (cached.data) {
                 setDashboardStats(cached.data.stats || null);
+                setDashboardItems(cached.data.items || []);
                 setSuppliers(cached.data.suppliers || []);
-                if (!cached.isStale)
-                    return; // 0ms instant cache response
+                if (!cached.isStale) return; // instant 0ms response
             }
         }
         try {
-            const result = await fetchInventoryPageData({
-                inventoryPage: 1,
-                inventoryLimit: 999,
-                inventorySearch: '',
-                inventoryCategory: 'all',
-                inventoryStatus: 'all',
-                parcelPage: 1,
-                parcelLimit: 5,
-                parcelSearch: '',
-                parcelStatus: '',
-                parcelDateFrom: '',
-                parcelDateTo: '',
-            });
-            if (result.success && result.data) {
-                setDashboardItems(result.data.inventory?.items || []);
-                setDashboardStats(result.data.stats || null);
-                setSuppliers(result.data.suppliers || []);
-                inventoryCache.set(cacheKey, result.data);
+            const [statsRes, itemsRes, suppliersRes] = await Promise.all([
+                fetchDashboardStats(),
+                fetchInventoryItems({ page: 1, limit: 100 }),
+                fetchSuppliers(),
+            ]);
+            if (statsRes.success && statsRes.data) {
+                setDashboardStats(statsRes.data);
             }
-        }
-        catch (error) {
+            if (itemsRes.success && itemsRes.data?.items) {
+                setDashboardItems(itemsRes.data.items);
+            }
+            if (suppliersRes.success && suppliersRes.data) {
+                setSuppliers(suppliersRes.data);
+            }
+            inventoryCache.set(cacheKey, {
+                stats: statsRes.data,
+                items: itemsRes.data?.items || [],
+                suppliers: suppliersRes.data || [],
+            });
+        } catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
-    }, []);
+    }, [currentUserId]);
+
+    const effectiveParcelDateFrom = (parcelDateFrom && parcelDateTo) ? parcelDateFrom : '';
+    const effectiveParcelDateTo = (parcelDateFrom && parcelDateTo) ? parcelDateTo : '';
 
     const fetchInventoryData = useCallback(async (showLoading = true, forceRefresh = false) => {
         const cacheKey = JSON.stringify({
@@ -149,127 +232,179 @@ export default function InventoryClient() {
             is: debouncedSearchTerm.trim().toLowerCase(),
             ic: categoryFilter,
             ist: statusFilter,
-            pp: parcelPage,
-            ps: debouncedParcelSearch.trim().toLowerCase(),
-            pst: parcelStatusFilter,
-            pdf: parcelDateFrom,
-            pdt: parcelDateTo,
         });
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
             if (cached.data) {
-                if (cached.data.inventory) {
-                    setInventoryItems(cached.data.inventory.items || []);
-                    setTotalInventoryItems(cached.data.inventory.totalItems || 0);
-                    setInventoryTotalPages(cached.data.inventory.totalPages || 1);
-                }
-                if (cached.data.parcels) {
-                    setParcels(cached.data.parcels.parcels || []);
-                    setTotalParcels(cached.data.parcels.totalItems || 0);
-                    setParcelTotalPages(cached.data.parcels.totalPages || 1);
-                }
+                setInventoryItems(cached.data.items || []);
+                setTotalInventoryItems(cached.data.totalItems || 0);
+                setInventoryTotalPages(cached.data.totalPages || 1);
                 setLoadingInventory(false);
-                setLoadingParcels(false);
-                if (!cached.isStale)
-                    return; // instant 0ms cache hit
+                if (!cached.isStale) return; // instant 0ms hit
             }
         }
-        if (showLoading) {
-            setLoadingInventory(true);
-            setLoadingParcels(true);
-        }
+        if (showLoading) setLoadingInventory(true);
         try {
-            const result = await fetchInventoryPageData({
-                inventoryPage: inventoryPage,
-                inventoryLimit: itemsPerPage,
-                inventorySearch: debouncedSearchTerm,
-                inventoryCategory: categoryFilter,
-                inventoryStatus: statusFilter,
-                parcelPage: parcelPage,
-                parcelLimit: itemsPerPage,
-                parcelSearch: debouncedParcelSearch,
-                parcelStatus: parcelStatusFilter,
-                parcelDateFrom: parcelDateFrom,
-                parcelDateTo: parcelDateTo,
-            });
-            if (result.success && result.data) {
-                const { data } = result;
-                if (data?.inventory) {
-                    setInventoryItems(data.inventory.items || []);
-                    setTotalInventoryItems(data.inventory.totalItems || 0);
-                    setInventoryTotalPages(data.inventory.totalPages || 1);
-                }
-                if (data?.parcels) {
-                    setParcels(data.parcels.parcels || []);
-                    setTotalParcels(data.parcels.totalItems || 0);
-                    setParcelTotalPages(data.parcels.totalPages || 1);
-                }
-                inventoryCache.set(cacheKey, data);
-            }
-            else {
-                toast.error(result.error || 'Failed to load inventory data');
-            }
-        }
-        catch (error) {
-            console.error('Error fetching inventory data:', error);
-            toast.error('Failed to load inventory data');
-        }
-        finally {
-            if (showLoading) {
-                setLoadingInventory(false);
-                setLoadingParcels(false);
-            }
-        }
-    }, [
-        inventoryPage,
-        itemsPerPage,
-        debouncedSearchTerm,
-        categoryFilter,
-        statusFilter,
-        parcelPage,
-        debouncedParcelSearch,
-        parcelStatusFilter,
-        parcelDateFrom,
-        parcelDateTo,
-    ]);
-
-    useEffect(() => {
-        const loadInitialData = async () => {
-            setLoading(true);
-            await Promise.all([
-                fetchDashboardData(),
-                fetchInventoryData(true)
+            const [invRes, supRes] = await Promise.all([
+                fetchInventoryItems({
+                    page: inventoryPage,
+                    limit: itemsPerPage,
+                    search: debouncedSearchTerm,
+                    category: categoryFilter,
+                    status: statusFilter,
+                }),
+                suppliers.length === 0 ? fetchSuppliers() : Promise.resolve(null),
             ]);
+            if (invRes.success && invRes.data) {
+                setInventoryItems(invRes.data.items || []);
+                setTotalInventoryItems(invRes.data.totalItems || 0);
+                setInventoryTotalPages(invRes.data.totalPages || 1);
+                inventoryCache.set(cacheKey, invRes.data);
+            } else {
+                toast.error(invRes.error || 'Failed to load inventory items');
+            }
+            if (supRes?.success && supRes.data) {
+                setSuppliers(supRes.data);
+            }
+        } catch (error) {
+            console.error('Error fetching inventory items:', error);
+            toast.error('Failed to load inventory items');
+        } finally {
+            if (showLoading) setLoadingInventory(false);
+        }
+    }, [inventoryPage, itemsPerPage, debouncedSearchTerm, categoryFilter, statusFilter, suppliers.length]);
+
+    const fetchParcelsData = useCallback(async (showLoading = true, forceRefresh = false) => {
+        const effectiveScannedBy = !isPrivileged && currentUserId ? currentUserId : parcelScannedByFilter;
+        const effectiveDateFrom = (parcelDateFrom && parcelDateTo) ? parcelDateFrom : '';
+        const effectiveDateTo = (parcelDateFrom && parcelDateTo) ? parcelDateTo : '';
+        const cacheKey = JSON.stringify({
+            pp: parcelPage,
+            ps: debouncedParcelSearch.trim().toLowerCase(),
+            pst: parcelStatusFilter,
+            pdrv: parcelDriverFilter,
+            pdf: effectiveDateFrom,
+            pdt: effectiveDateTo,
+            psb: effectiveScannedBy,
+        });
+        if (!forceRefresh) {
+            const cached = inventoryCache.get<any>(cacheKey);
+            if (cached.data) {
+                setParcels(cached.data.parcels || []);
+                setTotalParcels(cached.data.totalItems || 0);
+                setParcelTotalPages(cached.data.totalPages || 1);
+                setLoadingParcels(false);
+                if (!cached.isStale) return; // instant 0ms hit
+            }
+        }
+        if (showLoading) setLoadingParcels(true);
+        try {
+            const [parcelsRes, scannersRes, driversRes] = await Promise.all([
+                fetchParcels({
+                    page: parcelPage,
+                    limit: itemsPerPage,
+                    search: debouncedParcelSearch,
+                    status: parcelStatusFilter,
+                    driver: parcelDriverFilter,
+                    dateFrom: effectiveDateFrom,
+                    dateTo: effectiveDateTo,
+                    scannedBy: effectiveScannedBy,
+                }),
+                scanners.length === 0 ? fetchScannersSummary() : Promise.resolve(null),
+                drivers.length === 0 ? fetchDriversSummary() : Promise.resolve(null),
+            ]);
+            if (parcelsRes.success && parcelsRes.data) {
+                setParcels(parcelsRes.data.parcels || []);
+                setTotalParcels(parcelsRes.data.totalItems || 0);
+                setParcelTotalPages(parcelsRes.data.totalPages || 1);
+                inventoryCache.set(cacheKey, parcelsRes.data);
+            } else {
+                toast.error(parcelsRes.error || 'Failed to load parcels');
+            }
+            if (scannersRes?.success && scannersRes.data) {
+                setScanners(scannersRes.data);
+            }
+            if (driversRes?.success && driversRes.data) {
+                setDrivers(driversRes.data);
+            }
+        } catch (error) {
+            console.error('Error fetching parcels:', error);
+            toast.error('Failed to load parcels');
+        } finally {
+            if (showLoading) setLoadingParcels(false);
+        }
+    }, [parcelPage, itemsPerPage, debouncedParcelSearch, parcelStatusFilter, parcelDriverFilter, parcelDateFrom, parcelDateTo, parcelScannedByFilter, isPrivileged, currentUserId, scanners.length, drivers.length]);
+
+    // On-demand lazy load the active tab's data
+    useEffect(() => {
+        if (!isLoaded) return;
+
+        const loadActiveTabData = async () => {
+            if (activeTab === 'inventory') {
+                if (!loadedTabsRef.current.has('inventory')) {
+                    loadedTabsRef.current.add('inventory');
+                    await fetchInventoryData(true);
+                }
+            } else if (activeTab === 'requests') {
+                if (!loadedTabsRef.current.has('requests')) {
+                    loadedTabsRef.current.add('requests');
+                    await fetchRequestsData(true);
+                }
+            } else if (activeTab === 'dashboard') {
+                if (!loadedTabsRef.current.has('dashboard')) {
+                    loadedTabsRef.current.add('dashboard');
+                    await fetchDashboardData();
+                }
+            } else if (activeTab === 'parcels') {
+                if (!loadedTabsRef.current.has('parcels')) {
+                    loadedTabsRef.current.add('parcels');
+                    await fetchParcelsData(true);
+                }
+            }
             setLoading(false);
             isInitialLoad.current = false;
         };
-        loadInitialData();
-    }, [fetchDashboardData, fetchInventoryData]);
 
+        loadActiveTabData();
+    }, [activeTab, isLoaded, fetchInventoryData, fetchRequestsData, fetchDashboardData, fetchParcelsData]);
+
+    // Requests filter/search effect (only runs when active tab is requests)
     useEffect(() => {
-        if (isInitialLoad.current)
-            return;
+        if (isInitialLoad.current || activeTab !== 'requests') return;
+        fetchRequestsData(true);
+    }, [requestsPage, debouncedRequestsSearch, requestsStatusFilter, requestsTypeFilter, fetchRequestsData, activeTab]);
+
+    // Inventory filter/search effect (only runs when active tab is inventory)
+    useEffect(() => {
+        if (isInitialLoad.current || activeTab !== 'inventory') return;
         setInventoryPage(1);
         const timeoutId = setTimeout(() => {
             fetchInventoryData(true);
         }, 300);
         return () => clearTimeout(timeoutId);
-    }, [
-        debouncedSearchTerm,
-        categoryFilter,
-        statusFilter,
-        debouncedParcelSearch,
-        parcelStatusFilter,
-        parcelDateFrom,
-        parcelDateTo,
-        fetchInventoryData,
-    ]);
+    }, [debouncedSearchTerm, categoryFilter, statusFilter, fetchInventoryData, activeTab]);
 
+    // Inventory page change
     useEffect(() => {
-        if (isInitialLoad.current)
-            return;
+        if (isInitialLoad.current || activeTab !== 'inventory') return;
         fetchInventoryData(true);
-    }, [inventoryPage, parcelPage, fetchInventoryData]);
+    }, [inventoryPage, fetchInventoryData, activeTab]);
+
+    // Parcels filter/search effect (only runs when active tab is parcels)
+    useEffect(() => {
+        if (isInitialLoad.current || activeTab !== 'parcels') return;
+        setParcelPage(1);
+        const timeoutId = setTimeout(() => {
+            fetchParcelsData(true);
+        }, 300);
+        return () => clearTimeout(timeoutId);
+    }, [debouncedParcelSearch, parcelStatusFilter, parcelDriverFilter, effectiveParcelDateFrom, effectiveParcelDateTo, parcelScannedByFilter, fetchParcelsData, activeTab]);
+
+    // Parcels page change
+    useEffect(() => {
+        if (isInitialLoad.current || activeTab !== 'parcels') return;
+        fetchParcelsData(true);
+    }, [parcelPage, fetchParcelsData, activeTab]);
 
     // Realtime Supabase Subscription for Parcels - smoothly updates local state without full re-fetch or page reload
     useEffect(() => {
@@ -312,6 +447,49 @@ export default function InventoryClient() {
         };
     }, []);
 
+    // Realtime Supabase Subscription for Inventory Requests - updates state smoothly in real-time
+    useEffect(() => {
+        const channel = supabase
+            .channel('inventory_requests_realtime')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'inventory_requests',
+            }, (payload) => {
+                // Invalidate cache so fresh data is loaded
+                inventoryCache.invalidateAll();
+
+                if (payload.eventType === 'INSERT') {
+                    const newReq = payload.new as any;
+                    if (newReq?.item_name) {
+                        toast.info(`New requisition request: ${newReq.item_name} (${newReq.quantity_requested || 1} qty)`, { duration: 3500 });
+                    }
+                    fetchRequestsData(false, true);
+                    fetchDashboardData(true);
+                } else if (payload.eventType === 'UPDATE') {
+                    const updated = payload.new as any;
+                    if (updated && updated.id) {
+                        setRequests(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated, status: updated.status || r.status } : r));
+                    }
+                    fetchRequestsData(false, true);
+                    fetchDashboardData(true);
+                } else if (payload.eventType === 'DELETE') {
+                    const deletedId = payload.old?.id;
+                    if (deletedId) {
+                        setRequests(prev => prev.filter(r => r.id !== deletedId));
+                        setTotalRequests(prev => Math.max(0, prev - 1));
+                    }
+                    fetchRequestsData(false, true);
+                    fetchDashboardData(true);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            channel.unsubscribe();
+        };
+    }, [fetchRequestsData, fetchDashboardData]);
+
     // Instant 0ms tab switching without triggering Next.js router full page re-evaluations
     const handleTabChange = useCallback((tab: string) => {
         setActiveTab(tab);
@@ -329,11 +507,11 @@ export default function InventoryClient() {
         try {
             const savedTab = localStorage.getItem('inventoryActiveTab');
             const urlTab = searchParams.get('tab');
-            if (urlTab && ['dashboard', 'inventory', 'parcels'].includes(urlTab)) {
+            if (urlTab && ['dashboard', 'inventory', 'parcels', 'requests'].includes(urlTab)) {
                 setActiveTab(urlTab);
             }
-            else if (savedTab && !urlTab && ['dashboard', 'inventory', 'parcels'].includes(savedTab)) {
-                const targetTab = (isLoaded && !isPrivileged && (savedTab === 'dashboard' || savedTab === 'inventory')) ? 'parcels' : savedTab;
+            else if (savedTab && !urlTab && ['dashboard', 'inventory', 'parcels', 'requests'].includes(savedTab)) {
+                const targetTab = (isLoaded && !isPrivileged && (savedTab === 'dashboard' || savedTab === 'inventory' || savedTab === 'requests')) ? 'parcels' : savedTab;
                 setActiveTab(targetTab);
                 const url = new URL(window.location.href);
                 url.searchParams.set('tab', targetTab);
@@ -344,7 +522,7 @@ export default function InventoryClient() {
         } catch (e) {
             // ignore
         }
-    }, [searchParams, isPrivileged, isLoaded, activeTab]);
+    }, [searchParams, isPrivileged, isLoaded]);
 
     const handleInventoryPageChange = useCallback((page: number) => {
         if (page >= 1 && page <= inventoryTotalPages && page !== inventoryPage) {
@@ -548,8 +726,10 @@ export default function InventoryClient() {
     const handleClearParcelFilters = useCallback(() => {
         setParcelSearchTerm('');
         setParcelStatusFilter('');
+        setParcelDriverFilter('');
         setParcelDateFrom('');
         setParcelDateTo('');
+        setParcelScannedByFilter('');
         setParcelPage(1);
     }, []);
 
@@ -619,6 +799,7 @@ export default function InventoryClient() {
                     {[
                         { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie', restricted: isLoaded && !isPrivileged },
                         { id: 'inventory', label: 'Inventory', icon: 'fa-boxes-stacked', restricted: isLoaded && !isPrivileged },
+                        { id: 'requests', label: 'Requests', icon: 'fa-dolly-flatbed', badgeCount: requestsStats?.pending || 0, restricted: isLoaded && !isPrivileged },
                         { id: 'parcels', label: 'Parcels', icon: 'fa-box-archive', restricted: false },
                     ].map((tab) => {
                         const isActive = activeTab === tab.id;
@@ -632,6 +813,11 @@ export default function InventoryClient() {
                             >
                                 <i className={`fas ${tab.restricted ? 'fa-lock' : tab.icon} text-xs transition-colors ${isActive ? 'text-white' : tab.restricted ? 'text-pink-500/80 dark:text-pink-400/80' : 'text-slate-400 dark:text-slate-500'}`}/>
                                 <span>{tab.label}</span>
+                                {tab.badgeCount !== undefined && tab.badgeCount > 0 && (
+                                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold font-mono ${isActive ? 'bg-white text-pink-600 shadow-sm' : 'bg-amber-500 text-white'}`}>
+                                        {tab.badgeCount}
+                                    </span>
+                                )}
                                 {tab.restricted && (
                                     <span className="text-[10px] opacity-75 font-normal ml-0.5">(Restricted)</span>
                                 )}
@@ -680,6 +866,7 @@ export default function InventoryClient() {
                             selectedIds={selectedIds}
                             itemsPerPage={itemsPerPage}
                             isLoading={loading || loadingInventory}
+                            userRole={userRole}
                             onSearchChange={setSearchTerm}
                             onCategoryChange={handleCategoryFilterChange}
                             onStatusChange={handleStatusFilterChange}
@@ -701,22 +888,80 @@ export default function InventoryClient() {
                         />
                     )}
                 </div>
+                <div className={activeTab === 'requests' ? 'block animate-in fade-in duration-150' : 'hidden'} role="tabpanel" aria-hidden={activeTab !== 'requests'}>
+                    {isLoaded && !isPrivileged ? (
+                        <UnauthorizedEmptyState
+                            title="Inventory Requests Restricted"
+                            description="You do not have permission to view or manage inventory requisitions. This section is restricted to Admin, Manager, and Executive personnel only."
+                            currentRole={userRole}
+                        />
+                    ) : (
+                        <RequestsTab
+                            requests={requests}
+                            inventoryItems={inventoryItems}
+                            totalRequests={totalRequests}
+                            currentPage={requestsPage}
+                            totalPages={requestsTotalPages}
+                            stats={requestsStats}
+                            isLoading={loading || loadingRequests}
+                            userRole={userRole}
+                            searchTerm={requestsSearchTerm}
+                            statusFilter={requestsStatusFilter}
+                            typeFilter={requestsTypeFilter}
+                            onSearchChange={(val) => {
+                                setRequestsSearchTerm(val);
+                                setRequestsPage(1);
+                            }}
+                            onStatusChange={(val) => {
+                                setRequestsStatusFilter(val);
+                                setRequestsPage(1);
+                            }}
+                            onTypeChange={(val) => {
+                                setRequestsTypeFilter(val);
+                                setRequestsPage(1);
+                            }}
+                            onPageChange={setRequestsPage}
+                            onOpenInternalRequestModal={() => setShowInternalRequestModal(true)}
+                            onOpenReleaseModal={(req) => {
+                                setSelectedRequestForRelease(req);
+                                setShowReleaseModal(true);
+                            }}
+                            onRefresh={() => {
+                                fetchRequestsData(false, true);
+                                fetchInventoryData(false, true);
+                                fetchDashboardData(true);
+                            }}
+                        />
+                    )}
+                </div>
                 <div className={activeTab === 'parcels' ? 'block animate-in fade-in duration-150' : 'hidden'} role="tabpanel" aria-hidden={activeTab !== 'parcels'}>
                     <ParcelsTab
                         parcels={parcels}
                         groupedParcels={filteredGroupedParcels}
                         searchTerm={parcelSearchTerm}
                         statusFilter={parcelStatusFilter}
+                        driverFilter={parcelDriverFilter}
+                        drivers={drivers}
                         dateFrom={parcelDateFrom}
                         dateTo={parcelDateTo}
+                        scannedByFilter={parcelScannedByFilter}
+                        scanners={scanners}
                         currentPage={parcelPage}
                         totalPages={parcelTotalPages}
                         totalItems={totalParcels}
                         isLoading={loading || loadingParcels}
                         onSearchChange={setParcelSearchTerm}
                         onStatusChange={setParcelStatusFilter}
+                        onDriverChange={(val) => {
+                            setParcelDriverFilter(val);
+                            setParcelPage(1);
+                        }}
                         onDateFromChange={setParcelDateFrom}
                         onDateToChange={setParcelDateTo}
+                        onScannedByChange={(val) => {
+                            setParcelScannedByFilter(val);
+                            setParcelPage(1);
+                        }}
                         onClearFilters={handleClearParcelFilters}
                         onPageChange={handleParcelPageChange}
                         onDeleteMultiple={handleDeleteMultipleParcels}
@@ -740,6 +985,7 @@ export default function InventoryClient() {
             }} onStockIn={handleStockIn} onSuccess={() => {
                 fetchDashboardData(true);
                 fetchInventoryData(false, true);
+                fetchRequestsData(false, true);
             }} inventoryItems={inventoryItems} preSelectedItem={selectedItemForStock} targetItem={selectedItemObjectForStock} loading={saving}/>
 
             <ScopedPORequestModal isOpen={showScopedPOModal} onClose={() => {
@@ -757,9 +1003,11 @@ export default function InventoryClient() {
                     setViewingPRId(null);
                 }}
                 requestId={viewingPRId}
+                userRole={userRole}
                 onSuccess={() => {
                     fetchDashboardData(true);
                     fetchInventoryData(false, true);
+                    fetchRequestsData(false, true);
                 }}
             />
 
@@ -767,6 +1015,31 @@ export default function InventoryClient() {
                 setShowStockOutModal(false);
                 setSelectedItemForStock('');
             }} onStockOut={handleStockOut} inventoryItems={inventoryItems} preSelectedItem={selectedItemForStock} loading={saving}/>
+
+            <InternalRequestModal
+                isOpen={showInternalRequestModal}
+                onClose={() => setShowInternalRequestModal(false)}
+                inventoryItems={inventoryItems}
+                onSuccess={() => {
+                    fetchRequestsData(false, true);
+                    fetchInventoryData(false, true);
+                    fetchDashboardData(true);
+                }}
+            />
+
+            <ReleaseApprovedRequestModal
+                isOpen={showReleaseModal}
+                onClose={() => {
+                    setShowReleaseModal(false);
+                    setSelectedRequestForRelease(null);
+                }}
+                request={selectedRequestForRelease}
+                onSuccess={() => {
+                    fetchRequestsData(false, true);
+                    fetchInventoryData(false, true);
+                    fetchDashboardData(true);
+                }}
+            />
         </div>
     );
 }

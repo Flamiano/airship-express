@@ -85,7 +85,8 @@ function filterByPeriod(records: Array<DashboardBooking | DashboardTrip>, period
     start.setHours(0, 0, 0, 0);
   }
   return records.filter((record) => {
-    const timestamp = new Date(record.created_at ?? record.createdAt ?? record.updated_at ?? record.updatedAt ?? 0).getTime();
+    const timestampedRecord = record as DashboardBooking & DashboardTrip;
+    const timestamp = new Date(timestampedRecord.created_at ?? timestampedRecord.createdAt ?? timestampedRecord.updated_at ?? timestampedRecord.updatedAt ?? 0).getTime();
     return Number.isFinite(timestamp) && timestamp >= start.getTime() && timestamp <= now.getTime();
   });
 }

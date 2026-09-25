@@ -3,10 +3,10 @@
 
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import ItemDetailModal, { ItemDetailRecord } from "@/app/(supplyChain)/(pages)/executive/components/modals/ItemDetailModal";
+import Portal from "../client/Portal";
+import { AppButton } from "../ui/AppButton";
+import { CrudActionButton } from "../ui/CrudActionButton";
+import ItemDetailModal, { ItemDetailRecord } from "../../(pages)/executive/components/modals/ItemDetailModal";
 
 export interface MetricItem {
     label: string;

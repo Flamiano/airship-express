@@ -19,6 +19,7 @@ interface UseNotificationsResult {
   isUnread: (id: string) => boolean;
   markRead: (id: string) => void;
   markAllRead: () => void;
+  clearAll: () => void;
   refetch: () => Promise<void>;
 }
 
@@ -156,8 +157,12 @@ export function useNotifications(): UseNotificationsResult {
     });
   }, [items]);
 
+  const clearAll = useCallback(() => {
+    setItems([]);
+  }, []);
+
   const unreadCount = items.reduce((n, i) => (readIds.has(i.id) ? n : n + 1), 0);
   const isUnread = useCallback((id: string) => !readIds.has(id), [readIds]);
 
-  return { items, unreadCount, loading, isUnread, markRead, markAllRead, refetch };
+  return { items, unreadCount, loading, isUnread, markRead, markAllRead, clearAll, refetch };
 }

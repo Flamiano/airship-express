@@ -4,9 +4,9 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { Tag, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, Maximize2, User, Calendar, HardDrive, Download } from 'lucide-react';
 import { MediaItem } from '../../types';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import EmbeddedDocViewer, { getFileTypeInfo } from '@/app/(supplyChain)/components/ui/EmbeddedDocViewer';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import EmbeddedDocViewer, { getFileTypeInfo } from '../../../../components/ui/EmbeddedDocViewer';
+import Portal from '../../../../components/client/Portal';
 
 export interface GalleryPreviewModalProps {
     isOpen: boolean;

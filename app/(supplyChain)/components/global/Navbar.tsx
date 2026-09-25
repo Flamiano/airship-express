@@ -4,21 +4,22 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { NAV } from "../../lib/navigation";
 import Image from "next/image";
-import { Navbar, NavBody, MobileNav, MobileNavHeader, MobileNavMenu, MobileNavToggle } from "@/app/(supplyChain)/components/ui/resizable-navbar";
+import { Navbar, NavBody, MobileNav, MobileNavHeader, MobileNavMenu, MobileNavToggle } from "../ui/resizable-navbar";
 import { IconChevronDown, IconLogout, IconLock } from "@tabler/icons-react";
 import { useAI } from "../../ai/services/AIContext";
 import { AnimatePresence, motion } from "motion/react";
-import { cn } from "@/app/(supplyChain)/lib/utils";
+import { cn } from "../../lib/utils";
 import { RobotHeader } from "../../ai/components/RobotHeader";
 import { toast } from "sonner";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
+import { useConfirm } from "../ui/ConfirmModal";
 import { NotificationBell } from "./NotificationBell";
 import { UserProfileMenu } from "./UserProfileMenu";
 import ThemeToggle from "@/app/components/ThemeToggle";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { ChangePasswordModal } from "@/app/(supplyChain)/components/modals/ChangePasswordModal";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { AppButton } from "../ui/AppButton";
+import { StatusBadge } from "../ui/StatusBadge";
+import { ChangePasswordModal } from "../modals/ChangePasswordModal";
+import { user } from "../../lib/services/Class/user";
+import { settingsService } from "../../lib/services/settingsService";
 import '@fortawesome/fontawesome-free/css/all.min.css';
 interface NavItem {
     id: string;
@@ -69,6 +70,12 @@ export function AceternityNavbar() {
             if (email) {
                 setUserEmail(email);
             }
+
+            const unsubscribe = settingsService.subscribe(() => {
+                const currentRole = user.getRole() || 'User';
+                filterNavigation(currentRole);
+            });
+            return () => unsubscribe();
         }
     }, []);
     // close dropdown on outside click
@@ -84,7 +91,7 @@ export function AceternityNavbar() {
     const filterNavigation = (role: string) => {
         const filtered = (NAV as NavGroup[]).map((group: NavGroup) => {
             const items = group.items.map((item: NavItem) => {
-                const isAuthorized = !item.roles || item.roles.length === 0 || item.roles.includes(role);
+                const isAuthorized = settingsService.canAccessPage(role, item.href, item.roles);
                 return {
                     ...item,
                     isAuthorized,

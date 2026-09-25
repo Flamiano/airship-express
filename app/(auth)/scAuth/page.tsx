@@ -11,15 +11,18 @@ import {
     Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { OfflineDetector } from '@/app/(supplyChain)/components/global/OfflineDetector';
+import { useConfirm } from '../../(supplyChain)/components/ui/ConfirmModal';
+import { OfflineDetector } from '../../(supplyChain)/components/global/OfflineDetector';
+import CustomCursor from '../../(supplyChain)/components/global/CustomCursor';
 import {
     EmployeeSelectionModal,
+    isDropOffPickupRider,
     PasswordSetupModal,
     RememberedPasswordModal,
     AppealModal,
+    LoginQueueModal,
 } from './modals';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../(supplyChain)/lib/services/Class/user';
 import {
     clearUserSession,
     checkRememberedSessionApi,
@@ -38,15 +41,9 @@ import {
     submitAppeal,
     updateAppeal,
     deleteAppeal,
+    maskEmail,
 } from './services';
-
-const ROLE_REDIRECTS: Record<string, string> = {
-    'Admin': '/procurement',
-    'Executive': '/executive',
-    'Manager': '/warehousing?tab=incoming',
-    'Operator': '/warehousing?tab=incoming',
-    'Employee': '/documents',
-};
+import { settingsService } from '../../(supplyChain)/lib/services/settingsService';
 
 export default function SupplyChainLoginPage() {
     const router = useRouter();
@@ -79,7 +76,8 @@ export default function SupplyChainLoginPage() {
     const [otpSent, setOtpSent] = useState(false);
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
     const [isVerifying, setIsVerifying] = useState(false);
-    const [countdown, setCountdown] = useState(0);
+    const [countdown, setCountdown] = useState(0); // Resend button cooldown (30s)
+    const [otpExpiresIn, setOtpExpiresIn] = useState(0); // OTP code lifespan (300s = 5m)
     const [otpError, setOtpError] = useState<string | null>(null);
     const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
     const [rememberMe, setRememberMe] = useState(false);
@@ -104,14 +102,17 @@ export default function SupplyChainLoginPage() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isCreatingUser, setIsCreatingUser] = useState(false);
-    const [useHrPassword, setUseHrPassword] = useState(false);
-    const [hrPassword, setHrPassword] = useState('');
-    const [hrHasPassword, setHrHasPassword] = useState(false);
     const [selectedEmployeeForPassword, setSelectedEmployeeForPassword] = useState<any>(null);
 
     // remembered password modal
     const [showRememberedPasswordModal, setShowRememberedPasswordModal] = useState(false);
     const [rememberedPassword, setRememberedPassword] = useState('');
+
+    // login queue modal (100-user concurrency limit)
+    const [showQueueModal, setShowQueueModal] = useState(false);
+    const [queuePosition, setQueuePosition] = useState(1);
+    const [queueActiveUsers, setQueueActiveUsers] = useState(1);
+    const [queueMaxCapacity, setQueueMaxCapacity] = useState(1);
 
     const lastCheckRef = useRef<number>(0);
     const isCheckingRef = useRef<boolean>(false);
@@ -366,7 +367,7 @@ export default function SupplyChainLoginPage() {
 
                     await restoreSupabaseSession();
 
-                    const redirectPath = ROLE_REDIRECTS[data.user.role] || '/warehousing';
+                    const redirectPath = settingsService.getRoleRedirect(data.user.role);
                     window.location.href = redirectPath;
                     return;
                 }
@@ -392,8 +393,21 @@ export default function SupplyChainLoginPage() {
         }
     }, [countdown]);
 
+    // countdown timer for otp expiration (5 minutes = 300s)
+    useEffect(() => {
+        if (otpExpiresIn > 0) {
+            const timer = setTimeout(() => setOtpExpiresIn(otpExpiresIn - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [otpExpiresIn]);
+
     // handle employee selection
     const handleEmployeeSelect = async (employee: any) => {
+        if (!employee) return;
+        if (isDropOffPickupRider(employee)) {
+            toast.warning('Drop-Off Pick-Up Drivers are field personnel and cannot access the web portal.');
+            return;
+        }
         if (isSelectionLocked || isCheckingRemembered || isRequestingOTP || isDeviceBlocked) return;
 
         setSelectedEmployee(employee);
@@ -436,7 +450,8 @@ export default function SupplyChainLoginPage() {
                     setIsRemembered(true);
                     setRememberedData({
                         ...data,
-                        user: { role: data.role || 'Employee' },
+                        role: data.role || employee.role || 'Employee',
+                        user: { role: data.role || employee.role || 'Employee' },
                     });
                     toast.success(`${employee.display_name} is remembered on this device`);
                 } else {
@@ -467,7 +482,7 @@ export default function SupplyChainLoginPage() {
         setRememberedPassword('');
     };
 
-    const handleVerifyRememberedPassword = async (): Promise<boolean> => {
+    const handleVerifyRememberedPassword = async (): Promise<boolean | string> => {
         if (!rememberedPassword.trim()) {
             toast.error('Please enter your password');
             return false;
@@ -477,6 +492,7 @@ export default function SupplyChainLoginPage() {
 
         try {
             const userRole = rememberedData?.role ||
+                selectedEmployee?.role ||
                 loggedInUser?.role ||
                 user.getRole() ||
                 'Employee';
@@ -517,10 +533,19 @@ export default function SupplyChainLoginPage() {
                     return false;
                 }
 
-                const { ok } = await activateSessionApi(sessionToken, currentUserAgent);
+                const { ok, status, data: activateData } = await activateSessionApi(sessionToken, currentUserAgent);
 
                 if (!ok) {
-                    toast.error('Session activation failed. Please login with OTP.');
+                    if (activateData?.queued || status === 429) {
+                        setQueuePosition(activateData?.position || 1);
+                        setQueueActiveUsers(activateData?.tierActive ?? activateData?.activeUsers ?? 1);
+                        setQueueMaxCapacity(activateData?.tierSlots ?? activateData?.maxCapacity ?? 1);
+                        setShowQueueModal(true);
+                        setIsLoggingInWithRemembered(false);
+                        setShowRememberedPasswordModal(false);
+                        return 'queued';
+                    }
+                    toast.error(activateData?.message || 'Session activation failed. Please login with OTP.');
                     setIsLoggingInWithRemembered(false);
                     setShowRememberedPasswordModal(false);
                     return false;
@@ -557,7 +582,7 @@ export default function SupplyChainLoginPage() {
             toast.success('Login successful!');
             setShowRememberedPasswordModal(false);
             setShowEmployeeModal(false);
-            router.push(ROLE_REDIRECTS[userRole] || '/warehousing');
+            router.push(settingsService.getRoleRedirect(userRole));
             return true;
 
         } catch (error) {
@@ -634,7 +659,10 @@ export default function SupplyChainLoginPage() {
                 userAgent: navigator.userAgent,
             });
 
+            // Load accounts into the modal (from users table for Admin/Executive, mock_employees for Employee)
             await loadEmployeesFromHR(data.user.role);
+            setSelectedEmployee(null);
+            setOtpSent(false);
             setShowEmployeeModal(true);
         } catch {
             setLoginError('Something went wrong. Please try again.');
@@ -651,7 +679,10 @@ export default function SupplyChainLoginPage() {
             const { ok, data } = await fetchHREmployeesApi(role, userEmail);
 
             if (ok) {
-                setEmployees(data);
+                const nonRiders = Array.isArray(data)
+                    ? data.filter((emp: any) => !isDropOffPickupRider(emp))
+                    : [];
+                setEmployees(nonRiders);
             } else {
                 setLoginError('Failed to load employees from HR system.');
             }
@@ -663,8 +694,13 @@ export default function SupplyChainLoginPage() {
     }
 
     // request otp
-    async function requestOTP() {
-        if (!selectedEmployee || isDeviceBlocked) {
+    async function requestOTP(targetEmp?: any) {
+        // Guard against React SyntheticEvent being passed when used in onClick={requestOTP}
+        const emp = (targetEmp && typeof targetEmp === 'object' && 'email' in targetEmp && !('nativeEvent' in targetEmp))
+            ? targetEmp
+            : selectedEmployee;
+
+        if (!emp || isDeviceBlocked) {
             if (isDeviceBlocked) {
                 toast.error('This device is blocked. Please submit an appeal.');
             }
@@ -676,7 +712,17 @@ export default function SupplyChainLoginPage() {
         setOtpSuccess(null);
 
         try {
-            const blockedDevice = await checkIfDeviceBlocked(loggedInUser.id, navigator.userAgent);
+            const currentUserId = loggedInUser?.id || user.getUserId() || emp.id;
+            const targetId = emp.id || currentUserId;
+            const targetEmail = emp.email || emp.user_email;
+
+            if (!targetEmail) {
+                toast.error('No email address found for the selected account.');
+                setIsRequestingOTP(false);
+                return;
+            }
+
+            const blockedDevice = await checkIfDeviceBlocked(currentUserId, navigator.userAgent);
             if (blockedDevice) {
                 setIsDeviceBlocked(true);
                 setBlockedDeviceId(blockedDevice.id);
@@ -686,10 +732,10 @@ export default function SupplyChainLoginPage() {
             }
 
             const { ok, status, data } = await requestOtpApi({
-                userId: selectedEmployee.id,
-                email: selectedEmployee.email,
-                loggedInUserId: loggedInUser.id,
-                employeeName: selectedEmployee.display_name,
+                userId: targetId,
+                email: targetEmail,
+                loggedInUserId: currentUserId,
+                employeeName: emp.display_name || 'User',
             });
 
             if (!ok) {
@@ -702,11 +748,12 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            toast.success(`OTP sent to ${selectedEmployee.email}`);
-            setOtpSuccess(`OTP sent to ${selectedEmployee.email}`);
+            toast.success(`OTP sent to ${maskEmail(targetEmail)}`);
+            setOtpSuccess(`OTP sent to ${maskEmail(targetEmail)}`);
 
             setOtpSent(true);
-            setCountdown(30);
+            setCountdown(30); // 30s resend cooldown
+            setOtpExpiresIn(300); // 5 minutes code validity
             setTimeout(() => document.getElementById('otp-0')?.focus(), 100);
         } catch (err: any) {
             toast.error(err.message);
@@ -730,7 +777,17 @@ export default function SupplyChainLoginPage() {
         setOtpSuccess(null);
 
         try {
-            const blockedDevice = await checkIfDeviceBlocked(loggedInUser.id, navigator.userAgent);
+            const currentUserId = loggedInUser?.id || user.getUserId() || selectedEmployee.id;
+            const targetId = selectedEmployee.id || currentUserId;
+            const targetEmail = selectedEmployee.email;
+
+            if (!targetEmail) {
+                toast.error('No email address found for the selected account.');
+                setIsResending(false);
+                return;
+            }
+
+            const blockedDevice = await checkIfDeviceBlocked(currentUserId, navigator.userAgent);
             if (blockedDevice) {
                 setIsDeviceBlocked(true);
                 setBlockedDeviceId(blockedDevice.id);
@@ -740,10 +797,10 @@ export default function SupplyChainLoginPage() {
             }
 
             const { ok, status, data } = await requestOtpApi({
-                userId: selectedEmployee.id,
-                email: selectedEmployee.email,
-                loggedInUserId: loggedInUser.id,
-                employeeName: selectedEmployee.display_name,
+                userId: targetId,
+                email: targetEmail,
+                loggedInUserId: currentUserId,
+                employeeName: selectedEmployee.display_name || 'User',
             });
 
             if (!ok) {
@@ -756,9 +813,10 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            toast.success(`New OTP sent to ${selectedEmployee.email}`);
-            setOtpSuccess(`New OTP sent to ${selectedEmployee.email}`);
-            setCountdown(30);
+            toast.success(`New OTP sent to ${maskEmail(targetEmail)}`);
+            setOtpSuccess(`New OTP sent to ${maskEmail(targetEmail)}`);
+            setCountdown(30); // 30s resend cooldown
+            setOtpExpiresIn(300); // 5 minutes code validity
         } catch (err: any) {
             toast.error(err.message);
             setOtpError(err.message);
@@ -775,7 +833,7 @@ export default function SupplyChainLoginPage() {
             return;
         }
 
-        if (countdown === 0) {
+        if (otpExpiresIn === 0 && otpSent) {
             const errorMsg = 'The inputted OTP is already expired. Please click Resend Code to receive a new OTP.';
             toast.error(errorMsg);
             setOtpError(errorMsg);
@@ -801,7 +859,7 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            const { ok, data } = await verifyOtpApi({
+            const { ok, status, data } = await verifyOtpApi({
                 userId: loggedInUser.id,
                 otp: otpString,
                 targetUserId: selectedEmployee.id,
@@ -812,6 +870,14 @@ export default function SupplyChainLoginPage() {
             });
 
             if (!ok) {
+                if (data?.queued || status === 429) {
+                    setQueuePosition(data?.position || 1);
+                    setQueueActiveUsers(data?.tierActive ?? data?.activeUsers ?? 1);
+                    setQueueMaxCapacity(data?.tierSlots ?? data?.maxCapacity ?? 1);
+                    setShowQueueModal(true);
+                    setIsVerifying(false);
+                    return;
+                }
                 throw new Error(data.message || 'Invalid OTP');
             }
 
@@ -848,13 +914,10 @@ export default function SupplyChainLoginPage() {
                 setShowEmployeeModal(false);
             } else {
                 setTempToken(data.tempToken);
-                setHrHasPassword(data.hrHasPassword);
-                setHrPassword(data.hrPassword || '');
                 setSelectedEmployeeForPassword({
                     ...data.employee,
                     role: data.employee.role || selectedEmployee.role,
                 });
-                setUseHrPassword(data.hrHasPassword);
                 setShowPasswordModal(true);
                 setOtpSent(false);
                 setShowEmployeeModal(false);
@@ -871,31 +934,29 @@ export default function SupplyChainLoginPage() {
 
     // create account
     async function handleCreateAccount() {
-        if (!useHrPassword) {
-            if (newPassword.length < 8) {
-                toast.error('Password must be at least 8 characters long');
-                return;
-            }
-            if (!/[A-Z]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 uppercase letter (A-Z)');
-                return;
-            }
-            if (!/[a-z]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 lowercase letter (a-z)');
-                return;
-            }
-            if (!/[0-9]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 number (0-9)');
-                return;
-            }
-            if (!/[^A-Za-z0-9]/.test(newPassword)) {
-                toast.error('Password must contain at least 1 special character (e.g. !@#$%^&*)');
-                return;
-            }
-            if (newPassword !== confirmPassword) {
-                toast.error('Passwords do not match');
-                return;
-            }
+        if (newPassword.length < 8) {
+            toast.error('Password must be at least 8 characters long');
+            return;
+        }
+        if (!/[A-Z]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 uppercase letter (A-Z)');
+            return;
+        }
+        if (!/[a-z]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 lowercase letter (a-z)');
+            return;
+        }
+        if (!/[0-9]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 number (0-9)');
+            return;
+        }
+        if (!/[^A-Za-z0-9]/.test(newPassword)) {
+            toast.error('Password must contain at least 1 special character (e.g. !@#$%^&*)');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            toast.error('Passwords do not match');
+            return;
         }
 
         setIsCreatingUser(true);
@@ -907,8 +968,8 @@ export default function SupplyChainLoginPage() {
                 displayName: selectedEmployeeForPassword.display_name,
                 role: selectedEmployeeForPassword.role,
                 tempToken: tempToken,
-                useHrPassword: useHrPassword,
-                hrPassword: useHrPassword ? hrPassword : null,
+                useHrPassword: false,
+                hrPassword: null,
                 rememberMe: rememberMe,
             });
 
@@ -925,10 +986,9 @@ export default function SupplyChainLoginPage() {
                         console.error('Error setting Supabase session:', sessionError);
                     }
                 } else {
-                    const password = useHrPassword ? hrPassword : newPassword;
                     const { error: signInError } = await signInWithSupabasePassword(
                         selectedEmployeeForPassword.email,
-                        password
+                        newPassword
                     );
 
                     if (signInError) {
@@ -948,7 +1008,8 @@ export default function SupplyChainLoginPage() {
 
                 setShowPasswordModal(false);
                 setShowEmployeeModal(false);
-                router.push(data.redirect_url);
+                const targetRedirect = settingsService.getRoleRedirect(data.role) || data.redirect_url || '/warehousing';
+                router.push(targetRedirect);
             } else {
                 toast.error(data.message || 'Failed to create account');
             }
@@ -1000,6 +1061,12 @@ export default function SupplyChainLoginPage() {
     // close modal and cleanup
     const handleCloseModal = async () => {
         setShowEmployeeModal(false);
+        setOtpSent(false);
+        setOtpCode(['', '', '', '', '', '']);
+        setOtpError(null);
+        setOtpSuccess(null);
+        setIsRemembered(false);
+        setSelectedEmployee(null);
         await clearUserSession();
         router.push('/scAuth');
     };
@@ -1029,14 +1096,15 @@ export default function SupplyChainLoginPage() {
     }
 
     return (
-        <OfflineDetector
-            showToast={true}
-            autoReconnect={true}
-            reconnectInterval={30000}
-            blurAmount={4}
-        >
-            <>
-                <div className="h-dvh w-full bg-paper dark:bg-ink text-ink dark:text-paper font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px] transition-colors duration-300">
+        <>
+            <CustomCursor />
+            <OfflineDetector
+                showToast={true}
+                autoReconnect={true}
+                reconnectInterval={30000}
+                blurAmount={4}
+            >
+                <div className="supplychain-container h-dvh w-full bg-paper dark:bg-ink text-ink dark:text-paper font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px] transition-colors duration-300">
                     {/* left side - branding */}
                     <div className="relative hidden lg:flex flex-col justify-between border-r border-line dark:border-paper/10 px-16 py-14 overflow-hidden">
                         <div className="absolute bottom-14 right-14 rotate-[-6deg] select-none">
@@ -1265,6 +1333,7 @@ export default function SupplyChainLoginPage() {
                     rememberMe={rememberMe}
                     setRememberMe={setRememberMe}
                     countdown={countdown}
+                    otpExpiresIn={otpExpiresIn}
                     existingAppeal={existingAppeal}
                     blockedDeviceId={blockedDeviceId}
                     getRoleColor={getRoleColor}
@@ -1288,9 +1357,6 @@ export default function SupplyChainLoginPage() {
                 <PasswordSetupModal
                     showPasswordModal={showPasswordModal}
                     selectedEmployeeForPassword={selectedEmployeeForPassword}
-                    hrHasPassword={hrHasPassword}
-                    useHrPassword={useHrPassword}
-                    setUseHrPassword={setUseHrPassword}
                     newPassword={newPassword}
                     setNewPassword={setNewPassword}
                     confirmPassword={confirmPassword}
@@ -1327,7 +1393,24 @@ export default function SupplyChainLoginPage() {
                     handleUpdateAppeal={handleUpdateAppeal}
                     handleDeleteAppeal={handleDeleteAppeal}
                 />
-            </>
-        </OfflineDetector>
+
+                <LoginQueueModal
+                    isOpen={showQueueModal}
+                    role={selectedEmployee?.role}
+                    initialPosition={queuePosition}
+                    initialActiveUsers={queueActiveUsers}
+                    maxCapacity={queueMaxCapacity}
+                    onRetry={() => {
+                        setShowQueueModal(false);
+                        if (isRemembered && rememberedPassword) {
+                            handleVerifyRememberedPassword();
+                        } else if (otpSent) {
+                            verifyOTP();
+                        }
+                    }}
+                    onClose={() => setShowQueueModal(false)}
+                />
+            </OfflineDetector>
+        </>
     );
 }

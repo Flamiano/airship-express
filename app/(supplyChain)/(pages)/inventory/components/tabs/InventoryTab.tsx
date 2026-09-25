@@ -2,17 +2,18 @@
 
 'use client';
 
-import { useState, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { InventoryItem } from '../../types';
-import { sanitizeSearch } from '@/app/(supplyChain)/components/global/sanitize';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
-import { TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { sanitizeSearch } from '../../../../components/global/sanitize';
+import { Pagination } from '../../../../components/global/pagination';
+import { TableContentLoader } from '../../../../components/global/Loader';
+import { TableRowsSkeleton } from '../../../../components/ui/SkeletonLoader';
+import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { ShoppingCart, ArrowDown, ArrowUp, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import Portal from '../../../../components/client/Portal';
 
 interface InventoryTabProps {
     items: InventoryItem[];
@@ -25,6 +26,7 @@ interface InventoryTabProps {
     selectedIds: Set<string>;
     itemsPerPage: number;
     isLoading?: boolean;
+    userRole?: string;
     onSearchChange: (value: string) => void;
     onCategoryChange: (value: string) => void;
     onStatusChange: (value: string) => void;
@@ -53,6 +55,7 @@ export const InventoryTab = memo(function InventoryTab({
     selectedIds,
     itemsPerPage,
     isLoading = false,
+    userRole = '',
     onSearchChange,
     onCategoryChange,
     onStatusChange,
@@ -79,8 +82,50 @@ export const InventoryTab = memo(function InventoryTab({
         type: 'description' | 'override_reason';
     } | null>(null);
 
+    const [openActionMenu, setOpenActionMenu] = useState<{
+        itemId: string;
+        item: InventoryItem;
+        position: { top: number; left: number };
+    } | null>(null);
+
+    // close action overflow menu on outside click, window resize, or scroll
+    useEffect(() => {
+        if (!openActionMenu) return;
+
+        const handleScrollOrResize = () => {
+            setOpenActionMenu(null);
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpenActionMenu(null);
+        };
+
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            setOpenActionMenu(null);
+        };
+
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        window.addEventListener('keydown', handleKeyDown);
+
+        const timer = setTimeout(() => {
+            window.addEventListener('click', handleClickOutside);
+        }, 10);
+
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('click', handleClickOutside);
+        };
+    }, [openActionMenu]);
+
     const allSelected = items.length > 0 && selectedIds.size === items.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < items.length;
+
+    const normalizedRole = (userRole || '').trim().toLowerCase();
+    const canStockOut = ['admin', 'executive', 'super_admin', 'superadmin'].includes(normalizedRole);
 
     // calculate range
     const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
@@ -216,12 +261,15 @@ export const InventoryTab = memo(function InventoryTab({
                                 />
                             </th>
                             <th className="hidden md:table-cell w-10 px-2 py-3.5">#</th>
-                            <th className="px-4 py-3.5 sm:min-w-[220px]">Item Information</th>
+                            <th className="px-3.5 py-3.5 min-w-[110px]">Item Code</th>
+                            <th className="px-4 py-3.5 min-w-[200px]">Item Name</th>
                             <th className="px-3.5 py-3.5 min-w-[130px]">Category</th>
-                            <th className="px-4 py-3.5 sm:min-w-[160px]">Stock & Status</th>
-                            <th className="px-4 py-3.5 sm:min-w-[170px]">Latest PO / Activity</th>
-                            <th className="px-4 py-3.5 sm:min-w-[190px]">Remarks & Audit</th>
-                            <th className="px-4 py-3.5 text-right sm:min-w-[190px] sm:w-[190px]">Actions</th>
+                            <th className="px-3.5 py-3.5 min-w-[110px]">Location</th>
+                            <th className="px-4 py-3.5 min-w-[120px]">Physical Stock</th>
+                            <th className="px-3.5 py-3.5 min-w-[100px] text-center">Exporting</th>
+                            <th className="px-3.5 py-3.5 min-w-[120px]">Status</th>
+                            <th className="px-4 py-3.5 min-w-[160px]">Latest Activity / PO</th>
+                            <th className="px-4 py-3.5 text-right sm:min-w-[155px] sm:w-[155px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04] text-xs">
@@ -230,18 +278,21 @@ export const InventoryTab = memo(function InventoryTab({
                                 rows={8}
                                 columns={[
                                     { type: 'checkbox', width: 'w-10' },
-                                    { type: 'mono', width: 'w-10' },
-                                    { type: 'text', width: 'w-48' },
+                                    { type: 'mono', width: 'w-8' },
+                                    { type: 'mono', width: 'w-20' },
+                                    { type: 'text', width: 'w-40' },
                                     { type: 'badge' },
-                                    { type: 'text', width: 'w-28' },
+                                    { type: 'text', width: 'w-20' },
+                                    { type: 'mono', width: 'w-20' },
                                     { type: 'badge' },
-                                    { type: 'text', width: 'w-44' },
-                                    { type: 'actions', align: 'right', width: 'w-[190px]' },
+                                    { type: 'badge' },
+                                    { type: 'badge' },
+                                    { type: 'actions', align: 'right', width: 'w-[155px]' },
                                 ]}
                             />
                         ) : items.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="py-20 text-center text-slate-400 dark:text-slate-500">
+                                <td colSpan={11} className="py-20 text-center text-slate-400 dark:text-slate-500">
                                     <div className="flex flex-col items-center justify-center gap-3">
                                         <div className="w-14 h-14 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-inner">
                                             <i className="fas fa-box-open text-2xl"></i>
@@ -297,204 +348,143 @@ export const InventoryTab = memo(function InventoryTab({
                                             {(currentPage - 1) * itemsPerPage + index + 1}
                                         </td>
 
+                                        {/* item code */}
+                                        <td data-label="Item Code" className="px-3.5 py-3 whitespace-nowrap">
+                                            <span className="font-mono bg-[#ebf0f7] dark:bg-[#12131b] px-2 py-0.5 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-300 border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
+                                                {item.item_code}
+                                            </span>
+                                        </td>
+
                                         {/* item name */}
-                                        <td data-label="Item Information" className="px-4 py-3 sm:whitespace-nowrap">
-                                            <div className="space-y-1 flex flex-col items-end sm:items-start text-right sm:text-left">
-                                                <div className="flex flex-wrap items-center justify-end sm:justify-start gap-1.5">
-                                                    <span className="font-bold text-slate-900 dark:text-slate-100 hover:text-pink-600 transition-colors">
-                                                        {item.item_name}
+                                        <td data-label="Item Name" className="px-4 py-3 sm:whitespace-nowrap">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-slate-900 dark:text-slate-100 hover:text-pink-600 transition-colors">
+                                                    {item.item_name}
+                                                </span>
+                                                {isForced && (
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60 cursor-help shrink-0"
+                                                        title={`OVERRIDE AUDIT:\n• Performed by: ${item.force_updated_by_name || 'Admin'}\n• Timestamp: ${item.force_updated_at ? new Date(item.force_updated_at).toLocaleString() : 'N/A'}\n• Reason: "${item.force_reason || 'Manual override'}"`}
+                                                    >
+                                                        <i className="fas fa-shield-halved text-[8px] text-slate-500"></i>
+                                                        <span>FORCED</span>
                                                     </span>
-                                                    {isForced && (
-                                                        <span
-                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700/60 shadow-2xs cursor-help"
-                                                            title={`OVERRIDE AUDIT:\n• Performed by: ${item.force_updated_by_name || 'Admin'}\n• Timestamp: ${item.force_updated_at ? new Date(item.force_updated_at).toLocaleString() : 'N/A'}\n• Reason: "${item.force_reason || 'Manual override'}"`}
-                                                        >
-                                                            <i className="fas fa-shield-halved text-[8px] text-amber-600 dark:text-amber-400"></i>
-                                                            <span>FORCED</span>
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="flex flex-wrap items-center justify-end sm:justify-start gap-2 text-[10px]">
-                                                    <span className="font-mono bg-[#ebf0f7] dark:bg-[#12131b] px-2 py-0.5 rounded-md text-slate-600 dark:text-slate-400 border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
-                                                        {item.item_code}
-                                                    </span>
-                                                    {item.storage_location && (
-                                                        <span className="text-slate-400 dark:text-slate-500 flex items-center gap-1 font-medium">
-                                                            <i className="fas fa-location-dot text-[8px]"></i>
-                                                            {item.storage_location}
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                )}
                                             </div>
                                         </td>
 
                                         {/* category */}
                                         <td data-label="Category" className="px-3.5 py-3 sm:whitespace-nowrap">
-                                            <div className="flex justify-end sm:justify-start">
-                                                <StatusBadge tone="neutral" size="xs">
-                                                    {item.category}
-                                                </StatusBadge>
-                                            </div>
+                                            <StatusBadge tone="neutral" size="xs">
+                                                {item.category}
+                                            </StatusBadge>
                                         </td>
 
-                                        {/* stock */}
-                                        <td data-label="Stock & Status" className="px-4 py-3 sm:whitespace-nowrap">
-                                            <div className="space-y-1 flex flex-col items-end sm:items-start text-right sm:text-left">
-                                                <div className="flex items-center gap-2">
-                                                    <StatusBadge
-                                                        tone={
-                                                            item.status === 'available'
-                                                                ? 'emerald'
-                                                                : item.status === 'low-stock'
-                                                                    ? 'amber'
-                                                                    : 'rose'
-                                                        }
-                                                        dot
-                                                        size="xs"
-                                                    >
-                                                        {item.status === 'available'
-                                                            ? 'Available'
-                                                            : item.status === 'low-stock'
-                                                                ? 'Low Stock'
-                                                                : 'Out of Stock'}
-                                                    </StatusBadge>
-                                                </div>
-                                                <div className="flex items-baseline gap-1.5 text-[11px] font-mono">
-                                                    <span className={`font-extrabold ${
-                                                        isStockCritical
-                                                            ? 'text-rose-600 dark:text-rose-400'
-                                                            : isStockLow
-                                                                ? 'text-amber-600 dark:text-amber-400'
-                                                                : 'text-slate-900 dark:text-slate-100'
-                                                    }`}>
-                                                        {item.current_stock} {item.unit}
-                                                    </span>
-                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                                                        (Min: {item.minimum_stock || 10})
-                                                    </span>
-                                                </div>
-                                            </div>
+                                        {/* location */}
+                                        <td data-label="Location" className="px-3.5 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400 text-xs">
+                                            {item.storage_location ? (
+                                                <span className="flex items-center gap-1">
+                                                    <i className="fas fa-location-dot text-[9px] text-slate-400"></i>
+                                                    <span>{item.storage_location}</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">-</span>
+                                            )}
+                                        </td>
+
+                                        {/* physical stock */}
+                                        <td data-label="Physical Stock" className="px-4 py-3 whitespace-nowrap font-mono text-xs">
+                                            <span className="font-extrabold text-slate-900 dark:text-slate-100">
+                                                {item.current_stock} {item.unit}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-1.5 font-sans">
+                                                (Min: {item.minimum_stock || 10})
+                                            </span>
+                                        </td>
+
+                                        {/* exporting allocation */}
+                                        <td data-label="Exporting" className="px-3.5 py-3 whitespace-nowrap text-center">
+                                            {(item.exporting_stock || 0) > 0 ? (
+                                                <span 
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#ebf0f7] dark:bg-[#12131b] text-slate-700 dark:text-slate-300 border border-white/80 dark:border-white/[0.05] shadow-inner font-mono"
+                                                    title={`Allocated for export: ${item.exporting_stock} ${item.unit}`}
+                                                >
+                                                    <i className="fas fa-dolly text-[8px] text-slate-400"></i>
+                                                    <span>{item.exporting_stock} {item.unit}</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">-</span>
+                                            )}
+                                        </td>
+
+                                        {/* stock status */}
+                                        <td data-label="Status" className="px-3.5 py-3 whitespace-nowrap">
+                                            <StatusBadge
+                                                tone={
+                                                    item.status === 'available'
+                                                        ? 'emerald'
+                                                        : item.status === 'low-stock'
+                                                            ? 'amber'
+                                                            : 'rose'
+                                                }
+                                                dot
+                                                size="xs"
+                                            >
+                                                {item.status === 'available'
+                                                    ? 'Available'
+                                                    : item.status === 'low-stock'
+                                                        ? 'Low Stock'
+                                                        : 'Out of Stock'}
+                                            </StatusBadge>
                                         </td>
 
                                         {/* po */}
                                         <td data-label="Latest PO / Activity" className="px-4 py-3 sm:whitespace-nowrap">
-                                            <div className="flex flex-col items-end sm:items-start text-right sm:text-left">
-                                                {po ? (
-                                                    po.is_request ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (po.request_id && onViewPurchaseRequest) {
-                                                                    onViewPurchaseRequest(po.request_id, po.request_number);
-                                                                }
-                                                            }}
-                                                            className="text-right sm:text-left group/pr cursor-pointer focus:outline-none"
-                                                            title="Click to view purchase request details"
+                                            {po ? (
+                                                po.is_request ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (po.request_id && onViewPurchaseRequest) {
+                                                                onViewPurchaseRequest(po.request_id, po.request_number);
+                                                            }
+                                                        }}
+                                                        className="group/pr cursor-pointer focus:outline-none inline-flex"
+                                                        title="Click to view purchase request details"
+                                                    >
+                                                        <StatusBadge
+                                                            tone="neutral"
+                                                            size="xs"
                                                         >
-                                                            <StatusBadge
-                                                                tone={po.status === 'Approved' ? 'emerald' : po.status === 'Rejected' ? 'rose' : 'amber'}
-                                                                icon={po.status === 'Approved' ? 'fas fa-check-circle' : 'fas fa-clock'}
-                                                                size="xs"
-                                                            >
-                                                                <span className="font-mono">{po.request_number}</span>
-                                                                <span className="opacity-85">({po.status})</span>
-                                                                <i className="fas fa-external-link-alt text-[8px] ml-1 opacity-60 group-hover/pr:opacity-100 transition-opacity"></i>
-                                                            </StatusBadge>
-                                                        </button>
-                                                    ) : (
-                                                        <div className="flex flex-col items-end sm:items-start space-y-1">
-                                                            <StatusBadge
-                                                                tone={isDelivered ? 'pink' : po.status === 'Confirmed' ? 'purple' : 'indigo'}
-                                                                icon={`fas ${isDelivered ? 'fa-truck-ramp-box' : 'fa-file-invoice'}`}
-                                                                size="xs"
-                                                            >
-                                                                <span className="font-mono">{po.po_number}</span>
-                                                                <span>• {po.status}</span>
-                                                            </StatusBadge>
-                                                            {po.has_pending_pr && po.pending_pr_id && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (po.pending_pr_id && onViewPurchaseRequest) {
-                                                                            onViewPurchaseRequest(po.pending_pr_id, po.pending_pr_number);
-                                                                        }
-                                                                    }}
-                                                                    className="text-right sm:text-left group/pr cursor-pointer focus:outline-none block"
-                                                                    title="Pending PR exists! Click to view"
-                                                                >
-                                                                    <StatusBadge tone="amber" icon="fas fa-clock" size="xs">
-                                                                        <span className="font-mono">{po.pending_pr_number || 'Pending PR'}</span>
-                                                                        <span className="opacity-85">(Pending)</span>
-                                                                        <i className="fas fa-external-link-alt text-[8px] ml-1 opacity-60 group-hover/pr:opacity-100 transition-opacity"></i>
-                                                                    </StatusBadge>
-                                                                </button>
-                                                            )}
-                                                            {po.quantity_ordered && po.quantity_ordered > 0 && (
-                                                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                                                                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                                                                        {po.quantity_received || 0} / {po.quantity_ordered}
-                                                                    </span>
-                                                                    <span className="text-[9px] text-slate-400">received</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )
+                                                            <span className="font-mono">{po.request_number}</span>
+                                                            <span className="opacity-75">({po.status})</span>
+                                                            <i className="fas fa-external-link-alt text-[8px] ml-1 opacity-60 group-hover/pr:opacity-100 transition-opacity"></i>
+                                                        </StatusBadge>
+                                                    </button>
                                                 ) : (
-                                                    <span className="text-slate-400 dark:text-slate-500 text-xs italic">No PO</span>
-                                                )}
-                                            </div>
-                                        </td>
-
-                                        {/* remarks */}
-                                        <td data-label="Remarks & Audit" className="px-4 py-3 sm:min-w-[190px]" onClick={(e) => e.stopPropagation()}>
-                                            {item.description || item.force_reason ? (
-                                                <div className="flex flex-wrap items-center justify-end sm:justify-start gap-1.5">
-                                                    {item.description && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setActiveMessageModal({
-                                                                title: 'Item Description',
-                                                                itemCode: item.item_code,
-                                                                itemName: item.item_name,
-                                                                content: item.description || '',
-                                                                type: 'description'
-                                                            })}
-                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_4px_rgba(166,175,195,0.3),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:border-pink-400 dark:hover:border-pink-500/60 transition-all cursor-pointer group/msg max-w-[140px] xs:max-w-[170px] truncate"
-                                                            title="Click to view full description"
+                                                    <div className="flex items-center gap-2">
+                                                        <StatusBadge
+                                                            tone="neutral"
+                                                            size="xs"
                                                         >
-                                                            <i className="fas fa-comment-alt text-pink-500 dark:text-pink-400 text-[10px] shrink-0"></i>
-                                                            <span className="truncate">{item.description}</span>
-                                                        </button>
-                                                    )}
-                                                    {item.force_reason && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setActiveMessageModal({
-                                                                title: 'Stock Override Reason',
-                                                                itemCode: item.item_code,
-                                                                itemName: item.item_name,
-                                                                content: item.force_reason || '',
-                                                                author: item.force_updated_by_name || 'Admin',
-                                                                timestamp: item.force_updated_at ? new Date(item.force_updated_at).toLocaleString() : undefined,
-                                                                type: 'override_reason'
-                                                            })}
-                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#14151e] border border-amber-300/70 dark:border-amber-500/30 shadow-[2px_2px_4px_rgba(166,175,195,0.3),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:border-amber-400 transition-all cursor-pointer max-w-[140px] xs:max-w-[170px] truncate"
-                                                            title="Click to view override audit details"
-                                                        >
-                                                            <i className="fas fa-shield-alt text-amber-600 dark:text-amber-400 text-[9px] shrink-0"></i>
-                                                            <span className="truncate">Override Log</span>
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                            <span className="font-mono">{po.po_number}</span>
+                                                            <span className="opacity-75">• {po.status}</span>
+                                                        </StatusBadge>
+                                                        {po.quantity_ordered && po.quantity_ordered > 0 && (
+                                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                                                {po.quantity_received || 0}/{po.quantity_ordered}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )
                                             ) : (
-                                                <span className="text-slate-300 dark:text-slate-600 text-xs font-mono pl-2">-</span>
+                                                <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">-</span>
                                             )}
                                         </td>
 
                                         {/* actions */}
-                                        <td data-label="Actions" className="px-4 py-3 text-right sm:whitespace-nowrap sm:min-w-[190px] sm:w-[190px] w-full" onClick={(e) => e.stopPropagation()}>
+                                        <td data-label="Actions" className="px-4 py-3 text-right sm:whitespace-nowrap sm:min-w-[155px] sm:w-[155px] w-full" onClick={(e) => e.stopPropagation()}>
                                             {(() => {
                                                 const hasPendingPR = Boolean(
                                                     po?.has_pending_pr || (po?.is_request && po?.status === 'Pending')
@@ -502,66 +492,81 @@ export const InventoryTab = memo(function InventoryTab({
                                                 const pendingPRNumber = po?.pending_pr_number || (po?.is_request && po?.status === 'Pending' ? po?.request_number || po?.po_number : undefined);
 
                                                 return (
-                                                    <div className="flex items-center flex-wrap justify-end gap-1.5 w-full">
+                                                    <div className="flex items-center justify-end gap-1.5 flex-nowrap w-full">
                                                         {/* po button */}
-                                                        <div
-                                                            className="inline-block"
-                                                            title={hasPendingPR ? `Cannot order: Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending` : "Order / Purchase Request"}
-                                                        >
-                                                            <CrudActionButton
-                                                                action="custom"
-                                                                label="Order"
-                                                                icon={ShoppingCart}
-                                                                disabled={hasPendingPR}
-                                                                ariaLabel={hasPendingPR ? `Cannot order: PR ${pendingPRNumber || 'Pending'} pending` : "Order / Purchase Request"}
-                                                                title={hasPendingPR ? `Cannot order: Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending` : "Order / Purchase Request"}
-                                                                onClick={() => {
-                                                                    if (!hasPendingPR) {
-                                                                        onOrderPO?.(item);
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </div>
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="Order"
+                                                            icon={ShoppingCart}
+                                                            className={hasPendingPR ? "opacity-50" : ""}
+                                                            ariaLabel={hasPendingPR ? `Cannot order: PR ${pendingPRNumber || 'Pending'} pending` : "Order / Purchase Request"}
+                                                            title={hasPendingPR ? `Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending approval` : "Order / Purchase Request"}
+                                                            onClick={() => {
+                                                                if (hasPendingPR) {
+                                                                    toast.info(`Purchase Order locked: Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending approval.`, {
+                                                                        id: `pr-pending-${item.id}`
+                                                                    });
+                                                                } else {
+                                                                    onOrderPO?.(item);
+                                                                }
+                                                            }}
+                                                        />
 
-                                                {/* stock in */}
-                                                <CrudActionButton
-                                                    action="custom"
-                                                    label="In"
-                                                    icon={ArrowDown}
-                                                    ariaLabel={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                    title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                    onClick={() => onStockIn(item.item_name, item)}
-                                                />
+                                                        {/* stock in */}
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="In"
+                                                            icon={ArrowDown}
+                                                            ariaLabel={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
+                                                            title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
+                                                            onClick={() => onStockIn(item.item_name, item)}
+                                                        />
 
-                                                {/* stock out */}
-                                                <CrudActionButton
-                                                    action="custom"
-                                                    label="Out"
-                                                    icon={ArrowUp}
-                                                    ariaLabel="Stock Out"
-                                                    title="Stock Out"
-                                                    onClick={() => onStockOut(item.item_name)}
-                                                />
+                                                        {/* stock out */}
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="Out"
+                                                            icon={ArrowUp}
+                                                            className={!canStockOut ? "opacity-50" : ""}
+                                                            ariaLabel={!canStockOut ? "Direct Stock Out is restricted to Admin and Executive only" : "Stock Out"}
+                                                            title={!canStockOut ? "Direct Stock Out is restricted to Admin and Executive only (Managers release via Requests tab)" : "Stock Out"}
+                                                            onClick={() => {
+                                                                if (!canStockOut) {
+                                                                    toast.info("Direct Stock Out is restricted to Admin & Executive. Managers release approved stock via the Requisitions tab.", {
+                                                                        id: `stockout-restricted-${item.id}`
+                                                                    });
+                                                                } else {
+                                                                    onStockOut(item.item_name);
+                                                                }
+                                                            }}
+                                                        />
 
-                                                {/* edit */}
-                                                <CrudActionButton
-                                                    action="edit"
-                                                    ariaLabel="Edit Item"
-                                                    title="Edit Item"
-                                                    onClick={() => onEdit(item)}
-                                                />
+                                                        {/* action overflow button */}
+                                                        <CrudActionButton
+                                                            action="custom"
+                                                            label="More"
+                                                            icon={MoreHorizontal}
+                                                            ariaLabel="More Actions"
+                                                            title="More Actions"
+                                                            onClick={(e) => {
+                                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                                const menuWidth = 145;
+                                                                const left = Math.max(10, Math.min(window.innerWidth - menuWidth - 10, rect.right - menuWidth));
+                                                                const top = rect.bottom + 6;
+                                                                const fitsBelow = top + 95 < window.innerHeight;
+                                                                const resolvedTop = fitsBelow ? top : rect.top - 90;
 
-                                                {/* delete */}
-                                                <CrudActionButton
-                                                    action="delete"
-                                                    ariaLabel="Delete Item"
-                                                    title="Delete Item"
-                                                    onClick={() => onDelete(item.id, item.item_name)}
-                                                />
-                                            </div>
-                                        );
-                                    })()}
-                                </td>
+                                                                setOpenActionMenu(prev => (prev?.itemId === item.id ? null : {
+                                                                    itemId: item.id,
+                                                                    item: item,
+                                                                    position: { top: resolvedTop, left }
+                                                                }));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                );
+                                            })()}
+                                        </td>
                                     </tr>
                                 );
                             })
@@ -592,7 +597,7 @@ export const InventoryTab = memo(function InventoryTab({
                         onClick={() => setActiveMessageModal(null)}
                     >
                         <div
-                            className="bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] rounded-3xl max-w-md w-full p-6  dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] animate-in zoom-in-95 duration-200 space-y-4"
+                            className="bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] rounded-3xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200 space-y-4"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/[0.06]">
@@ -656,6 +661,48 @@ export const InventoryTab = memo(function InventoryTab({
                                 </AppButton>
                             </div>
                         </div>
+                    </div>
+                </Portal>
+            )}
+
+            {/* Action Overflow Menu Dropdown via Portal */}
+            {openActionMenu && (
+                <Portal>
+                    <div
+                        style={{
+                            position: 'fixed',
+                            top: `${openActionMenu.position.top}px`,
+                            left: `${openActionMenu.position.left}px`,
+                            zIndex: 9999,
+                        }}
+                        className="w-[145px] bg-[#f0f3f8] dark:bg-[#181926] rounded-2xl border border-white/90 dark:border-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.18),0_4px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_12px_35px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.05)] p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const itm = openActionMenu.item;
+                                setOpenActionMenu(null);
+                                onEdit(itm);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer text-left group"
+                        >
+                            <Pencil className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-pink-500 transition-colors" />
+                            <span>Edit Item</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const itm = openActionMenu.item;
+                                setOpenActionMenu(null);
+                                onDelete(itm.id, itm.item_name);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer text-left group"
+                        >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500 group-hover:text-rose-600 transition-colors" />
+                            <span>Delete Item</span>
+                        </button>
                     </div>
                 </Portal>
             )}

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import ExpenseDonutChart from "./ExpenseDonutChart";
 import TopCostDriversPieChart from "./TopCostDriversPieChart";
 import TrendChart from "./TrendChart";
+import { useMask } from "../lib/MaskContext";
 
 type ExpenseSlice = {
   label: string;
@@ -44,36 +44,43 @@ interface AnalyticsRowProps {
 }
 
 function ExpenseBreakdownCard({ expenseBreakdown, totalCost }: { expenseBreakdown: ExpenseSlice[]; totalCost: number }) {
-  const [showTotal, setShowTotal] = useState(false);
-  const toggleTotal = () => setShowTotal((visible) => !visible);
+  const { showValues, toggle } = useMask();
 
   return (
     <div className="bg-white rounded-md p-5 border border-pink-100 shadow-sm col-span-1">
-      <h3 className="font-title-md text-title-md text-on-surface mb-6 border-b border-pink-100 pb-2">
-        Expense Breakdown
-      </h3>
+      <div className="mb-6 flex items-center justify-between border-b border-pink-100 pb-2">
+        <h3 className="font-title-md text-title-md text-on-surface">Expense Breakdown</h3>
+        <button
+          type="button"
+          onClick={toggle}
+          className="rounded-md border border-pink-200 px-2.5 py-1 text-xs font-semibold text-primary transition hover:bg-pink-50"
+          aria-label={showValues ? "Hide expense breakdown values" : "Show expense breakdown values"}
+        >
+          {showValues ? "Hide values" : "Show values"}
+        </button>
+      </div>
       <div className="flex flex-col items-center">
         <div className="relative w-48 h-48 mb-6">
           {expenseBreakdown.length > 0 ? (
             <ExpenseDonutChart
               breakdown={expenseBreakdown}
-              onClick={toggleTotal}
-              title={showTotal ? "Hide total cost" : "Show total cost"}
+              onClick={toggle}
+              title={showValues ? "Hide total cost" : "Show total cost"}
             />
           ) : (
             <button
               type="button"
-              onClick={toggleTotal}
-              title={showTotal ? "Hide total cost" : "Show total cost"}
+              onClick={toggle}
+              title={showValues ? "Hide total cost" : "Show total cost"}
               className="absolute inset-3 rounded-full border-[18px] border-slate-100 bg-white shadow-inner transition hover:border-pink-100"
-              aria-label={showTotal ? "Hide total cost" : "Show total cost"}
+              aria-label={showValues ? "Hide total cost" : "Show total cost"}
             />
           )}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <span className="text-body-md text-secondary text-center leading-tight">
               Total
               <br />
-              {showTotal ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(totalCost) : "Hidden"}
+              {showValues ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(totalCost) : "Hidden"}
             </span>
           </div>
         </div>

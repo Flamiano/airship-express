@@ -23,6 +23,8 @@ export type OptimizeRequest = {
   cargoWeightKg?: number;
   initialDistanceMi?: number;
   initialEtaMinutes?: number;
+  distanceMatrix?: number[][];
+  durationMatrix?: number[][];
 };
 
 export type VehicleRouteResult = {
@@ -42,6 +44,8 @@ export type OptimizeResponse = {
   fuelSavingsPct: number;
   etaImprovementMin: number;
   engine: "or-tools" | "heuristic-fallback";
+  baselineDistanceMi?: number;
+  baselineEtaMinutes?: number;
 };
 
 // Sample payload for testing

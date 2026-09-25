@@ -1,16 +1,17 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
+import { supabase } from "../../../../lib/services/client/supabase";
+import { useDebounce } from "../../../../hooks/useDebounce";
 import { toast } from "sonner";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { TableContentLoader } from "@/app/(supplyChain)/components/global/Loader";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { useConfirm } from "../../../../components/ui/ConfirmModal";
+import Portal from "../../../../components/client/Portal";
+import { Pagination } from "../../../../components/global/pagination";
+import { TableContentLoader } from "../../../../components/global/Loader";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
+import { AppButton } from "../../../../components/ui/AppButton";
+import { StatusBadge } from "../../../../components/ui/StatusBadge";
 import { Clipboard, Eye } from "lucide-react";
+import { useUserRole } from "../../../../components/global/UnauthorizedEmptyState";
 interface Parcel {
     id: number;
     barcode: string;
@@ -20,6 +21,7 @@ interface Parcel {
     status: string;
     created_at: string;
     sender_name: string | null;
+    scanned_by?: string | null;
     bulk_qr_code?: string | null;
     bulk_qr_city?: string | null;
     bulk_qr_courier?: string | null;
@@ -102,8 +104,10 @@ const AnimatedRegionContent = memo(({ region, children }: {
 });
 AnimatedRegionContent.displayName = 'AnimatedRegionContent';
 export default function SortingPanel() {
+    const { role: userRole, userId: currentUserId, isPrivileged, isLoaded } = useUserRole();
     const [parcels, setParcels] = useState<Parcel[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [locationSearch, setLocationSearch] = useState("");
     const [locationRegionFilter, setLocationRegionFilter] = useState("");
@@ -209,7 +213,7 @@ export default function SortingPanel() {
                     </p>
                     <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 space-y-0.5">
                         <li>Items: <span className="font-semibold text-slate-900 dark:text-white">{targetList.length} parcel{targetList.length > 1 ? 's' : ''}</span></li>
-                        <li>Action: Assign shared Global, City, and Courier QR codes & Move to Ready for Pickup</li>
+                        <li>Action: Assign shared Global, City, and Courier QR codes</li>
                     </ul>
                 </div>{/* note */}
                 <div className="space-y-2 text-xs">
@@ -284,7 +288,7 @@ export default function SortingPanel() {
             if (globalIds.length > 0) {
                 const { error: globalError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_code: globalQrCode, status: 'ready_for_pickup' })
+                    .update({ bulk_qr_code: globalQrCode })
                     .in('id', globalIds);
                 if (globalError)
                     throw globalError;
@@ -292,7 +296,7 @@ export default function SortingPanel() {
             for (const [qrCode, ids] of Object.entries(cityGroups)) {
                 const { error: cityError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_city: qrCode, status: 'ready_for_pickup' })
+                    .update({ bulk_qr_city: qrCode })
                     .in('id', ids);
                 if (cityError)
                     throw cityError;
@@ -300,21 +304,12 @@ export default function SortingPanel() {
             for (const [qrCode, ids] of Object.entries(courierGroups)) {
                 const { error: courierError } = await supabase
                     .from('parcels')
-                    .update({ bulk_qr_courier: qrCode, status: 'ready_for_pickup' })
+                    .update({ bulk_qr_courier: qrCode })
                     .in('id', ids);
                 if (courierError)
                     throw courierError;
-            } // update status
-            const allParcelIds = targetList.map(p => p.id);
-            if (allParcelIds.length > 0) {
-                const { error: statusError } = await supabase
-                    .from('parcels')
-                    .update({ status: 'ready_for_pickup' })
-                    .in('id', allParcelIds);
-                if (statusError)
-                    throw statusError;
             }
-            toast.success(`All bulk QR codes generated & moved to Ready for pickup for ${targetList.length} parcels!`, {
+            toast.success(`All bulk QR codes generated for ${targetList.length} parcels!`, {
                 id: toastId,
                 duration: 4000,
                 action: {
@@ -487,8 +482,14 @@ export default function SortingPanel() {
                 .select('*', { count: 'exact' })
                 .eq('status', 'received')
                 .order('created_at', { ascending: false });
+
+            if (!isPrivileged && currentUserId) {
+                query = query.eq('scanned_by', currentUserId);
+            }
+
             if (debouncedSearch) {
-                query = query.or(`barcode.ilike.%${debouncedSearch}%,tracking_number.ilike.%${debouncedSearch}%,destination.ilike.%${debouncedSearch}%,city.ilike.%${debouncedSearch}%`);
+                const searchPattern = `%${debouncedSearch}%`;
+                query = query.or(`barcode.ilike.${searchPattern},tracking_number.ilike.${searchPattern},destination.ilike.${searchPattern},city.ilike.${searchPattern},customer_name.ilike.${searchPattern},sender_name.ilike.${searchPattern},courier.ilike.${searchPattern}`);
             }
             if (locationCityFilter) {
                 query = query.ilike('city', `%${locationCityFilter}%`);
@@ -503,15 +504,27 @@ export default function SortingPanel() {
             setParcels(parcelsData || []);
             setFilteredParcels(parcelsData || []);
             setTotalItems(count || 0);
-            setTotalPages(Math.ceil((count || 0) / limit)); // build qr maps
+            setTotalPages(Math.ceil((count || 0) / limit));
             if (parcelsData) {
                 const maps = buildExistingQrMaps(parcelsData);
                 setExistingQrCodes(maps);
             }
+
             let allQuery = supabase
                 .from('parcels')
                 .select('*')
-                .eq('status', 'received');
+                .eq('status', 'received')
+                .order('created_at', { ascending: false });
+
+            if (!isPrivileged && currentUserId) {
+                allQuery = allQuery.eq('scanned_by', currentUserId);
+            }
+
+            if (debouncedSearch) {
+                const searchPattern = `%${debouncedSearch}%`;
+                allQuery = allQuery.or(`barcode.ilike.${searchPattern},tracking_number.ilike.${searchPattern},destination.ilike.${searchPattern},city.ilike.${searchPattern},customer_name.ilike.${searchPattern},sender_name.ilike.${searchPattern},courier.ilike.${searchPattern}`);
+            }
+
             if (locationCityFilter) {
                 allQuery = allQuery.ilike('city', `%${locationCityFilter}%`);
             }
@@ -521,20 +534,35 @@ export default function SortingPanel() {
             const { data: allParcels, error: allError } = await allQuery;
             if (allError)
                 throw allError;
-            const { data: allCitiesData } = await supabase
+
+            let citiesQuery = supabase
                 .from('parcels')
                 .select('city')
                 .eq('status', 'received')
                 .not('city', 'is', null);
+
+            if (!isPrivileged && currentUserId) {
+                citiesQuery = citiesQuery.eq('scanned_by', currentUserId);
+            }
+
+            const { data: allCitiesData } = await citiesQuery;
             const cities = [...new Set((allCitiesData || []).map(p => p.city).filter(Boolean))] as string[];
             setAllCities(cities.sort());
-            const { data: allRegionsData } = await supabase
+
+            let regionsQuery = supabase
                 .from('parcels')
                 .select('region')
                 .eq('status', 'received')
                 .not('region', 'is', null);
+
+            if (!isPrivileged && currentUserId) {
+                regionsQuery = regionsQuery.eq('scanned_by', currentUserId);
+            }
+
+            const { data: allRegionsData } = await regionsQuery;
             const regions = [...new Set((allRegionsData || []).map(p => p.region).filter(Boolean))] as string[];
             setAllRegions(regions.sort());
+
             setAllParcelsList(allParcels || []);
             const derived = processSortingParcels(allParcels || []);
             setRegionGroups(derived.regionGroupsData);
@@ -556,14 +584,38 @@ export default function SortingPanel() {
             if (showLoading) {
                 setLoading(false);
             }
+            setInitialLoading(false);
         }
-    }, [page, debouncedSearch, locationRegionFilter, locationCityFilter, buildExistingQrMaps, processSortingParcels]);
+    }, [page, debouncedSearch, locationRegionFilter, locationCityFilter, buildExistingQrMaps, processSortingParcels, isPrivileged, currentUserId]);
 
     // Smooth Realtime Handler - updates in-memory state without re-fetching or page refreshing!
     const handleRealtimeParcelChange = useCallback((payload: any) => {
         const eventType = payload.eventType;
         const newRecord = payload.new as Parcel;
         const oldRecord = payload.old as { id: number };
+
+        if (!isPrivileged && currentUserId && newRecord) {
+            if (newRecord.scanned_by?.toLowerCase() !== currentUserId.toLowerCase()) {
+                if (eventType === 'UPDATE') {
+                    setAllParcelsList(prevAll => {
+                        const nextAll = prevAll.filter(p => p.id !== newRecord.id);
+                        setRegionGroups(prevRegions => {
+                            const preserveMap = new Map(prevRegions.map(r => [r.region, r.expanded]));
+                            const derived = processSortingParcels(nextAll, preserveMap);
+                            setCityGroups(derived.cityGroupsData);
+                            setCourierStats(derived.courierStatsData);
+                            setGroupedParcels(derived.groupedArray);
+                            return derived.regionGroupsData;
+                        });
+                        setFilteredParcels(prev => prev.filter(p => p.id !== newRecord.id));
+                        setParcels(prev => prev.filter(p => p.id !== newRecord.id));
+                        setTotalItems(nextAll.length);
+                        return nextAll;
+                    });
+                }
+                return;
+            }
+        }
 
         setAllParcelsList(prevAll => {
             let nextAll: Parcel[];
@@ -638,10 +690,13 @@ export default function SortingPanel() {
             setTotalItems(nextAll.length);
             return nextAll;
         });
-    }, [processSortingParcels]);
+    }, [processSortingParcels, isPrivileged, currentUserId]);
 
     useEffect(() => {
         fetchData(true);
+    }, [fetchData]);
+
+    useEffect(() => {
         const subscription = supabase
             .channel('sorting_tab_realtime')
             .on('postgres_changes', {
@@ -655,7 +710,7 @@ export default function SortingPanel() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [fetchData, handleRealtimeParcelChange]); // toggle region
+    }, [handleRealtimeParcelChange]); // toggle region
     const toggleRegion = (regionName: string) => {
         setRegionGroups(prev => prev.map(region => region.region === regionName
             ? { ...region, expanded: !region.expanded }
@@ -688,7 +743,16 @@ export default function SortingPanel() {
     const handleViewParcel = (parcel: Parcel) => {
         setViewParcel(parcel);
         setShowViewModal(true);
-    }; // delete
+    };
+
+    // check if current user can delete a parcel (Admin/Manager/Executive can delete any; Operator can only delete their own scanned parcels)
+    const canDeleteParcel = useCallback((parcel: Parcel) => {
+        if (isPrivileged) return true;
+        if (!currentUserId) return false;
+        return parcel.scanned_by?.toLowerCase() === currentUserId.toLowerCase();
+    }, [isPrivileged, currentUserId]);
+
+    // delete
     const handleDeleteParcel = async (parcelId: number, barcode: string) => {
         const confirmed = await confirm({
             title: "Delete Parcel",
@@ -776,12 +840,17 @@ export default function SortingPanel() {
         return list;
     }, [groupedParcels]);
 
+    const selectableParcels = useMemo(() => {
+        return allParcelsInGroups.filter(canDeleteParcel);
+    }, [allParcelsInGroups, canDeleteParcel]);
+
     const totalGroupedParcelsCount = allParcelsInGroups.length;
+    const selectableCount = selectableParcels.length;
 
     const isAllSelected = useMemo(() => {
-        if (totalGroupedParcelsCount === 0) return false;
-        return allParcelsInGroups.every((p: Parcel) => selectedParcelIds.has(p.id));
-    }, [allParcelsInGroups, selectedParcelIds, totalGroupedParcelsCount]);
+        if (selectableCount === 0) return false;
+        return selectableParcels.every((p: Parcel) => selectedParcelIds.has(p.id));
+    }, [selectableParcels, selectedParcelIds, selectableCount]);
 
     const isSomeSelected = useMemo(() => {
         return selectedParcelIds.size > 0 && !isAllSelected;
@@ -790,9 +859,9 @@ export default function SortingPanel() {
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
             const allIds = new Set<number>();
-            allParcelsInGroups.forEach((p: Parcel) => allIds.add(p.id));
-            filteredParcels.forEach((p: Parcel) => allIds.add(p.id));
-            allParcelsList.forEach((p: Parcel) => allIds.add(p.id));
+            const listToSelect = allParcelsList.length > 0 ? allParcelsList : allParcelsInGroups;
+            listToSelect.filter(canDeleteParcel).forEach((p: Parcel) => allIds.add(p.id));
+            filteredParcels.filter(canDeleteParcel).forEach((p: Parcel) => allIds.add(p.id));
             setSelectedParcelIds(allIds);
         }
         else {
@@ -1089,7 +1158,7 @@ export default function SortingPanel() {
             copyToClipboard(text);
         }
     };
-    if (loading) {
+    if (initialLoading) {
         return (<div data-panel="sorting" className="p-4 sm:p-6 space-y-4 sm:space-y-6">
                 <div className="space-y-5">{/* header skeleton */}
                     <div className="flex flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
@@ -1200,8 +1269,8 @@ export default function SortingPanel() {
                         <span className="inline-flex items-center text-xs font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-slate-200/60 dark:border-slate-700/60">
                             <i className="far fa-calendar-alt text-slate-400 dark:text-slate-500 mr-1.5"></i> {new Date().toISOString().split('T')[0]}
                         </span>
-                        <button type="button" onClick={() => fetchData(true)} aria-label="Refresh data" className="p-2 rounded-xl text-slate-500 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200/70 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 transition-all cursor-pointer">
-                            <i className="fas fa-sync-alt text-xs"></i>
+                        <button type="button" onClick={() => fetchData(true)} disabled={loading} aria-label="Refresh data" className="p-2 rounded-xl text-slate-500 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200/70 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 transition-all cursor-pointer disabled:opacity-60">
+                            <i className={`fas fa-sync-alt text-xs ${loading ? 'fa-spin text-pink-500' : ''}`}></i>
                         </button>
                     </div>
                 </div>
@@ -1209,9 +1278,13 @@ export default function SortingPanel() {
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="relative flex-1 min-w-[180px]">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                            </svg>
+                            {loading || searchTerm !== debouncedSearch ? (
+                                <i className="fas fa-spinner fa-spin text-pink-500 text-xs"></i>
+                            ) : (
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            )}
                         </div>
                         <input type="text" className="w-full h-10 bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl pl-9 pr-8 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.35),inset_-1px_-1px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-all font-medium" placeholder="Search by barcode, tracking, or destination..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
                         {searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-[#e8edf5] dark:hover:bg-slate-800 transition-colors cursor-pointer">
@@ -1259,14 +1332,14 @@ export default function SortingPanel() {
 
                     <AppButton
                         type="button"
-                        variant={isAllSelected ? "primary" : "neutral"}
+                        variant="neutral"
                         size="md"
                         onClick={() => handleSelectAll(!isAllSelected)}
-                        disabled={totalGroupedParcelsCount === 0}
-                        title={isAllSelected ? "Deselect all parcels across all dates" : "Bulk select all parcels across all dates"}
+                        disabled={selectableCount === 0}
+                        title={selectableCount === 0 ? "No parcels available to select" : isAllSelected ? "Deselect all parcels across all dates" : "Bulk select all parcels across all dates"}
                     >
                         <i className={`fas ${isAllSelected ? 'fa-check-square' : isSomeSelected ? 'fa-minus-square text-pink-500' : 'fa-square'}`} />
-                        <span>{isAllSelected ? `Deselect All (${selectedParcelIds.size})` : `Bulk Select All (${totalGroupedParcelsCount})`}</span>
+                        <span>{isAllSelected ? `Deselect All (${selectedParcelIds.size})` : `Bulk Select All (${selectableCount})`}</span>
                     </AppButton>
 
                     <AppButton
@@ -1328,7 +1401,7 @@ export default function SortingPanel() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 sm:gap-4">
+                    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 sm:gap-4 transition-opacity duration-200 ${loading ? 'opacity-60 pointer-events-none' : ''}`}>
                         {displayData.length > 0 ? (viewMode === "city" ? ((displayData as CityGroup[]).map((city) => (<div key={city.city} className="group relative flex flex-col justify-between rounded-2xl border border-white/80 dark:border-[#2c2d3c] bg-[#f0f3f8] dark:bg-[#191a24] p-4 shadow-[4px_4px_12px_rgba(166,175,195,0.35),-4px_-4px_12px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[4px_4px_14px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] transition-all duration-200 hover:-translate-y-0.5">
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-3">
@@ -1488,50 +1561,63 @@ export default function SortingPanel() {
                                     type="checkbox"
                                     id="bulk-select-all-warehousing"
                                     checked={isAllSelected}
+                                    disabled={selectableCount === 0}
                                     ref={(el) => {
                                         if (el) el.indeterminate = isSomeSelected;
                                     }}
                                     onChange={(e) => handleSelectAll(e.target.checked)}
-                                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"
+                                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent disabled:opacity-35 disabled:cursor-not-allowed"
+                                    title={selectableCount === 0 ? "No parcels available to select" : undefined}
                                 />
-                                <label htmlFor="bulk-select-all-warehousing" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer flex items-center gap-2">
+                                <label htmlFor="bulk-select-all-warehousing" className={`text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 ${selectableCount === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                                     <span>Select All Parcels Across All Dates</span>
                                     <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-[#ebf0f7] dark:bg-[#12131b] px-2.5 py-0.5 rounded-full border border-white/80 dark:border-white/[0.05]">
-                                        {totalGroupedParcelsCount} total parcels ({groupedParcels.length} {groupedParcels.length === 1 ? 'date group' : 'date groups'})
+                                        {selectableCount} selectable / {totalGroupedParcelsCount} total ({groupedParcels.length} {groupedParcels.length === 1 ? 'date group' : 'date groups'})
                                     </span>
                                 </label>
                             </div>
                             <div className="flex items-center gap-3">
                                 {selectedParcelIds.size > 0 && (
                                     <span className="text-xs font-bold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 px-2.5 py-1 rounded-full border border-pink-200 dark:border-pink-800/40">
-                                        {selectedParcelIds.size} of {totalGroupedParcelsCount} selected
+                                        {selectedParcelIds.size} of {selectableCount} selected
                                     </span>
                                 )}
                                 <button
                                     type="button"
+                                    disabled={selectableCount === 0}
                                     onClick={() => handleSelectAll(!isAllSelected)}
-                                    className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 transition-colors px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.3),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] cursor-pointer active:scale-95"
+                                    className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 transition-colors px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.3),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     {isAllSelected ? 'Deselect All' : 'Select All Dates'}
                                 </button>
                             </div>
                         </div>
                     )}
-                    {loading ? (<TableContentLoader />) : groupedParcels.length > 0 ? (groupedParcels.map((group) => (<div key={group.date} className="rounded-3xl border border-white/90 dark:border-white/[0.08] overflow-hidden shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-4px_-4px_12px_rgba(255,255,255,0.03)] bg-[#f0f3f8] dark:bg-[#161722] transition-colors">{/* date header */}
+                    {loading ? (<TableContentLoader />) : groupedParcels.length > 0 ? (groupedParcels.map((group) => {
+                            const groupSelectable = group.parcels.filter(canDeleteParcel);
+                            const isGroupAllSelected = groupSelectable.length > 0 && groupSelectable.every(p => selectedParcelIds.has(p.id));
+                            return (<div key={group.date} className="rounded-3xl border border-white/90 dark:border-white/[0.08] overflow-hidden shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-4px_-4px_12px_rgba(255,255,255,0.03)] bg-[#f0f3f8] dark:bg-[#161722] transition-colors">{/* date header */}
                                 <div className="bg-[#ebf0f7]/90 dark:bg-[#12131b]/90 px-5 py-3.5 border-b border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <input type="checkbox" checked={group.parcels.length > 0 && group.parcels.every(p => selectedParcelIds.has(p.id))} onChange={(e) => {
-                const checked = e.target.checked;
-                const ids = group.parcels.map(p => p.id);
-                const newSelected = new Set(selectedParcelIds);
-                if (checked) {
-                    ids.forEach(id => newSelected.add(id));
-                }
-                else {
-                    ids.forEach(id => newSelected.delete(id));
-                }
-                setSelectedParcelIds(newSelected);
-            }} className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"/>
+                                        <input
+                                            type="checkbox"
+                                            checked={isGroupAllSelected}
+                                            disabled={groupSelectable.length === 0}
+                                            title={groupSelectable.length === 0 ? "No parcels in this group scanned by you" : undefined}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                const ids = groupSelectable.map(p => p.id);
+                                                const newSelected = new Set(selectedParcelIds);
+                                                if (checked) {
+                                                    ids.forEach(id => newSelected.add(id));
+                                                }
+                                                else {
+                                                    ids.forEach(id => newSelected.delete(id));
+                                                }
+                                                setSelectedParcelIds(newSelected);
+                                            }}
+                                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent disabled:opacity-35 disabled:cursor-not-allowed"
+                                        />
                                         <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                                             <span className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.35),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.6)] inline-flex items-center justify-center text-pink-500 dark:text-pink-400 text-xs">
                                                 <i className="fas fa-calendar-day"></i>
@@ -1540,7 +1626,7 @@ export default function SortingPanel() {
                                         </h3>
                                     </div>
                                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-[#ebf0f7] dark:bg-[#12131b] px-3 py-1 rounded-full border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
-                                        {group.parcels.length} {group.parcels.length === 1 ? 'parcel' : 'parcels'}
+                                        {groupSelectable.length < group.parcels.length ? `${groupSelectable.length}/${group.parcels.length} selectable` : `${group.parcels.length} ${group.parcels.length === 1 ? 'parcel' : 'parcels'}`}
                                     </span>
                                 </div>{/* table */}
                                 <div className="overflow-x-auto">
@@ -1548,18 +1634,25 @@ export default function SortingPanel() {
                                         <thead>
                                             <tr className="bg-[#ebf0f7]/70 dark:bg-[#12131b]/60 text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider font-extrabold border-b border-slate-200/60 dark:border-white/[0.04]">
                                                 <th className="w-10 text-center py-3.5 px-4">
-                                                    <input type="checkbox" checked={group.parcels.length > 0 && group.parcels.every(p => selectedParcelIds.has(p.id))} onChange={(e) => {
-                const checked = e.target.checked;
-                const ids = group.parcels.map(p => p.id);
-                const newSelected = new Set(selectedParcelIds);
-                if (checked) {
-                    ids.forEach(id => newSelected.add(id));
-                }
-                else {
-                    ids.forEach(id => newSelected.delete(id));
-                }
-                setSelectedParcelIds(newSelected);
-            }} className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"/>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isGroupAllSelected}
+                                                        disabled={groupSelectable.length === 0}
+                                                        title={groupSelectable.length === 0 ? "No parcels in this group scanned by you" : undefined}
+                                                        onChange={(e) => {
+                                                            const checked = e.target.checked;
+                                                            const ids = groupSelectable.map(p => p.id);
+                                                            const newSelected = new Set(selectedParcelIds);
+                                                            if (checked) {
+                                                                ids.forEach(id => newSelected.add(id));
+                                                            }
+                                                            else {
+                                                                ids.forEach(id => newSelected.delete(id));
+                                                            }
+                                                            setSelectedParcelIds(newSelected);
+                                                        }}
+                                                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent disabled:opacity-35 disabled:cursor-not-allowed"
+                                                    />
                                                 </th>
                                                 <th className="w-10 text-center py-3.5 px-4">#</th>
                                                 <th className="py-3.5 px-4">Barcode</th>
@@ -1580,18 +1673,27 @@ export default function SortingPanel() {
                                         <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04]">
                                             {group.parcels.map((parcel, index) => {
                 const isSelected = selectedParcelIds.has(parcel.id);
+                const isDeletable = canDeleteParcel(parcel);
                 return (<tr key={parcel.id} className={`hover:bg-[#ebf0f7]/70 dark:hover:bg-[#14151e]/70 transition-colors duration-150 group ${isSelected ? 'bg-pink-50/50 dark:bg-pink-950/30' : ''}`}>
                                                         <td data-label="Select" className="text-center py-3.5 px-4">
-                                                            <input type="checkbox" checked={isSelected} onChange={() => {
-                        const newSelected = new Set(selectedParcelIds);
-                        if (newSelected.has(parcel.id)) {
-                            newSelected.delete(parcel.id);
-                        }
-                        else {
-                            newSelected.add(parcel.id);
-                        }
-                        setSelectedParcelIds(newSelected);
-                    }} className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"/>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                disabled={!isDeletable}
+                                                                title={isDeletable ? undefined : "You can only select and delete parcels scanned by you"}
+                                                                onChange={() => {
+                                                                    if (!isDeletable) return;
+                                                                    const newSelected = new Set(selectedParcelIds);
+                                                                    if (newSelected.has(parcel.id)) {
+                                                                        newSelected.delete(parcel.id);
+                                                                    }
+                                                                    else {
+                                                                        newSelected.add(parcel.id);
+                                                                    }
+                                                                    setSelectedParcelIds(newSelected);
+                                                                }}
+                                                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent disabled:opacity-35 disabled:cursor-not-allowed"
+                                                            />
                                                         </td>
                                                         <td data-label="#" className="text-center text-slate-400 dark:text-slate-500 font-mono text-[11px] py-3.5 px-4">
                                                             {index + 1}
@@ -1657,7 +1759,7 @@ export default function SortingPanel() {
                                                         <td data-label="Actions" className="text-right whitespace-nowrap w-[120px] min-w-[120px] py-3.5 px-4">
                                                             <div className="flex items-center justify-end gap-2.5">
                                                                 <CrudActionButton action="view" ariaLabel={`View parcel ${parcel.barcode}`} title="View Parcel" onClick={() => handleViewParcel(parcel)}/>
-                                                                <CrudActionButton action="delete" ariaLabel={`Delete parcel ${parcel.barcode}`} title="Delete Parcel" onClick={() => handleDeleteParcel(parcel.id, parcel.barcode)}/>
+                                                                <CrudActionButton action="delete" ariaLabel={`Delete parcel ${parcel.barcode}`} title={canDeleteParcel(parcel) ? "Delete Parcel" : "You can only delete parcels scanned by you"} disabled={!canDeleteParcel(parcel)} onClick={() => canDeleteParcel(parcel) && handleDeleteParcel(parcel.id, parcel.barcode)}/>
                                                             </div>
                                                         </td>
                                                     </tr>);
@@ -1665,7 +1767,7 @@ export default function SortingPanel() {
                                         </tbody>
                                     </table>
                                 </div>
-                            </div>))) : (<div className="relative overflow-hidden rounded-3xl border border-white/80 dark:border-[#2c2d3c] bg-[#f0f3f8] dark:bg-[#191a24] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] py-14 px-6 text-center">
+                            </div>); })) : (<div className="relative overflow-hidden rounded-3xl border border-white/80 dark:border-[#2c2d3c] bg-[#f0f3f8] dark:bg-[#191a24] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] py-14 px-6 text-center">
                             <div className="relative z-10 max-w-sm mx-auto space-y-3">
                                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] text-pink-600 dark:text-pink-400 border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] mx-auto">
                                     <i className="fas fa-boxes-stacked text-xl"></i>

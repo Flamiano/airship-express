@@ -2,7 +2,7 @@ import type { DashboardTrip } from "../page";
 
 export default function MissionLogs({ trips }: { trips: DashboardTrip[] }) {
   return (
-    <section className="panel p-4 rounded-sm bg-panel-gradient h-48 flex-shrink-0 flex flex-col">
+    <section className="panel w-full p-4 rounded-sm bg-panel-gradient h-48 flex-shrink-0 flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <h2 className="panel-title text-sm font-semibold text-text uppercase tracking-wider">
           Mission Logs
@@ -12,11 +12,11 @@ export default function MissionLogs({ trips }: { trips: DashboardTrip[] }) {
         </a>
       </div>
       <div className="overflow-y-auto flex-1 pr-2">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trips.slice(0, 6).map((trip, i) => (
             <div
               key={trip.id || i}
-              className="bg-white border border-border p-2 rounded-sm text-xs hover:border-brand/50 transition-colors shadow-sm"
+              className="min-w-0 bg-white border border-border p-2 rounded-sm text-xs hover:border-brand/50 transition-colors shadow-sm"
             >
               <div className="flex justify-between items-center border-b border-border/50 pb-1 mb-1">
                 <span className="font-bold text-text">{trip.fromLocation || "Origin unavailable"}</span>

@@ -11,6 +11,7 @@ import { ActivityHistoryTable } from './components/tables/ActivityHistoryTable';
 import { DocumentUploadModal } from './components/modals/DocumentUploadModal';
 import { DocumentEditModal } from './components/modals/DocumentEditModal';
 import { DocumentPreviewModal } from './components/modals/DocumentPreviewModal';
+import { DocumentAttachFileModal } from './components/modals/DocumentAttachFileModal';
 
 export default function DocumentsContentWrapper() {
     const {
@@ -49,6 +50,11 @@ export default function DocumentsContentWrapper() {
         setIsPreviewModalOpen,
         isEditModalOpen,
         setIsEditModalOpen,
+        isAttachModalOpen,
+        setIsAttachModalOpen,
+        attachTargetDoc,
+        openAttachModal,
+        ocrWarning,
         isUploading,
         editingDoc,
         setEditingDoc,
@@ -68,6 +74,7 @@ export default function DocumentsContentWrapper() {
         activitiesPerPage,
         userName,
         userEmail,
+        userRole,
         archiveCount,
         activityDateFrom,
         setActivityDateFrom,
@@ -89,12 +96,15 @@ export default function DocumentsContentWrapper() {
         deleteSelectedDocuments,
         deleteSelectedActivities,
         handleUpload,
+        handleConfirmForceUpload,
         handleUpdate,
         handleViewDocument,
         handleEditDocument,
         clearAllFilters,
         handleFileSelect,
         removeFile,
+        clearAllSelectedFiles,
+        maxFilesPerTransaction,
         toggleSelectAllDocuments,
         toggleSelectAllActivities,
     } = useDocuments();
@@ -190,6 +200,7 @@ export default function DocumentsContentWrapper() {
                 onEditDocument={handleEditDocument}
                 onDownloadDocument={downloadFile}
                 onDeleteDocument={handleDelete}
+                onAttachFile={openAttachModal}
                 currentPage={currentPage}
                 totalPages={totalPages}
                 totalItems={totalItems}
@@ -273,6 +284,8 @@ export default function DocumentsContentWrapper() {
                 selectedFiles={selectedFiles}
                 suppliers={suppliers}
                 userName={userName}
+                userRole={userRole}
+                maxFiles={maxFilesPerTransaction}
                 dropZoneRef={dropZoneRef}
                 onClose={() => {
                     setIsUploadModalOpen(false);
@@ -280,7 +293,23 @@ export default function DocumentsContentWrapper() {
                 }}
                 onFileSelect={handleFileSelect}
                 onRemoveFile={removeFile}
+                onClearAllFiles={clearAllSelectedFiles}
                 onSubmit={handleUpload}
+                ocrWarning={ocrWarning}
+                onConfirmForceUpload={handleConfirmForceUpload}
+            />
+
+            {/* attach file to pending document modal */}
+            <DocumentAttachFileModal
+                isOpen={isAttachModalOpen}
+                document={attachTargetDoc}
+                userRole={userRole}
+                onClose={() => {
+                    setIsAttachModalOpen(false);
+                }}
+                onAttachSuccess={async () => {
+                    await fetchDocuments(false);
+                }}
             />
         </div>
     );

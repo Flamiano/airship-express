@@ -1,29 +1,4 @@
-import nodemailer from 'nodemailer';
-
-let transporter: nodemailer.Transporter | null = null;
-
-function getTransporter() {
-    if (!transporter) {
-        const user = process.env.EMAIL_SUPPLYCHAIN_USER;
-        const pass = process.env.EMAIL_SUPPLYCHAIN_PASS;
-
-        if (!user || !pass) {
-            throw new Error('Email service is not configured');
-        }
-
-        transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: user,
-                pass: pass,
-            },
-            connectionTimeout: 10000,
-            greetingTimeout: 5000,
-            socketTimeout: 10000,
-        });
-    }
-    return transporter;
-}
+import { sendSupplyChainEmail } from './mailer';
 
 export interface SendOTPEmailOptions {
     to: string;
@@ -37,10 +12,12 @@ export async function sendOTPEmail(
     legacyOtp?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-        const { to, otp, userName, expiresIn = '30 seconds' } =
+        const { to, otp, userName, expiresIn = '5 minutes' } =
             typeof optionsOrTo === 'string'
-                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: '30 seconds' }
+                ? { to: optionsOrTo, otp: legacyOtp || '', userName: undefined, expiresIn: '5 minutes' }
                 : optionsOrTo;
+
+        const cleanOtp = (otp || '').trim();
 
         const expiryDisplay = typeof expiresIn === 'number'
             ? (expiresIn < 1 ? `${Math.round(expiresIn * 60)} seconds` : `${expiresIn} minute${expiresIn === 1 ? '' : 's'}`)
@@ -52,124 +29,100 @@ export async function sendOTPEmail(
             throw new Error('Invalid email address format');
         }
 
-        const transporter = getTransporter();
+        const plainText = `Your Supply Chain OTP verification code is: ${cleanOtp}\n\nThis code will expire in ${expiryDisplay}.\n\nIf you did not request this OTP, please ignore this email or contact support.`;
 
-        // verify transporter connection
-        await transporter.verify();
+        // Inline CSS HTML template for 100% compatibility across Gmail, Outlook, Apple Mail, and Dark Mode
+        const html = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Your OTP Verification Code</title>
+            </head>
+            <body style="margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #1e293b;">
+                <!-- Preheader snippet visible in Gmail notification & inbox list -->
+                <div style="display: none; max-height: 0; overflow: hidden; font-size: 1px; line-height: 1px; color: #fff; opacity: 0;">
+                    Your OTP code is ${cleanOtp}. Use this code to sign in to Airship Express Supply Chain.
+                </div>
 
-        const mailOptions = {
-            from: `"Supply Chain Management" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
-            to: to,
-            subject: 'Your Supply Chain OTP Code',
-            html: `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <style>
-                        body {
-                            font-family: Arial, Helvetica, sans-serif;
-                            line-height: 1.6;
-                            color: #333;
-                            max-width: 600px;
-                            margin: 0 auto;
-                            padding: 20px;
-                        }
-                        .header {
-                            background: linear-gradient(135deg, #1a1a2e, #16213e);
-                            color: white;
-                            padding: 30px 20px;
-                            text-align: center;
-                            border-radius: 10px 10px 0 0;
-                        }
-                        .header h1 {
-                            margin: 0;
-                            font-size: 24px;
-                            font-weight: 600;
-                        }
-                        .content {
-                            background: #f8f9fa;
-                            padding: 30px 20px;
-                            border-radius: 0 0 10px 10px;
-                            border: 1px solid #e9ecef;
-                            border-top: none;
-                        }
-                        .otp-box {
-                            background: white;
-                            padding: 20px;
-                            text-align: center;
-                            border-radius: 8px;
-                            border: 2px dashed #1a1a2e;
-                            margin: 20px 0;
-                        }
-                        .otp-code {
-                            font-size: 48px;
-                            font-weight: bold;
-                            letter-spacing: 8px;
-                            color: #1a1a2e;
-                            font-family: 'Courier New', monospace;
-                        }
-                        .info-box {
-                            background: #e9ecef;
-                            padding: 15px;
-                            border-radius: 6px;
-                            margin: 20px 0;
-                            font-size: 14px;
-                        }
-                        .footer {
-                            text-align: center;
-                            font-size: 12px;
-                            color: #6c757d;
-                            margin-top: 20px;
-                            padding-top: 20px;
-                            border-top: 1px solid #e9ecef;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>Supply Chain Management</h1>
-                        <p style="margin: 5px 0 0; opacity: 0.8; font-size: 14px;">Secure Access Verification</p>
-                    </div>
-                    
-                    <div class="content">
-                        ${userName ? `<p>Hello <strong>${userName}</strong>,</p>` : '<p>Hello,</p>'}
-                        
-                        <p>You have requested to access the Supply Chain Management System. Please use the following One-Time Password (OTP) to complete your verification:</p>
-                        
-                        <div class="otp-box">
-                            <div class="otp-code">${otp}</div>
-                            <p style="margin: 10px 0 0; font-size: 14px; color: #6c757d;">
-                                This code will expire in <strong>${expiryDisplay}</strong>
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 30px 24px; text-align: center;">
+                            <div style="display: inline-block; background-color: #0284c7; color: #ffffff; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                Airship Express
+                            </div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">
+                                Supply Chain Verification
+                            </h1>
+                            <p style="margin: 6px 0 0; color: #94a3b8; font-size: 13px;">
+                                Secure Access Authentication Code
                             </p>
-                        </div>
-                        
-                        <div class="info-box">
-                            <strong>Security Notice:</strong>
-                            <ul style="margin: 10px 0 0; padding-left: 20px;">
-                                <li>This OTP is valid for one-time use only</li>
-                                <li>Do not share this code with anyone</li>
-                                <li>If you didn't request this, please ignore this email</li>
-                            </ul>
-                        </div>
-                        
-                        <p style="font-size: 14px; margin-top: 20px;">
-                            If you have any issues, please contact IT support.
-                        </p>
-                        
-                        <div class="footer">
-                            <p>This is an automated message, please do not reply to this email.</p>
-                            <p>&copy; ${new Date().getFullYear()} Supply Chain Management System. All rights reserved.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>
-            `,
-        };
+                        </td>
+                    </tr>
 
-        const info = await transporter.sendMail(mailOptions);
+                    <!-- Body Content -->
+                    <tr>
+                        <td style="padding: 32px 24px; background-color: #ffffff;">
+                            ${userName ? `<p style="margin: 0 0 14px; font-size: 15px; color: #1e293b;">Hello <strong>${userName}</strong>,</p>` : '<p style="margin: 0 0 14px; font-size: 15px; color: #1e293b;">Hello,</p>'}
+                            
+                            <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #475569;">
+                                You recently requested access to the Supply Chain Management System. Please enter the one-time password (OTP) below to complete your verification:
+                            </p>
 
-        return { success: true, messageId: info.messageId };
+                            <!-- OTP Box with robust inline styles -->
+                            <div style="background-color: #f8fafc; border: 2px dashed #0284c7; border-radius: 10px; padding: 24px 16px; text-align: center; margin: 24px 0;">
+                                <div style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                                    ONE-TIME PASSWORD
+                                </div>
+                                <div style="font-size: 44px; font-weight: 800; letter-spacing: 10px; color: #0f172a; font-family: 'SF Mono', Monaco, Consolas, 'Courier New', monospace; line-height: 1.2; padding: 4px 0;">
+                                    ${cleanOtp}
+                                </div>
+                                <div style="margin-top: 10px; font-size: 13px; color: #64748b;">
+                                    Valid for <strong style="color: #dc2626;">${expiryDisplay}</strong>
+                                </div>
+                            </div>
+
+                            <!-- Security Notes -->
+                            <div style="background-color: #f1f5f9; border-left: 4px solid #0284c7; padding: 14px 16px; border-radius: 0 6px 6px 0; margin-bottom: 20px;">
+                                <strong style="font-size: 13px; color: #0f172a; display: block; margin-bottom: 4px;">Security Notice:</strong>
+                                <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.5;">
+                                    Never share this verification code with anyone. Airship Express staff will never ask for your OTP.
+                                </p>
+                            </div>
+
+                            <p style="margin: 0; font-size: 13px; color: #94a3b8; line-height: 1.5;">
+                                If you did not initiate this request, someone may be attempting to access your account. Please notify your system administrator immediately.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8fafc; padding: 20px 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                                This is an automated message from Airship Express Logistics. Please do not reply.
+                            </p>
+                            <p style="margin: 4px 0 0; font-size: 12px; color: #94a3b8;">
+                                &copy; ${new Date().getFullYear()} Airship Express. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+        `;
+
+        const result = await sendSupplyChainEmail({
+            to,
+            subject: `[Airship Express] Your OTP is ${cleanOtp}`,
+            html,
+            text: plainText,
+            senderName: 'Airship Express Supply Chain',
+        });
+
+        return { success: true, messageId: result.messageId };
     } catch (error: any) {
         throw new Error(`Failed to send OTP email: ${error.message}`);
     }

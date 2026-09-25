@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import ViewLink from "@/app/(supplyChain)/components/global/Links";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
+import ViewLink from "../../../components/global/Links";
+import { CrudActionButton } from "../../../components/ui/CrudActionButton";
 import { OperationsSummaryData } from "../hooks/useExecutiveData";
 import ItemDetailModal, { ItemDetailRecord } from "./modals/ItemDetailModal";
 

@@ -1,10 +1,10 @@
 // app/(supplyChain)/api/supplyChain/reset-password/route.ts
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createHash, createHmac } from 'crypto';
-import { sendOTPEmail } from '@/app/(supplyChain)/lib/email/sendOTP';
+import { sendOTPEmail } from '../../../lib/email/sendOTP';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL!,

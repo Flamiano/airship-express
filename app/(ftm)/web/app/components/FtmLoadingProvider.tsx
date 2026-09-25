@@ -70,14 +70,20 @@ export default function FtmLoadingProvider({ children }: { children: React.React
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(1);
   const navigationId = useRef(0);
+  const navigationActive = useRef(false);
   const clearTimer = useRef<number | null>(null);
   const progressTimer = useRef<number | null>(null);
   const failsafeTimer = useRef<number | null>(null);
+  const hideTimer = useRef<number | null>(null);
   const pendingLocation = useRef<string | null>(null);
 
   const beginNavigation = (destination?: string) => {
+    const normalizedDestination = destination ? normalizeNavigationLocation(destination.split("#", 1)[0]) : null;
+    if (navigationActive.current && normalizedDestination === pendingLocation.current) return;
+
     navigationId.current += 1;
-    pendingLocation.current = destination ? normalizeNavigationLocation(destination.split("#", 1)[0]) : null;
+    navigationActive.current = true;
+    pendingLocation.current = normalizedDestination;
     setProgress(1);
     setIsNavigating(true);
 
@@ -90,6 +96,10 @@ export default function FtmLoadingProvider({ children }: { children: React.React
     }
     if (failsafeTimer.current) {
       window.clearTimeout(failsafeTimer.current);
+    }
+    if (hideTimer.current) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
     }
 
     const currentNavigation = navigationId.current;
@@ -111,6 +121,7 @@ export default function FtmLoadingProvider({ children }: { children: React.React
         progressTimer.current = null;
       }
       pendingLocation.current = null;
+      navigationActive.current = false;
       setIsNavigating(false);
       setProgress(100);
     }, NAVIGATION_FAILSAFE_MS);
@@ -155,11 +166,15 @@ export default function FtmLoadingProvider({ children }: { children: React.React
         failsafeTimer.current = null;
       }
       setProgress(100);
-      const hideTimer = window.setTimeout(() => {
+      hideTimer.current = window.setTimeout(() => {
         pendingLocation.current = null;
+        navigationActive.current = false;
         setIsNavigating(false);
+        hideTimer.current = null;
       }, 160);
-      return () => window.clearTimeout(hideTimer);
+      return () => {
+        if (hideTimer.current) window.clearTimeout(hideTimer.current);
+      };
     }
 
     setIsNavigating(true);
@@ -167,20 +182,20 @@ export default function FtmLoadingProvider({ children }: { children: React.React
 
   useEffect(() => {
     const navigate = (event: MouseEvent) => {
-      const link = (event.target as HTMLElement).closest("a");
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-skip-loading], [download]")) return;
+      const link = target.closest("a");
       if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const href = link.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
       const destination = new URL(href, window.location.href);
       if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
 
-      // Query-only links within the current page are tabs, not full route changes.
-      if (destination.pathname === window.location.pathname) return;
+      // Alerts query tabs still use the branded loading handoff.
+      if (destination.pathname === window.location.pathname && destination.pathname !== "/alerts") return;
 
-      event.preventDefault();
       const destinationPath = `${destination.pathname}${destination.search}${destination.hash}`;
       beginNavigation(destinationPath);
-      window.requestAnimationFrame(() => router.push(destinationPath));
     };
 
     document.addEventListener("click", navigate, true);
@@ -189,10 +204,25 @@ export default function FtmLoadingProvider({ children }: { children: React.React
 
   useEffect(() => {
     const handleLoadingEvent = (event: Event) => {
-      const destination = (event as CustomEvent<{ destination?: string }>).detail?.destination;
-      if (!destination) return;
-      beginNavigation(destination);
-      router.push(destination);
+      const detail = (event as CustomEvent<{ destination?: string; mode?: "start" | "stop" }>).detail;
+      if (detail?.mode === "stop") {
+        navigationId.current += 1;
+        pendingLocation.current = null;
+        if (clearTimer.current) window.clearTimeout(clearTimer.current);
+        if (progressTimer.current) window.clearInterval(progressTimer.current);
+        if (failsafeTimer.current) window.clearTimeout(failsafeTimer.current);
+        if (hideTimer.current) window.clearTimeout(hideTimer.current);
+        navigationActive.current = false;
+        setIsNavigating(false);
+        setProgress(100);
+        return;
+      }
+      if (!detail?.destination) {
+        beginNavigation();
+        return;
+      }
+      beginNavigation(detail.destination);
+      router.push(detail.destination);
     };
 
     window.addEventListener("ftm:loading", handleLoadingEvent);
@@ -222,17 +252,15 @@ export default function FtmLoadingProvider({ children }: { children: React.React
     if (clearTimer.current) window.clearTimeout(clearTimer.current);
     if (progressTimer.current) window.clearInterval(progressTimer.current);
     if (failsafeTimer.current) window.clearTimeout(failsafeTimer.current);
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
   }, []);
 
   const currentStage = [...stages].reverse().find((item) => progress >= item.at) ?? stages[0];
-  const isMainDashboardNavigation = pendingLocation.current === "/dashboard";
-  const isFuelNavigation = pendingLocation.current === "/fuel" || pendingLocation.current?.startsWith("/fuel/");
-  const isAlertsNavigation = pendingLocation.current === "/alerts" || pendingLocation.current?.startsWith("/alerts/");
 
   return (
     <>
       <ConnectionStatusNotice />
-      {isNavigating && !isMainDashboardNavigation && !isFuelNavigation && !isAlertsNavigation && (
+      {isNavigating && (
         <div
           className="pointer-events-none fixed inset-0 z-[3000] flex flex-col items-center justify-center gap-8 bg-gradient-to-br from-[#fff7fb] via-[#fcfbf9] to-[#ffe8f2] px-6"
           role="status"

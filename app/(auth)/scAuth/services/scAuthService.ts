@@ -1,5 +1,29 @@
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { supabase } from '../../../(supplyChain)/lib/services/client/supabase';
+import { user } from '../../../(supplyChain)/lib/services/Class/user';
+
+/**
+ * Masks an email address for privacy and security.
+ * Example: janzels@gmail.com -> ja***ls@gmail.com
+ */
+export function maskEmail(email?: string | null): string {
+    if (!email || typeof email !== 'string') return '';
+    const trimmed = email.trim();
+    const atIndex = trimmed.indexOf('@');
+    if (atIndex === -1) return trimmed;
+
+    const userPart = trimmed.slice(0, atIndex);
+    const domainPart = trimmed.slice(atIndex + 1);
+
+    if (!userPart) return trimmed;
+
+    if (userPart.length <= 2) {
+        return `${userPart.slice(0, 1)}***@${domainPart}`;
+    }
+    if (userPart.length <= 4) {
+        return `${userPart.slice(0, 1)}***${userPart.slice(-1)}@${domainPart}`;
+    }
+    return `${userPart.slice(0, 2)}***${userPart.slice(-2)}@${domainPart}`;
+}
 
 export interface RequestOtpParams {
     userId: string;
@@ -189,5 +213,6 @@ export async function activateSessionApi(sessionToken: string, userAgent: string
             user_agent: userAgent,
         }),
     });
-    return { ok: res.ok, status: res.status };
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
 }

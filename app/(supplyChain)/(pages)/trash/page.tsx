@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { SessionGuard } from '@/app/(supplyChain)/components/server/SessionGuard';
-import { DocumentsTab } from '@/app/(supplyChain)/(pages)/trash/components/DocumentsTab';
-import { PurchaseOrdersTab } from '@/app/(supplyChain)/(pages)/trash/components/PurchaseOrdersTab';
-import { SuppliersTab } from '@/app/(supplyChain)/(pages)/trash/components/SuppliersTab';
-import { ParcelsTab } from '@/app/(supplyChain)/(pages)/trash/components/ParcelsTab';
-import { trashCache } from '@/app/(supplyChain)/(pages)/trash/utils/trashCache';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { SessionGuard } from '../../components/server/SessionGuard';
+import { DocumentsTab } from './components/DocumentsTab';
+import { PurchaseOrdersTab } from './components/PurchaseOrdersTab';
+import { SuppliersTab } from './components/SuppliersTab';
+import { ParcelsTab } from './components/ParcelsTab';
+import { trashCache } from './utils/trashCache';
+import { AppButton } from '../../components/ui/AppButton';
+import UnauthorizedEmptyState, { useUserRole } from '../../components/global/UnauthorizedEmptyState';
 
 type ArchiveTab = 'documents' | 'purchase_orders' | 'suppliers' | 'parcels';
 
@@ -18,11 +19,27 @@ const VALID_TABS: ArchiveTab[] = ['documents', 'purchase_orders', 'suppliers', '
 export default function ArchivePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { role: userRole, isPrivileged, isLoaded } = useUserRole();
+
+    const isOperator = userRole?.toLowerCase() === 'operator';
+    const isEmployee = userRole?.toLowerCase() === 'employee';
+
+    const canAccessDocuments = isPrivileged || isEmployee;
+    const canAccessPurchaseOrders = isPrivileged;
+    const canAccessSuppliers = isPrivileged;
+    const canAccessParcels = isPrivileged || isOperator;
+
+    const getDefaultTabForRole = useCallback((role: string): ArchiveTab => {
+        const norm = (role || '').trim().toLowerCase();
+        if (norm === 'operator') return 'parcels';
+        return 'documents';
+    }, []);
 
     const tabFromUrl = searchParams.get('tab') as ArchiveTab;
     const isValidTab = tabFromUrl && VALID_TABS.includes(tabFromUrl);
-    const [activeTab, setActiveTab] = useState<ArchiveTab>(isValidTab ? tabFromUrl : DEFAULT_TAB);
-    const [visitedTabs, setVisitedTabs] = useState<Set<ArchiveTab>>(new Set([isValidTab ? tabFromUrl : DEFAULT_TAB]));
+    const initialDefaultTab = getDefaultTabForRole(userRole);
+    const [activeTab, setActiveTab] = useState<ArchiveTab>(isValidTab ? tabFromUrl : initialDefaultTab);
+    const [visitedTabs, setVisitedTabs] = useState<Set<ArchiveTab>>(new Set([isValidTab ? tabFromUrl : initialDefaultTab]));
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     // update tab
@@ -51,12 +68,19 @@ export default function ArchivePage() {
                 next.add(tab);
                 return next;
             });
-        } else if (!tab) {
+        } else if (!tab && isLoaded) {
+            const defTab = getDefaultTabForRole(userRole);
+            setActiveTab(defTab);
+            setVisitedTabs(prev => {
+                const next = new Set(prev);
+                next.add(defTab);
+                return next;
+            });
             const params = new URLSearchParams(searchParams.toString());
-            params.set('tab', DEFAULT_TAB);
+            params.set('tab', defTab);
             router.replace(`?${params.toString()}`, { scroll: false });
         }
-    }, [searchParams, router]);
+    }, [searchParams, router, isLoaded, userRole, getDefaultTabForRole]);
 
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
@@ -68,14 +92,14 @@ export default function ArchivePage() {
 
     // tab config
     const tabs = [
-        { key: 'documents' as const, label: 'Documents', icon: 'fa-file-alt' },
-        { key: 'purchase_orders' as const, label: 'Purchase Orders', icon: 'fa-file-invoice' },
-        { key: 'suppliers' as const, label: 'Suppliers', icon: 'fa-handshake' },
-        { key: 'parcels' as const, label: 'Parcels', icon: 'fa-boxes' },
+        { key: 'documents' as const, label: 'Documents', icon: 'fa-file-alt', restricted: !canAccessDocuments },
+        { key: 'purchase_orders' as const, label: 'Purchase Orders', icon: 'fa-file-invoice', restricted: !canAccessPurchaseOrders },
+        { key: 'suppliers' as const, label: 'Suppliers', icon: 'fa-handshake', restricted: !canAccessSuppliers },
+        { key: 'parcels' as const, label: 'Parcels', icon: 'fa-boxes', restricted: !canAccessParcels },
     ];
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
+        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive', 'Operator']}>
             <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
                 {/* header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-slate-800 pb-5">
@@ -150,6 +174,9 @@ export default function ArchivePage() {
                                         }`}
                                     ></i>
                                     <span>{tab.label}</span>
+                                    {tab.restricted && isLoaded && (
+                                        <i className={`fas fa-lock text-[10px] ${isActive ? 'text-white/80' : 'text-pink-500/80 dark:text-pink-400/80'}`} title="Restricted access" />
+                                    )}
                                 </button>
                             );
                         })}
@@ -160,22 +187,58 @@ export default function ArchivePage() {
                 <div className="relative min-h-[400px]">
                     {visitedTabs.has('documents') && (
                         <div className={activeTab === 'documents' ? 'block animate-in fade-in-50 duration-200' : 'hidden'}>
-                            <DocumentsTab />
+                            {isLoaded && !canAccessDocuments ? (
+                                <UnauthorizedEmptyState
+                                    title="Documents Trash Restricted"
+                                    description="You do not have permission to view or manage deleted documents. This section is restricted to Admin, Manager, Executive, and Employee personnel only."
+                                    currentRole={userRole}
+                                    requiredRoles={['Admin', 'Manager', 'Executive', 'Employee']}
+                                />
+                            ) : (
+                                <DocumentsTab />
+                            )}
                         </div>
                     )}
                     {visitedTabs.has('purchase_orders') && (
                         <div className={activeTab === 'purchase_orders' ? 'block animate-in fade-in-50 duration-200' : 'hidden'}>
-                            <PurchaseOrdersTab />
+                            {isLoaded && !canAccessPurchaseOrders ? (
+                                <UnauthorizedEmptyState
+                                    title="Purchase Orders Trash Restricted"
+                                    description="You do not have permission to view or manage deleted purchase orders. This section is restricted to Admin, Manager, and Executive personnel only."
+                                    currentRole={userRole}
+                                    requiredRoles={['Admin', 'Manager', 'Executive']}
+                                />
+                            ) : (
+                                <PurchaseOrdersTab />
+                            )}
                         </div>
                     )}
                     {visitedTabs.has('suppliers') && (
                         <div className={activeTab === 'suppliers' ? 'block animate-in fade-in-50 duration-200' : 'hidden'}>
-                            <SuppliersTab />
+                            {isLoaded && !canAccessSuppliers ? (
+                                <UnauthorizedEmptyState
+                                    title="Suppliers Trash Restricted"
+                                    description="You do not have permission to view or manage deleted suppliers. This section is restricted to Admin, Manager, and Executive personnel only."
+                                    currentRole={userRole}
+                                    requiredRoles={['Admin', 'Manager', 'Executive']}
+                                />
+                            ) : (
+                                <SuppliersTab />
+                            )}
                         </div>
                     )}
                     {visitedTabs.has('parcels') && (
                         <div className={activeTab === 'parcels' ? 'block animate-in fade-in-50 duration-200' : 'hidden'}>
-                            <ParcelsTab />
+                            {isLoaded && !canAccessParcels ? (
+                                <UnauthorizedEmptyState
+                                    title="Parcels Trash Restricted"
+                                    description="You do not have permission to view or manage deleted parcels. This section is restricted to Admin, Manager, Executive, and Operator personnel only."
+                                    currentRole={userRole}
+                                    requiredRoles={['Admin', 'Manager', 'Executive', 'Operator']}
+                                />
+                            ) : (
+                                <ParcelsTab />
+                            )}
                         </div>
                     )}
                 </div>

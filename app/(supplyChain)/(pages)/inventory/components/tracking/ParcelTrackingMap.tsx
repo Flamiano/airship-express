@@ -154,6 +154,48 @@ export default function ParcelTrackingMap({ trackingNumber, barcode, status, cou
         return () => clearTimeout(timer);
     }, [trackingNumber]);
     return (<div className="w-full h-full min-h-[300px] relative rounded-xl overflow-hidden shadow-inner border border-slate-200/80 dark:border-slate-800">
+            {/* Scoped CSS for Leaflet Popups and Tooltips in Dark Mode */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                .dark .leaflet-popup-content-wrapper {
+                    background-color: #0f172a !important;
+                    color: #f1f5f9 !important;
+                    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+                    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+                    border-radius: 12px !important;
+                }
+                .dark .leaflet-popup-tip {
+                    background-color: #0f172a !important;
+                    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5) !important;
+                }
+                .dark .leaflet-popup-close-button {
+                    color: #94a3b8 !important;
+                    top: 6px !important;
+                    right: 8px !important;
+                }
+                .dark .leaflet-popup-close-button:hover {
+                    color: #f43f5e !important;
+                }
+                .dark .leaflet-tooltip {
+                    background-color: #0f172a !important;
+                    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+                    color: #f1f5f9 !important;
+                    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6) !important;
+                    border-radius: 8px !important;
+                }
+                .dark .leaflet-tooltip-top:before {
+                    border-top-color: #0f172a !important;
+                }
+                .dark .leaflet-tooltip-bottom:before {
+                    border-bottom-color: #0f172a !important;
+                }
+                .dark .leaflet-tooltip-left:before {
+                    border-left-color: #0f172a !important;
+                }
+                .dark .leaflet-tooltip-right:before {
+                    border-right-color: #0f172a !important;
+                }
+            ` }} />
             <MapContainer center={currentCoord} zoom={12} scrollWheelZoom={true} zoomControl={false} className="w-full h-full min-h-[300px] z-0">
                 {/* tile layer */}
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'/>
@@ -184,14 +226,14 @@ export default function ParcelTrackingMap({ trackingNumber, barcode, status, cou
 
                 {/* origin marker */}
                 <Marker position={originLatLng} icon={originIcon}>
-                    <Popup>
+                    <Popup className="airship-custom-popup">
                         <div className="text-xs p-1 space-y-1 font-sans min-w-[170px]">
-                            <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-100">
                                 <i className="fas fa-building text-pink-500"></i>
                                 <span>Origin / HQ</span>
                             </div>
-                            <p className="text-[11px] text-slate-600 font-medium">{origin.name}</p>
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">{origin.name}</p>
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
                                 Dispatch Hub
                             </span>
                         </div>
@@ -200,14 +242,14 @@ export default function ParcelTrackingMap({ trackingNumber, barcode, status, cou
 
                 {/* destination marker */}
                 <Marker position={destLatLng} icon={destIcon}>
-                    <Popup>
+                    <Popup className="airship-custom-popup">
                         <div className="text-xs p-1 space-y-1 font-sans min-w-[170px]">
-                            <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                                <i className="fas fa-flag-checkered text-pink-600"></i>
+                            <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-100">
+                                <i className="fas fa-flag-checkered text-pink-600 dark:text-pink-400"></i>
                                 <span>Destination</span>
                             </div>
-                            <p className="text-[11px] text-slate-600 font-medium">{destination.name}</p>
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-pink-50 text-pink-700 border border-pink-200">
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">{destination.name}</p>
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-pink-50 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60">
                                 Final Delivery Point
                             </span>
                         </div>
@@ -216,42 +258,42 @@ export default function ParcelTrackingMap({ trackingNumber, barcode, status, cou
 
                 {/* parcel marker */}
                 <Marker ref={parcelMarkerRef} position={currentCoord} icon={parcelIcon} zIndexOffset={1000}>
-                    <Popup>
+                    <Popup className="airship-custom-popup">
                         <div className="text-xs font-sans space-y-2 p-1 min-w-[220px]">
                             {/* header */}
-                            <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
-                                <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                                    <span className="w-5 h-5 rounded-lg bg-pink-100 text-pink-600 inline-flex items-center justify-center text-[10px]">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
+                                    <span className="w-5 h-5 rounded-lg bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 inline-flex items-center justify-center text-[10px]">
                                         <i className="fas fa-box"></i>
                                     </span>
                                     <span className="font-mono">{trackingNumber}</span>
                                 </div>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 text-pink-600 border border-pink-200">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60">
                                     {status.replace(/_/g, ' ').toUpperCase()}
                                 </span>
                             </div>
 
                             {/* details */}
-                            <div className="space-y-1 text-[11px] text-slate-600">
+                            <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
                                 <div className="flex justify-between">
-                                    <span className="text-slate-400 font-medium">Courier:</span>
-                                    <span className="font-semibold text-slate-800">{courier}</span>
+                                    <span className="text-slate-400 dark:text-slate-400 font-medium">Courier:</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">{courier}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-slate-400 font-medium">Origin:</span>
-                                    <span className="font-semibold text-slate-800 text-right truncate max-w-[130px]">{origin.name}</span>
+                                    <span className="text-slate-400 dark:text-slate-400 font-medium">Origin:</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[130px]">{origin.name}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-slate-400 font-medium">Destination:</span>
-                                    <span className="font-semibold text-slate-800 text-right truncate max-w-[130px]">{destination.name}</span>
+                                    <span className="text-slate-400 dark:text-slate-400 font-medium">Destination:</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[130px]">{destination.name}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-slate-400 font-medium">Current Location:</span>
-                                    <span className="font-semibold text-pink-600 text-right truncate max-w-[130px]">{currentLocation.name}</span>
+                                    <span className="text-slate-400 dark:text-slate-400 font-medium">Current Location:</span>
+                                    <span className="font-semibold text-pink-600 dark:text-pink-400 text-right truncate max-w-[130px]">{currentLocation.name}</span>
                                 </div>
-                                <div className="flex justify-between pt-1 border-t border-slate-100">
-                                    <span className="text-slate-400 font-medium">Expected Delivery:</span>
-                                    <span className="font-semibold text-slate-800">{expectedDelivery}</span>
+                                <div className="flex justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                                    <span className="text-slate-400 dark:text-slate-400 font-medium">Expected Delivery:</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">{expectedDelivery}</span>
                                 </div>
                             </div>
                         </div>

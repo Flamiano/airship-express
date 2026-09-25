@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, Calendar, User, Building, Tag, Package, Trash2, Edit3, Check, X } from 'lucide-react';
+import { Loader2, Calendar, User, Building, Tag, Package, Trash2, Edit3, Check, X, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
-import { deletePurchaseRequest, updatePurchaseRequest } from '@/app/(supplyChain)/(pages)/procurement/utils/procurementApi';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { supabase } from '../../lib/services/client/supabase';
+import { useConfirm } from '../ui/ConfirmModal';
+import { AppButton } from '../ui/AppButton';
+import { StatusBadge } from '../ui/StatusBadge';
+import Portal from '../client/Portal';
+import { deletePurchaseRequest, updatePurchaseRequest, patchPurchaseRequest } from '../../(pages)/procurement/utils/procurementApi';
+import { user } from '../../lib/services/Class/user';
 
 interface PurchaseRequestDetailModalProps {
     isOpen: boolean;
@@ -37,6 +37,7 @@ export function PurchaseRequestDetailModal({
     const [editForm, setEditForm] = useState<any | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isPatching, setIsPatching] = useState(false);
 
     const currentUserRole = useMemo(() => {
         if (propUserRole) return propUserRole.trim().toLowerCase();
@@ -96,9 +97,10 @@ export function PurchaseRequestDetailModal({
     }, [isOpen, fetchRequestDetails]);
 
     // Permissions:
-    // "allow to see the purchase request and can delete and edit by managers, but when approved ony admin and execurtives can edit unless it is sent confirmed, delivered"
-    const { canEdit, canDelete, isLocked } = useMemo(() => {
-        if (!request) return { canEdit: false, canDelete: false, isLocked: false };
+    // "allow to see the purchase request and can delete and edit by managers, but when approved only admin and executives can edit unless it is sent confirmed, delivered"
+    // "executive and admin role when click the Purchase Request Details pending allow update from there"
+    const { canEdit, canDelete, canApproveReject, isLocked, isAdminOrExec } = useMemo(() => {
+        if (!request) return { canEdit: false, canDelete: false, canApproveReject: false, isLocked: false, isAdminOrExec: false };
 
         const reqStatus = (request.status || '').toLowerCase();
         const poStatus = (linkedPO?.status || '').toLowerCase();
@@ -107,29 +109,35 @@ export function PurchaseRequestDetailModal({
             ['sent', 'confirmed', 'delivered', 'completed'].includes(reqStatus) ||
             ['sent', 'confirmed', 'delivered'].includes(poStatus);
 
-        const isAdminOrExec = ['admin', 'executive'].includes(currentUserRole);
-        const isManager = currentUserRole === 'manager';
+        const adminOrExec = ['admin', 'executive', 'super_admin', 'superadmin', 'administrator'].includes(currentUserRole);
+        const isManager = ['manager', 'warehouse_manager', 'inventory_manager'].includes(currentUserRole);
 
         // When locked (sent, confirmed, delivered, completed), no one can edit or delete
         if (locked) {
-            return { canEdit: false, canDelete: false, isLocked: true };
+            return { canEdit: false, canDelete: false, canApproveReject: false, isLocked: true, isAdminOrExec: adminOrExec };
         }
 
-        // When Pending: Managers, Admins, Executives can edit and delete
+        // When Pending:
+        // - Admin and Executive can edit, update, delete, approve, and reject
+        // - Manager can edit and delete
         if (reqStatus === 'pending') {
             return {
-                canEdit: isAdminOrExec || isManager,
-                canDelete: isAdminOrExec || isManager,
+                canEdit: adminOrExec || isManager,
+                canDelete: adminOrExec || isManager,
+                canApproveReject: adminOrExec,
                 isLocked: false,
+                isAdminOrExec: adminOrExec,
             };
         }
 
         // When Approved: Only Admin and Executive can edit (unless sent, confirmed, delivered)
         if (reqStatus === 'approved') {
             return {
-                canEdit: isAdminOrExec,
+                canEdit: adminOrExec,
                 canDelete: false, // Approved requests should not be casually deleted
+                canApproveReject: false,
                 isLocked: false,
+                isAdminOrExec: adminOrExec,
             };
         }
 
@@ -137,12 +145,14 @@ export function PurchaseRequestDetailModal({
         if (reqStatus === 'rejected') {
             return {
                 canEdit: false,
-                canDelete: isAdminOrExec,
+                canDelete: adminOrExec,
+                canApproveReject: false,
                 isLocked: false,
+                isAdminOrExec: adminOrExec,
             };
         }
 
-        return { canEdit: false, canDelete: false, isLocked: false };
+        return { canEdit: false, canDelete: false, canApproveReject: false, isLocked: false, isAdminOrExec: adminOrExec };
     }, [request, linkedPO, currentUserRole]);
 
     const handleItemChange = (index: number, field: string, val: any) => {
@@ -241,6 +251,7 @@ export function PurchaseRequestDetailModal({
                 description: sanitizedItems.map((i: any) => `${i.name} (${i.quantity} @ ₱${i.unit_price.toLocaleString()})`).join(', '),
                 priority: editForm.priority || request.priority,
                 reason: editForm.reason || request.reason,
+                status: editForm.status || request.status,
             };
 
             await updatePurchaseRequest(payload);
@@ -257,6 +268,60 @@ export function PurchaseRequestDetailModal({
             toast.error(err?.message || 'Failed to save changes');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleApprove = async () => {
+        if (!request) return;
+
+        const confirmed = await confirm({
+            title: 'Approve Purchase Request',
+            message: `Are you sure you want to approve purchase request ${request.request_number || request.id}? This will authorize procurement to proceed with generating a Purchase Order.`,
+            confirmText: 'Approve Request',
+            cancelText: 'Cancel',
+            confirmVariant: 'success',
+        });
+
+        if (!confirmed) return;
+
+        setIsPatching(true);
+        try {
+            await patchPurchaseRequest({ id: request.id, action: 'approve', role: currentUserRole });
+            toast.success(`Purchase request ${request.request_number || ''} approved successfully`);
+            setRequest((prev: any) => (prev ? { ...prev, status: 'Approved' } : null));
+            onSuccess?.();
+        } catch (err: any) {
+            console.error('Error approving purchase request:', err);
+            toast.error(err?.message || 'Failed to approve request');
+        } finally {
+            setIsPatching(false);
+        }
+    };
+
+    const handleReject = async () => {
+        if (!request) return;
+
+        const confirmed = await confirm({
+            title: 'Reject Purchase Request',
+            message: `Are you sure you want to reject purchase request ${request.request_number || request.id}?`,
+            confirmText: 'Reject Request',
+            cancelText: 'Cancel',
+            confirmVariant: 'danger',
+        });
+
+        if (!confirmed) return;
+
+        setIsPatching(true);
+        try {
+            await patchPurchaseRequest({ id: request.id, action: 'reject', role: currentUserRole });
+            toast.success(`Purchase request ${request.request_number || ''} marked as rejected`);
+            setRequest((prev: any) => (prev ? { ...prev, status: 'Rejected' } : null));
+            onSuccess?.();
+        } catch (err: any) {
+            console.error('Error rejecting purchase request:', err);
+            toast.error(err?.message || 'Failed to reject request');
+        } finally {
+            setIsPatching(false);
         }
     };
 
@@ -319,7 +384,7 @@ export function PurchaseRequestDetailModal({
                                     )}
                                 </div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-                                    {isEditing ? 'Modify request line items and parameters' : 'Review replenishment request status and audit information'}
+                                    {isEditing ? 'Modify request line items, quantities, and parameters' : 'Review replenishment request status and authorization actions'}
                                 </p>
                             </div>
                         </div>
@@ -364,16 +429,30 @@ export function PurchaseRequestDetailModal({
                                         </StatusBadge>
 
                                         {isEditing ? (
-                                            <select
-                                                value={editForm?.priority || 'Normal'}
-                                                onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-                                                className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#e4ebf5] dark:bg-[#111218] border border-pink-300 dark:border-pink-800 text-pink-600 dark:text-pink-400 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)] focus:outline-none cursor-pointer"
-                                            >
-                                                <option value="Low">Low Priority</option>
-                                                <option value="Normal">Normal Priority</option>
-                                                <option value="Urgent">Urgent Priority</option>
-                                                <option value="Critical">Critical Priority</option>
-                                            </select>
+                                            <div className="flex items-center gap-2">
+                                                <select
+                                                    value={editForm?.priority || 'Normal'}
+                                                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                                                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#e4ebf5] dark:bg-[#111218] border border-pink-300 dark:border-pink-800 text-pink-600 dark:text-pink-400 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)] focus:outline-none cursor-pointer"
+                                                >
+                                                    <option value="Low">Low Priority</option>
+                                                    <option value="Normal">Normal Priority</option>
+                                                    <option value="Urgent">Urgent Priority</option>
+                                                    <option value="Critical">Critical Priority</option>
+                                                </select>
+
+                                                {isAdminOrExec && (
+                                                    <select
+                                                        value={editForm?.status || request.status || 'Pending'}
+                                                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                                                        className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#e4ebf5] dark:bg-[#111218] border border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)] focus:outline-none cursor-pointer"
+                                                    >
+                                                        <option value="Pending">Pending</option>
+                                                        <option value="Approved">Approved</option>
+                                                        <option value="Rejected">Rejected</option>
+                                                    </select>
+                                                )}
+                                            </div>
                                         ) : (
                                             <StatusBadge
                                                 tone={
@@ -522,7 +601,7 @@ export function PurchaseRequestDetailModal({
                                                                         className="w-24 text-right bg-[#e4ebf5] dark:bg-[#111218] border border-slate-200/60 dark:border-white/[0.08] rounded-xl px-2 py-1 text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]"
                                                                     />
                                                                 </td>
-                                                                <td className="py-2 px-2.5 text-right font-bold text-slate-900 dark:text-white">
+                                                                <td className="py-2 px-2.5 text-right font-bold text-slate-900 dark:text-white font-mono">
                                                                     ₱{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                 </td>
                                                                 <td className="py-2 px-1 text-center">
@@ -573,13 +652,13 @@ export function PurchaseRequestDetailModal({
 
                     {/* Footer Controls */}
                     {request && (
-                        <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2 shrink-0">
+                        <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2.5 shrink-0">
                             <div className="flex items-center gap-2">
                                 {canDelete && !isEditing && (
                                     <button
                                         type="button"
                                         onClick={handleDelete}
-                                        disabled={isDeleting}
+                                        disabled={isDeleting || isPatching}
                                         className="px-3.5 py-2 rounded-2xl text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/40 shadow-[2px_2px_5px_rgba(166,175,195,0.25)] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
                                     >
                                         {isDeleting ? <Loader2 className="animate-spin h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -588,11 +667,37 @@ export function PurchaseRequestDetailModal({
                                 )}
                             </div>
 
-                            <div className="flex items-center justify-end gap-2.5 ml-auto">
+                            <div className="flex items-center justify-end gap-2.5 ml-auto flex-wrap">
+                                {/* Approve & Reject Buttons for Admin / Executive on Pending PR */}
+                                {canApproveReject && !isEditing && request.status === 'Pending' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleReject}
+                                            disabled={isPatching || isSaving}
+                                            className="px-3.5 py-2 rounded-2xl text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 bg-[#f0f3f8] dark:bg-[#1a1b26] border border-rose-300 dark:border-rose-900/50 shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.5)] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                                        >
+                                            {isPatching ? <Loader2 className="animate-spin h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                                            <span>Reject</span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={handleApprove}
+                                            disabled={isPatching || isSaving}
+                                            className="px-4 py-2 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-[2px_2px_6px_rgba(16,185,129,0.35)] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                                        >
+                                            {isPatching ? <Loader2 className="animate-spin h-3.5 w-3.5" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                                            <span>Approve PR</span>
+                                        </button>
+                                    </>
+                                )}
+
                                 {canEdit && !isEditing && (
                                     <button
                                         type="button"
                                         onClick={() => setIsEditing(true)}
+                                        disabled={isPatching}
                                         className="px-4 py-2 rounded-2xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-[#f0f3f8] dark:bg-[#1a1b26] border border-indigo-200/80 dark:border-indigo-900/40 shadow-[2px_2px_5px_rgba(166,175,195,0.3),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.5)] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                                     >
                                         <Edit3 className="h-3.5 w-3.5" />

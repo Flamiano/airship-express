@@ -1,4 +1,4 @@
-import { BadgeTone } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { BadgeTone } from "../../../components/ui/StatusBadge";
 
 export const getStatusTone = (status: string): BadgeTone => {
     switch (status?.toLowerCase()) {

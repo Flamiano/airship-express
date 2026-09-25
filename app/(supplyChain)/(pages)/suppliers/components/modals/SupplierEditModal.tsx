@@ -3,9 +3,9 @@
 "use client";
 
 import React from "react";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { sanitizeText } from "@/app/(supplyChain)/components/global/sanitize";
+import Portal from "../../../../components/client/Portal";
+import { AppButton } from "../../../../components/ui/AppButton";
+import { sanitizeText } from "../../../../components/global/sanitize";
 import { Supplier } from "../../types";
 
 interface SupplierEditModalProps {

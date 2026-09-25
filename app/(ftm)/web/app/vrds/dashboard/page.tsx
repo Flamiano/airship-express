@@ -16,7 +16,8 @@ import {
   YAxis,
 } from "recharts";
 import { optimizeRoute, SAMPLE_OPTIMIZATION_PAYLOAD } from "../../lib/optimize";
-import { getDashboardSnapshot, getParcels } from "../../lib/api";
+import { getBookings, getDrivers, getTrips, getVehicles } from "../../lib/api";
+import { useParcelStore } from "../../lib/parcelStore";
 import { listCourierWarehouses } from "../../lib/courierWarehouses";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
@@ -70,7 +71,7 @@ type VrdsDashboardSnapshot = {
       parcels?: number;
   };
   vehicles?: Array<{ id?: string; status?: string; plate_number?: string; plateNumber?: string; last_location_lat?: number; last_location_lng?: number; locationLat?: number; locationLng?: number; fuel_efficiency?: number; fuelEfficiency?: number }>;
-  trips?: Array<{ id?: string; status?: string; updated_at?: string; vehicle_id?: string; from_location?: string; to_location?: string }>; 
+  trips?: Array<{ id?: string; trip_id?: string; status?: string; updated_at?: string; vehicle_id?: string; from_location?: string; to_location?: string }>;
   bookings?: Array<{ id?: string; pickup_location?: string; dropoff_location?: string }>;
   drivers?: Array<{ id?: string; full_name?: string }>; 
   parcels?: Array<{
@@ -94,15 +95,29 @@ type VrdsDashboardSnapshot = {
   }>;
 };
 
+const TERMINAL_STATUS_PATTERN = /delivered|completed|cancelled|canceled|closed|failed|rejected|finished/i;
+const ACTIVE_TRIP_STATUS_PATTERN = /in[_ ]?transit|transit|active|assigned|scheduled|planned|queued|moving|dispatch|en route|driver assigned|vehicle assigned/i;
+const DASHBOARD_PARCEL_STATUSES = new Set(["picked_up", "booked", "in_transit", "delivered", "delayed", "cancelled"]);
+
+function normalizeRecordStatus(status: unknown) {
+  return String(status ?? "").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function isActiveTrip(trip: { status?: string }) {
+  const status = String(trip.status ?? "").trim();
+  return !TERMINAL_STATUS_PATTERN.test(status) && ACTIVE_TRIP_STATUS_PATTERN.test(status);
+}
+
 export default function VrdsDashboardPage() {
   const [scrambleStatus, setScrambleStatus] = useState<string | null>(null);
   const [alertActionMessage, setAlertActionMessage] = useState<string | null>(null);
   const [optimizationMessage, setOptimizationMessage] = useState<string | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [showMetricValues, setShowMetricValues] = useState(false);
+  const [dashboardScope, setDashboardScope] = useState<"active" | "archived" | "all">("active");
   const [snapshot, setSnapshot] = useState<VrdsDashboardSnapshot>({ vehicles: [], trips: [], bookings: [], drivers: [] });
-  const [parcelRecords, setParcelRecords] = useState<VrdsDashboardSnapshot["parcels"]>([]);
   const [loading, setLoading] = useState(true);
+  const { parcels: storeParcels } = useParcelStore({ history: true });
 
   useEffect(() => {
     const handleMetricVisibilityShortcut = (event: KeyboardEvent) => {
@@ -154,21 +169,44 @@ export default function VrdsDashboardPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([getDashboardSnapshot(), getParcels()])
-      .then(([data, parcelsData]) => {
+    const loadSnapshot = () => Promise.all([getVehicles(), getTrips(), getBookings(), getDrivers()])
+      .then(([vehiclesData, tripsData, bookingsData, driversData]) => {
         if (!active) return;
-        const payload = data?.data && typeof data.data === "object" ? data.data : data;
-        const parcelPayload = parcelsData?.data && Array.isArray(parcelsData.data) ? parcelsData.data : parcelsData;
-        setSnapshot(payload ?? { vehicles: [], trips: [], bookings: [], parcels: [], drivers: [] });
-        setParcelRecords(Array.isArray(parcelPayload) ? parcelPayload : []);
+        const toArray = (value: unknown) => {
+          if (Array.isArray(value)) return value;
+          if (value && typeof value === "object" && Array.isArray((value as { data?: unknown }).data)) {
+            return (value as { data: unknown[] }).data;
+          }
+          return [];
+        };
+        const vehicles = toArray(vehiclesData);
+        const trips = toArray(tripsData);
+        const bookings = toArray(bookingsData);
+        const drivers = toArray(driversData);
+        setSnapshot({
+          vehicles,
+          trips,
+          bookings,
+          drivers,
+          counts: {
+            vehicles: vehicles.length,
+            trips: trips.length,
+            bookings: bookings.length,
+            drivers: drivers.length,
+          },
+        });
       })
       .catch((error) => console.error("Failed to load fleet snapshot:", error))
       .finally(() => {
         if (active) setLoading(false);
       });
 
+    void loadSnapshot();
+    const intervalId = window.setInterval(() => void loadSnapshot(), 5000);
+
     return () => {
       active = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -178,43 +216,63 @@ export default function VrdsDashboardPage() {
     locationLat: vehicle.locationLat ?? vehicle.last_location_lat,
     locationLng: vehicle.locationLng ?? vehicle.last_location_lng,
   }));
-  const trips = snapshot.trips ?? [];
+  const allTrips = snapshot.trips ?? [];
+  const trips = allTrips.filter(isActiveTrip);
   const bookings = snapshot.bookings ?? [];
-  const parcels = (parcelRecords.length > 0 ? parcelRecords : snapshot.parcels ?? [])
+  const dashboardParcels = storeParcels
     .filter((parcel) => {
-      const status = String(parcel.status ?? parcel.parcel_status ?? "").trim();
-      const isTerminal = /delivered|cancelled|canceled|completed|closed/i.test(status);
-      const isAssigned = Boolean(
-        parcel.route_plan_id ?? parcel.routePlanId ?? parcel.route_id ?? parcel.routeId
-        ?? parcel.trip_id ?? parcel.tripId ?? parcel.booking_id ?? parcel.bookingId
-      );
-      return !isTerminal && !isAssigned;
+      const record = parcel as typeof parcel & { parcel_status?: string };
+      return DASHBOARD_PARCEL_STATUSES.has(normalizeRecordStatus(record.status ?? record.parcel_status));
     })
     .map((parcel) => ({
       ...parcel,
       status: parcel.status ?? "Unknown",
-      createdAt: parcel.createdAt ?? parcel.created_at,
-      updatedAt: parcel.updatedAt ?? parcel.updated_at,
+      createdAt: (parcel as typeof parcel & { createdAt?: string; created_at?: string }).createdAt
+        ?? (parcel as typeof parcel & { created_at?: string }).created_at,
+      updatedAt: (parcel as typeof parcel & { updatedAt?: string; updated_at?: string }).updatedAt
+        ?? (parcel as typeof parcel & { updated_at?: string }).updated_at,
     }));
-  const canonicalParcelStatus = (status: unknown) => String(status ?? "received").trim().toLowerCase().replace(/\s+/g, "_");
+  const activeTripIds = new Set(trips.map((trip) => String(trip.id ?? trip.trip_id ?? "")).filter(Boolean));
+  const activeBookingIds = new Set(bookings
+    .filter((booking: any) => !TERMINAL_STATUS_PATTERN.test(String(booking.status ?? "")))
+    .map((booking: any) => String(booking.id ?? ""))
+    .filter(Boolean));
+  const activeParcels = dashboardParcels.filter((parcel: any) => {
+    const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
+    return (
+      Date.now() - receivedAt < 1000 * 60 * 60 * 24 * 7 ||
+      (parcel.tripId && activeTripIds.has(String(parcel.tripId))) ||
+      (parcel.bookingId && activeBookingIds.has(String(parcel.bookingId)))
+    );
+  });
+  const archivedParcels = dashboardParcels.filter((parcel) => !activeParcels.includes(parcel));
+  const parcels = dashboardScope === "all"
+    ? dashboardParcels
+    : dashboardScope === "archived"
+      ? archivedParcels
+      : activeParcels;
+  const canonicalParcelStatus = (status: unknown) => normalizeRecordStatus(status || "received");
   const parcelStatusCounts = parcels.reduce(
     (counts, parcel) => {
-      const status = canonicalParcelStatus(parcel.status ?? parcel.parcel_status);
-      if (["picked_up", "pickedup", "booked", "assigned"].includes(status)) counts.pickedUp += 1;
-      else if (["in_transit", "transit", "dispatched", "dispatch", "delivering"].includes(status)) counts.inTransit += 1;
-      else if (["received", "pending", "ready", "ready_for_booking", "ready_for_pickup"].includes(status)) counts.received += 1;
+      const record = parcel as typeof parcel & { parcel_status?: string };
+      const status = canonicalParcelStatus(record.status ?? record.parcel_status);
+      if (["in_transit", "transit", "dispatched", "dispatch", "delivering"].includes(status)) counts.inTransit += 1;
+      else if (["booked", "assigned", "assigned_to_route", "out_for_pickup"].includes(status)) counts.booked += 1;
+      else if (["picked_up", "pickedup"].includes(status)) counts.pickedUp += 1;
+      else if (["delivered", "completed"].includes(status)) counts.delivered += 1;
+      else if (["delayed", "late", "exception"].includes(status)) counts.delayed += 1;
+      else if (["cancelled", "canceled"].includes(status)) counts.cancelled += 1;
       return counts;
     },
-    { received: 0, pickedUp: 0, inTransit: 0 }
+    { booked: 0, pickedUp: 0, inTransit: 0, delivered: 0, delayed: 0, cancelled: 0 }
   );
   const totalVehicles = snapshot.counts?.vehicles ?? vehicles.length;
   const totalParcels = parcels.length;
-  const activeTrips = trips.filter((trip: any) => /in[_ ]?transit|transit|active|assigned|moving|dispatched/i.test(String(trip.status ?? ""))).length;
+  const activeTrips = trips.length;
   const inTransitParcels = parcelStatusCounts.inTransit;
   const pickedUpParcels = parcelStatusCounts.pickedUp;
-  const bookedParcels = parcelStatusCounts.received;
-  const deliveredParcels = parcels.filter((parcel) => /delivered|completed/i.test(parcel.status ?? "")).length;
-  const delayedParcels = parcels.filter((parcel) => /delayed|late|exception/i.test(parcel.status ?? "")).length;
+  const bookedParcels = parcelStatusCounts.booked;
+  const delayedParcels = parcelStatusCounts.delayed;
   const activeVehicles = vehicles.filter((vehicle) => /active|available|ready|assigned|transit|in transit/i.test(vehicle.status ?? "")).length;
   const parcelShare = (count: number) => totalParcels > 0 ? `${((count / totalParcels) * 100).toFixed(1)}%` : "—";
   const activeVehicleShare = totalVehicles > 0 ? `${((activeVehicles / totalVehicles) * 100).toFixed(1)}%` : "—";
@@ -280,6 +338,7 @@ export default function VrdsDashboardPage() {
       };
     }),
     ...vehicles
+      .filter((vehicle) => /active|available|ready|assigned|transit|in transit/i.test(vehicle.status ?? ""))
       .filter((vehicle) => Number.isFinite(Number(vehicle.locationLat)) && Number.isFinite(Number(vehicle.locationLng)))
       .map((vehicle, index) => ({
         id: `vehicle-${vehicle.id || index}`,
@@ -292,7 +351,7 @@ export default function VrdsDashboardPage() {
           details: <div className="text-xs text-slate-600">Status: {vehicle.status || "Unknown"}</div>,
         },
       })),
-    ...parcels
+    ...activeParcels
       .map((parcel: any, index) => {
         const lat = Number(parcel.dest_lat ?? parcel.destLat ?? parcel.dropoff_latitude ?? parcel.dropoffLatitude ?? parcel.latitude ?? parcel.lat);
         const lng = Number(parcel.dest_lng ?? parcel.destLng ?? parcel.dropoff_longitude ?? parcel.dropoffLongitude ?? parcel.longitude ?? parcel.lng);
@@ -310,7 +369,7 @@ export default function VrdsDashboardPage() {
         };
       })
       .filter(Boolean),
-  ], [parcels, vehicles]);
+  ], [activeParcels, vehicles]);
   const displayMetricValue = (value: string) => showMetricValues ? value : "****";
   const alerts = useMemo(() => {
     const criticalTrips = trips.filter((trip) => /delayed|late|delay|exception|problem|hold/i.test(trip.status ?? ""));
@@ -346,7 +405,20 @@ export default function VrdsDashboardPage() {
       const nextDay = new Date(date);
       nextDay.setDate(nextDay.getDate() + 1);
       const parcelsOnDay = parcels.filter((parcel) => {
-        const rawDate = parcel.createdAt || parcel.created_at || parcel.updatedAt || parcel.updated_at;
+        const record = parcel as typeof parcel & {
+          createdAt?: string;
+          created_at?: string;
+          updatedAt?: string;
+          updated_at?: string;
+          receivedAt?: string;
+          received_at?: string;
+        };
+        const rawDate = record.receivedAt
+          || record.received_at
+          || record.createdAt
+          || record.created_at
+          || record.updatedAt
+          || record.updated_at;
         if (!rawDate) return false;
         const parcelDate = new Date(rawDate);
         return !Number.isNaN(parcelDate.getTime()) && parcelDate >= date && parcelDate < nextDay;
@@ -361,12 +433,13 @@ export default function VrdsDashboardPage() {
   }, [parcels]);
 
   const statusMixData = useMemo(() => [
-    { name: "In Transit", value: inTransitParcels || 0, color: "#ec4899" },
-    { name: "Picked Up", value: pickedUpParcels || 0, color: "#8b5cf6" },
+    { name: "Pick Up", value: pickedUpParcels || 0, color: "#8b5cf6" },
     { name: "Booked", value: bookedParcels || 0, color: "#f59e0b" },
-    { name: "Delivered", value: deliveredParcels || 0, color: "#10b981" },
+    { name: "In Transit", value: inTransitParcels || 0, color: "#ec4899" },
+    { name: "Delivered", value: parcelStatusCounts.delivered || 0, color: "#10b981" },
     { name: "Delayed", value: delayedParcels || 0, color: "#f43f5e" },
-  ], [inTransitParcels, pickedUpParcels, bookedParcels, deliveredParcels, delayedParcels]);
+    { name: "Cancelled", value: parcelStatusCounts.cancelled || 0, color: "#64748b" },
+  ], [inTransitParcels, pickedUpParcels, bookedParcels, delayedParcels, parcelStatusCounts]);
 
   const fleetHealthData = useMemo(() => {
     const counts = new Map<string, number>();
@@ -402,7 +475,6 @@ export default function VrdsDashboardPage() {
       ["In Transit", 0],
       ["Queued", 0],
       ["Delayed", 0],
-      ["Completed", 0],
     ]);
 
     for (const record of sourceRecords) {
@@ -412,16 +484,14 @@ export default function VrdsDashboardPage() {
         ? "Delayed"
         : /in[_ ]?transit|transit|active|assigned|moving|dispatched/i.test(status)
           ? "In Transit"
-          : /delivered|completed|arrived/i.test(status)
-            ? "Completed"
-            : "Queued";
+          : "Queued";
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 
     return Array.from(counts.entries()).map(([label, value]) => ({
       label,
       value,
-      color: label === "Delayed" ? "#f43f5e" : label === "In Transit" ? "#ec4899" : label === "Completed" ? "#10b981" : "#f59e0b",
+      color: label === "Delayed" ? "#f43f5e" : label === "In Transit" ? "#ec4899" : "#f59e0b",
     }));
   }, [bookings, trips]);
 
@@ -431,9 +501,12 @@ export default function VrdsDashboardPage() {
 
   const parcelStatusSeries = useMemo(() => {
     return [
-      { label: "Received", value: parcelStatusCounts.received, color: "#f59e0b" },
-      { label: "Picked Up", value: parcelStatusCounts.pickedUp, color: "#8b5cf6" },
+      { label: "Pick Up", value: parcelStatusCounts.pickedUp, color: "#8b5cf6" },
+      { label: "Booked", value: parcelStatusCounts.booked, color: "#f59e0b" },
       { label: "In Transit", value: parcelStatusCounts.inTransit, color: "#ec4899" },
+      { label: "Delivered", value: parcelStatusCounts.delivered, color: "#10b981" },
+      { label: "Delayed", value: parcelStatusCounts.delayed, color: "#f43f5e" },
+      { label: "Cancelled", value: parcelStatusCounts.cancelled, color: "#64748b" },
     ];
   }, [parcelStatusCounts]);
 
@@ -467,10 +540,28 @@ export default function VrdsDashboardPage() {
 
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-white/90 p-1.5">
+          {(["active", "archived", "all"] as const).map((scope) => (
+            <button
+              key={scope}
+              type="button"
+              onClick={() => setDashboardScope(scope)}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                dashboardScope === scope ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-pink-50 hover:text-pink-700"
+              }`}
+            >
+              {scope === "active" ? "Active" : scope === "archived" ? "Archived" : "All History"}
+            </button>
+          ))}
+          <span className="ml-auto px-2 text-xs text-slate-500">
+            {dashboardScope === "active" ? "7-day or active-trip parcels" : dashboardScope === "archived" ? "Outside the active window" : "All recognized parcel statuses"}
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard
             icon="inventory_2"
-            label="Total Parcels"
+            label={`${dashboardScope === "active" ? "Active" : dashboardScope === "archived" ? "Archived" : "All History"} Parcel Records`}
             value={displayMetricValue(String(totalParcels))}
             sub={<span className="text-slate-500">{parcelShare(inTransitParcels)} in transit</span>}
             progress={totalParcels > 0 ? 100 : 0}
@@ -557,7 +648,7 @@ export default function VrdsDashboardPage() {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Status</p>
-                <h3 className="text-base font-bold text-slate-900">Status Mix</h3>
+                <h3 className="text-base font-bold text-slate-900">Parcel Status Mix</h3>
               </div>
               <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">{parcels.length} items</span>
             </div>

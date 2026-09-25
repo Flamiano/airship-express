@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { ftmSupabase } from "@/app/(supplyChain)/lib/services/client/ftmSupabase";
+import { supabase } from "../../../lib/services/client/supabase";
+import { ftmSupabase } from "../../../lib/services/client/ftmSupabase";
 import { toast } from "sonner";
 
 export interface ExecutiveInsight {

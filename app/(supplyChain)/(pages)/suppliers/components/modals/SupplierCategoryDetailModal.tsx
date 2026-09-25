@@ -3,8 +3,8 @@
 "use client";
 
 import React from "react";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import Portal from "../../../../components/client/Portal";
+import { AppButton } from "../../../../components/ui/AppButton";
 import { SelectedChartData, PurchaseOrder } from "../../types";
 
 interface SupplierCategoryDetailModalProps {

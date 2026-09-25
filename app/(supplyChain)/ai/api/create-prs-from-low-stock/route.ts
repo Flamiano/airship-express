@@ -1,7 +1,7 @@
 // app/(supplyChain)/ai/api/create-prs-from-low-stock/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../lib/services/client/supabase";
 
 export async function POST(request: NextRequest) {
     try {
@@ -11,15 +11,17 @@ export async function POST(request: NextRequest) {
             role = "",
             user_name = "AI Assistant",
             user_email = "",
-            department = "Warehouse"
+            department = "Warehouse",
+            pagePermissions
         } = body;
 
-        // Authorization check: Strictly Admin, Executive, and Manager only
+        // Authorization check: Dynamic permissions for /procurement or Executive/Admin/Manager
         const normalizedRole = (role || "").toLowerCase().trim();
-        const allowedRoles = ["admin", "executive", "manager"];
-        if (!normalizedRole || !allowedRoles.includes(normalizedRole)) {
+        const configuredRoles: string[] = pagePermissions?.['/procurement'] || ["Executive", "Admin", "Manager"];
+        const isAllowed = normalizedRole === 'executive' || configuredRoles.some((r: string) => r.toLowerCase().trim() === normalizedRole);
+        if (!normalizedRole || !isAllowed) {
             return NextResponse.json(
-                { success: false, error: "Access denied. Only Admin, Executive, and Manager can create Purchase Requests." },
+                { success: false, error: "Access denied. You do not have permission to create Purchase Requests." },
                 { status: 403 }
             );
         }

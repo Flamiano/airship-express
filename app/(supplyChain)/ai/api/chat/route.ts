@@ -4,7 +4,7 @@ import { orchestrator } from "../../lib/orchestrator";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { question, history, role, userId, userEmail, userName } = body;
+        const { question, history, role, userId, userEmail, userName, pagePermissions } = body;
 
         if (!question || typeof question !== 'string') {
             return NextResponse.json(
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
             userAgent,
         };
 
-        const result = await orchestrator(question, history, role || "User", moderationContext);
+        const result = await orchestrator(question, history, role || "User", moderationContext, pagePermissions);
 
         return NextResponse.json({
             success: result.success,

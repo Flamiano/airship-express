@@ -1,21 +1,22 @@
 // app/(supplyChain)/ai/api/create-pos-from-requests/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
-import nodemailer from "nodemailer";
+import { supabase } from "../../../lib/services/client/supabase";
+import { buildEmailTemplate } from "../../../(pages)/procurement/api/send-email/template";
+import { sendSupplyChainEmail } from "../../../lib/email/mailer";
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { request_ids, action = "create_draft", send_email = false, role = "User", user_name = "AI Assistant" } = body;
+        const { request_ids, action = "create_draft", send_email = false, role = "User", user_name = "AI Assistant", pagePermissions } = body;
 
-        // Authorization check: Only Manager, Admin, Executive can generate POs
+        // Authorization check: Dynamic permissions for /purchase-orders or /procurement or Executive/Admin/Manager
         const normalizedRole = (role || "").toLowerCase().trim();
-        const allowedRoles = ["manager", "admin", "executive"];
-        if (normalizedRole && !allowedRoles.includes(normalizedRole)) {
+        const configuredRoles: string[] = pagePermissions?.['/purchase-orders'] || pagePermissions?.['/procurement'] || ["Executive", "Admin", "Manager"];
+        const isAllowed = normalizedRole === 'executive' || configuredRoles.some((r: string) => r.toLowerCase().trim() === normalizedRole);
+        if (normalizedRole && !isAllowed) {
             return NextResponse.json(
-                { success: false, error: "You are not authorized to create purchase orders from purchase requests." },
+                { success: false, error: "You do not have permission to create purchase orders." },
                 { status: 403 }
             );
         }
@@ -149,17 +150,9 @@ export async function POST(request: NextRequest) {
                     .update({ status: "Approved", updated_at: new Date().toISOString() })
                     .eq("id", pr.id);
 
-                // If user selected to send via Gmail
-                if (send_email && validSupplier?.email && process.env.EMAIL_SUPPLYCHAIN_USER && process.env.EMAIL_SUPPLYCHAIN_PASS) {
+                // If user selected to send via Email (Brevo / SMTP)
+                if (send_email && validSupplier?.email) {
                     try {
-                        const transporter = nodemailer.createTransport({
-                            service: "gmail",
-                            auth: {
-                                user: process.env.EMAIL_SUPPLYCHAIN_USER,
-                                pass: process.env.EMAIL_SUPPLYCHAIN_PASS,
-                            },
-                        });
-
                         const origin = request.nextUrl.origin || "https://airshipexpress.ph";
                         const confirmLink = `${origin}/procurement/confirm?po=${poNumber}`;
 
@@ -176,15 +169,16 @@ export async function POST(request: NextRequest) {
                             senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
                         });
 
-                        const info = await transporter.sendMail({
-                            from: `"AirshipExpress Procurement" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
+                        const sendResult = await sendSupplyChainEmail({
                             to: validSupplier.email,
                             subject: `Official Purchase Order: ${poNumber} from Airship Express`,
                             html: emailHtml,
+                            senderName: "Airship Express Procurement",
+                            senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
                             replyTo: process.env.EMAIL_SUPPLYCHAIN_USER,
                         });
 
-                        emailResults.push({ po_number: poNumber, recipient: validSupplier.email, status: "sent", messageId: info.messageId });
+                        emailResults.push({ po_number: poNumber, recipient: validSupplier.email, status: "sent", messageId: sendResult.messageId });
                     } catch (e: any) {
                         console.error(`Error emailing PO ${poNumber}:`, e);
                         emailResults.push({ po_number: poNumber, recipient: validSupplier.email, status: "failed", error: e.message });

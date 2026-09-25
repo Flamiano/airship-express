@@ -1,14 +1,34 @@
 const express = require('express');
 const router = express.Router();
-const { getSupabase } = require('../config/db');
+const { getServiceSupabase } = require('../config/db');
 
 const VALID_ROLES = new Set(['admin', 'fleet_manager', 'dispatcher', 'driver', 'customer']);
+const hasServiceRoleKey = Boolean(process.env.FTM_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 router.get('/users', async (req, res) => {
-  const supabase = getSupabase();
+  const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
 
   try {
+    if (!hasServiceRoleKey) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('users')
+        .select('id, email, full_name, role, phone, created_at, updated_at')
+        .order('created_at', { ascending: false });
+      if (profileError) return res.status(500).json({ error: profileError.message || 'Failed to fetch user profiles' });
+      return res.json((profiles || []).map((profile) => ({
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.full_name || null,
+        role: profile.role || null,
+        phone: profile.phone || null,
+        created_at: profile.created_at || null,
+        last_sign_in_at: null,
+        locked: false,
+        banned_until: null,
+      })));
+    }
+
     const { data: authData, error: authError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (authError) return res.status(500).json({ error: authError.message || 'Failed to fetch users' });
     const { data: profiles, error: profileError } = await supabase.from('users').select('id, email, full_name, role, phone, created_at, updated_at');
@@ -40,13 +60,28 @@ router.patch('/users/:id/role', async (req, res) => {
   if (!VALID_ROLES.has(role)) return res.status(400).json({ error: 'Invalid user role' });
   if (req.params.id === req.fleetUser?.id && role !== 'admin') return res.status(400).json({ error: 'You cannot remove your own admin role.' });
 
-  const supabase = getSupabase();
+  const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
+  if (!hasServiceRoleKey) return res.status(503).json({ error: 'Admin role changes require FTM_SUPABASE_SERVICE_ROLE_KEY on the backend.' });
   try {
+    const { data: existingProfile, error: existingProfileError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (existingProfileError) return res.status(500).json({ error: existingProfileError.message || 'Failed to read current user role' });
+
     const { data: updatedAuth, error: authError } = await supabase.auth.admin.updateUserById(req.params.id, { app_metadata: { role } });
     if (authError) return res.status(500).json({ error: authError.message || 'Failed to update auth role' });
     const { data: profile, error: profileError } = await supabase.from('users').update({ role }).eq('id', req.params.id).select('id, email, full_name, role').maybeSingle();
     if (profileError) return res.status(500).json({ error: profileError.message || 'Failed to update profile role' });
+    const { error: auditError } = await supabase.from('role_change_audit').insert({
+      changed_by: req.fleetUser.id,
+      target_user: req.params.id,
+      old_role: existingProfile?.role || null,
+      new_role: role,
+    });
+    if (auditError) console.error('adminRoutes role audit error:', auditError.message || auditError);
     return res.json(profile || { id: req.params.id, email: updatedAuth?.user?.email || null, role });
   } catch (error) {
     console.error('adminRoutes role update error:', error?.message || error);
@@ -56,8 +91,9 @@ router.patch('/users/:id/role', async (req, res) => {
 
 router.patch('/users/:id/lock', async (req, res) => {
   if (req.params.id === req.fleetUser?.id) return res.status(400).json({ error: 'You cannot lock your own account.' });
-  const supabase = getSupabase();
+  const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
+  if (!hasServiceRoleKey) return res.status(503).json({ error: 'Admin account locking requires FTM_SUPABASE_SERVICE_ROLE_KEY on the backend.' });
 
   try {
     const { data, error } = await supabase.auth.admin.updateUserById(req.params.id, { ban_duration: '876000h' });
@@ -70,8 +106,9 @@ router.patch('/users/:id/lock', async (req, res) => {
 });
 
 router.patch('/users/:id/unlock', async (req, res) => {
-  const supabase = getSupabase();
+  const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
+  if (!hasServiceRoleKey) return res.status(503).json({ error: 'Admin account unlocking requires FTM_SUPABASE_SERVICE_ROLE_KEY on the backend.' });
 
   try {
     const { data, error } = await supabase.auth.admin.updateUserById(req.params.id, { ban_duration: 'none' });
@@ -85,7 +122,7 @@ router.patch('/users/:id/unlock', async (req, res) => {
 
 // GET /api/admin/optimized_routes
 router.get('/optimized_routes', async (req, res) => {
-  const supabase = getSupabase();
+  const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
 
   try {
@@ -100,7 +137,7 @@ router.get('/optimized_routes', async (req, res) => {
 
 // GET /api/admin/optimized_routes/:id
 router.get('/optimized_routes/:id', async (req, res) => {
-  const supabase = getSupabase();
+  const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
   const id = req.params.id;
   try {

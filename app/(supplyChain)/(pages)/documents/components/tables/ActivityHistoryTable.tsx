@@ -4,9 +4,9 @@
 import React from 'react';
 import { Activity } from '../../types';
 import { getActionIcon } from '../../utils/formatters';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { Pagination } from "../../../../components/global/pagination";
 
 interface ActivityHistoryTableProps {
     activities: Activity[];

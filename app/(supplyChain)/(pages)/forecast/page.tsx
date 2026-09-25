@@ -1,14 +1,15 @@
 "use client";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Chart from "chart.js/auto";
-import { SessionGuard } from "@/app/(supplyChain)/components/server/SessionGuard";
-import Cards from "@/app/(supplyChain)/components/global/Cards";
-import { CardsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
+import { SessionGuard } from "../../components/server/SessionGuard";
+import Cards from "../../components/global/Cards";
+import { CardsSkeleton } from "../../components/ui/SkeletonLoader";
+import { AppButton } from "../../components/ui/AppButton";
+import { StatusBadge } from "../../components/ui/StatusBadge";
 import { toast } from "sonner";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import Portal from "../../components/client/Portal";
 import ForecastExportModal from "./components/ForecastExportModal";
+import MonthlyIntelligencePanel from "./components/MonthlyIntelligencePanel";
 interface ForecastData {
     raw_db_stats: {
         total_parcels_in_db: number;
@@ -485,6 +486,14 @@ export default function Forecast() {
                     </div>
 
                     <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                        <AppButton type="button" variant="pink" size="md" onClick={() => {
+                            const el = document.getElementById("monthly-intelligence-section");
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}>
+                            <i className="fa-solid fa-calendar-check text-xs" />
+                            <span>Monthly AI Audit</span>
+                        </AppButton>
+
                         <AppButton type="button" variant="primary" size="md" onClick={generateAiSummary} disabled={loading || summarizing || !forecastData}>
                             <i className={`fas ${summarizing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} text-xs`}/>
                             <span>{summarizing ? "Analyzing Models..." : "Summarize with AI"}</span>
@@ -501,6 +510,16 @@ export default function Forecast() {
                         </AppButton>
                     </div>
                 </div>
+
+                {loading && !forecastData ? (<CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4"/>) : (<div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Cards frontIcon="fa-solid fa-boxes-stacked" header="Actual Parcels in DB" data={String(totalDbParcels)} arrow="fa-solid fa-database" description="Max 6-month window" backBg="bg-ink dark:bg-slate-900" backHeader="Parcels Breakdown" headerTextColor="text-muted dark:text-white/80" backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nAggregation View: ${aggregationType}`} tooltip="View parcel records in Supabase" tooltipLink="/parcels" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
+
+                        <Cards frontIcon="fa-solid fa-chart-line-up" header="7-Day Predicted Volume" data={String(weeklyTotal)} arrow="fa-solid fa-arrow-trend-up" description={prevEval?.has_evaluation ? `${prevEval.met_percentage}% Target Met (Prev Wk) · ${forecastData?.parcel_7_day?.confidence || "0%"} CI` : `${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`} backBg="bg-ink dark:bg-slate-900" backHeader="Forecast Algorithm" headerTextColor="text-muted dark:text-white/80" backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units\n${prevEval?.summary ? `\n${prevEval.summary}` : ""}`} tooltip="Holt-Winters 7-day seasonality model" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
+
+                        <Cards frontIcon="fa-solid fa-money-bill-wave" header="Next Month PO Expense" data={`₱${expensePrediction.toLocaleString()}`} arrow="fa-solid fa-receipt" description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}` : "No qualifying paid POs"} backBg="bg-ink dark:bg-slate-900" backHeader="Expense Projections" headerTextColor="text-muted dark:text-white/80" backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}\nCalculated from Confirmed/Delivered paid purchase orders`} tooltip="View purchase orders" tooltipLink="/procurement?tab=all" frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
+
+                        <Cards frontIcon="fa-solid fa-truck-fast" header="Top Courier Partner" data={sortedCouriers[0]?.[0] || "None"} arrow="fa-solid fa-trophy" description={`${sortedCouriers[0]?.[1] || 0} parcels dispatched`} backBg="bg-ink dark:bg-slate-900" backHeader="Courier Leaderboard" headerTextColor="text-muted dark:text-white/80" backDescription={sortedCouriers.slice(0, 4).map(([name, count], i) => `${i + 1}. ${name}: ${count} parcels`).join('\n') || "No courier data"} tooltip="Courier volume share" frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
+                    </div>)}
 
                 {/* ai insights banner - compact preview & minimized state */}
                 {aiSummary && isAiMinimized && (
@@ -600,15 +619,8 @@ export default function Forecast() {
                     </div>
                 )}
 
-                {loading && !forecastData ? (<CardsSkeleton count={4} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4"/>) : (<div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <Cards frontIcon="fa-solid fa-boxes-stacked" header="Actual Parcels in DB" data={String(totalDbParcels)} arrow="fa-solid fa-database" description="Max 6-month window" backBg="bg-ink dark:bg-slate-900" backHeader="Parcels Breakdown" headerTextColor="text-muted dark:text-white/80" backDescription={`Total registered parcels: ${totalDbParcels}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'} (${sortedCouriers[0]?.[1] || 0})\nAggregation View: ${aggregationType}`} tooltip="View parcel records in Supabase" tooltipLink="/parcels" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
-
-                        <Cards frontIcon="fa-solid fa-chart-line-up" header="7-Day Predicted Volume" data={String(weeklyTotal)} arrow="fa-solid fa-arrow-trend-up" description={prevEval?.has_evaluation ? `${prevEval.met_percentage}% Target Met (Prev Wk) · ${forecastData?.parcel_7_day?.confidence || "0%"} CI` : `${forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval`} backBg="bg-ink dark:bg-slate-900" backHeader="Forecast Algorithm" headerTextColor="text-muted dark:text-white/80" backDescription={`Algorithm: ${forecastData?.parcel_7_day?.model_used || "Holt-Winters"}\nPrediction Horizon: Next 7 Days\nConfidence Interval: ${forecastData?.parcel_7_day?.confidence || "0%"}\nProjected 7-Day Total: ${weeklyTotal} units\n${prevEval?.summary ? `\n${prevEval.summary}` : ""}`} tooltip="Holt-Winters 7-day seasonality model" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
-
-                        <Cards frontIcon="fa-solid fa-money-bill-wave" header="Next Month PO Expense" data={`₱${expensePrediction.toLocaleString()}`} arrow="fa-solid fa-receipt" description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()} - ₱${expenseUpper.toLocaleString()}` : "No qualifying paid POs"} backBg="bg-ink dark:bg-slate-900" backHeader="Expense Projections" headerTextColor="text-muted dark:text-white/80" backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}\nCalculated from Confirmed/Delivered paid purchase orders`} tooltip="View purchase orders" tooltipLink="/procurement?tab=all" frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
-
-                        <Cards frontIcon="fa-solid fa-truck-fast" header="Top Courier Partner" data={sortedCouriers[0]?.[0] || "None"} arrow="fa-solid fa-trophy" description={`${sortedCouriers[0]?.[1] || 0} parcels dispatched`} backBg="bg-ink dark:bg-slate-900" backHeader="Courier Leaderboard" headerTextColor="text-muted dark:text-white/80" backDescription={sortedCouriers.slice(0, 4).map(([name, count], i) => `${i + 1}. ${name}: ${count} parcels`).join('\n') || "No courier data"} tooltip="Courier volume share" frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400"/>
-                    </div>)}
+                {/* Monthly Operational Intelligence & Predictive AI Panel */}
+                <MonthlyIntelligencePanel />
 
                {/* insights banner */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1128,11 +1140,11 @@ export default function Forecast() {
                             if (e.target === e.currentTarget)
                                 setIsAiModalOpen(false);
                         }}>
-                            <div className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75)] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden" data-lenis-prevent>
+                            <div className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] shadow-none max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden" data-lenis-prevent>
                                 {/* header */}
                                 <div className="p-5 border-b border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-b from-pink-500 to-pink-600 text-white flex items-center justify-center text-lg shadow-xs">
+                                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-b from-pink-500 to-pink-600 text-white flex items-center justify-center text-lg">
                                             <i className="fas fa-brain"></i>
                                         </div>
                                         <div>
@@ -1162,36 +1174,44 @@ export default function Forecast() {
 
                                 {/* body */}
                                 <div className="p-6 overflow-y-auto space-y-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain" data-lenis-prevent>
-                                    {summarizing ? (<div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                                            <div className="w-14 h-14 rounded-3xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center text-xl">
+                                    {summarizing ? (
+                                        <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
+                                            <div className="w-14 h-14 rounded-3xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-pink-500 dark:text-pink-400 flex items-center justify-center text-xl">
                                                 <i className="fas fa-wand-magic-sparkles fa-spin"></i>
                                             </div>
                                             <h3 className="font-bold text-slate-900 dark:text-white text-sm">Synthesizing Chart Data with Gemini AI...</h3>
                                             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
                                                 Evaluating 6-month historical counts, 95% surge boundaries, and paid procurement expenditures.
                                             </p>
-                                        </div>) : (<div className="space-y-4">
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
                                             {(aiSummary || '').split('\n\n').map((section, idx) => {
                                                 const lines = section.trim().split('\n');
                                                 const title = lines[0];
                                                 const content = lines.slice(1).join('\n');
                                                 const isHeader = /^[A-Z\s&/–-]+$/.test(title) && title.length < 50;
                                                 if (isHeader) {
-                                                    return (<div key={idx} className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
-                                                        <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-600"></span>
-                                                            {title}
+                                                    return (
+                                                        <div key={idx} className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
+                                                            <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-pink-600"></span>
+                                                                {title}
+                                                            </div>
+                                                            <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed pl-3.5 border-l-2 border-pink-500">
+                                                                {content}
+                                                            </div>
                                                         </div>
-                                                        <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed pl-3.5 border-l-2 border-pink-500">
-                                                            {content}
-                                                        </div>
-                                                    </div>);
+                                                    );
                                                 }
-                                                return (<div key={idx} className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] whitespace-pre-line text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                                                    {section}
-                                                </div>);
+                                                return (
+                                                    <div key={idx} className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 whitespace-pre-line text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                        {section}
+                                                    </div>
+                                                );
                                             })}
-                                        </div>)}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* footer */}

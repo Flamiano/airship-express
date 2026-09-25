@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { AppButton } from './AppButton';
 export interface FileTypeInfo {
     isPdf: boolean;
     isDoc: boolean;

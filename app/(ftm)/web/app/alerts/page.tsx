@@ -4,8 +4,9 @@ import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import GlobalNavbar from "../components/GlobalNavbar";
-import { SkeletonBlock } from "../components/PageSkeleton";
-import { getIncidentReports, getNotifications, getTrackingEvents } from "../lib/api";
+import GlobalFooter from "../components/GlobalFooter";
+import { getAlertHistory, getAlerts, updateAlertStatus } from "../lib/api";
+import { supabase } from "../lib/supabaseClient";
 
 // Types & Data Definitions
 type AlertTab = "overview" | "active" | "maintenance" | "safety" | "history";
@@ -13,6 +14,8 @@ type Severity = "critical" | "high" | "medium" | "low";
 
 interface ActiveAlert {
   id: string;
+  title: string;
+  reason: string;
   severity: Severity;
   label: string;
   subsystem: string;
@@ -20,9 +23,16 @@ interface ActiveAlert {
   vessel: string;
   message: string;
   actions: Array<"acknowledge" | "details" | "ticket">;
+  status?: string;
+  category?: string;
+  actionUrl?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  driverId?: string | null;
+  tripId?: string | null;
 }
-
 interface MaintenanceCard {
+  id: string;
   status: "overdue" | "upcoming" | "routine";
   statusLabel: string;
   due: string;
@@ -30,6 +40,7 @@ interface MaintenanceCard {
   description: string;
   vessel: string;
   wide?: boolean;
+  actionUrl?: string | null;
 }
 
 interface SafetyEvent {
@@ -41,6 +52,7 @@ interface SafetyEvent {
   vehicle: string;
   driver: string;
   location: string;
+  actionUrl?: string | null;
   detail: {
     incidentType: string;
     incidentDescription: string;
@@ -57,6 +69,7 @@ interface SafetyEvent {
 
 interface HistoryRow {
   id: string;
+  alertId?: string;
   timestamp: string;
   subsystem:
     | "FVM"
@@ -73,48 +86,48 @@ interface HistoryRow {
   ttr: string;
 }
 
-interface IncidentReport {
+interface CanonicalAlertRecord {
   id: string;
-  tripId?: string | null;
-  vehicleId?: string | null;
-  driverId?: string | null;
-  incidentType: string;
-  description: string;
-  photoUrl?: string | null;
-  reportedAt?: string | null;
+  alert_type?: string | null;
+  category?: string | null;
+  severity?: string | null;
+  title?: string | null;
+  message?: string | null;
+  status?: string | null;
+  vehicle_id?: string | null;
+  driver_id?: string | null;
+  trip_id?: string | null;
+  created_at?: string | null;
+  action_required?: boolean | null;
+  metadata?: Record<string, unknown> | null;
+  action_url?: string | null;
+  source_type?: string | null;
+  source_id?: string | null;
 }
 
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  notificationType?: string | null;
-  isRead: boolean;
-  createdAt?: string | null;
-}
-
-const incidentSeverityMap: Record<string, Severity> = {
-  Accident: "critical",
-  Breakdown: "high",
-  Theft: "critical",
-  Delay: "medium",
-  Other: "low",
-};
-
-const defaultIncidentSeverity: Severity = "medium";
-
-function mapIncidentToAlert(incident: IncidentReport): ActiveAlert {
-  const severity = incidentSeverityMap[incident.incidentType] ?? defaultIncidentSeverity;
+function mapCanonicalAlert(alert: CanonicalAlertRecord): ActiveAlert {
+  const severity = String(alert.severity || "MEDIUM").toLowerCase() as Severity;
   const label = severity === "critical" ? "Critical" : severity === "high" ? "High" : severity === "medium" ? "Medium" : "Low";
+  const metadataReason = typeof alert.metadata?.reason === "string" ? alert.metadata.reason : null;
+  const reason = metadataReason || alert.message || (alert.alert_type ? `${alert.alert_type.replace(/_/g, " ")} was reported.` : "The source event did not provide a reason.");
   return {
-    id: incident.id,
+    id: alert.id,
+    title: alert.title || alert.alert_type || "Operational alert",
+    reason,
     severity,
     label,
-    subsystem: `${incident.incidentType} Incident`,
-    time: incident.reportedAt ? new Date(incident.reportedAt).toLocaleString() : "Recent",
-    vessel: incident.vehicleId ? `Vehicle ${incident.vehicleId}` : incident.tripId ? `Trip ${incident.tripId}` : "Operational Unit",
-    message: incident.description || "Incident details are unavailable.",
+    subsystem: alert.category || alert.alert_type || "Operations",
+    time: alert.created_at ? new Date(alert.created_at).toLocaleString() : "Recent",
+    vessel: alert.vehicle_id || (alert.trip_id ? `Trip ${alert.trip_id}` : "Operational Unit"),
+    message: alert.message || alert.title || "Alert details are unavailable.",
     actions: severity === "critical" ? ["acknowledge", "details", "ticket"] : ["acknowledge", "details"],
+    status: alert.status,
+    category: alert.category,
+    actionUrl: alert.action_url || (alert.category === "MAINTENANCE" ? "/fvm/maintenance" : alert.category === "SAFETY" ? "/driver/safety" : alert.category === "FLEET" ? "/fvm" : "/vrds/bookings"),
+    sourceType: alert.source_type,
+    sourceId: alert.source_id,
+    driverId: alert.driver_id,
+    tripId: alert.trip_id,
   };
 }
 
@@ -133,13 +146,6 @@ const severityBorder: Record<Severity, string> = {
   low: "border-l-slate-400",
 };
 
-const toneIconBg: Record<string, string> = {
-  critical: "bg-rose-100 text-rose-600",
-  high: "bg-pink-100 text-pink-600",
-  info: "bg-pink-50 text-pink-500",
-  success: "bg-emerald-100 text-emerald-600",
-};
-
 // Root Component
 export default function AlertsPage() {
   return (
@@ -148,7 +154,6 @@ export default function AlertsPage() {
     </Suspense>
   );
 }
-
 function AlertsPageContent() {
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -161,7 +166,7 @@ function AlertsPageContent() {
       <GlobalNavbar />
 
       {/* Main Content Area - Maximized Width */}
-      <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-8 py-8">
+      <main className="flex-1 w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 py-8">
         {tab === "overview" && <MonitoringHub />}
         {tab === "active" && <ActiveAlerts />}
         {tab === "maintenance" && <MaintenanceNotifications />}
@@ -170,7 +175,7 @@ function AlertsPageContent() {
       </main>
 
       {/* Footer */}
-      <Footer />
+      <GlobalFooter />
     </div>
   );
 }
@@ -213,11 +218,12 @@ function MonitoringHub() {
 
   return (
     <section className="space-y-8">
-      <header className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm sm:p-8">
-        <p className="text-xs font-bold uppercase tracking-[0.24em] text-pink-600">Operations monitoring</p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">Alerts & history</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">Monitor operational risks, vehicle readiness, driver safety, and system activity from one place.</p>
-      </header>
+      <AlertHero
+        badge="FTM Alert Operations Hub"
+        icon="notifications_active"
+        title="Operational Alerts & Event Monitoring"
+        description="Review active risks, maintenance readiness, safety events, and system history from one connected workspace."
+      />
 
       <div className="grid gap-5 md:grid-cols-2">
         {cards.map((card) => (
@@ -240,6 +246,48 @@ function MonitoringHub() {
   );
 }
 
+function AlertHero({
+  badge,
+  icon,
+  title,
+  description,
+  metrics = [],
+}: {
+  badge: string;
+  icon: string;
+  title: string;
+  description: string;
+  metrics?: Array<{ label: string; value: string; description: string; tone?: string }>;
+}) {
+  return (
+    <section className="relative overflow-hidden rounded-3xl border border-pink-200/80 bg-gradient-to-br from-white via-pink-50/40 to-pink-100/30 p-6 shadow-sm backdrop-blur-md md:p-8">
+      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-pink-300/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-pink-400/10 blur-3xl" />
+      <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-100 px-3.5 py-1.5 text-xs font-semibold text-pink-700">
+            <span className="material-symbols-outlined text-[16px]">{icon}</span>
+            {badge}
+          </div>
+          <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">{title}</h1>
+          <p className="mt-3 text-base leading-relaxed text-slate-600 sm:text-lg">{description}</p>
+        </div>
+        {metrics.length > 0 && (
+          <div className="grid w-full grid-cols-2 gap-3.5 lg:max-w-2xl xl:grid-cols-4">
+            {metrics.map((metric) => (
+              <div key={metric.label} className="rounded-2xl border border-pink-100 bg-white/80 p-4 shadow-sm">
+                <span className="block text-xs font-bold uppercase tracking-wide text-slate-400">{metric.label}</span>
+                <strong className={`mt-3 block text-3xl font-black ${metric.tone || "text-slate-900"}`}>{metric.value}</strong>
+                <span className="mt-1 block text-xs text-slate-500">{metric.description}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // Active Alerts Tab Component
 function ActiveAlerts() {
   const PRIORITIES = ["All Priorities", "Critical", "High", "Medium", "Low"];
@@ -253,11 +301,9 @@ function ActiveAlerts() {
 
   const [priority, setPriority] = useState(PRIORITIES[0]);
   const [subsystem, setSubsystem] = useState(SUBSYSTEMS[0]);
-  const [selectedRange, setSelectedRange] = useState("Last 24 Hours");
   const [alerts, setAlerts] = useState<ActiveAlert[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Modals & Notices
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -268,69 +314,37 @@ function ActiveAlerts() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([getIncidentReports(), getNotifications()])
-      .then(([incidents, items]) => {
+    const loadAlerts = () => getAlerts({ status: "ACTIVE" })
+      .then((items) => {
         if (!active) return;
-        const mappedAlerts = incidents.map(mapIncidentToAlert);
+        const mappedAlerts = (Array.isArray(items) ? items : []).map(mapCanonicalAlert);
         setAlerts(mappedAlerts);
-        setNotifications(items);
         setLastUpdated(new Date().toLocaleString());
+        setLoadError(null);
       })
       .catch((error) => {
         console.error("Failed to load alerts data:", error);
         if (active) {
           setAlerts([]);
-          setNotifications([]);
+          setLoadError("Unable to load alerts. Please try again.");
         }
       })
       .finally(() => {
-        if (active) setIsLoading(false);
       });
+
+      void loadAlerts();
+      const intervalId = window.setInterval(() => void loadAlerts(), 30000);
+      const channel = supabase
+        .channel("ftm-alerts-live")
+        .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, () => void loadAlerts())
+        .subscribe();
 
     return () => {
       active = false;
+      window.clearInterval(intervalId);
+      void supabase.removeChannel(channel);
     };
   }, []);
-
-  const alertSummaryMetrics = useMemo(() => {
-    const criticalCount = alerts.filter((alert) => alert.severity === "critical").length;
-    const trackingCount = notifications.filter((notification) => {
-      const type = String(notification.notificationType ?? "").toLowerCase();
-      const text = `${notification.title ?? ""} ${notification.message ?? ""}`.toLowerCase();
-      return type.includes("track") || text.includes("track");
-    }).length;
-
-    return [
-      {
-        icon: "warning",
-        label: "Delivery Exceptions",
-        sub: "Immediate action required",
-        value: String(alerts.length),
-        tone: "critical" as const,
-      },
-      {
-        icon: "error",
-        label: "Tracking Alerts",
-        sub: "Review recommended",
-        value: trackingCount > 0 ? String(trackingCount) : String(notifications.length),
-        tone: "high" as const,
-      },
-      {
-        icon: "build",
-        label: "Bulk Handling Readiness",
-        sub: "Scheduled within 48h",
-        value: "5",
-        tone: "info" as const,
-      },
-      {
-        icon: "check_circle",
-        label: "Nationwide Coverage",
-        sub: "Service availability health",
-        value: "98%",
-        tone: "success" as const,
-      },
-    ];
-  }, [alerts, notifications]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
@@ -342,10 +356,28 @@ function ActiveAlerts() {
     });
   }, [priority, subsystem, alerts]);
 
-  const confirmAcknowledgeNow = (alert: ActiveAlert) => {
-    setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-    setConfirmAcknowledge(null);
-    showNotice(`Alert ${alert.id} acknowledged and archived.`);
+  const categoryChart = useMemo(() => {
+    const counts = new Map<string, number>();
+    alerts.forEach((alert) => {
+      const category = alert.category || alert.subsystem || "Uncategorized";
+      counts.set(category, (counts.get(category) || 0) + 1);
+    });
+    const rows = Array.from(counts, ([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+    const max = rows[0]?.count || 1;
+    return rows.map((row) => ({ ...row, width: `${Math.max(8, Math.round((row.count / max) * 100))}%` }));
+  }, [alerts]);
+
+  const confirmAcknowledgeNow = async (alert: ActiveAlert) => {
+    try {
+      await updateAlertStatus(alert.id, "ACKNOWLEDGED");
+      setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+      showNotice(`Alert ${alert.id} acknowledged.`);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Unable to acknowledge alert.");
+    } finally {
+      setConfirmAcknowledge(null);
+    }
   };
 
   const showNotice = (msg: string) => {
@@ -363,64 +395,27 @@ function ActiveAlerts() {
         </div>
       )}
 
-      {/* Header Title Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-pink-100 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Airship Express Operations Center
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            A Philippines-based courier service offering nationwide delivery, bulk parcel handling, real-time tracking, and dispatch dashboard visibility.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 bg-pink-50 px-4 py-2 rounded-xl border border-pink-100 text-pink-700 text-xs font-semibold flex-wrap">
-          <span>Total Active Issues:</span>
-          <span className="bg-pink-600 text-white px-2 py-0.5 rounded-md text-xs font-bold">
-            {alerts.length}
-          </span>
-          {lastUpdated && (
-            <span className="text-slate-500 font-medium">Updated {lastUpdated}</span>
-          )}
-          {isLoading && (
-            <SkeletonBlock className="h-5 w-40" />
-          )}
-        </div>
-      </div>
-
-      {/* Metric Cards Grid - Full Width Spanning */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {alertSummaryMetrics.map((metric) => (
-          <div
-            key={metric.label}
-            className="bg-white p-5 rounded-2xl border border-pink-100/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-          >
-            <div className="flex justify-between items-start">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                {metric.label}
-              </span>
-              <span
-                className={`p-2 rounded-xl text-lg font-bold ${toneIconBg[metric.tone]}`}
-              >
-                {metric.value}
-              </span>
-            </div>
-            <div className="mt-4">
-              <p className="text-xs text-slate-500 font-medium">{metric.sub}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      <AlertHero
+        badge="FTM Active Alert Operations"
+        icon="notifications_active"
+        title="Active Operational Alerts"
+        description={lastUpdated ? `Live alerts fetched from connected FTM modules. Updated ${lastUpdated}.` : "Live alerts fetched from connected FTM modules."}
+        metrics={[
+          { label: "Critical alerts", value: String(alerts.filter((alert) => alert.severity === "critical").length), description: "Immediate intervention", tone: "text-rose-600" },
+          { label: "High alerts", value: String(alerts.filter((alert) => alert.severity === "high").length), description: "Important problems", tone: "text-pink-600" },
+          { label: "Medium alerts", value: String(alerts.filter((alert) => alert.severity === "medium").length), description: "Require attention", tone: "text-amber-600" },
+          { label: "Low alerts", value: String(alerts.filter((alert) => alert.severity === "low").length), description: "Minor issues", tone: "text-slate-600" },
+        ]}
+      />
 
       {/* Filter Control Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-pink-100 shadow-sm flex flex-wrap gap-4 items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-pink-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Filters:
-          </span>
+          <span className="inline-flex items-center rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700">Alert filters</span>
           <select
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-pink-500"
+            className="rounded-xl border border-pink-100 bg-pink-50/30 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-pink-500 focus:outline-none"
           >
             {PRIORITIES.map((p) => (
               <option key={p}>{p}</option>
@@ -429,7 +424,7 @@ function ActiveAlerts() {
           <select
             value={subsystem}
             onChange={(e) => setSubsystem(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-pink-500"
+            className="rounded-xl border border-pink-100 bg-pink-50/30 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-pink-500 focus:outline-none"
           >
             {SUBSYSTEMS.map((s) => (
               <option key={s}>{s}</option>
@@ -437,23 +432,15 @@ function ActiveAlerts() {
           </select>
         </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            setSelectedRange((c) =>
-              c === "Last 24 Hours" ? "Last 7 Days" : "Last 24 Hours"
-            )
-          }
-          className="bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200/80 rounded-xl px-4 py-2 text-xs font-semibold transition-colors flex items-center gap-2"
-        >
-          <span>📅 Range: {selectedRange}</span>
-        </button>
+        <span className="text-xs font-medium text-slate-500">Live updates enabled</span>
       </div>
 
+      {loadError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{loadError}</div>}
+
       {/* Wide Content Grid - Feed + Map */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Main Feed Column (7 cols) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-pink-100 shadow-sm overflow-hidden flex flex-col">
+        <div className="lg:col-span-7 overflow-hidden rounded-3xl border border-pink-200/80 bg-white shadow-sm">
           <div className="p-4 border-b border-pink-100 bg-pink-50/40 flex justify-between items-center">
             <h2 className="font-bold text-slate-900 text-sm tracking-wide">
               Live Delivery Stream
@@ -494,7 +481,8 @@ function ActiveAlerts() {
                   </div>
 
                   <p className="text-sm font-medium text-slate-800 my-3 leading-relaxed">
-                    {alert.message}
+                    <span className="block font-bold text-slate-900">{alert.title}</span>
+                    <span className="mt-1 block"><span className="font-semibold text-slate-500">Reason:</span> {alert.reason}</span>
                   </p>
 
                   <div className="flex items-center gap-2 pt-1">
@@ -532,50 +520,39 @@ function ActiveAlerts() {
           </div>
         </div>
 
-        {/* Map & Live Monitoring Sidebar (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-pink-100 shadow-sm p-5 flex flex-col justify-between min-h-[450px]">
-          <div>
-            <div className="flex justify-between items-center mb-4 pb-3 border-b border-pink-100">
-              <h2 className="font-bold text-slate-900 text-sm">
-                Priority Delivery Corridor
-              </h2>
-              <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Radar
-              </span>
+        {/* Live alert distribution chart */}
+        <div className="lg:col-span-5 min-h-[450px] rounded-3xl border border-pink-200/80 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+            <div>
+              <h2 className="font-bold text-slate-900 text-sm">Active alerts by category</h2>
+              <p className="mt-1 text-xs text-slate-500">Calculated from the currently fetched active alerts.</p>
             </div>
+            <span className="text-xs font-semibold text-emerald-600">Live data</span>
+          </div>
 
-            {/* Mock Vector Map Visual Area */}
-            <div className="w-full h-64 bg-slate-900 rounded-xl relative overflow-hidden flex items-center justify-center border border-slate-800">
-              <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#ec4899_1px,transparent_1px)] [background-size:16px_16px]" />
-              <div className="text-center z-10">
-                <div className="w-12 h-12 rounded-full bg-pink-500/20 border border-pink-500/40 text-pink-400 flex items-center justify-center mx-auto mb-2 text-xl font-bold animate-pulse">
-                  📍
+          {categoryChart.length === 0 ? (
+            <div className="flex h-[360px] items-center justify-center text-center text-sm text-slate-500">
+              No active alert data is available for this chart.
+            </div>
+          ) : (
+            <div className="space-y-5 pt-6">
+              {categoryChart.map((row) => (
+                <div key={row.category}>
+                  <div className="mb-2 flex items-center justify-between gap-4 text-xs">
+                    <span className="font-semibold text-slate-700">{row.category}</span>
+                    <span className="font-bold text-slate-900">{row.count}</span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-100" aria-label={`${row.category}: ${row.count} active alerts`}>
+                    <div className="h-full rounded-full bg-pink-500 transition-all duration-500" style={{ width: row.width }} />
+                  </div>
                 </div>
-                <p className="text-xs font-mono text-pink-200">
-                  North Luzon Corridor Tracking
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Lat: 40.7128 | Lng: -74.0060
-                </p>
+              ))}
+              <div className="mt-8 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5 text-xs">
+                <div className="rounded-xl bg-pink-50 p-3"><span className="block text-slate-500">Total active</span><strong className="text-lg text-slate-900">{alerts.length}</strong></div>
+                <div className="rounded-xl bg-amber-50 p-3"><span className="block text-slate-500">Action required</span><strong className="text-lg text-slate-900">{alerts.filter((alert) => alert.actions.includes("acknowledge")).length}</strong></div>
               </div>
-
-              {/* Ping Markers */}
-              <div className="absolute top-1/4 left-1/3 w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-              <div className="absolute bottom-1/3 right-1/4 w-3 h-3 rounded-full bg-pink-400" />
             </div>
-          </div>
-
-          <div className="mt-4 p-4 rounded-xl bg-pink-50/60 border border-pink-100 text-xs space-y-2">
-            <div className="flex justify-between text-slate-600">
-              <span>Primary Delivery Corridor:</span>
-              <span className="font-bold text-slate-800">North Luzon Transit</span>
-            </div>
-            <div className="flex justify-between text-slate-600">
-              <span>Active Dispatch Units in Zone:</span>
-              <span className="font-bold text-slate-800">14 Units</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -585,7 +562,7 @@ function ActiveAlerts() {
           <p className="text-sm text-slate-600 mb-6">
             Are you sure you want to acknowledge alert{" "}
             <strong className="text-slate-900">{confirmAcknowledge.id}</strong>?
-            This will mark it as resolved and clear it from active monitoring.
+            This will mark it as acknowledged while keeping it in the alert history.
           </p>
           <div className="flex justify-end gap-3">
             <button
@@ -609,9 +586,9 @@ function ActiveAlerts() {
           <div className="space-y-4">
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
               <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block mb-1">
-                Message Body
+                Reason for alert
               </span>
-              <p className="text-sm font-medium text-slate-800">{detailsTarget.message}</p>
+              <p className="text-sm font-medium text-slate-800">{detailsTarget.reason}</p>
             </div>
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="p-3 rounded-xl bg-pink-50/50 border border-pink-100">
@@ -623,8 +600,19 @@ function ActiveAlerts() {
                 <span className="font-semibold text-slate-800">{detailsTarget.vessel}</span>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <span className="text-slate-400 block mb-0.5">Source</span>
+                <span className="font-semibold text-slate-800">{detailsTarget.sourceType || "System event"}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <span className="text-slate-400 block mb-0.5">Source ID</span>
+                <span className="font-semibold text-slate-800 break-all">{detailsTarget.sourceId || detailsTarget.id}</span>
+              </div>
+            </div>
           </div>
           <div className="flex justify-end mt-6">
+            {detailsTarget.actionUrl && <Link href={detailsTarget.actionUrl} className="mr-3 rounded-xl bg-pink-600 px-4 py-2 text-xs font-semibold text-white hover:bg-pink-700">Open source module</Link>}
             <button
               onClick={() => setDetailsTarget(null)}
               className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800"
@@ -680,39 +668,34 @@ function MaintenanceNotifications() {
   useEffect(() => {
     let active = true;
 
-    getNotifications()
+    getAlerts({ category: "MAINTENANCE" })
       .then((items) => {
         if (!active) return;
 
         const maintenanceNotes = items
-          .filter((item) => {
-            const type = String(item.notificationType ?? "").toLowerCase();
-            const text = `${item.title ?? ""} ${item.message ?? ""}`.toLowerCase();
-            return type.includes("maint") || text.includes("maintenance") || text.includes("service");
-          })
           .slice(0, 4)
           .map((item) => {
-            const statusType: MaintenanceCard["status"] = String(item.notificationType ?? "").toLowerCase().includes("overdue")
+            const statusType: MaintenanceCard["status"] = String(item.alert_type ?? "").toLowerCase().includes("overdue")
               ? "overdue"
-              : String(item.notificationType ?? "").toLowerCase().includes("routine")
+              : String(item.severity ?? "").toLowerCase() === "info"
               ? "routine"
               : "upcoming";
 
             return {
+              id: item.id,
               status: statusType,
-              statusLabel: item.notificationType ?? "Maintenance",
-              due: item.createdAt
-                ? `Created ${new Date(item.createdAt).toLocaleDateString()}`
+              statusLabel: item.status ?? item.alert_type ?? "Maintenance",
+              due: item.created_at
+                ? `Created ${new Date(item.created_at).toLocaleDateString()}`
                 : "Scheduled soon",
               title: item.title ?? "Maintenance update",
               description: item.message ?? "Review maintenance alert details.",
-              vessel: item.notificationType ?? "Maintenance",
+              vessel: item.vehicle_id ?? "Maintenance",
+              actionUrl: item.action_url || "/fvm/maintenance",
             };
           });
 
-        if (maintenanceNotes.length > 0) {
-          setMaintenanceItems(maintenanceNotes);
-        }
+        setMaintenanceItems(maintenanceNotes);
       })
       .catch((error) => {
         console.error("Failed to load maintenance notifications:", error);
@@ -725,17 +708,17 @@ function MaintenanceNotifications() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900">
-          Maintenance & Service Readiness
-        </h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          Support for hubs, scanners, dispatch devices, and fleet readiness across nationwide delivery operations.
-        </p>
-      </div>
+      <AlertHero
+        badge="FTM Fleet Maintenance"
+        icon="build"
+        title="Maintenance Notifications"
+        description="Review due, overdue, and vehicle service alerts from the connected fleet maintenance records."
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {maintenanceItems.map((card, idx) => (
+        {maintenanceItems.length === 0 ? (
+          <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">No maintenance notifications.</div>
+        ) : maintenanceItems.map((card, idx) => (
           <div
             key={idx}
             className={`bg-white p-6 rounded-2xl border border-pink-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
@@ -761,14 +744,14 @@ function MaintenanceNotifications() {
                 {card.title}
               </h3>
               <p className="text-slate-600 text-xs leading-relaxed">
-                {card.description}
+                <span className="font-semibold text-slate-500">Reason:</span> {card.description}
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-xs">
               <span className="text-slate-400 font-medium">{card.due}</span>
-              <button className="text-pink-600 font-semibold hover:underline">
-                View Checklist →
-              </button>
+              <Link href={card.actionUrl || "/fvm/maintenance"} className="text-pink-600 font-semibold hover:underline">
+                Open maintenance →
+              </Link>
             </div>
           </div>
         ))}
@@ -784,43 +767,42 @@ function SafetyEventsView() {
   useEffect(() => {
     let active = true;
 
-    getIncidentReports()
+    getAlerts({ category: "SAFETY" })
       .then((incidents) => {
         if (!active) return;
 
-        const liveEvents = incidents.slice(0, 4).map((incident) => ({
+        const liveEvents = (incidents as CanonicalAlertRecord[]).slice(0, 4).map((incident) => ({
           id: incident.id,
           icon:
-            incident.incidentType === "Accident"
+            String(incident.alert_type || "").toUpperCase().includes("ACCIDENT")
               ? "car_crash"
-              : incident.incidentType === "Breakdown"
+              : String(incident.alert_type || "").toUpperCase().includes("BREAKDOWN")
               ? "speed"
               : "route",
-          title: incident.incidentType || "Safety Incident",
-          time: incident.reportedAt
-            ? new Date(incident.reportedAt).toLocaleString()
+          title: incident.title || "Safety Incident",
+          time: incident.created_at
+            ? new Date(incident.created_at).toLocaleString()
             : "Recent",
-          severity: incidentSeverityMap[incident.incidentType] ?? defaultIncidentSeverity,
-          vehicle: incident.vehicleId ? `Vehicle ${incident.vehicleId}` : "Unknown Unit",
-          driver: incident.driverId ? `Driver ${incident.driverId}` : "Dispatch Team",
-          location: "Philippines",
+          severity: String(incident.severity || "MEDIUM").toLowerCase() as Severity,
+          vehicle: incident.vehicle_id || "Vehicle unavailable",
+          driver: incident.driver_id || "Driver unavailable",
+          location: typeof incident.metadata?.location === "string" ? incident.metadata.location : "Location unavailable",
+          actionUrl: incident.action_url || "/driver/safety",
           detail: {
-            incidentType: incident.incidentType,
-            incidentDescription: incident.description,
-            speedBefore: "N/A",
-            speedAfter: "N/A",
-            driverName: incident.driverId ? `Driver ${incident.driverId}` : "Unknown",
-            driverId: incident.driverId ?? "Unknown",
-            absActivation: "Unknown",
-            weather: "Unknown",
-            loadStatus: "Unknown",
-            coordinates: "N/A",
+            incidentType: incident.alert_type,
+            incidentDescription: incident.message,
+            driverName: incident.driver_id || "Driver unavailable",
+            driverId: incident.driver_id || "Driver unavailable",
+            absActivation: "Unavailable",
+            weather: "Unavailable",
+            loadStatus: "Unavailable",
+            coordinates: typeof incident.metadata?.latitude === "number" && typeof incident.metadata?.longitude === "number"
+              ? `${incident.metadata.latitude}, ${incident.metadata.longitude}`
+              : "Location unavailable",
           },
         }));
 
-        if (liveEvents.length > 0) {
-          setSafetyEventItems(liveEvents);
-        }
+        setSafetyEventItems(liveEvents);
       })
       .catch((error) => {
         console.error("Failed to load safety events:", error);
@@ -833,15 +815,17 @@ function SafetyEventsView() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900">Delivery Safety & Incident Logs</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          Parcel handling exceptions, route compliance events, and driver safety reports for Airship Express operations.
-        </p>
-      </div>
+      <AlertHero
+        badge="FTM Safety Operations"
+        icon="health_and_safety"
+        title="Safety Events & Incident Logs"
+        description="Review driver-reported incidents, vehicle breakdowns, route issues, and other connected safety events."
+      />
 
       <div className="grid grid-cols-1 gap-4">
-        {safetyEventItems.map((evt) => (
+        {safetyEventItems.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">No safety events recorded.</div>
+        ) : safetyEventItems.map((evt) => (
           <div
             key={evt.id}
             className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm flex flex-col md:flex-row justify-between gap-6"
@@ -857,7 +841,7 @@ function SafetyEventsView() {
                 Location: {evt.location} • Time: {evt.time}
               </p>
               <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                {evt.detail.incidentDescription}
+                <span className="font-semibold text-slate-500">Reason:</span> {evt.detail.incidentDescription}
               </p>
             </div>
 
@@ -874,9 +858,9 @@ function SafetyEventsView() {
                   {evt.vehicle}
                 </span>
               </div>
-              <button className="bg-pink-50 hover:bg-pink-100 text-pink-700 font-semibold py-2 rounded-xl transition-all border border-pink-200/80">
-                Download Telemetry Log
-              </button>
+              <Link href={evt.actionUrl || "/driver/safety"} className="bg-pink-50 hover:bg-pink-100 text-pink-700 font-semibold py-2 text-center rounded-xl transition-all border border-pink-200/80">
+                Open safety record
+              </Link>
             </div>
           </div>
         ))}
@@ -892,61 +876,20 @@ function SystemHistoryView() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([getIncidentReports(), getNotifications(), getTrackingEvents()])
-      .then(([incidents, notifications, trackingEvents]) => {
+    getAlertHistory()
+      .then((history) => {
         if (!active) return;
 
-        const incidentRows: HistoryRow[] = incidents.map((incident) => ({
-          id: incident.id,
-          timestamp: incident.reportedAt
-            ? new Date(incident.reportedAt).toLocaleDateString()
-            : "Recent",
-          subsystem: "Safety",
-          description: incident.description,
-          severity: incidentSeverityMap[incident.incidentType] ?? defaultIncidentSeverity,
-          ttr: "N/A",
-        }));
-
-        const notificationRows: HistoryRow[] = notifications.map((notification) => {
-          const subsystemLabel = String(notification.notificationType ?? "").toLowerCase();
-          const subsystemValue: HistoryRow["subsystem"] = subsystemLabel.includes("track")
-            ? "Tracking"
-            : subsystemLabel.includes("dispatch")
-            ? "Dispatch"
-            : subsystemLabel.includes("fuel")
-            ? "Fuel"
-            : subsystemLabel.includes("bulk")
-            ? "Bulk Handling"
-            : subsystemLabel.includes("fleet")
-            ? "Fleet"
-            : subsystemLabel.includes("safety")
-            ? "Safety"
-            : "Notifications";
-
-          return {
-            id: notification.id,
-            timestamp: notification.createdAt
-              ? new Date(notification.createdAt).toLocaleDateString()
-              : "Recent",
-            subsystem: subsystemValue,
-            description: `${notification.title ?? "Notification"}: ${notification.message ?? "No details."}`,
-            severity: "medium" as Severity,
+        const rows: HistoryRow[] = (Array.isArray(history) ? history : [])
+          .map((entry: { id: string; created_at?: string; description?: string; action?: string; alerts?: CanonicalAlertRecord }) => ({
+            id: entry.id,
+            alertId: entry.alerts?.id,
+            timestamp: entry.created_at ? new Date(entry.created_at).toLocaleString() : "Recent",
+            subsystem: (entry.alerts?.category || "Notifications") as HistoryRow["subsystem"],
+            description: entry.description || `${entry.action}: ${entry.alerts?.title || "Alert"}`,
+            severity: String(entry.alerts?.severity || "MEDIUM").toLowerCase() as Severity,
             ttr: "N/A",
-          };
-        });
-
-        const trackingRows: HistoryRow[] = trackingEvents.slice(0, 4).map((event) => ({
-          id: event.id,
-          timestamp: event.recordedAt
-            ? new Date(event.recordedAt).toLocaleDateString()
-            : "Recent",
-          subsystem: "Tracking",
-          description: `Vehicle ${event.entityId ?? event.tripId ?? "unknown"} reported at ${event.latitude}, ${event.longitude}. Speed ${event.speed} km/h.`,
-          severity: "low" as Severity,
-          ttr: "N/A",
-        }));
-
-        const rows: HistoryRow[] = [...incidentRows, ...notificationRows, ...trackingRows]
+          }))
           .sort((a, b) => {
             const aTime = new Date(a.timestamp).getTime() || 0;
             const bTime = new Date(b.timestamp).getTime() || 0;
@@ -954,9 +897,7 @@ function SystemHistoryView() {
           })
           .slice(0, 6);
 
-        if (rows.length > 0) {
-          setHistoryItems(rows);
-        }
+        setHistoryItems(rows);
       })
       .catch((error) => {
         console.error("Failed to load system history:", error);
@@ -969,12 +910,12 @@ function SystemHistoryView() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl border border-pink-100 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900">Operational History</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          Archived dispatch incidents, tracking events, and service resolution metrics.
-        </p>
-      </div>
+      <AlertHero
+        badge="FTM System History"
+        icon="history"
+        title="Alert & Operational History"
+        description="Review the append-only timeline of alert creation, acknowledgement, assignment, and resolution actions."
+      />
 
       <div className="bg-white rounded-2xl border border-pink-100 shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse text-xs">
@@ -988,7 +929,9 @@ function SystemHistoryView() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-medium">
-            {historyItems.map((row) => (
+            {historyItems.length === 0 ? (
+              <tr><td colSpan={5} className="p-12 text-center text-sm text-slate-500">No alert history available.</td></tr>
+            ) : historyItems.map((row) => (
               <tr key={row.id} className="hover:bg-pink-50/20 transition-all">
                 <td className="p-4 font-mono font-bold text-slate-700">{row.id}</td>
                 <td className="p-4 text-slate-500">{row.timestamp}</td>
@@ -997,7 +940,13 @@ function SystemHistoryView() {
                     {row.subsystem}
                   </span>
                 </td>
-                <td className="p-4 text-slate-800 max-w-md">{row.description}</td>
+                <td className="p-4 text-slate-800 max-w-md">
+                  {row.alertId ? (
+                    <Link href={`/alerts?tab=active&alert=${encodeURIComponent(row.alertId)}`} className="hover:text-pink-700 hover:underline">
+                      {row.description}
+                    </Link>
+                  ) : row.description}
+                </td>
                 <td className="p-4 font-mono text-pink-600 font-bold">{row.ttr}</td>
               </tr>
             ))}
@@ -1033,30 +982,5 @@ function Modal({
         {children}
       </div>
     </div>
-  );
-}
-
-// Global Footer Component
-function Footer() {
-  return (
-    <footer className="mt-12 bg-white border-t border-pink-100 py-6 text-xs text-slate-500">
-      <div className="max-w-[1800px] mx-auto px-4 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-900">Airship Express</span>
-          <span>© 2026 Philippines-based courier service</span>
-        </div>
-        <div className="flex gap-6 font-medium text-slate-600">
-          <a href="#" className="hover:text-pink-600 transition-colors">
-            Privacy Policy
-          </a>
-          <a href="#" className="hover:text-pink-600 transition-colors">
-            Terms of Service
-          </a>
-          <a href="#" className="hover:text-pink-600 transition-colors">
-            API Operational Status
-          </a>
-        </div>
-      </div>
-    </footer>
   );
 }

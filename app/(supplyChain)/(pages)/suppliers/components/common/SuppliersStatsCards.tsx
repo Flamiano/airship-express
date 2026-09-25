@@ -3,8 +3,8 @@
 "use client";
 
 import React from "react";
-import Cards from "@/app/(supplyChain)/components/global/Cards";
-import { CardsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import Cards from "../../../../components/global/Cards";
+import { CardsSkeleton } from "../../../../components/ui/SkeletonLoader";
 import { Supplier, SupplierStats } from "../../types";
 
 interface SuppliersStatsCardsProps {

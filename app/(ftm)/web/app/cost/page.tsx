@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import GlobalNavbar from "../components/GlobalNavbar";
 import GlobalFooter from "../components/GlobalFooter";
 import { KpiGrid } from "./src/components/KpiRow";
@@ -85,9 +88,13 @@ function normalizeDate(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function isFuelCategory(value?: string | null) {
+  return /fuel|energy/i.test(String(value ?? ""));
+}
+
 function normalizeCostEntry(entry: any): CostEntry {
   const rawCategory = String(entry?.category ?? "Other").trim();
-  const category = rawCategory.toLowerCase().includes("fuel")
+  const category = isFuelCategory(rawCategory)
     ? "Fuel"
     : rawCategory.toLowerCase().includes("maintenance") || rawCategory.toLowerCase().includes("service") || rawCategory.toLowerCase().includes("repair")
       ? "Maintenance"
@@ -197,7 +204,7 @@ function buildKpis(
     0
   );
   const fuelCost = entries
-    .filter((entry) => entry.category === "Fuel")
+    .filter((entry) => isFuelCategory(entry.category))
     .reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
   const maintenanceCost = entries
     .filter((entry) => entry.category === "Maintenance")
@@ -241,8 +248,8 @@ function buildKpis(
     changeValue > 0 ? "up" : changeValue < 0 ? "down" : "flat";
   const currentMonthTotal = currentMonthEntries.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
   const previousMonthTotal = previousMonthEntries.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
-  const currentFuelCost = currentMonthEntries.filter((entry) => entry.category === "Fuel").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
-  const previousFuelCost = previousMonthEntries.filter((entry) => entry.category === "Fuel").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const currentFuelCost = currentMonthEntries.filter((entry) => isFuelCategory(entry.category)).reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const previousFuelCost = previousMonthEntries.filter((entry) => isFuelCategory(entry.category)).reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
   const currentMaintenanceCost = currentMonthEntries.filter((entry) => entry.category === "Maintenance").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
   const previousMaintenanceCost = previousMonthEntries.filter((entry) => entry.category === "Maintenance").reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
   const currentDriverAllowanceCost = categoryCost(currentMonthEntries, driverAllowancePattern);
@@ -380,7 +387,7 @@ function buildKpis(
 
 function buildInsights(entries: CostEntry[], totalCost: number): Insight[] {
   const fuelCost = entries
-    .filter((entry) => entry.category === "Fuel")
+    .filter((entry) => isFuelCategory(entry.category))
     .reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
   const maintenanceCost = entries
     .filter((entry) => entry.category === "Maintenance")
@@ -426,15 +433,27 @@ function buildInsights(entries: CostEntry[], totalCost: number): Insight[] {
   ];
 }
 
-export default async function Home() {
-  let costEntries: CostEntry[] = [];
+export default function Home() {
+  const [costEntries, setCostEntries] = useState<CostEntry[]>([]);
 
-  try {
-    const loadedEntries = await getCostEntries();
-    costEntries = Array.isArray(loadedEntries) ? loadedEntries.map(normalizeCostEntry) : [];
-  } catch (error) {
-    console.error("Failed to load cost entries:", error);
-  }
+  useEffect(() => {
+    let mounted = true;
+
+    void getCostEntries()
+      .then((loadedEntries) => {
+        if (!mounted) return;
+        setCostEntries(
+          Array.isArray(loadedEntries) ? loadedEntries.map(normalizeCostEntry) : []
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to load cost entries:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const totalCost = costEntries.reduce(
     (sum, entry) => sum + (entry.amount ?? 0),
@@ -491,74 +510,6 @@ export default async function Home() {
             totalCost={totalCost}
           />
         </section>
-
-        {/* Receipt Gallery Section */}
-        {(() => {
-          const receiptEntries = costEntries.filter((entry) => !!entry.receipt_image);
-
-          if (receiptEntries.length === 0) {
-            return null;
-          }
-
-          return (
-            <section className="bg-white p-6 rounded-xl border border-pink-100 shadow-sm">
-              <div className="flex items-center justify-between gap-3 mb-5">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Receipts</p>
-                  <h2 className="text-xl font-extrabold text-on-background">Driver expense gallery</h2>
-                </div>
-                <span className="rounded-full bg-primary-container/20 text-primary text-xs font-semibold px-3 py-1.5 border border-primary/30">
-                  {receiptEntries.length} uploads
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {receiptEntries.slice(0, 9).map((entry) => (
-                  <div key={entry.id} className="group overflow-hidden rounded-lg border border-pink-100 bg-white transition-all hover:shadow-sm">
-                    <div className="relative aspect-[4/3] overflow-hidden bg-pink-50">
-                      <img
-                        src={entry.receipt_image ?? undefined}
-                        alt={`${entry.category} receipt`}
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                      />
-                    </div>
-
-                    <div className="p-4">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="inline-flex items-center rounded-full bg-primary-container text-primary px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em]">
-                          {entry.category}
-                        </span>
-                        <span className="text-sm font-bold text-on-surface">
-                          {entry.amount != null ? formatCurrency(entry.amount) : "—"}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-secondary mb-1">
-                        {entry.entryDate ? new Date(entry.entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No date"}
-                      </p>
-
-                      {entry.remarks ? (
-                        <p className="text-sm text-secondary line-clamp-2">{entry.remarks}</p>
-                      ) : (
-                        <p className="text-sm text-secondary/70">No note attached</p>
-                      )}
-
-                      <a
-                        href={entry.receipt_image ?? undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-container"
-                      >
-                        View original
-                        <span className="material-symbols-outlined text-sm">open_in_new</span>
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          );
-        })()}
 
         {/* Insights and records */}
         <section>

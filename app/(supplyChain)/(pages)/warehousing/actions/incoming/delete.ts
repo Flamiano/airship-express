@@ -1,9 +1,9 @@
 "use server";
 
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../../lib/services/client/supabase";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { isRateLimited } from "@/app/(supplyChain)/components/global/rateLimit";
+import { isRateLimited } from "../../../../components/global/rateLimit";
 
 
 export async function deleteParcel(parcelId: number) {

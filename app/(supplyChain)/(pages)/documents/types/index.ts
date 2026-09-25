@@ -1,5 +1,5 @@
 // type definitions for document management, suppliers, and audit activity history
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { user } from "../../../lib/services/Class/user";
 
 export interface Document {
     id: string;
@@ -32,6 +32,8 @@ export interface Document {
         total_amount: number;
     } | null;
     force_user_name?: string | null;
+    Price?: string | null;
+    "Price"?: string | null;
 }
 
 export interface Supplier {

@@ -3,6 +3,9 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppRole, getCurrentRole, getDashboardRouteForRole } from "../lib/roleAccess";
+import { getAllowedNavPaths, getProfileActions } from "../lib/permissions";
+import { normalizeRole } from "../lib/roleAccess";
+import { supabase } from "../lib/supabaseClient";
 import { signOut } from "../lib/auth";
 import ThemeToggle from "./ThemeToggle";
 
@@ -113,13 +116,8 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
     "/vrds/history",
   ],
   dispatcher: [
-    "/dashboard",
     "/alerts",
-    "/cost",
     "/driver/overview",
-    "/fuel",
-    "/fuel/receipts",
-    "/fuel/parcel-history",
     "/vrds/dashboard",
     "/vrds/parcels",
     "/vrds/bookings",
@@ -131,6 +129,8 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
     "/dashboard",
     "/driver/overview",
     "/fuel",
+    "/fuel/efficiency",
+    "/fuel/refueling-log",
     "/alerts",
   ],
   customer: [
@@ -151,7 +151,7 @@ export default function GlobalNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileChild, setMobileChild] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [currentRole, setCurrentRole] = useState<AppRole | null>(null);
+  const [currentRole, setCurrentRole] = useState<AppRole | null>(() => getCurrentRole());
   const [profileName, setProfileName] = useState("Account");
   const [profileEmail, setProfileEmail] = useState("account@airship.com");
   const navRef = useRef<HTMLElement | null>(null);
@@ -166,14 +166,29 @@ export default function GlobalNavbar() {
     .join("") || "A";
 
   useEffect(() => {
-    setCurrentRole(getCurrentRole());
-    const storedEmail = window.localStorage.getItem("email");
-    setProfileName(window.localStorage.getItem("displayName") || storedEmail || "Account");
-    setProfileEmail(storedEmail || "account@airship.com");
+    let active = true;
+    const hydrateProfile = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!active) return;
+      const authUser = data.user;
+      const role = normalizeRole(authUser?.app_metadata?.role ?? authUser?.user_metadata?.role) ?? getCurrentRole();
+      const storedEmail = window.localStorage.getItem("email");
+      setCurrentRole(role);
+      setProfileName(authUser?.user_metadata?.full_name || authUser?.email || window.localStorage.getItem("displayName") || storedEmail || "Account");
+      setProfileEmail(authUser?.email || storedEmail || "account@airship.com");
+    };
+    void hydrateProfile();
+    const { data: subscription } = supabase.auth.onAuthStateChange(() => void hydrateProfile());
+    return () => {
+      active = false;
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
-  const allowedPaths = currentRole ? ROLE_NAV_PATHS[currentRole] : ["/dashboard"];
+  const allowedPaths = currentRole ? getAllowedNavPaths(currentRole) : [];
+  const profileActions = getProfileActions(currentRole);
   const isAllowedPath = (path: string) => allowedPaths.includes(path.split("?")[0]);
+  const primaryNavPath = currentRole === "fleet_manager" ? "/dashboard" : homeDashboardPath;
   const visibleItems = ITEMS.map((item) => {
     const visibleChildren = item.children?.filter((child) => isAllowedPath(child.path));
 
@@ -182,7 +197,13 @@ export default function GlobalNavbar() {
     }
 
     return visibleChildren?.length ? { ...item, children: visibleChildren } : null;
-  }).filter((item): item is Item => item !== null);
+  }).filter((item): item is Item => item !== null).sort((left, right) => {
+    const homePath = primaryNavPath.split("?")[0];
+    const leftIsHome = left.path === homePath;
+    const rightIsHome = right.path === homePath;
+    if (leftIsHome === rightIsHome) return 0;
+    return leftIsHome ? -1 : 1;
+  });
 
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -239,11 +260,6 @@ export default function GlobalNavbar() {
     router.push("/auth");
   };
 
-  const handleAccountSettings = () => {
-    setProfileOpen(false);
-    router.push("/account/settings");
-  };
-
   return (
     <header className="sticky top-0 z-[1101] w-full">
       <div className="hidden border-b border-white/10 bg-[#17151a] text-xs text-white/70 lg:block">
@@ -261,9 +277,12 @@ export default function GlobalNavbar() {
             {visibleItems.map((item) => (
               <div key={item.path} className="relative shrink-0" onMouseEnter={() => item.children && setOpenMenu(item.path)} onMouseLeave={() => item.children && setOpenMenu(null)}>
                 {item.children ? (
-                  <button type="button" onClick={() => setOpenMenu(openMenu === item.path ? null : item.path)} aria-haspopup="menu" aria-expanded={openMenu === item.path} className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${active(item) || openMenu === item.path ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>
-                    {item.label}<span className={`material-symbols-outlined text-[16px] transition-transform ${openMenu === item.path ? "rotate-180" : ""}`}>expand_more</span>
-                  </button>
+                  <div className={`flex items-center whitespace-nowrap rounded-lg text-xs font-semibold transition-colors ${active(item) || openMenu === item.path ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>
+                    <a href={item.path} className="rounded-l-lg px-3 py-2">{item.label}</a>
+                    <button type="button" onClick={() => setOpenMenu(openMenu === item.path ? null : item.path)} aria-haspopup="menu" aria-expanded={openMenu === item.path} aria-label={`Open ${item.label} menu`} className="rounded-r-lg px-1.5 py-2">
+                      <span className={`material-symbols-outlined text-[16px] transition-transform ${openMenu === item.path ? "rotate-180" : ""}`}>expand_more</span>
+                    </button>
+                  </div>
                 ) : <a href={item.path} className={`block whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${active(item) ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>{item.label}</a>}
                 {item.children && openMenu === item.path && (
                   <div className={`absolute top-full z-[1200] pt-2 ${item.children.length > 4 ? "left-1/2 w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2" : "left-0 w-72"}`} role="menu">
@@ -318,23 +337,22 @@ export default function GlobalNavbar() {
                 </div>
 
                 <div className="p-2">
-                  <button type="button" onClick={handleAccountSettings} className="flex w-full items-center gap-3 rounded-lg bg-pink-50 px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-100">
+                  <a href="/account/profile" onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-3 rounded-lg bg-pink-50 px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-100">
                     <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">person</span>
                     <span>Profile</span>
-                  </button>
+                  </a>
                   <a href={homeDashboardPath} onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
                     <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">dashboard</span>
                     <span>Dashboard</span>
                   </a>
-                  <button type="button" onClick={handleAccountSettings} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                  {profileActions.userManagement && <a href="/users" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">manage_accounts</span>
+                    <span>User Management</span>
+                  </a>}
+                  {profileActions.settings && <a href="/account/settings" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
                     <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">settings</span>
                     <span>Settings</span>
-                  </button>
-                  <button type="button" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
-                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">notifications</span>
-                    <span>Messages</span>
-                    <span className="ml-auto rounded-full bg-pink-100 px-2 py-0.5 text-[10px] font-extrabold text-pink-700">3</span>
-                  </button>
+                  </a>}
                   <div className="my-1.5 border-t border-slate-100" />
                   <button type="button" onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
                     <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">logout</span>
@@ -348,7 +366,7 @@ export default function GlobalNavbar() {
           <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-[#141d23] hover:bg-pink-50 lg:hidden" aria-label="Toggle menu" aria-expanded={mobileOpen}><span className="material-symbols-outlined">{mobileOpen ? "close" : "menu"}</span></button>
         </div>
       </div>
-      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4"><button type="button" onClick={handleAccountSettings} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></button><button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div></div>}
+      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4">{profileActions.userManagement && <a href="/users" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>User management</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}{profileActions.settings && <a href="/account/settings" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}<button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div></div>}
 </header>
   );
 }

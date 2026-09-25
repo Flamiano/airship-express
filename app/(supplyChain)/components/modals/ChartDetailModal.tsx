@@ -1,7 +1,7 @@
 "use client";
-import { ChartDetailModalProps } from "@/app/(supplyChain)/(pages)/procurement/types/index";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { ChartDetailModalProps } from "../../(pages)/procurement/types/index";
+import { AppButton } from "../ui/AppButton";
+import Portal from "../client/Portal";
 const getPOStatusColor = (status: string) => {
     switch (status) {
         case 'Draft': return 'bg-slate-100 text-slate-600';

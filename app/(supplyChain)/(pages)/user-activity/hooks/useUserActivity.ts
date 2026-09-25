@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { useConfirm } from '../../../components/ui/ConfirmModal';
+import { user } from '../../../lib/services/Class/user';
+import { supabase } from '../../../lib/services/client/supabase';
 import { Session, BlockedDevice, Appeal, UserActivity } from '../types';
 import { isRateLimited, sanitizeText } from '../utils/formatters';
 
@@ -15,6 +15,8 @@ export function useUserActivity() {
 
     const [sessions, setSessions] = useState<Session[]>([]);
     const [filteredSessions, setFilteredSessions] = useState<Session[]>([]);
+    const [activeUsers, setActiveUsers] = useState<Session[]>([]);
+    const [filteredActiveUsers, setFilteredActiveUsers] = useState<Session[]>([]);
     const [blockedDevices, setBlockedDevices] = useState<BlockedDevice[]>([]);
     const [activities, setActivities] = useState<UserActivity[]>([]);
     const [filteredActivities, setFilteredActivities] = useState<UserActivity[]>([]);
@@ -22,6 +24,7 @@ export function useUserActivity() {
     const [isLoading, setIsLoading] = useState(true);
 
     const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
+    const [selectedActiveUsers, setSelectedActiveUsers] = useState<Set<string>>(new Set());
     const [selectedBlockedDevices, setSelectedBlockedDevices] = useState<Set<string>>(new Set());
     const [selectedAppeals, setSelectedAppeals] = useState<Set<string>>(new Set());
     const [selectedActivities, setSelectedActivities] = useState<Set<number>>(new Set());
@@ -31,14 +34,33 @@ export function useUserActivity() {
 
     // pagination states
     const [sessionPage, setSessionPage] = useState(1);
+    const [activeUserPage, setActiveUserPage] = useState(1);
     const [blockedPage, setBlockedPage] = useState(1);
     const [appealPage, setAppealPage] = useState(1);
     const [activityPage, setActivityPage] = useState(1);
 
     const [sessionTotalPages, setSessionTotalPages] = useState(1);
+    const [activeUserTotalPages, setActiveUserTotalPages] = useState(1);
     const [blockedTotalPages, setBlockedTotalPages] = useState(1);
     const [appealTotalPages, setAppealTotalPages] = useState(1);
     const [activityTotalPages, setActivityTotalPages] = useState(1);
+
+    // slot & queue stats
+    const [queuedUsersCount, setQueuedUsersCount] = useState<number>(0);
+    const [queuedRolesCount, setQueuedRolesCount] = useState<Record<string, number>>({});
+    const [slotStats, setSlotStats] = useState<{
+        executive: { reserved: number; active: number; available: number };
+        manager: { reserved: number; active: number; available: number };
+        employee: { reserved: number; active: number; available: number };
+        totalActive: number;
+        maxCapacity: number;
+    }>({
+        executive: { reserved: 10, active: 0, available: 10 },
+        manager: { reserved: 20, active: 0, available: 20 },
+        employee: { reserved: 70, active: 0, available: 70 },
+        totalActive: 0,
+        maxCapacity: 100,
+    });
 
     const fetchSessions = useCallback(async (isSilent = false) => {
         try {
@@ -110,6 +132,51 @@ export function useUserActivity() {
         } catch (error) {
             console.error('Error fetching sessions:', error);
             if (!isSilent) toast.error('Failed to fetch sessions');
+        }
+    }, []);
+
+    const fetchActiveUsers = useCallback(async (isSilent = false) => {
+        try {
+            const [activeRes, queueStatusRes] = await Promise.all([
+                supabase
+                    .from('sessions')
+                    .select(`
+                        *,
+                        users!inner(
+                            display_name,
+                            email,
+                            role
+                        )
+                    `)
+                    .eq('is_active', true)
+                    .order('created_at', { ascending: false }),
+                fetch('/api/supplyChain/queue-status').then(r => r.ok ? r.json() : null).catch(() => null)
+            ]);
+
+            if (activeRes.error) throw activeRes.error;
+            const activeData = activeRes.data || [];
+            setActiveUsers(activeData);
+            setFilteredActiveUsers(activeData);
+            setActiveUserTotalPages(Math.max(1, Math.ceil(activeData.length / ITEMS_PER_PAGE)));
+
+            if (queueStatusRes) {
+                setQueuedUsersCount(queueStatusRes.queuedCount || 0);
+                setQueuedRolesCount(queueStatusRes.queuedRolesCount || {});
+                if (queueStatusRes.slots) {
+                    setSlotStats({
+                        executive: queueStatusRes.slots.executive,
+                        manager: queueStatusRes.slots.manager,
+                        employee: queueStatusRes.slots.employee,
+                        totalActive: queueStatusRes.totalActive || activeData.length,
+                        maxCapacity: queueStatusRes.maxCapacity || 100,
+                    });
+                }
+            } else {
+                setQueuedRolesCount({});
+            }
+        } catch (error) {
+            console.error('Error fetching active users:', error);
+            if (!isSilent) toast.error('Failed to fetch active users');
         }
     }, []);
 
@@ -186,6 +253,7 @@ export function useUserActivity() {
         try {
             await Promise.all([
                 fetchSessions(),
+                fetchActiveUsers(),
                 fetchBlockedDevices(),
                 fetchActivities(),
                 fetchAppeals()
@@ -195,7 +263,7 @@ export function useUserActivity() {
         } finally {
             setIsLoading(false);
         }
-    }, [fetchSessions, fetchBlockedDevices, fetchActivities, fetchAppeals]);
+    }, [fetchSessions, fetchActiveUsers, fetchBlockedDevices, fetchActivities, fetchAppeals]);
 
     useEffect(() => {
         const role = user.getRole();
@@ -225,7 +293,10 @@ export function useUserActivity() {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'sessions' },
                 () => {
-                    debouncedFetch(() => fetchSessions(true));
+                    debouncedFetch(() => {
+                        fetchSessions(true);
+                        fetchActiveUsers(true);
+                    });
                 }
             )
             .on(
@@ -235,6 +306,7 @@ export function useUserActivity() {
                     debouncedFetch(() => {
                         fetchBlockedDevices(true);
                         fetchSessions(true);
+                        fetchActiveUsers(true);
                     });
                 }
             )
@@ -245,7 +317,19 @@ export function useUserActivity() {
                     debouncedFetch(() => fetchAppeals(true));
                 }
             )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'sc_system_settings' },
+                () => {
+                    debouncedFetch(() => fetchActiveUsers(true));
+                }
+            )
             .subscribe();
+
+        // live background polling interval: keeps active sessions, slots, and queued users updated in realtime
+        const liveQueueInterval = setInterval(() => {
+            fetchActiveUsers(true);
+        }, 4000);
 
         // optimized interval: updates active countdowns dynamically when any strike exists
         const pollInterval = setInterval(() => {
@@ -260,10 +344,11 @@ export function useUserActivity() {
 
         return () => {
             if (timer) clearTimeout(timer);
+            clearInterval(liveQueueInterval);
             clearInterval(pollInterval);
             supabase.removeChannel(channel);
         };
-    }, [fetchAllData, fetchActivities, fetchSessions, fetchBlockedDevices, fetchAppeals]);
+    }, [fetchAllData, fetchActivities, fetchSessions, fetchActiveUsers, fetchBlockedDevices, fetchAppeals]);
 
     const isTargetUserAdmin = async (userId: string): Promise<boolean> => {
         try {
@@ -299,6 +384,27 @@ export function useUserActivity() {
         setSessionTotalPages(Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE)));
         setSessionPage(1);
     }, [sessions]);
+
+    const filterActiveUsers = useCallback((term: string) => {
+        if (!term.trim()) {
+            setFilteredActiveUsers(activeUsers);
+            setActiveUserTotalPages(Math.max(1, Math.ceil(activeUsers.length / ITEMS_PER_PAGE)));
+            return;
+        }
+
+        const filtered = activeUsers.filter(session =>
+            session.user_agent?.toLowerCase().includes(term.toLowerCase()) ||
+            session.ip_address?.toLowerCase().includes(term.toLowerCase()) ||
+            session.email?.toLowerCase().includes(term.toLowerCase()) ||
+            session.hr_employee_name?.toLowerCase().includes(term.toLowerCase()) ||
+            session.users?.display_name?.toLowerCase().includes(term.toLowerCase()) ||
+            session.users?.role?.toLowerCase().includes(term.toLowerCase())
+        );
+
+        setFilteredActiveUsers(filtered);
+        setActiveUserTotalPages(Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE)));
+        setActiveUserPage(1);
+    }, [activeUsers]);
 
     const filterActivities = useCallback((term: string, filter: string) => {
         let filtered = activities;
@@ -978,6 +1084,110 @@ export function useUserActivity() {
         }
     };
 
+    const handleTerminateSession = async (sessionId: string, targetRole?: string, employeeName?: string) => {
+        const callerRole = (userRole || user.getRole() || '').toLowerCase();
+        const normalizedTarget = (targetRole || '').toLowerCase();
+
+        if (normalizedTarget === 'executive') {
+            toast.error('Executive accounts are protected and cannot be logged out.');
+            return;
+        }
+
+        if (!['admin', 'executive'].includes(callerRole)) {
+            toast.error('You do not have permission to terminate user sessions.');
+            return;
+        }
+
+        const confirmed = await confirm({
+            title: 'Terminate Active Session',
+            message: `Are you sure you want to forcibly log out ${employeeName || 'this user'} (${targetRole || 'User'})? Their active session will be terminated immediately.`,
+            confirmText: 'Log Out User',
+            cancelText: 'Cancel',
+            confirmVariant: 'danger',
+        });
+
+        if (!confirmed) return;
+
+        try {
+            const callerToken = user.getSessionToken() || '';
+            const res = await fetch('/api/supplyChain/terminate-user-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-session-token': callerToken,
+                },
+                body: JSON.stringify({ sessionId })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                toast.error(data.message || data.error || 'Failed to terminate session');
+                return;
+            }
+
+            toast.success(data.message || 'User session terminated successfully');
+            await Promise.all([fetchActiveUsers(true), fetchSessions(true), fetchActivities(true)]);
+        } catch (error) {
+            console.error('Error terminating session:', error);
+            toast.error('Failed to terminate user session');
+        }
+    };
+
+    const handleBulkTerminateActiveUsers = async () => {
+        if (selectedActiveUsers.size === 0) return;
+
+        const callerRole = (userRole || user.getRole() || '').toLowerCase();
+        if (!['admin', 'executive'].includes(callerRole)) {
+            toast.error('You do not have permission to terminate user sessions.');
+            return;
+        }
+
+        // Filter out any protected users from the selected set (Executive sessions are protected)
+        const eligibleToTerminate = activeUsers.filter(s => {
+            if (!selectedActiveUsers.has(s.id)) return false;
+            const target = (s.users?.role || '').toLowerCase();
+            return target !== 'executive';
+        });
+
+        if (eligibleToTerminate.length === 0) {
+            toast.warning('None of the selected users can be terminated (Executive sessions are protected).');
+            return;
+        }
+
+        const confirmed = await confirm({
+            title: `Terminate ${eligibleToTerminate.length} Active Sessions`,
+            message: `Are you sure you want to log out ${eligibleToTerminate.length} selected user(s)? Protected roles will not be affected.`,
+            confirmText: 'Terminate Sessions',
+            cancelText: 'Cancel',
+            confirmVariant: 'danger',
+        });
+
+        if (!confirmed) return;
+
+        try {
+            let successCount = 0;
+            const callerToken = user.getSessionToken() || '';
+            for (const session of eligibleToTerminate) {
+                const res = await fetch('/api/supplyChain/terminate-user-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-session-token': callerToken,
+                    },
+                    body: JSON.stringify({ sessionId: session.id })
+                });
+                if (res.ok) successCount++;
+            }
+
+            toast.success(`Successfully terminated ${successCount} session(s)`);
+            setSelectedActiveUsers(new Set());
+            await Promise.all([fetchActiveUsers(true), fetchSessions(true), fetchActivities(true)]);
+        } catch (error) {
+            console.error('Error in bulk termination:', error);
+            toast.error('Failed to terminate some sessions');
+        }
+    };
+
     const getPaginatedData = <T,>(data: T[], page: number): T[] => {
         const startIndex = (page - 1) * ITEMS_PER_PAGE;
         const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -988,6 +1198,8 @@ export function useUserActivity() {
         // state
         sessions,
         filteredSessions,
+        activeUsers,
+        filteredActiveUsers,
         blockedDevices,
         activities,
         filteredActivities,
@@ -995,10 +1207,15 @@ export function useUserActivity() {
         isLoading,
         userRole,
         currentUserId,
+        queuedUsersCount,
+        queuedRolesCount,
+        slotStats,
 
         // selections
         selectedSessions,
         setSelectedSessions,
+        selectedActiveUsers,
+        setSelectedActiveUsers,
         selectedBlockedDevices,
         setSelectedBlockedDevices,
         selectedAppeals,
@@ -1009,6 +1226,8 @@ export function useUserActivity() {
         // pagination
         sessionPage,
         setSessionPage,
+        activeUserPage,
+        setActiveUserPage,
         blockedPage,
         setBlockedPage,
         appealPage,
@@ -1017,6 +1236,7 @@ export function useUserActivity() {
         setActivityPage,
 
         sessionTotalPages,
+        activeUserTotalPages,
         blockedTotalPages,
         appealTotalPages,
         activityTotalPages,
@@ -1024,8 +1244,10 @@ export function useUserActivity() {
         // data helpers
         getPaginatedData,
         filterSessions,
+        filterActiveUsers,
         filterActivities,
         fetchAllData,
+        fetchActiveUsers,
 
         // moderation
         handleResetStrikes,
@@ -1038,12 +1260,14 @@ export function useUserActivity() {
         handleRejectAppeal,
         handleDeleteAppeal,
         handleSendResponse,
+        handleTerminateSession,
 
         // bulk operations
         handleBulkBlock,
         handleBulkUnblock,
         handleBulkDeleteBlocked,
         handleBulkDeleteSessions,
+        handleBulkTerminateActiveUsers,
         handleBulkDeleteActivities,
         handleBulkDeleteAppeals,
         handleBulkApproveAppeals,

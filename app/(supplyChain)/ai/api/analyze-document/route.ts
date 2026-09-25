@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../lib/services/client/supabase";
 
 const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY;
 const MODEL_NAME = process.env.GEMINI_SUPPLYCHAIN_MODEL || "gemini-2.5-flash";
@@ -468,7 +468,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                 success: true,
                 isOutOfScope: true,
                 analysis: parsedAnalysis,
-                response: `⚠️ Out of Scope Request\n\n${parsedAnalysis.out_of_scope_reason || "The uploaded image/file is outside the scope of Airship Express Supply Chain operations."}\n\nAirship Express AI specializes in:\n• Warehouse inventory tracking and stock identification\n• Analyzing photos of parcels, gallery media, and freight\n• Verifying and OCR parsing supplier invoices and receipts\n• Checking purchase requests and purchase orders\n• Auditing delivery batches and fleet photos`,
+                response: `Out of Scope Request\n\n${parsedAnalysis.out_of_scope_reason || "The uploaded image/file is outside the scope of Airship Express Supply Chain operations."}\n\nAirship Express AI specializes in:\n• Warehouse inventory tracking and stock identification\n• Analyzing photos of parcels, gallery media, and freight\n• Verifying and OCR parsing supplier invoices and receipts\n• Checking purchase requests and purchase orders\n• Auditing delivery batches and fleet photos`,
                 matchedDocument: null,
                 matchedDocuments: [],
             });

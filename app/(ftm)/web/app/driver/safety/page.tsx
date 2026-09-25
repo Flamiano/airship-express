@@ -119,6 +119,7 @@ export default function DriverSafetyPage() {
 
               <button
                 type="button"
+                data-skip-loading
                 onClick={handleExport}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#b80049] hover:bg-[#96003b] text-white font-medium rounded-xl text-sm transition-all shadow-md shadow-pink-900/20 active:scale-95"
               >

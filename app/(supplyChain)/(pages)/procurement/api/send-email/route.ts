@@ -1,16 +1,7 @@
 // app/(supplyChain)/procurement/api/send-email/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
-
-// create transporter
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_SUPPLYCHAIN_USER,
-        pass: process.env.EMAIL_SUPPLYCHAIN_PASS,
-    },
-});
+import { sendSupplyChainEmail } from '../../../../lib/email/mailer';
 
 export async function POST(request: NextRequest) {
     try {
@@ -24,22 +15,20 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // verify connection
-        await transporter.verify();
-
-        // send email
-        const info = await transporter.sendMail({
-            from: `"AirshipExpress" <${process.env.EMAIL_SUPPLYCHAIN_USER}>`,
-            to: to,
-            subject: subject,
+        const result = await sendSupplyChainEmail({
+            to,
+            subject,
+            html,
             text: text || '',
-            html: html,
+            senderName: 'Airship Express Procurement',
+            senderEmail: process.env.EMAIL_SUPPLYCHAIN_USER,
             replyTo: process.env.EMAIL_SUPPLYCHAIN_USER,
         });
 
         return NextResponse.json({
             success: true,
-            messageId: info.messageId,
+            messageId: result.messageId,
+            provider: result.provider,
             message: 'Email sent successfully',
         });
 

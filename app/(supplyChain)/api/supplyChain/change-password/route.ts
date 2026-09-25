@@ -1,6 +1,6 @@
 // app/(supplyChain)/api/supplyChain/change-password/route.ts
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 

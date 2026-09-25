@@ -1,4 +1,4 @@
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 
 const VALID_ROLES = ['Admin', 'Manager', 'Employee', 'Executive', 'Operator'];

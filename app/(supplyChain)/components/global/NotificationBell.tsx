@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package, Trash2, Edit3, Plus } from 'lucide-react';
+import { Bell, BellOff, Check, X, Loader2, Clock, DollarSign, FileText, User, Building, Tag, AlertCircle, Users, UserCog, Shield, Calendar, Package, Trash2, Edit3, Plus, Download, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
+import { supabase } from '../../lib/services/client/supabase';
+import { useConfirm } from '../ui/ConfirmModal';
 import Portal from '../client/Portal';
-import { user } from '@/app/(supplyChain)/lib/services/Class/user';
+import { user } from '../../lib/services/Class/user';
 
 
 interface Notification {
@@ -22,6 +22,10 @@ interface Notification {
     created_at: string;
     po_request_id: string | null;
     role: string;
+    user_id?: string | null;
+    reference_type?: string | null;
+    reference_id?: string | null;
+    read_at?: string | null;
 }
 
 interface PurchaseRequest {
@@ -110,9 +114,9 @@ export function NotificationBell() {
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(0);
     const [isMounted, setIsMounted] = useState(false);
-    const [userRole, setUserRole] = useState<string>('');
-    const [userEmail, setUserEmail] = useState<string>('');
-    const [userName, setUserName] = useState<string>('');
+    const [userRole, setUserRole] = useState<string>(() => typeof window !== 'undefined' ? user.getRole() : '');
+    const [userEmail, setUserEmail] = useState<string>(() => typeof window !== 'undefined' ? user.getEmail() : '');
+    const [userName, setUserName] = useState<string>(() => typeof window !== 'undefined' ? user.getName() : '');
     const [totalUnread, setTotalUnread] = useState(0);
     const [totalCount, setTotalCount] = useState(0);
 
@@ -137,6 +141,7 @@ export function NotificationBell() {
     const [editPRData, setEditPRData] = useState<any>(null);
     const [isSavingEdits, setIsSavingEdits] = useState(false);
 
+    const [userId, setUserId] = useState<string | null>(() => typeof window !== 'undefined' ? user.getUserId() : null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -144,53 +149,123 @@ export function NotificationBell() {
         return `${CACHE_KEY_BASE}_${userEmail || 'anon'}`;
     }, [userEmail]);
 
-    const isNotificationForUser = useCallback((notifRole: string) => {
-        if (!notifRole) return true;
-        const nRole = notifRole.toLowerCase().trim();
+    const isNotificationForUser = useCallback((notif: Notification | { role?: string; user_id?: string | null; creator_email?: string | null; reference_type?: string | null; link?: string | null; title?: string | null } | string) => {
+        if (typeof notif === 'string') {
+            const notifRole = notif;
+            if (!notifRole) return true;
+            const nRole = notifRole.toLowerCase().trim();
+            const uRole = (userRole || '').toLowerCase().trim();
+            if (nRole === 'all') return true;
+            if (nRole === uRole) return true;
+            if (['admin', 'executive'].includes(uRole) && ['admin', 'executive'].includes(nRole)) return true;
+            if (['admin', 'executive', 'manager'].includes(uRole) && nRole === 'manager') return true;
+            return false;
+        }
+
+        const refType = (notif.reference_type || '').toLowerCase();
+        const link = (notif.link || '').toLowerCase();
+        const title = (notif.title || '').toLowerCase();
+        const notifRole = (notif.role || '').toLowerCase().trim();
         const uRole = (userRole || '').toLowerCase().trim();
-        if (nRole === 'all') return true;
-        if (nRole === uRole) return true;
-        // Admins and Executives see notifications targeted to each other / leadership
-        if (['admin', 'executive'].includes(uRole) && ['admin', 'executive'].includes(nRole)) return true;
-        // Managers can also see Manager notifications
-        if (['admin', 'executive', 'manager'].includes(uRole) && nRole === 'manager') return true;
+        const currentUserId = userId || (typeof window !== 'undefined' ? user.getUserId() : null);
+        const currentEmail = (userEmail || (typeof window !== 'undefined' ? user.getEmail() : '')).toLowerCase().trim();
+
+        // 1. If notification is related to documents (upload, pending, attach, or link is /documents):
+        // It is strictly isolated and ONLY delivered if the user_id or creator_email matches the current user
+        const isDocNotification =
+            refType.includes('document') ||
+            link.includes('/documents') ||
+            title.startsWith('document uploaded') ||
+            title.startsWith('missing file');
+
+        if (isDocNotification) {
+            if (notif.user_id && currentUserId) {
+                return notif.user_id.toLowerCase().trim() === currentUserId.toLowerCase().trim();
+            }
+            if (notif.creator_email && currentEmail) {
+                return notif.creator_email.toLowerCase().trim() === currentEmail;
+            }
+            return false;
+        }
+
+        // 2. Explicit direct-to-user notification (role is 'user' with targeted user_id)
+        if (notifRole === 'user' && notif.user_id) {
+            if (currentUserId && notif.user_id.toLowerCase().trim() === currentUserId.toLowerCase().trim()) return true;
+            if (currentEmail && notif.creator_email?.toLowerCase().trim() === currentEmail) return true;
+            return false;
+        }
+
+        // 3. Role-based notifications (Purchase requests, announcements, system alerts, leadership notices)
+        if (notifRole === 'all') return true;
+        if (notifRole && notifRole === uRole) return true;
+        if (['admin', 'executive'].includes(uRole) && ['admin', 'executive'].includes(notifRole)) return true;
+        if (['admin', 'executive', 'manager'].includes(uRole) && notifRole === 'manager') return true;
+
+        // 4. Fallback: if user is explicitly the targeted user_id
+        if (notif.user_id && currentUserId && notif.user_id.toLowerCase().trim() === currentUserId.toLowerCase().trim()) return true;
+
         return false;
-    }, [userRole]);
+    }, [userRole, userId, userEmail]);
 
     const getRoleFilterQuery = useCallback(() => {
         const uRole = (userRole || '').toLowerCase().trim();
+        let baseFilter = 'role.ilike.All';
         if (['admin', 'executive'].includes(uRole)) {
-            return 'role.ilike.All,role.ilike.Admin,role.ilike.Executive';
+            baseFilter = 'role.ilike.All,role.ilike.Admin,role.ilike.Executive,role.ilike.Manager';
+        } else if (uRole === 'manager') {
+            baseFilter = 'role.ilike.All,role.ilike.Manager,role.ilike.Admin,role.ilike.Executive';
+        } else if (uRole) {
+            baseFilter = `role.ilike.All,role.ilike.${userRole}`;
         }
-        if (uRole === 'manager') {
-            return 'role.ilike.All,role.ilike.Manager';
+        if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+            return `${baseFilter},user_id.eq.${userId}`;
         }
-        if (uRole) {
-            return `role.ilike.All,role.ilike.${userRole}`;
-        }
-        return 'role.ilike.All';
-    }, [userRole]);
+        return baseFilter;
+    }, [userRole, userId]);
 
     // get user role and email from storage and keep updated
     useEffect(() => {
-        const syncUserData = () => {
+        let isMounted = true;
+        const syncUserData = async () => {
             if (typeof window !== 'undefined') {
                 if (localStorage.getItem(LEGACY_CACHE_KEY)) {
                     localStorage.removeItem(LEGACY_CACHE_KEY);
                 }
 
-                const role = user.getRole() || 'User';
-                const email = user.getEmail() || '';
-                const name = user.getName() || '';
-                setUserRole(role);
-                setUserEmail(email);
-                setUserName(name);
+                let role = user.getRole() || 'User';
+                let email = user.getEmail() || '';
+                let name = user.getName() || '';
+                let uid = user.getUserId() || '';
+
+                if (!uid || !email) {
+                    try {
+                        const { data: { user: authUser } } = await supabase.auth.getUser();
+                        if (authUser && isMounted) {
+                            uid = uid || authUser.id;
+                            email = email || authUser.email || '';
+                            name = name || authUser.user_metadata?.full_name || authUser.user_metadata?.name || '';
+                            role = role || authUser.user_metadata?.role || 'User';
+                        }
+                    } catch (e) {
+                        // ignore auth check error
+                    }
+                }
+
+                if (isMounted) {
+                    setUserRole(role);
+                    setUserEmail(email);
+                    setUserName(name);
+                    setUserId(uid || null);
+                }
             }
         };
 
         syncUserData();
         window.addEventListener('storage', syncUserData);
-        return () => window.removeEventListener('storage', syncUserData);
+        return () => {
+            isMounted = false;
+            window.removeEventListener('storage', syncUserData);
+        };
     }, []);
 
     // lock page scroll when dropdown is open
@@ -235,8 +310,9 @@ export function NotificationBell() {
                 const { data, timestamp } = JSON.parse(cached);
                 const isExpired = Date.now() - timestamp > CACHE_DURATION;
                 if (!isExpired && data && data.length > 0) {
-                    const filteredData = deduplicateNotifications(data.filter((n: Notification) => isNotificationForUser(n.role)));
+                    const filteredData = deduplicateNotifications(data.filter((n: Notification) => isNotificationForUser(n)));
                     setNotifications(filteredData);
+                    setTotalCount(filteredData.length);
                     const unread = filteredData.filter((n: Notification) => !n.is_read).length;
                     setUnreadCount(unread);
                     setTotalUnread(unread);
@@ -265,20 +341,22 @@ export function NotificationBell() {
     const fetchUnreadCount = useCallback(async () => {
         try {
             const roleFilter = getRoleFilterQuery();
-            const { count, error } = await supabase
+            const { data, error } = await supabase
                 .from('notifications')
-                .select('*', { count: 'exact', head: true })
+                .select('id, role, user_id, creator_email, reference_type, po_request_id, is_read')
                 .eq('is_read', false)
                 .or(roleFilter);
 
             if (error) throw error;
-            const unread = count ?? 0;
+            const visibleUnread = (data || []).filter((n: any) => isNotificationForUser(n));
+            const deduplicated = deduplicateNotifications(visibleUnread as Notification[]);
+            const unread = deduplicated.length;
             setTotalUnread(unread);
             setUnreadCount(unread);
         } catch (error) {
             console.error('Error fetching unread count:', error);
         }
-    }, [getRoleFilterQuery]);
+    }, [getRoleFilterQuery, isNotificationForUser]);
 
     // fetch notifications with pagination
     const fetchNotifications = useCallback(async (pageNum: number, append: boolean = false) => {
@@ -321,21 +399,24 @@ export function NotificationBell() {
 
             if (error) throw error;
 
-            const notificationsData = data || [];
+            const rawData = data || [];
+            const notificationsData = rawData.filter((n: any) => isNotificationForUser(n));
 
             if (append) {
                 setNotifications(prev => {
                     const existingIds = new Set(prev.map(n => n.id));
                     const freshItems = notificationsData.filter(n => !existingIds.has(n.id));
                     const merged = deduplicateNotifications([...prev, ...freshItems]);
-                    setHasMore(merged.length < total);
+                    setHasMore(rawData.length === PAGE_SIZE && merged.length < total);
+                    setTotalCount(merged.length);
                     return merged;
                 });
             } else {
                 const uniqueData = deduplicateNotifications(notificationsData);
                 setNotifications(uniqueData);
+                setTotalCount(uniqueData.length);
                 saveToCache(uniqueData);
-                setHasMore(uniqueData.length < total);
+                setHasMore(rawData.length === PAGE_SIZE && uniqueData.length < total);
                 const unread = uniqueData.filter(n => !n.is_read).length;
                 setUnreadCount(unread);
             }
@@ -349,7 +430,7 @@ export function NotificationBell() {
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [getRoleFilterQuery, saveToCache, fetchUnreadCount]);
+    }, [getRoleFilterQuery, saveToCache, fetchUnreadCount, isNotificationForUser]);
 
     // load initial notifications
     useEffect(() => {
@@ -377,7 +458,7 @@ export function NotificationBell() {
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newNotif = payload.new as Notification;
-                        if (isNotificationForUser(newNotif.role)) {
+                        if (isNotificationForUser(newNotif)) {
                             setNotifications(prev => {
                                 if (prev.some(n => n.id === newNotif.id || (newNotif.po_request_id && n.po_request_id === newNotif.po_request_id))) return prev;
                                 const updated = deduplicateNotifications([newNotif, ...prev]);
@@ -628,7 +709,18 @@ export function NotificationBell() {
         }
 
         if (notification.link) {
-            router.push(notification.link);
+            if (notification.link.startsWith('/api/') || notification.link.includes('download')) {
+                const a = document.createElement('a');
+                a.href = notification.link;
+                a.target = '_blank';
+                a.download = '';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast.success('Downloading attached manifest (.xlsx)...');
+            } else {
+                router.push(notification.link);
+            }
             setIsOpen(false);
         }
     };
@@ -878,6 +970,7 @@ export function NotificationBell() {
 
     const getTypeColor = (type: string) => {
         switch (type) {
+            case 'dispatch_manifest': return 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30';
             case 'appeal': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/30';
             case 'security': return 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/30';
             case 'system': return 'bg-purple-100 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/30';
@@ -890,6 +983,7 @@ export function NotificationBell() {
 
     const getTypeIcon = (type: string) => {
         switch (type) {
+            case 'dispatch_manifest': return 'fas fa-file-excel';
             case 'appeal': return 'fas fa-pen';
             case 'security': return 'fas fa-shield-alt';
             case 'system': return 'fas fa-cog';
@@ -992,11 +1086,11 @@ export function NotificationBell() {
                                     <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                                         Notifications
                                     </h3>
-                                    {totalCount > 0 && (
+                                    {notifications.length > 0 && (
                                         <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold 
                                 bg-[#ebf0f7] dark:bg-[#14151c] 
                                 text-slate-700 dark:text-slate-300 rounded-full border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
-                                            {totalCount}
+                                            {notifications.length}
                                         </span>
                                     )}
                                 </div>
@@ -1120,6 +1214,37 @@ export function NotificationBell() {
                                     ${!notification.is_read ? 'text-slate-700 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
                                                         {notification.message}
                                                     </p>
+
+                                                    {/* Download Attached File Button for Dispatch Manifests */}
+                                                    {notification.link && (notification.link.includes('dispatch-manifest') || notification.type === 'dispatch_manifest') && (
+                                                        <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (!notification.is_read) {
+                                                                        handleMarkAsRead(notification.id);
+                                                                    }
+                                                                    const a = document.createElement('a');
+                                                                    a.href = notification.link;
+                                                                    a.target = '_blank';
+                                                                    a.download = '';
+                                                                    document.body.appendChild(a);
+                                                                    a.click();
+                                                                    document.body.removeChild(a);
+                                                                    toast.success('Downloading attached manifest (.xlsx)...');
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50 transition-colors shadow-2xs cursor-pointer"
+                                                            >
+                                                                <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                                                <span>Download Attached (.xlsx)</span>
+                                                            </button>
+                                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800/30 flex items-center gap-1">
+                                                                <FileSpreadsheet className="h-3 w-3" />
+                                                                <span>Excel Attached</span>
+                                                            </span>
+                                                        </div>
+                                                    )}
 
                                                     {/* Metadata Chips Footer */}
                                                     <div className="flex items-center gap-1.5 mt-2.5 flex-wrap text-[10px] text-slate-400 dark:text-slate-500">

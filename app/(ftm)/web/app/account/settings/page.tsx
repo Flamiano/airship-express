@@ -2,10 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getCurrentRole, getDashboardRouteForRole } from "../../lib/roleAccess";
+import { getCurrentRole, getDashboardRouteForRole, getRoleForAuthUser } from "../../lib/roleAccess";
 import SensitiveActionOtp from "../../components/SensitiveActionOtp";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
+import { supabase } from "../../lib/supabaseClient";
+import { getBookings, getDrivers, getTrips } from "../../lib/api";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -129,7 +131,7 @@ export default function ProfilePage() {
   const [role, setRole] = useState<string>("User");
   const [email, setEmail] = useState("account@airship.com");
   const [displayName, setDisplayName] = useState("Account");
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [activeTab, setActiveTab] = useState<TabKey>("security");
 
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -148,26 +150,90 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [suspensionTarget, setSuspensionTarget] = useState<ManagedUser | null>(null);
+  const [suspensionPassword, setSuspensionPassword] = useState("");
+  const [suspensionError, setSuspensionError] = useState<string | null>(null);
+  const [suspensionLoading, setSuspensionLoading] = useState(false);
 
   // Workspace data (role-scoped)
-  const [dispatchQueue, setDispatchQueue] = useState<DispatchLoad[]>(MOCK_DISPATCH_QUEUE);
-  const [approvals, setApprovals] = useState<PendingApproval[]>(MOCK_APPROVALS);
-  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>(MOCK_USERS);
+  const [dispatchQueue, setDispatchQueue] = useState<DispatchLoad[]>([]);
+  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedRole = getCurrentRole() ?? "User";
+    const loadUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       const savedEmail = window.localStorage.getItem("email") || "account@airship.com";
       const savedName = window.localStorage.getItem("displayName") || "Account";
+      const nextEmail = user?.email || savedEmail;
+      const nextName = user?.user_metadata?.full_name || user?.email || savedName;
+      setRole(getRoleForAuthUser(user) ?? getCurrentRole() ?? "User");
+      setEmail(nextEmail);
+      setTempEmail(nextEmail);
+      setDisplayName(nextName);
+      setTempDisplayName(nextName);
+      setActivity([
+        ...(user?.created_at ? [{ id: "created", label: "Account created", detail: "This account was created in Supabase Auth.", timestamp: new Date(user.created_at).toLocaleString() }] : []),
+        ...(user?.last_sign_in_at ? [{ id: "sign-in", label: "Last sign-in", detail: "Most recent authenticated session.", timestamp: new Date(user.last_sign_in_at).toLocaleString() }] : []),
+      ]);
+    };
+    void loadUser();
+  }, []);
 
-      setRole(savedRole);
-      setEmail(savedEmail);
-      setTempEmail(savedEmail);
-      setDisplayName(savedName);
-      setTempDisplayName(savedName);
-    }
+  useEffect(() => {
+    let mounted = true;
+    const loadWorkspaceData = async () => {
+      try {
+        const [trips, bookings, drivers] = await Promise.all([
+          getTrips(),
+          getBookings(),
+          getDrivers(),
+        ]);
+
+        if (!mounted) return;
+        const bookingById = new Map((Array.isArray(bookings) ? bookings : []).map((booking: any) => [String(booking.id), booking]));
+        setDispatchQueue((Array.isArray(trips) ? trips : []).map((trip: any) => {
+          const statusText = String(trip.status ?? "Scheduled").replace(/[_-]+/g, " ");
+          const status: DispatchLoad["status"] = /delayed|late/i.test(statusText)
+            ? "Delayed"
+            : /delivered|completed/i.test(statusText)
+              ? "Delivered"
+              : /in transit|transit|dispatch|route|moving|en route/i.test(statusText)
+                ? "En Route"
+                : "Loading";
+          const booking = bookingById.get(String(trip.booking_id ?? trip.bookingId));
+          return {
+            id: String(trip.id ?? trip.trip_id ?? "Trip"),
+            route: [trip.from_location ?? booking?.pickup_location, trip.to_location ?? booking?.dropoff_location].filter(Boolean).join(" -> ") || "Route unavailable",
+            driver: trip.driver_name ?? trip.driverName ?? "Unassigned",
+            status,
+            eta: trip.estimated_arrival ?? trip.estimatedArrival ?? "Not scheduled",
+          };
+        }));
+        setManagedUsers((Array.isArray(drivers) ? drivers : []).map((driver: any) => ({
+          id: String(driver.id),
+          name: driver.full_name ?? driver.name ?? driver.email ?? "Unnamed user",
+          role: String(driver.role ?? "Driver").replace(/_/g, " "),
+          status: /suspended/i.test(String(driver.status ?? "")) ? "Suspended" : "Active",
+        })));
+        setApprovals([]);
+        setWorkspaceError(null);
+      } catch (error) {
+        if (mounted) setWorkspaceError(error instanceof Error ? error.message : "Unable to load workspace data.");
+      } finally {
+        if (mounted) setWorkspaceLoading(false);
+      }
+    };
+
+    void loadWorkspaceData();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const normalizedRole = useMemo(() => String(role).toLowerCase().replace(/[_\s]/g, ""), [role]);
@@ -191,14 +257,19 @@ export default function ProfilePage() {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    setDisplayName(tempDisplayName);
-    setEmail(tempEmail);
-    if (typeof window !== "undefined") {
+    void (async () => {
+      const { error } = await supabase.auth.updateUser({ email: tempEmail, data: { full_name: tempDisplayName } });
+      if (error) {
+        showToast(error.message);
+        return;
+      }
+      setDisplayName(tempDisplayName);
+      setEmail(tempEmail);
       window.localStorage.setItem("displayName", tempDisplayName);
       window.localStorage.setItem("email", tempEmail);
-    }
-    setIsEditingProfile(false);
-    showToast("Profile updated successfully!");
+      setIsEditingProfile(false);
+      showToast("Profile updated successfully.");
+    })();
   };
 
   const handlePasswordChange = (e: React.FormEvent) => {
@@ -211,12 +282,18 @@ export default function ProfilePage() {
       alert("Password must be at least 8 characters long.");
       return;
     }
-    // Simulate successful API password change
-    setIsPasswordModalOpen(false);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    showToast("Password successfully changed!");
+    void (async () => {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        showToast(error.message);
+        return;
+      }
+      setIsPasswordModalOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      showToast("Password successfully changed.");
+    })();
   };
 
   const toggleNotification = (key: keyof NotificationPrefs) => {
@@ -241,12 +318,45 @@ export default function ProfilePage() {
     );
   };
 
+  const requestUserSuspension = (user: ManagedUser) => {
+    if (user.status === "Suspended") {
+      toggleUserStatus(user.id);
+      return;
+    }
+    setSuspensionTarget(user);
+    setSuspensionPassword("");
+    setSuspensionError(null);
+  };
+
+  const confirmUserSuspension = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!suspensionTarget || !email) return;
+
+    setSuspensionLoading(true);
+    setSuspensionError(null);
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: suspensionPassword,
+    });
+
+    if (error) {
+      setSuspensionError("Password verification failed. Suspension was not applied.");
+      setSuspensionLoading(false);
+      return;
+    }
+
+    toggleUserStatus(suspensionTarget.id);
+    setSuspensionTarget(null);
+    setSuspensionPassword("");
+    setSuspensionLoading(false);
+    showToast(`${suspensionTarget.name} was suspended after verification.`);
+  };
+
   const reassignLoad = (id: string) => {
     showToast(`Load ${id} flagged for reassignment.`);
   };
 
   const tabs: { key: TabKey; label: string }[] = [
-    { key: "overview", label: "Overview" },
     { key: "security", label: "Security" },
     { key: "notifications", label: "Notifications" },
     ...(hasWorkspaceTools ? [{ key: "workspace" as TabKey, label: "Workspace Tools" }] : []),
@@ -254,14 +364,14 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#fff7fc] text-slate-800">
+    <div className="min-h-screen flex flex-col bg-transparent text-slate-800 font-sans selection:bg-pink-500 selection:text-white">
       <GlobalNavbar />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 w-full overflow-hidden">
         {/* ---------------- Sidebar ---------------- */}
-        <aside className="hidden w-72 shrink-0 flex-col border-r border-pink-200 bg-white/70 px-5 py-8 sm:flex overflow-y-auto">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-pink-100 bg-white px-5 py-8 shadow-sm sm:flex overflow-y-auto">
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#b80049] text-2xl font-black text-white shadow-inner">
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-pink-600 text-2xl font-black text-white shadow-lg shadow-pink-500/20">
               {initials}
             </div>
             <div className="mt-4 text-lg font-black text-slate-900">{displayName}</div>
@@ -272,13 +382,19 @@ export default function ProfilePage() {
           </div>
 
           <nav className="mt-8 flex flex-col gap-1">
+            <a
+              href="/account/profile"
+              className="rounded-xl px-4 py-2.5 text-left text-sm font-bold text-slate-600 transition-all hover:bg-pink-50"
+            >
+              Profile
+            </a>
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`rounded-xl px-4 py-2.5 text-left text-sm font-bold transition-all ${
                   activeTab === tab.key
-                    ? "bg-[#b80049] text-white shadow-md shadow-pink-500/20"
+                    ? "bg-pink-600 text-white shadow-md shadow-pink-500/20"
                     : "text-slate-600 hover:bg-pink-50"
                 }`}
               >
@@ -287,38 +403,36 @@ export default function ProfilePage() {
             ))}
           </nav>
 
-          <button
-            type="button"
-            onClick={() => router.push(getDashboardRouteForRole(role))}
-            className="mt-auto inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition-all hover:bg-slate-50"
+          <a
+            href={getDashboardRouteForRole(role)}
+            className="mt-auto inline-flex items-center justify-center rounded-xl border border-pink-200 bg-white px-5 py-2.5 text-sm font-bold text-pink-700 transition-all hover:bg-pink-50"
           >
             Back to Dashboard
-          </button>
+          </a>
         </aside>
 
         {/* ---------------- Main content ---------------- */}
-        <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-5xl">
+        <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-6 lg:px-10">
+          <div className="mx-auto w-full max-w-[1440px]">
             {/* Mobile header (sidebar hidden below sm) */}
             <div className="mb-6 flex items-center justify-between sm:hidden">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-pink-700">Profile</p>
                 <h1 className="mt-1 text-2xl font-black text-slate-900">{displayName}</h1>
               </div>
-              <button
-                type="button"
-                onClick={() => router.push(getDashboardRouteForRole(role))}
-                className="rounded-full bg-[#b80049] px-4 py-2 text-xs font-bold text-white"
+              <a
+                href={getDashboardRouteForRole(role)}
+                className="rounded-xl bg-pink-600 px-4 py-2 text-xs font-bold text-white"
               >
                 Dashboard
-              </button>
+              </a>
             </div>
 
             <div className="mb-6 hidden sm:block">
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-pink-700">Account Center</p>
-              <h1 className="mt-1 text-3xl font-black text-slate-900">My Profile</h1>
+              <h1 className="mt-1 text-3xl font-black text-slate-900">Account Settings</h1>
               <p className="mt-1 text-sm text-slate-500">
-                Manage your identity, credentials, and role-specific workspace tools.
+                Manage security, notifications, and role-specific workspace tools.
               </p>
             </div>
 
@@ -330,7 +444,7 @@ export default function ProfilePage() {
                   onClick={() => setActiveTab(tab.key)}
                   className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${
                     activeTab === tab.key
-                      ? "bg-[#b80049] text-white"
+                      ? "bg-pink-600 text-white"
                       : "border border-slate-300 bg-white text-slate-600"
                   }`}
                 >
@@ -344,12 +458,22 @@ export default function ProfilePage() {
                 {statusMessage}
               </div>
             )}
+            {workspaceLoading && (
+              <div className="mb-6 rounded-xl border border-pink-100 bg-pink-50 p-4 text-sm font-medium text-pink-700">
+                Loading live workspace data...
+              </div>
+            )}
+            {workspaceError && (
+              <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+                {workspaceError}
+              </div>
+            )}
 
             {/* ---------------- Overview tab ---------------- */}
             {activeTab === "overview" && (
               <div className="space-y-6">
                 <div className="grid gap-6 md:grid-cols-2">
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Profile</p>
                       <button
@@ -362,7 +486,7 @@ export default function ProfilePage() {
 
                     {!isEditingProfile ? (
                       <div className="mt-4 flex items-center gap-4">
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-lg font-black text-white shadow-inner">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-pink-600 text-lg font-black text-white shadow-inner">
                           {initials}
                         </div>
                         <div className="overflow-hidden">
@@ -402,7 +526,7 @@ export default function ProfilePage() {
                     )}
                   </div>
 
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Access Control</p>
                     <div className="mt-4 text-xl font-black text-slate-900">{String(role).replace(/_/g, " ")}</div>
                     <div className="mt-2 text-sm text-slate-500">
@@ -411,7 +535,7 @@ export default function ProfilePage() {
                     {hasWorkspaceTools && (
                       <button
                         onClick={() => setActiveTab("workspace")}
-                        className="mt-4 inline-flex items-center rounded-full bg-[#b80049] px-4 py-2 text-xs font-bold text-white hover:bg-[#9a003c]"
+                        className="mt-4 inline-flex items-center rounded-xl bg-pink-600 px-4 py-2 text-xs font-bold text-white hover:bg-pink-700"
                       >
                         Open Workspace Tools →
                       </button>
@@ -420,7 +544,7 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Quick stat strip, varies by role */}
-                <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 mb-4">Snapshot</p>
                   <div className="grid gap-4 sm:grid-cols-3">
                     {isAdmin && (
@@ -459,14 +583,14 @@ export default function ProfilePage() {
             {/* ---------------- Security tab ---------------- */}
             {activeTab === "security" && (
               <div className="space-y-6">
-                <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                   <h2 className="text-lg font-black text-slate-900">Security & Authentication</h2>
                   <p className="text-sm text-slate-500">Manage your password protection and sign-in credentials.</p>
 
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
                     <div>
                       <p className="font-bold text-slate-800">Password</p>
-                      <p className="text-xs text-slate-500">Last changed over 30 days ago</p>
+                      <p className="text-xs text-slate-500">Password managed by Supabase Auth</p>
                     </div>
                     <button
                       onClick={() => setIsPasswordModalOpen(true)}
@@ -479,7 +603,7 @@ export default function ProfilePage() {
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
                     <div>
                       <p className="font-bold text-slate-800">Active Sessions</p>
-                      <p className="text-xs text-slate-500">2 devices currently signed in</p>
+                      <p className="text-xs text-slate-500">Session count is not exposed by the current Auth API</p>
                     </div>
                     <button
                       onClick={() => showToast("All other sessions signed out.")}
@@ -490,7 +614,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                   <h2 className="text-lg font-black text-slate-900 mb-2">Verify Sensitive Action</h2>
                   <p className="text-sm text-slate-500 mb-4">
                     Elevated actions ({isAdmin ? "user management, " : ""}
@@ -507,7 +631,7 @@ export default function ProfilePage() {
 
             {/* ---------------- Notifications tab ---------------- */}
             {activeTab === "notifications" && (
-              <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+              <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-black text-slate-900">Notification Preferences</h2>
                 <p className="text-sm text-slate-500">Choose what updates you want to receive in your inbox.</p>
 
@@ -581,12 +705,12 @@ export default function ProfilePage() {
               <div className="space-y-6">
                 {/* Admin: user management + system health */}
                 {isAdmin && (
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-black text-slate-900">User Management</h2>
                       <button
                         onClick={() => showToast("Invite link generated.")}
-                        className="rounded-full bg-[#b80049] px-4 py-2 text-xs font-bold text-white hover:bg-[#9a003c]"
+                        className="rounded-xl bg-pink-600 px-4 py-2 text-xs font-bold text-white hover:bg-pink-700"
                       >
                         + Invite User
                       </button>
@@ -611,7 +735,7 @@ export default function ProfilePage() {
                               </td>
                               <td className="py-3 pr-4 text-right">
                                 <button
-                                  onClick={() => toggleUserStatus(u.id)}
+                                  onClick={() => requestUserSuspension(u)}
                                   className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
                                 >
                                   {u.status === "Suspended" ? "Reactivate" : "Suspend"}
@@ -626,12 +750,12 @@ export default function ProfilePage() {
                 )}
 
                 {isAdmin && (
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <h2 className="text-lg font-black text-slate-900 mb-4">System Health</h2>
                     <div className="grid gap-4 sm:grid-cols-3">
-                      <StatCard label="API Uptime" value="99.98%" sub="Last 30 days" />
-                      <StatCard label="Failed Logins" value="3" sub="Last 24 hours" />
-                      <StatCard label="Audit Events" value="128" sub="Last 24 hours" />
+                      <StatCard label="API Uptime" value="—" sub="Metric unavailable" />
+                      <StatCard label="Failed Logins" value="—" sub="Metric unavailable" />
+                      <StatCard label="Audit Events" value="—" sub="Metric unavailable" />
                     </div>
                     <button
                       onClick={() => showToast("Opening full audit log…")}
@@ -644,7 +768,7 @@ export default function ProfilePage() {
 
                 {/* Dispatcher: dispatch queue */}
                 {isDispatcher && (
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-black text-slate-900">Dispatch Queue</h2>
                       <button
@@ -694,7 +818,7 @@ export default function ProfilePage() {
 
                 {/* Manager: pending approvals */}
                 {isManager && (
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <h2 className="text-lg font-black text-slate-900">Pending Approvals</h2>
                     <p className="text-sm text-slate-500 mb-4">Requests from your team awaiting a decision.</p>
                     {approvals.length === 0 ? (
@@ -715,7 +839,7 @@ export default function ProfilePage() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => approveRequest(a.id)}
-                                className="rounded-lg bg-[#b80049] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#9a003c]"
+                                className="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-pink-700"
                               >
                                 Approve
                               </button>
@@ -734,10 +858,10 @@ export default function ProfilePage() {
                 )}
 
                 {isManager && (
-                  <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+                  <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                     <h2 className="text-lg font-black text-slate-900 mb-4">Team Performance</h2>
                     <div className="grid gap-4 sm:grid-cols-3">
-                      <StatCard label="On-Time Rate" value="94%" sub="Last 30 days" />
+                      <StatCard label="On-Time Rate" value="—" sub="Metric unavailable" />
                       <StatCard label="Team Size" value={String(managedUsers.length)} />
                       <StatCard label="Open Flags" value={String(dispatchQueue.filter((l) => l.status === "Delayed").length)} />
                     </div>
@@ -748,11 +872,13 @@ export default function ProfilePage() {
 
             {/* ---------------- Activity tab ---------------- */}
             {activeTab === "activity" && (
-              <div className="rounded-[28px] border border-pink-200 bg-white p-6 shadow-[0_20px_60px_rgba(184,0,73,0.08)]">
+              <div className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-black text-slate-900">Recent Activity</h2>
                 <p className="text-sm text-slate-500 mb-4">A log of recent actions on your account.</p>
                 <div className="space-y-3">
-                  {MOCK_ACTIVITY.map((entry) => (
+                  {activity.length === 0 ? (
+                    <p className="text-sm text-slate-500">No account activity is available.</p>
+                  ) : activity.map((entry) => (
                     <div
                       key={entry.id}
                       className="flex items-start justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4"
@@ -820,13 +946,53 @@ export default function ProfilePage() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#b80049] px-4 py-2 text-xs font-bold text-white hover:bg-[#9a003c]"
+                  className="rounded-lg bg-pink-600 px-4 py-2 text-xs font-bold text-white hover:bg-pink-700"
                 >
                   Update Password
                 </button>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {suspensionTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <form onSubmit={confirmUserSuspension} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900">Verify suspension</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Enter your current account password to suspend {suspensionTarget.name}.
+            </p>
+            <label className="mt-5 block text-xs font-bold text-slate-700">
+              Account password
+              <input
+                type="password"
+                value={suspensionPassword}
+                onChange={(event) => setSuspensionPassword(event.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none"
+                autoFocus
+                required
+              />
+            </label>
+            {suspensionError && <p className="mt-3 text-xs font-semibold text-rose-700">{suspensionError}</p>}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setSuspensionTarget(null)}
+                disabled={suspensionLoading}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={suspensionLoading || !suspensionPassword}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {suspensionLoading ? "Verifying..." : "Verify & Suspend"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

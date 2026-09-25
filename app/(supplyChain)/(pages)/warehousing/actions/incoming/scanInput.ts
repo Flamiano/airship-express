@@ -1,11 +1,11 @@
 "use server";
 
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../../lib/services/client/supabase";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
-import { sanitizeBarcode } from "@/app/(supplyChain)/components/global/sanitize";
+import { cookies, headers } from "next/headers";
+import { sanitizeBarcode } from "../../../../components/global/sanitize";
 import { toast } from "sonner";
-import { isRateLimited } from "@/app/(supplyChain)/components/global/rateLimit";
+import { isRateLimited } from "../../../../components/global/rateLimit";
 
 const generateTrackingNumber = () => {
     const date = new Date();
@@ -20,7 +20,7 @@ const generateTrackingNumber = () => {
     return `TRK-${dateStr}-${randomStr}`;
 };
 
-export async function scanBarcode(barcodeValue: string) {
+export async function scanBarcode(barcodeValue: string, scannedBy?: string) {
     try {
 
         const headersList = await headers();
@@ -42,6 +42,26 @@ export async function scanBarcode(barcodeValue: string) {
                 error: 'Invalid barcode',
                 status: 400,
             };
+        }
+
+        let finalScannedBy = scannedBy?.trim() || null;
+        if (!finalScannedBy) {
+            try {
+                const cookieStore = await cookies();
+                const token = cookieStore.get('session_token')?.value || cookieStore.get('sc_session_token')?.value;
+                if (token) {
+                    const { data } = await supabase
+                        .from('sessions')
+                        .select('user_id')
+                        .eq('session_token', token)
+                        .maybeSingle();
+                    if (data?.user_id) {
+                        finalScannedBy = data.user_id;
+                    }
+                }
+            } catch {
+                // Ignore cookie resolution failure
+            }
         }
 
         const { data: existingInQueue, error: queueError } = await supabase
@@ -102,6 +122,7 @@ export async function scanBarcode(barcodeValue: string) {
             barcode: sanitized,
             tracking_number: trackingNumber,
             status: 'pending',
+            scanned_by: finalScannedBy || null,
             scanned_at: new Date().toISOString(),
         };
 

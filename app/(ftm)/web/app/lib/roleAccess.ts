@@ -1,5 +1,7 @@
 export type AppRole = "fleet_manager" | "admin" | "dispatcher" | "driver" | "customer";
 
+import { canAccessPath, hasPermission, type PermissionAction, type PermissionModule } from "./permissions";
+
 const ROLE_ALIASES: Record<string, AppRole> = {
   fleet_manager: "fleet_manager",
   "fleet manager": "fleet_manager",
@@ -50,6 +52,14 @@ export function hasRoleAccess(allowedRoles: AppRole[], currentRole?: AppRole | n
   const role = currentRole ?? getCurrentRole();
   if (!role) return false;
   return allowedRoles.includes(role);
+}
+
+export function hasAppPermission(role: AppRole | string | null | undefined, module: PermissionModule, action: PermissionAction = "view") {
+  return hasPermission(normalizeRole(role), module, action);
+}
+
+export function hasPathAccess(role: AppRole | string | null | undefined, pathname: string) {
+  return canAccessPath(normalizeRole(role), pathname);
 }
 
 export function getDashboardRouteForRole(role?: AppRole | string | null): string {

@@ -8,7 +8,7 @@ import { StatsCards } from '../common/StatsCards';
 import { LowStockAlert } from '../common/LowStockAlert';
 import { CategoryChart } from '../charts/CategoryChart';
 import { StatusChart } from '../charts/StatusChart';
-import { CardsSkeleton, ChartsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
+import { CardsSkeleton, ChartsSkeleton } from '../../../../components/ui/SkeletonLoader';
 
 interface DashboardTabProps {
     inventoryItems: InventoryItem[];

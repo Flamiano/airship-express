@@ -3,7 +3,7 @@
 "use client";
 
 import React from "react";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
+import { AppButton } from "../../../../components/ui/AppButton";
 
 interface SuppliersHeaderProps {
     totalSuppliers: number;

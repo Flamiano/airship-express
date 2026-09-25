@@ -21,7 +21,7 @@ export const NAV = [
                 label: "Parcel Inventory",
                 href: "/inventory",
                 icon: "fa-solid fa-layer-group",
-                roles: ["Executive", "Admin", "Manager", "Employee", "Operator"],
+                roles: ["Executive", "Admin", "Manager", "Operator"],
             },
         ],
     },
@@ -85,13 +85,20 @@ export const NAV = [
                 label: "Trash",
                 href: "/trash",
                 icon: "fa-solid fa-trash",
-                roles: ["Executive", "Admin", "Manager", "Employee"],
+                roles: ["Executive", "Admin", "Manager", "Employee", "Operator"],
             },
             {
                 id: "User-Activities",
                 label: "User-Activities",
                 href: "/user-activity",
                 icon: "fa-solid fa-user-clock",
+                roles: ["Executive", "Admin"],
+            },
+            {
+                id: "Settings",
+                label: "Settings",
+                href: "/settings",
+                icon: "fa-solid fa-gear",
                 roles: ["Executive", "Admin"],
             }
         ]

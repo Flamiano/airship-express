@@ -5,11 +5,11 @@ import { createPortal } from "react-dom";
 import { motion, useMotionValue, useSpring } from "framer-motion";
 
 interface CustomCursorProps {
-    containerRef: RefObject<HTMLElement | null>;
+    containerRef?: RefObject<HTMLElement | null>;
 }
 
 const INTERACTIVE_SELECTOR =
-    'a, button, [role="button"], input, select, textarea, label, [tabindex], .cursor-pointer, .cursor-hover, .card, .kpi, table tbody tr, .table-pro tbody tr, th[onclick], [data-interactive="true"]';
+    'a, button, [role="button"], input, select, textarea, label, [tabindex], .cursor-pointer, .cursor-hover, .card, .kpi, table tbody tr, .table-pro tbody tr, th[onclick], [data-interactive="true"], [data-sonner-toast], [data-button], [data-close-button], .offline-banner-container button, .offline-indicator, .offline-indicator button';
 
 const MODAL_SELECTOR =
     '[role="dialog"], [aria-modal="true"], .fixed.inset-0.backdrop-blur-md, .fixed.inset-0.backdrop-blur-sm, .fixed.inset-0.backdrop-blur-lg, .fixed.inset-0[class*="z-"], [class*="modal"], [id*="modal"]';

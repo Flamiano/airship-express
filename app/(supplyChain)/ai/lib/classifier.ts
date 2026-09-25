@@ -122,9 +122,12 @@ You are an intent classifier for a Warehouse Management System.
 
 **RELATED TOPICS (always related):**
 - Parcels, shipments, deliveries, couriers
-- Inventory, stock, items, supplies
-- Warehouse operations, receiving, sorting, dispatch
-- Suppliers, procurement, purchase orders
+- Inventory, stock, items, supplies, low stock
+- Warehouse operations, receiving, sorting, dispatch, dwell times
+- Suppliers, procurement, purchase orders, purchase requests, requisitions
+- Executive overview, executive KPIs, macro business metrics, executive financial summaries
+- Forecasting, predictive demand, algorithmic demand models
+- User activities, audit logs, active sessions, system settings
 - Performance metrics, tracking, status
 - Daily operations, peak hours, sorting areas
 - Questions about the system itself
@@ -221,10 +224,12 @@ function classifyWithKeywords(query: string): ClassificationResult {
 
     const allKeywords = [...knowledgeKeywords, ...actionKeywords,
         'parcel', 'parcels', 'shipment', 'shipments', 'delivery', 'courier',
-        'warehouse', 'warehousing', 'inventory', 'stock', 'supplier',
+        'warehouse', 'warehousing', 'inventory', 'stock', 'supplier', 'suppliers',
         'receiving', 'sorting', 'dispatch', 'inbound', 'outgoing',
         'process', 'procedure', 'operation', 'daily', 'flow',
-        'procurement', 'purchase', 'vendor', 'tracking', 'status',
+        'procurement', 'purchase', 'purchase order', 'purchase request', 'requisition', 'vendor', 'tracking', 'status',
+        'executive', 'overview', 'kpi', 'kpis', 'metric', 'metrics', 'forecast', 'forecasting',
+        'user activity', 'activity', 'audit', 'settings', 'gallery', 'trash',
         'supply chain', 'logistics', 'freight', 'container'
     ];
 

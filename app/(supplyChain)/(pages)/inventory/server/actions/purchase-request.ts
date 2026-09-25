@@ -1,7 +1,7 @@
 // app/(supplyChain)/(pages)/inventory/server/actions/purchase-request.ts
 'use server';
 
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../../lib/services/client/supabase';
 import { revalidatePath } from 'next/cache';
 
 export interface CreateScopedPRParams {

@@ -1,19 +1,21 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { sanitizeBarcode } from "@/app/(supplyChain)/components/global/sanitize";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import BarcodeScanner from "@/app/(supplyChain)/(pages)/warehousing/components/client/outgoing/BarcodeScanner";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
-import { CrudActionButton } from "@/app/(supplyChain)/components/ui/CrudActionButton";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import { StatusBadge } from "@/app/(supplyChain)/components/ui/StatusBadge";
-import { TableRowsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
-import { Send } from "lucide-react";
+import { supabase } from "../../../../lib/services/client/supabase";
+import { sanitizeBarcode } from "../../../../components/global/sanitize";
+import { useConfirm } from "../../../../components/ui/ConfirmModal";
+import BarcodeScanner from "../client/outgoing/BarcodeScanner";
+import { useUserRole } from "../../../../components/global/UnauthorizedEmptyState";
+import { user } from "../../../../lib/services/Class/user";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
+import { AppButton } from "../../../../components/ui/AppButton";
+import { StatusBadge } from "../../../../components/ui/StatusBadge";
+import { TableRowsSkeleton } from "../../../../components/ui/SkeletonLoader";
+import { Pagination } from "../../../../components/global/pagination";
+import { Send, X, Check, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Parcel {
     id: number;
@@ -23,10 +25,14 @@ interface Parcel {
     destination: string | null;
     courier: string | null;
     courier_id: number | null;
+    city?: string | null;
     status: string;
     created_at: string;
     bulk_qr_code?: string | null;
+    bulk_qr_city?: string | null;
+    bulk_qr_courier?: string | null;
     driver_name?: string | null;
+    scanned_by?: string | null;
 }
 
 interface Courier {
@@ -35,20 +41,17 @@ interface Courier {
     name: string;
 }
 
-const DRIVERS = [
-    "Juan Dela Cruz",
-    "Maria Santos",
-    "Pedro Reyes",
-    "Ana Lopez",
-    "Ramon Garcia",
-    "Liza Fernandez",
-    "Michael Tan",
-    "Sarah Lim",
+const FALLBACK_DRIVERS = [
+    "MAGAT, ROSANT CARLO",
+    "MANAAY, ANTHONY",
+    "MELENCION, JAMES",
+    "NUEVAS, KENNETH",
 ];
 
 export default function OutgoingPanel({ isVisible = true }) {
     const searchParams = useSearchParams();
     const currentTab = searchParams.get('tab');
+    const { role: userRole, userId: currentUserId, isPrivileged, isLoaded } = useUserRole();
     const [parcels, setParcels] = useState<Parcel[]>([]);
     const [loading, setLoading] = useState(true);
     const [barcode, setBarcode] = useState("");
@@ -57,6 +60,14 @@ export default function OutgoingPanel({ isVisible = true }) {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [bulkQrCode, setBulkQrCode] = useState<string | null>(null);
     const [selectedDriver, setSelectedDriver] = useState<string>("");
+    const [driverList, setDriverList] = useState<string[]>(FALLBACK_DRIVERS);
+    const [driverEmailMap, setDriverEmailMap] = useState<Record<string, string>>({});
+    const [showDriverModal, setShowDriverModal] = useState(false);
+    const [driverSearchTerm, setDriverSearchTerm] = useState("");
+    const [debouncedDriverSearch, setDebouncedDriverSearch] = useState("");
+    const [isDriverDebouncing, setIsDriverDebouncing] = useState(false);
+    const [driverPage, setDriverPage] = useState(1);
+    const [mounted, setMounted] = useState(false);
     const [showScanner, setShowScanner] = useState(false);
     const [stats, setStats] = useState({ total: 0 });
     const [page, setPage] = useState(1);
@@ -64,8 +75,61 @@ export default function OutgoingPanel({ isVisible = true }) {
     const [couriers, setCouriers] = useState<Courier[]>([]);
     const [bulkScannedCount, setBulkScannedCount] = useState(0);
     const limit = 10;
+    const driversPerPage = 4;
     const inputRef = useRef<HTMLInputElement>(null);
+    const driverSelectRef = useRef<HTMLSelectElement>(null);
     const { confirm } = useConfirm();
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // Debounce driver search input
+    useEffect(() => {
+        if (!driverSearchTerm) {
+            setDebouncedDriverSearch("");
+            setIsDriverDebouncing(false);
+            return;
+        }
+        setIsDriverDebouncing(true);
+        const timer = setTimeout(() => {
+            setDebouncedDriverSearch(driverSearchTerm);
+            setIsDriverDebouncing(false);
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [driverSearchTerm]);
+
+    // Filter and paginate drivers
+    const filteredDrivers = useMemo(() => {
+        const query = debouncedDriverSearch.toLowerCase().trim();
+        if (!query) return driverList;
+        return driverList.filter(d => d.toLowerCase().includes(query));
+    }, [driverList, debouncedDriverSearch]);
+
+    // Reset driverPage when search changes
+    useEffect(() => {
+        setDriverPage(1);
+    }, [debouncedDriverSearch]);
+
+    const totalDriverPages = Math.max(1, Math.ceil(filteredDrivers.length / driversPerPage));
+    const displayedDrivers = useMemo(() => {
+        const startIndex = (driverPage - 1) * driversPerPage;
+        return filteredDrivers.slice(startIndex, startIndex + driversPerPage);
+    }, [filteredDrivers, driverPage, driversPerPage]);
+
+    const handleOpenDriverSelect = () => {
+        setShowDriverModal(true);
+    };
+
+    const handleSelectDriverFromModal = (driver: string) => {
+        setSelectedDriver(driver);
+        setShowDriverModal(false);
+        setPage(1);
+        toast.success(`Driver selected: ${driver}`, { duration: 2500 });
+        if (isListening && inputRef.current) {
+            setTimeout(() => inputRef.current?.focus(), 150);
+        }
+    };
 
     // Auto-focus input when tab is outgoing and scanner is listening
     useEffect(() => {
@@ -94,15 +158,62 @@ export default function OutgoingPanel({ isVisible = true }) {
                 const res = await fetch('/api/couriers');
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data)) {
-                        setCouriers(data.filter((c: any) => c.is_active !== false));
-                    }
+                    setCouriers(data);
                 }
             } catch (err) {
                 console.warn('Failed to load couriers from /api/couriers:', err);
             }
         };
         fetchCouriers();
+    }, []);
+
+    useEffect(() => {
+        const fetchDrivers = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('mock_employees')
+                    .select('id, display_name, email, position, department, role');
+
+                if (!error && data && data.length > 0) {
+                    const drivers = data.filter((emp: any) => {
+                        const pos = (emp.position || '').toLowerCase();
+                        const dept = (emp.department || '').toLowerCase();
+                        const role = (emp.role || '').toLowerCase();
+                        return (
+                            pos.includes('rider') ||
+                            pos.includes('driver') ||
+                            pos.includes('drop-off') ||
+                            pos.includes('pick-up') ||
+                            dept.includes('rider') ||
+                            dept.includes('driver') ||
+                            role.includes('rider') ||
+                            role.includes('driver')
+                        );
+                    });
+
+                    const emailMap: Record<string, string> = {};
+                    const driverNames = drivers
+                        .map((emp: any) => {
+                            const name = (emp.display_name || '').trim();
+                            if (name && emp.email) {
+                                emailMap[name] = emp.email.trim();
+                            }
+                            return name;
+                        })
+                        .filter(Boolean);
+
+                    setDriverEmailMap(emailMap);
+
+                    if (driverNames.length > 0) {
+                        const uniqueDrivers = Array.from(new Set([...driverNames, ...FALLBACK_DRIVERS]));
+                        setDriverList(uniqueDrivers);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to load drivers from mock_employees:', err);
+            }
+        };
+        fetchDrivers();
     }, []);
 
     const getCourierDisplay = (courierName: string | null, courierId: number | null) => {
@@ -140,8 +251,12 @@ export default function OutgoingPanel({ isVisible = true }) {
                 .eq('status', 'ready_for_pickup')
                 .order('created_at', { ascending: false });
 
+            if (!isPrivileged && currentUserId) {
+                query = query.eq('scanned_by', currentUserId);
+            }
+
             if (bulkQrCode) {
-                query = query.eq('bulk_qr_code', bulkQrCode);
+                query = query.or(`bulk_qr_code.eq.${bulkQrCode},bulk_qr_city.eq.${bulkQrCode},bulk_qr_courier.eq.${bulkQrCode}`);
             }
 
             if (selectedDriver) {
@@ -171,7 +286,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                 setLoading(false);
             }
         }
-    }, [bulkQrCode, selectedDriver, page, limit]);
+    }, [bulkQrCode, selectedDriver, page, limit, isPrivileged, currentUserId]);
 
     useEffect(() => {
         fetchParcels(true);
@@ -190,11 +305,18 @@ export default function OutgoingPanel({ isVisible = true }) {
         return () => {
             subscription.unsubscribe();
         };
-    }, [fetchParcels]);
+    }, [fetchParcels, isLoaded]);
 
     const processBarcode = async (barcodeValue: string) => {
         const sanitized = sanitizeBarcode(barcodeValue);
         if (!sanitized || isScanning) return;
+
+        if (!selectedDriver) {
+            toast.warning('Please select a Driver before scanning parcels.');
+            handleOpenDriverSelect();
+            setBarcode("");
+            return;
+        }
 
         setIsScanning(true);
         const toastId = toast.loading('Processing barcode...');
@@ -204,7 +326,7 @@ export default function OutgoingPanel({ isVisible = true }) {
                 const { data: bulkParcels, error: bulkError } = await supabase
                     .from('parcels')
                     .select('*')
-                    .eq('bulk_qr_code', sanitized)
+                    .or(`bulk_qr_code.eq.${sanitized},bulk_qr_city.eq.${sanitized},bulk_qr_courier.eq.${sanitized}`)
                     .neq('status', 'picked_up')
                     .neq('status', 'delivered');
 
@@ -261,7 +383,7 @@ export default function OutgoingPanel({ isVisible = true }) {
             const { data: parcel, error: findError } = await supabase
                 .from('parcels')
                 .select('*')
-                .eq('barcode', sanitized)
+                .or(`barcode.eq.${sanitized},tracking_number.eq.${sanitized}`)
                 .maybeSingle();
 
             if (findError) {
@@ -366,6 +488,11 @@ export default function OutgoingPanel({ isVisible = true }) {
 
         if (e.key === 'Enter') {
             e.preventDefault();
+            if (!selectedDriver) {
+                toast.warning('Please select a Driver before scanning parcels.');
+                handleOpenDriverSelect();
+                return;
+            }
             if (barcode.trim()) {
                 processBarcode(barcode);
             }
@@ -391,6 +518,12 @@ export default function OutgoingPanel({ isVisible = true }) {
 
     const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
         if (!isListening) {
+            e.preventDefault();
+            return;
+        }
+        if (!selectedDriver) {
+            toast.warning('Please select a Driver before scanning parcels.');
+            handleOpenDriverSelect();
             e.preventDefault();
             return;
         }
@@ -469,9 +602,39 @@ export default function OutgoingPanel({ isVisible = true }) {
                 .update(updateData)
                 .in('id', idsToDispatch);
 
-            if (error) {
-                console.error('Dispatch error:', error);
-                throw error;
+            const dispatchedParcelsData = parcels.filter(p => idsToDispatch.includes(p.id));
+            const currentDispatcherName = user.getName() || 'Warehouse Staff';
+            const currentDispatcherEmail = user.getEmail() || 'supplychain.airshipexpress@gmail.com';
+            const currentDispatcherRole = user.getRole() || 'Staff';
+
+            // Send dispatch manifest email with Excel attachment via Brevo and insert in-app notifications
+            try {
+                fetch('/api/supplyChain/dispatch-manifest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        driverName: selectedDriver || 'Assigned Driver',
+                        driverEmail: selectedDriver ? driverEmailMap[selectedDriver] : undefined,
+                        parcelIds: idsToDispatch,
+                        parcels: dispatchedParcelsData,
+                        dispatcherName: currentDispatcherName,
+                        dispatcherEmail: currentDispatcherEmail,
+                        dispatcherRole: currentDispatcherRole
+                    })
+                }).then(async res => {
+                    const data = await res.json();
+                    if (data.success) {
+                        if (data.recipients && data.recipients.length > 0) {
+                            toast.success(`Manifest emailed to driver (${data.recipients.join(', ')})`, { duration: 4000 });
+                        } else {
+                            toast.info(`Manifest generated & notification dispatched`, { duration: 3000 });
+                        }
+                    }
+                }).catch(err => {
+                    console.warn('Dispatch manifest email notification error:', err);
+                });
+            } catch (emailErr) {
+                console.warn('Could not trigger dispatch manifest email:', emailErr);
             }
 
             toast.success(`Successfully dispatched ${idsToDispatch.length} parcels${selectedDriver ? ` to ${selectedDriver}` : ''}`, {
@@ -616,9 +779,39 @@ export default function OutgoingPanel({ isVisible = true }) {
                 .update(updateData)
                 .eq('id', parcelId);
 
-            if (error) {
-                console.error('Dispatch error:', error);
-                throw error;
+            const singleParcel = parcels.find(p => p.id === parcelId) || { id: parcelId, barcode };
+            const currentDispatcherName = user.getName() || 'Warehouse Staff';
+            const currentDispatcherEmail = user.getEmail() || 'supplychain.airshipexpress@gmail.com';
+            const currentDispatcherRole = user.getRole() || 'Staff';
+
+            // Send dispatch manifest email with Excel attachment via Brevo and insert in-app notifications
+            try {
+                fetch('/api/supplyChain/dispatch-manifest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        driverName: selectedDriver || 'Assigned Driver',
+                        driverEmail: selectedDriver ? driverEmailMap[selectedDriver] : undefined,
+                        parcelIds: [parcelId],
+                        parcels: [singleParcel],
+                        dispatcherName: currentDispatcherName,
+                        dispatcherEmail: currentDispatcherEmail,
+                        dispatcherRole: currentDispatcherRole
+                    })
+                }).then(async res => {
+                    const data = await res.json();
+                    if (data.success) {
+                        if (data.recipients && data.recipients.length > 0) {
+                            toast.success(`Manifest emailed to driver (${data.recipients.join(', ')})`, { duration: 3500 });
+                        } else {
+                            toast.info(`Manifest generated & notification dispatched`, { duration: 3000 });
+                        }
+                    }
+                }).catch(err => {
+                    console.warn('Single dispatch manifest email notification error:', err);
+                });
+            } catch (emailErr) {
+                console.warn('Could not trigger dispatch manifest email:', emailErr);
             }
 
             toast.success(`Parcel ${barcode} dispatched${selectedDriver ? ` to ${selectedDriver}` : ''}`);
@@ -791,54 +984,109 @@ export default function OutgoingPanel({ isVisible = true }) {
                 </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 p-4 bg-[#f0f3f8] dark:bg-[#191a24] rounded-2xl border border-white/80 dark:border-[#2c2d3c] shadow-[4px_4px_10px_rgba(166,175,195,0.3),-4px_-4px_10px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[4px_4px_12px_rgba(0,0,0,0.5),-2px_-2px_6px_rgba(255,255,255,0.03)] transition-all">
-                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <i className="fas fa-user-tie text-pink-500 dark:text-pink-400"></i>
+            <div className={`flex flex-wrap items-center gap-3 p-4 bg-[#f0f3f8] dark:bg-[#191a24] rounded-2xl border transition-all ${
+                !selectedDriver
+                    ? 'border-amber-400/80 dark:border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+                    : 'border-white/80 dark:border-[#2c2d3c] shadow-[4px_4px_10px_rgba(166,175,195,0.3),-4px_-4px_10px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[4px_4px_12px_rgba(0,0,0,0.5),-2px_-2px_6px_rgba(255,255,255,0.03)]'
+            }`}>
+                <label htmlFor="assign-driver-select" className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i className="fas fa-truck text-pink-500 dark:text-pink-400"></i>
                     Assign Driver:
                 </label>
 
-                <div className="relative">
-                    <select
-                        value={selectedDriver}
-                        onChange={(e) => {
-                            setSelectedDriver(e.target.value);
-                            setPage(1);
-                            toast.info(`Driver selected: ${e.target.value || 'None'}`, { duration: 2000 });
-                            if (isListening && inputRef.current) {
-                                setTimeout(() => inputRef.current?.focus(), 100);
-                            }
-                        }}
-                        className="appearance-none bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 rounded-xl pl-3 pr-8 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] transition-all cursor-pointer min-w-[160px]"
-                    >
-                        <option value="" className="dark:bg-slate-900 text-slate-400">No driver assigned</option>
-                        {DRIVERS.map((driver) => (
-                            <option key={driver} value={driver} className="dark:bg-slate-900 dark:text-slate-200">
-                                {driver}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
+                <div className="flex items-center gap-2">
+                    <div className="relative">
+                        <select
+                            ref={driverSelectRef}
+                            id="assign-driver-select"
+                            value={selectedDriver}
+                            onChange={(e) => {
+                                setSelectedDriver(e.target.value);
+                                setPage(1);
+                                if (e.target.value) {
+                                    toast.success(`Driver selected: ${e.target.value}`, { duration: 2000 });
+                                } else {
+                                    toast.info('Driver filter cleared', { duration: 2000 });
+                                }
+                                if (isListening && inputRef.current) {
+                                    setTimeout(() => inputRef.current?.focus(), 100);
+                                }
+                            }}
+                            className={`appearance-none bg-[#ebf0f7] dark:bg-[#14151c] rounded-xl pl-3 pr-8 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] transition-all cursor-pointer min-w-[200px] border ${
+                                !selectedDriver
+                                    ? 'border-amber-500/80 dark:border-amber-500/70 ring-2 ring-amber-500/20'
+                                    : 'border-slate-200/60 dark:border-slate-800'
+                            }`}
+                        >
+                            <option value="" className="dark:bg-slate-900 text-slate-400">-- Select Driver --</option>
+                            {driverList.map((driver) => (
+                                <option key={driver} value={driver} className="dark:bg-slate-900 dark:text-slate-200">
+                                    {driver}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={handleOpenDriverSelect}
+                        className="px-2.5 py-2 bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-slate-200/70 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                        title="Browse & Select Driver"
+                    >
+                        <i className="fas fa-list text-[11px] text-pink-500" />
+                        <span>Browse</span>
+                    </button>
                 </div>
 
-                {selectedDriver && (
+                {!selectedDriver ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-300/80 dark:border-amber-800/60 text-xs font-bold text-amber-700 dark:text-amber-400 animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Driver required before scanning
+                    </span>
+                ) : (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] text-xs font-bold text-emerald-700 dark:text-emerald-400">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-                        Active: {selectedDriver}
+                        Driver: {selectedDriver}
                     </span>
                 )}
 
                 <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-auto flex items-center gap-1 font-medium">
                     <i className="fas fa-info-circle"></i>
-                    <span>Assigned to scanned or dispatched parcels</span>
+                    <span>Driver assigned to outgoing parcels</span>
                 </span>
             </div>
 
             <div className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 text-slate-900 dark:text-slate-100">
                 <div className="lg:col-span-2 space-y-4">
+                    {!selectedDriver && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 text-amber-800 dark:text-amber-300">
+                            <div className="flex items-center gap-2.5">
+                                <span className="flex items-center justify-center w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                                    <i className="fas fa-exclamation-triangle text-xs" />
+                                </span>
+                                <div className="text-xs">
+                                    <strong className="font-semibold block">Driver Selection Required Before Scanning</strong>
+                                    <span className="text-amber-700/90 dark:text-amber-400/90 text-[11px]">
+                                        Please assign a Driver above before scanning outgoing parcels.
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleOpenDriverSelect}
+                                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded-xl text-xs font-semibold shrink-0 cursor-pointer shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 active:scale-95"
+                            >
+                                <i className="fas fa-truck text-xs" />
+                                <span>Select Driver</span>
+                            </button>
+                        </div>
+                    )}
+
                     <div className="space-y-1.5">
                         <label
                             htmlFor="outgoing-barcode"
@@ -853,8 +1101,9 @@ export default function OutgoingPanel({ isVisible = true }) {
                         <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
                             <div className="relative flex-1">
                                 <i
-                                    className={`fas fa-barcode absolute left-3.5 top-1/2 -translate-y-1/2 text-sm transition-colors ${isListening ? 'text-emerald-500' : 'text-slate-400'
-                                        }`}
+                                    className={`fas fa-barcode absolute left-3.5 top-1/2 -translate-y-1/2 text-sm transition-colors ${
+                                        !selectedDriver ? 'text-amber-500' : isListening ? 'text-emerald-500' : 'text-slate-400'
+                                    }`}
                                     aria-hidden="true"
                                 />
                                 <input
@@ -866,14 +1115,19 @@ export default function OutgoingPanel({ isVisible = true }) {
                                     onKeyDown={handleKeyDown}
                                     onPaste={handlePaste}
                                     readOnly={!isListening || isScanning}
-                                    className={`w-full rounded-2xl border py-3 pl-10 pr-24 text-sm font-mono text-slate-800 dark:text-slate-200 transition-all outline-hidden bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] ${isListening
-                                        ? 'border-emerald-500/80 dark:border-emerald-600/80'
-                                        : 'border-slate-300/60 dark:border-slate-800/60'
-                                        } ${isScanning ? 'cursor-wait opacity-75' : ''}`}
+                                    className={`w-full rounded-2xl border py-3 pl-10 pr-28 text-sm font-mono text-slate-800 dark:text-slate-200 transition-all outline-hidden bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] ${
+                                        !selectedDriver
+                                            ? 'border-amber-400/80 dark:border-amber-500/70 focus:border-amber-500'
+                                            : isListening
+                                                ? 'border-emerald-500/80 dark:border-emerald-600/80'
+                                                : 'border-slate-300/60 dark:border-slate-800/60'
+                                    } ${isScanning ? 'cursor-wait opacity-75' : ''}`}
                                     placeholder={
-                                        isListening
-                                            ? "Scan barcode or type and press Enter..."
-                                            : "Click Start to enable scanning mode"
+                                        !selectedDriver
+                                            ? "Select a Driver before scanning..."
+                                            : isListening
+                                                ? "Scan barcode or type and press Enter..."
+                                                : "Click Start to enable scanning mode"
                                     }
                                     disabled={isScanning}
                                     autoFocus
@@ -883,16 +1137,24 @@ export default function OutgoingPanel({ isVisible = true }) {
                                 />
 
                                 <span
-                                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 transition-colors ${isListening
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60'
-                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
-                                        }`}
+                                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 transition-colors ${
+                                        !selectedDriver
+                                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300/80 dark:border-amber-800/60'
+                                            : isListening
+                                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60'
+                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                                    }`}
                                 >
                                     <span
-                                        className={`w-1.5 h-1.5 rounded-full ${isListening ? 'bg-emerald-500 dark:bg-emerald-400 animate-pulse' : 'bg-slate-400 dark:bg-slate-500'
-                                            }`}
+                                        className={`w-1.5 h-1.5 rounded-full ${
+                                            !selectedDriver
+                                                ? 'bg-amber-500 animate-pulse'
+                                                : isListening
+                                                    ? 'bg-emerald-500 dark:bg-emerald-400 animate-pulse'
+                                                    : 'bg-slate-400 dark:bg-slate-500'
+                                        }`}
                                     />
-                                    {isListening ? (isScanning ? 'processing...' : 'listening') : 'paused'}
+                                    {!selectedDriver ? 'driver required' : isListening ? (isScanning ? 'processing...' : 'listening') : 'paused'}
                                 </span>
                             </div>
 
@@ -916,7 +1178,14 @@ export default function OutgoingPanel({ isVisible = true }) {
 
                                 <button
                                     type="button"
-                                    onClick={() => setShowScanner(true)}
+                                    onClick={() => {
+                                        if (!selectedDriver) {
+                                            toast.warning('Please select a Driver before opening camera scanner.');
+                                            handleOpenDriverSelect();
+                                            return;
+                                        }
+                                        setShowScanner(true);
+                                    }}
                                     className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 text-white border border-pink-400/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] active:scale-95 transition-all cursor-pointer"
                                 >
                                     <i className="fas fa-camera text-xs" />
@@ -1120,18 +1389,41 @@ export default function OutgoingPanel({ isVisible = true }) {
                                             </td>
                                             <td data-label="#" className="text-center font-bold text-slate-400 dark:text-slate-500">{index + 1}</td>
                                             <td data-label="Barcode">
-                                                <div className="inline-flex items-center gap-1.5 font-mono text-slate-900 dark:text-slate-100 font-semibold">
-                                                    <span>{parcel.barcode}</span>
-                                                    {parcel.bulk_qr_code && (
-                                                        <span
-                                                            className="inline-flex items-center p-1 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/50"
-                                                            title={`Bulk QR: ${parcel.bulk_qr_code}`}
-                                                        >
-                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                                                            </svg>
-                                                        </span>
-                                                    )}
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="inline-flex items-center gap-1.5 font-mono text-slate-900 dark:text-slate-100 font-semibold">
+                                                        <span>{parcel.barcode}</span>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-1">
+                                                        {parcel.bulk_qr_code && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/50 text-[10px] font-mono font-medium"
+                                                                title={`Global Bulk QR: ${parcel.bulk_qr_code}`}
+                                                            >
+                                                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                                                </svg>
+                                                                <span>{parcel.bulk_qr_code}</span>
+                                                            </span>
+                                                        )}
+                                                        {parcel.bulk_qr_city && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/50 text-[10px] font-mono font-medium"
+                                                                title={`City Bulk QR: ${parcel.bulk_qr_city}`}
+                                                            >
+                                                                <i className="fas fa-city text-[8px]" />
+                                                                <span>{parcel.bulk_qr_city}</span>
+                                                            </span>
+                                                        )}
+                                                        {parcel.bulk_qr_courier && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/50 text-[10px] font-mono font-medium"
+                                                                title={`Courier Bulk QR: ${parcel.bulk_qr_courier}`}
+                                                            >
+                                                                <i className="fas fa-truck-fast text-[8px]" />
+                                                                <span>{parcel.bulk_qr_courier}</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td data-label="Tracking" className="font-mono text-slate-500 dark:text-slate-400">{parcel.tracking_number}</td>
@@ -1239,6 +1531,203 @@ export default function OutgoingPanel({ isVisible = true }) {
                     }
                 }}
             />
+
+            {/* Driver Selection Modal via Portal */}
+            {showDriverModal && mounted && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setShowDriverModal(false);
+                    }}
+                >
+                    <div className="bg-[#EEF2F6] dark:bg-[#161A23] border border-white/80 dark:border-white/[0.08] rounded-2xl sm:rounded-3xl max-w-md w-full overflow-hidden shadow-[8px_8px_30px_rgba(0,0,0,0.35)] flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150">
+                        {/* Header */}
+                        <div className="p-4 sm:p-5 border-b border-white/60 dark:border-white/[0.06] flex items-center justify-between bg-[#EEF2F6] dark:bg-[#161A23]">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-2xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center border border-pink-500/20">
+                                    <i className="fas fa-truck text-sm" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white font-bricolage">
+                                        Assign Driver
+                                    </h3>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                        Select a driver before scanning or dispatching
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDriverModal(false)}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Search Input with Debounce Indicator */}
+                        <div className="p-3.5 border-b border-white/60 dark:border-white/[0.06] bg-[#EEF2F6] dark:bg-[#161A23]">
+                            <div className="relative">
+                                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                                    {isDriverDebouncing ? (
+                                        <Loader2 size={15} className="animate-spin text-pink-500" />
+                                    ) : (
+                                        <Search size={15} />
+                                    )}
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search driver by name..."
+                                    value={driverSearchTerm}
+                                    onChange={(e) => setDriverSearchTerm(e.target.value)}
+                                    className="w-full pl-9 pr-8 py-2 text-xs bg-[#EAF0F6] dark:bg-[#13161F] border border-slate-200/60 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] transition-all"
+                                    autoFocus
+                                />
+                                {driverSearchTerm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setDriverSearchTerm("")}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                <span>
+                                    {filteredDrivers.length} driver{filteredDrivers.length === 1 ? '' : 's'} available
+                                </span>
+                                {totalDriverPages > 1 && (
+                                    <span>
+                                        Page {driverPage} of {totalDriverPages}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Paginated Driver List */}
+                        <div className="p-4 overflow-y-auto space-y-2 flex-1 custom-scrollbar">
+                            {displayedDrivers.map((driver) => {
+                                const isSelected = selectedDriver === driver;
+                                return (
+                                    <button
+                                        key={driver}
+                                        type="button"
+                                        onClick={() => handleSelectDriverFromModal(driver)}
+                                        className={`w-full text-left p-3.5 rounded-2xl transition-all border flex items-center justify-between gap-3 cursor-pointer ${
+                                            isSelected
+                                                ? 'bg-[#E2ECF6] dark:bg-[#192233] border-pink-500/70 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.06)]'
+                                                : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] hover:bg-[#E5EBF2] dark:hover:bg-[#151821] border-white/70 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.4)]'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs shrink-0 ${
+                                                isSelected ? 'bg-pink-500 text-white' : 'bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                            }`}>
+                                                <i className="fas fa-truck text-xs" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{driver}</div>
+                                                <div className="text-[10px] text-pink-600 dark:text-pink-400 font-semibold">Drop-Off Pick-Up Driver</div>
+                                            </div>
+                                        </div>
+
+                                        {isSelected ? (
+                                            <span className="shrink-0 text-xs text-pink-600 dark:text-pink-400 font-bold flex items-center gap-1 bg-pink-500/10 px-2.5 py-1 rounded-lg border border-pink-500/20">
+                                                <Check size={14} />
+                                                <span>Selected</span>
+                                            </span>
+                                        ) : (
+                                            <span className="shrink-0 text-[11px] px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded-lg font-semibold shadow-sm transition-all">
+                                                Assign
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+
+                            {filteredDrivers.length === 0 && (
+                                <div className="text-center py-8 text-xs text-slate-400">
+                                    No drivers found matching &quot;{driverSearchTerm}&quot;
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Pagination Controls */}
+                        {totalDriverPages > 1 && (
+                            <div className="px-4 py-2 border-t border-white/60 dark:border-white/[0.06] bg-[#EEF2F6] dark:bg-[#161A23] flex items-center justify-between">
+                                <button
+                                    type="button"
+                                    disabled={driverPage <= 1}
+                                    onClick={() => setDriverPage(p => Math.max(1, p - 1))}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+                                        driverPage <= 1
+                                            ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                            : 'bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer'
+                                    }`}
+                                >
+                                    <ChevronLeft size={14} />
+                                    <span>Previous</span>
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: totalDriverPages }, (_, i) => i + 1).map((p) => (
+                                        <button
+                                            key={p}
+                                            type="button"
+                                            onClick={() => setDriverPage(p)}
+                                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                                driverPage === p
+                                                    ? 'bg-pink-500 text-white shadow-sm'
+                                                    : 'bg-slate-200/70 dark:bg-slate-800/70 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                            }`}
+                                        >
+                                            {p}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={driverPage >= totalDriverPages}
+                                    onClick={() => setDriverPage(p => Math.min(totalDriverPages, p + 1))}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+                                        driverPage >= totalDriverPages
+                                            ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                            : 'bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer'
+                                    }`}
+                                >
+                                    <span>Next</span>
+                                    <ChevronRight size={14} />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Footer */}
+                        <div className="p-3.5 border-t border-white/60 dark:border-white/[0.06] bg-[#EEF2F6] dark:bg-[#161A23] flex items-center justify-between">
+                            {selectedDriver ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedDriver("");
+                                        setShowDriverModal(false);
+                                        toast.info("Driver selection cleared");
+                                    }}
+                                    className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-semibold px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                                >
+                                    Clear Driver
+                                </button>
+                            ) : <div />}
+                            <button
+                                type="button"
+                                onClick={() => setShowDriverModal(false)}
+                                className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 }

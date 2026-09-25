@@ -7,6 +7,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 let supabase = null;
 let serviceSupabase = null;
 let anonSupabase = null;
+let hrSupabase = null;
+let authSupabase = null;
 
 const initSupabase = () => {
   const supabaseUrl = process.env.FTM_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -29,6 +31,17 @@ const initSupabase = () => {
   }
 
   supabase = serviceSupabase || anonSupabase;
+
+  const hrUrl = process.env.HR_SUPABASE_URL || process.env.NEXT_PUBLIC_HR_SUPABASE_URL;
+  const hrServiceKey = process.env.HR_SUPABASE_SERVICE_ROLE_KEY;
+  if (hrUrl && hrServiceKey) {
+    hrSupabase = createClient(hrUrl, hrServiceKey);
+    console.log('HR Supabase client initialized');
+  } else {
+    console.warn('HR Supabase env vars not configured. HR bridge endpoints will return 503.');
+  }
+
+  authSupabase = process.env.FTM_AUTH_PROVIDER === 'hr' ? hrSupabase : supabase;
   console.log('Supabase URL:', supabaseUrl);
   console.log('Supabase client initialized');
   return supabase;
@@ -36,6 +49,8 @@ const initSupabase = () => {
 
 const getSupabase = () => supabase;
 const getServiceSupabase = () => serviceSupabase || supabase;
+const getHrSupabase = () => hrSupabase;
+const getAuthSupabase = () => authSupabase || supabase;
 
 // Parcels may be hosted in a separate Supabase project. Provide a helper
 // to return a parcels-specific client when PARCELS_SUPABASE_* env vars are
@@ -54,4 +69,4 @@ const getParcelsSupabase = () => {
   return supabase;
 };
 
-module.exports = { initSupabase, getSupabase, getServiceSupabase, getParcelsSupabase };
+module.exports = { initSupabase, getSupabase, getServiceSupabase, getHrSupabase, getAuthSupabase, getParcelsSupabase };

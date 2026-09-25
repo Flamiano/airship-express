@@ -1,6 +1,6 @@
 "use client";
 
-import { Pagination } from "@/app/(supplyChain)/components/global/pagination";
+import { Pagination } from "../../../../../components/global/pagination";
 import { useMemo } from "react";
 
 interface TablePaginationProps {

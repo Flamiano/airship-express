@@ -4,8 +4,8 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X } from 'lucide-react';
 import { Appeal } from '../../types';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import Portal from '../../../../components/client/Portal';
 
 interface AppealResponseModalProps {
     isOpen: boolean;

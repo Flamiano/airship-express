@@ -3,13 +3,25 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Loader2, Check, X, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { maskEmail } from '../services/scAuthService';
+
+const isUUID = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
+};
+
+const formatId = (id?: string | null): string => {
+    if (!id) return '';
+    const trimmed = id.trim();
+    if (isUUID(trimmed)) {
+        return trimmed.slice(0, 8) + '...';
+    }
+    return trimmed;
+};
 
 interface PasswordSetupModalProps {
     showPasswordModal: boolean;
     selectedEmployeeForPassword: any;
-    hrHasPassword: boolean;
-    useHrPassword: boolean;
-    setUseHrPassword: (v: boolean) => void;
     newPassword: string;
     setNewPassword: (v: string) => void;
     confirmPassword: string;
@@ -25,9 +37,6 @@ interface PasswordSetupModalProps {
 export default function PasswordSetupModal({
     showPasswordModal,
     selectedEmployeeForPassword,
-    hrHasPassword,
-    useHrPassword,
-    setUseHrPassword,
     newPassword,
     setNewPassword,
     confirmPassword,
@@ -112,145 +121,132 @@ export default function PasswordSetupModal({
                             <div className="mb-4 p-3.5 sm:p-4 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.6),inset_-2px_-2px_6px_rgba(255,255,255,0.02)] rounded-2xl border border-white/40 dark:border-white/[0.06]">
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Employee</p>
                                 <p className="font-semibold text-slate-900 dark:text-white text-sm sm:text-base mt-0.5">{selectedEmployeeForPassword.display_name}</p>
-                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">{selectedEmployeeForPassword.email}</p>
-                                {selectedEmployeeForPassword.employee_id && (
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">ID: {selectedEmployeeForPassword.employee_id}</p>
+                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 break-all">{maskEmail(selectedEmployeeForPassword.email)}</p>
+                                {(selectedEmployeeForPassword.employee_id || selectedEmployeeForPassword.id) && (
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">ID: {formatId(selectedEmployeeForPassword.employee_id || selectedEmployeeForPassword.id)}</p>
                                 )}
-                                {selectedEmployeeForPassword.department && (
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{selectedEmployeeForPassword.department} • {selectedEmployeeForPassword.position}</p>
-                                )}
+                                {(() => {
+                                    const hasDept = selectedEmployeeForPassword.department && selectedEmployeeForPassword.department.toLowerCase().trim() !== selectedEmployeeForPassword.role?.toLowerCase().trim();
+                                    const hasPos = selectedEmployeeForPassword.position && selectedEmployeeForPassword.position.toLowerCase().trim() !== selectedEmployeeForPassword.role?.toLowerCase().trim() && selectedEmployeeForPassword.position.toLowerCase().trim() !== selectedEmployeeForPassword.department?.toLowerCase().trim();
+
+                                    if (!hasDept && !hasPos) return null;
+                                    return (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            {hasDept && selectedEmployeeForPassword.department}
+                                            {hasDept && hasPos && ' • '}
+                                            {hasPos && selectedEmployeeForPassword.position}
+                                        </p>
+                                    );
+                                })()}
                                 <span className={`inline-block mt-2 text-[10px] font-semibold px-2.5 py-0.5 rounded-lg shadow-[2px_2px_5px_rgba(0,0,0,0.08)] ${getRoleColor(selectedEmployeeForPassword.role)}`}>
                                     {selectedEmployeeForPassword.role}
                                 </span>
                             </div>
 
-                            {hrHasPassword && (
-                                <div className="mb-4 p-3.5 sm:p-4 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.6),inset_-2px_-2px_6px_rgba(255,255,255,0.02)] rounded-2xl border border-blue-500/20 dark:border-blue-500/10">
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={useHrPassword}
-                                            onChange={(e) => setUseHrPassword(e.target.checked)}
-                                            className="mt-1 w-4 h-4 text-accent rounded border-line dark:border-paper/20 dark:bg-paper/5 focus:ring-accent cursor-pointer"
-                                        />
-                                        <div>
-                                            <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white">
-                                                Use HR system password
-                                            </p>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                                Your password will be synced from the HR system
-                                            </p>
-                                        </div>
+                            <div className="space-y-3.5">
+                                <div>
+                                    <label className="block text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 mb-1.5">
+                                        New Password
                                     </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showNewPassword ? 'text' : 'password'}
+                                            value={newPassword}
+                                            onChange={(e) => setNewPassword(e.target.value)}
+                                            className="w-full bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl pl-3.5 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition"
+                                            placeholder="Enter password (min 8 characters)"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewPassword(!showNewPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                            aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
                                 </div>
-                            )}
 
-                            {!useHrPassword && (
-                                <div className="space-y-3.5">
-                                    <div>
-                                        <label className="block text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 mb-1.5">
-                                            New Password
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showNewPassword ? 'text' : 'password'}
-                                                value={newPassword}
-                                                onChange={(e) => setNewPassword(e.target.value)}
-                                                className="w-full bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl pl-3.5 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition"
-                                                placeholder="Enter password (min 8 characters)"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowNewPassword(!showNewPassword)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
-                                                aria-label={showNewPassword ? 'Hide password' : 'Show password'}
-                                            >
-                                                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                            </button>
-                                        </div>
+                                {/* Password Strength Meter & Live Validation Checklist */}
+                                <div className="p-3 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.6),inset_-1px_-1px_4px_rgba(255,255,255,0.02)] rounded-2xl border border-white/40 dark:border-white/[0.06] space-y-2">
+                                    {/* Strength Bar */}
+                                    <div className="flex items-center justify-between text-[11px]">
+                                        <span className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                                            <ShieldCheck size={13} className={strength.color} />
+                                            Password Strength
+                                        </span>
+                                        <span className={`font-bold uppercase tracking-wider text-[10px] ${strength.color}`}>
+                                            {strength.label}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5 h-1.5 w-full bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 shadow-inner">
+                                        <div className={`h-full rounded-full transition-all duration-300 ${strength.score >= 1 ? strength.barColor : 'bg-transparent'}`} />
+                                        <div className={`h-full rounded-full transition-all duration-300 ${strength.score >= 2 ? strength.barColor : 'bg-transparent'}`} />
+                                        <div className={`h-full rounded-full transition-all duration-300 ${strength.score >= 3 ? strength.barColor : 'bg-transparent'}`} />
                                     </div>
 
-                                    {/* Password Strength Meter & Live Validation Checklist */}
-                                    <div className="p-3 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.6),inset_-1px_-1px_4px_rgba(255,255,255,0.02)] rounded-2xl border border-white/40 dark:border-white/[0.06] space-y-2">
-                                        {/* Strength Bar */}
-                                        <div className="flex items-center justify-between text-[11px]">
-                                            <span className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                                                <ShieldCheck size={13} className={strength.color} />
-                                                Password Strength
-                                            </span>
-                                            <span className={`font-bold uppercase tracking-wider text-[10px] ${strength.color}`}>
-                                                {strength.label}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-1.5 h-1.5 w-full bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 shadow-inner">
-                                            <div className={`h-full rounded-full transition-all duration-300 ${strength.score >= 1 ? strength.barColor : 'bg-transparent'}`} />
-                                            <div className={`h-full rounded-full transition-all duration-300 ${strength.score >= 2 ? strength.barColor : 'bg-transparent'}`} />
-                                            <div className={`h-full rounded-full transition-all duration-300 ${strength.score >= 3 ? strength.barColor : 'bg-transparent'}`} />
-                                        </div>
-
-                                        {/* Requirements Checklist */}
-                                        <div className="pt-1 grid grid-cols-1 gap-1.5 text-[11px]">
-                                            {rules.map((rule) => (
+                                    {/* Requirements Checklist */}
+                                    <div className="pt-1 grid grid-cols-1 gap-1.5 text-[11px]">
+                                        {rules.map((rule) => (
+                                            <div
+                                                key={rule.id}
+                                                className={`flex items-center gap-2 transition-colors ${
+                                                    rule.isValid
+                                                        ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                                        : 'text-slate-500 dark:text-slate-400'
+                                                }`}
+                                            >
                                                 <div
-                                                    key={rule.id}
-                                                    className={`flex items-center gap-2 transition-colors ${
+                                                    className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-all ${
                                                         rule.isValid
-                                                            ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                                            : 'text-slate-500 dark:text-slate-400'
+                                                            ? 'bg-emerald-500 text-white shadow-[0_0_6px_rgba(16,185,129,0.5)]'
+                                                            : 'bg-slate-300 dark:bg-slate-700 text-transparent'
                                                     }`}
                                                 >
-                                                    <div
-                                                        className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                                                            rule.isValid
-                                                                ? 'bg-emerald-500 text-white shadow-[0_0_6px_rgba(16,185,129,0.5)]'
-                                                                : 'bg-slate-300 dark:bg-slate-700 text-transparent'
-                                                        }`}
-                                                    >
-                                                        <Check size={9} strokeWidth={3.5} />
-                                                    </div>
-                                                    <span>{rule.label}</span>
+                                                    <Check size={9} strokeWidth={3.5} />
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 mb-1.5">
-                                            Confirm Password
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showConfirmPassword ? 'text' : 'password'}
-                                                value={confirmPassword}
-                                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                                className="w-full bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl pl-3.5 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition"
-                                                placeholder="Confirm your password"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
-                                                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                                            >
-                                                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                            </button>
-                                        </div>
-                                        {confirmPassword.length > 0 && (
-                                            <div className="flex items-center gap-1.5 text-[11px] pt-1.5">
-                                                {newPassword === confirmPassword ? (
-                                                    <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                                                        <Check size={12} strokeWidth={3} /> Passwords match
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
-                                                        <X size={12} strokeWidth={3} /> Passwords do not match
-                                                    </span>
-                                                )}
+                                                <span>{rule.label}</span>
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
                                 </div>
-                            )}
+
+                                <div>
+                                    <label className="block text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 mb-1.5">
+                                        Confirm Password
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showConfirmPassword ? 'text' : 'password'}
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            className="w-full bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl pl-3.5 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition"
+                                            placeholder="Confirm your password"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                    {confirmPassword.length > 0 && (
+                                        <div className="flex items-center gap-1.5 text-[11px] pt-1.5">
+                                            {newPassword === confirmPassword ? (
+                                                <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                                                    <Check size={12} strokeWidth={3} /> Passwords match
+                                                </span>
+                                            ) : (
+                                                <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                                                    <X size={12} strokeWidth={3} /> Passwords do not match
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         {/* Neumorphic Modal Footer */}

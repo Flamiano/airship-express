@@ -12,6 +12,7 @@ import {
   FileText,
   UserCheck,
   PieChart,
+  Settings,
   X,
 } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/workforce-management-dashboard/timesheets', label: 'Timesheet Workflow', icon: FileText },
   { href: '/workforce-management-dashboard/leave', label: 'Leave & Fatigue Rest', icon: UserCheck },
   { href: '/workforce-management-dashboard/analytics', label: 'Workforce Full Analytics', icon: PieChart },
+  { href: '/workforce-management-dashboard/settings', label: 'System Settings', icon: Settings },
 ];
 
 export function Sidebar() {

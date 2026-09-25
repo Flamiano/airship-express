@@ -1,5 +1,5 @@
-import { createNotification } from '@/app/(supplyChain)/lib/services/notifications';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { createNotification } from '../../lib/services/notifications';
+import { supabase } from '../../lib/services/client/supabase';
 
 // In-memory strike & lockout store (persists across chat turns within the server instance)
 export interface UserStrikeState {

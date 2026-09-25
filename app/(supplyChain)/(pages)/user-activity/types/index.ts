@@ -70,4 +70,4 @@ export interface UserActivity {
     };
 }
 
-export type ActivityTab = 'sessions' | 'blocked' | 'activity' | 'appeals';
+export type ActivityTab = 'active_users' | 'sessions' | 'blocked' | 'activity' | 'appeals';

@@ -3,14 +3,14 @@
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import ExecutiveChartModal from "@/app/(supplyChain)/components/modals/ExecutiveChartModal";
+import ExecutiveChartModal from "../../../components/modals/ExecutiveChartModal";
 import OverviewTab from "./tabs/OverviewTab";
 import OperationsTab from "./tabs/OperationsTab";
 import KpisTab from "./tabs/KpisTab";
 import ReportsTab from "./tabs/ReportsTab";
 import { ExecutiveDataPayload } from "../hooks/useExecutiveData";
 import { buildExecutiveModalConfig, ModalConfig } from "../lib/executiveModalConfig";
-import { ChartsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { ChartsSkeleton } from "../../../components/ui/SkeletonLoader";
 
 // Lazy-load heavy tabs with Chart.js / WASM / Prompt logic on-demand
 const ForecastTab = dynamic(() => import("./tabs/ForecastTab"), {

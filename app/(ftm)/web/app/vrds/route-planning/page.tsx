@@ -7,7 +7,6 @@ import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import { createRouteBooking, useParcelStore } from "../../lib/parcelStore";
 import { createBulkBooking, createRoutePlan, fetchJson } from "../../lib/api";
-import type { OptimizationMode } from "../../lib/optimize";
 import { getCityCoordinate } from "../../lib/serviceAreas";
 import { getCourierWarehouseLocation, listCourierWarehouses, resolveCourierName, resolveKnownCity } from "../../lib/courierWarehouses";
 import { getParcelGroupKey } from "../../lib/parcelGrouping";
@@ -52,6 +51,8 @@ type OptimizeResponse = {
   fuelSavingsPct: number;
   etaImprovementMin: number;
   engine: "or-tools" | "heuristic-fallback";
+  baselineDistanceMi?: number;
+  baselineEtaMinutes?: number;
 };
 
 type MapMarker = {
@@ -107,7 +108,7 @@ const COURIER_LOGOS: Record<string, string> = {
 
 // The API requests database `picked_up`; the parcel store exposes it as PICKED_UP.
 const PICKUP_READY_STATUSES = new Set(["PICKED_UP"]);
-const PARCEL_PAGE_ACTIVE_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+const ACTIVE_PARCEL_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 
 function isWithinPhilippines(lat: number, lng: number) {
   return (
@@ -189,6 +190,16 @@ function formatDuration(mins: number) {
 function formatFiveDigitValue(value: number) {
   if (!Number.isFinite(value)) return "0";
   return Number(value.toFixed(5)).toString();
+}
+
+function calculateFuelSavingsPct(baselineDistanceMi: number | null, routeDistanceMi: number | null) {
+  if (baselineDistanceMi === null || routeDistanceMi === null || !Number.isFinite(baselineDistanceMi) || !Number.isFinite(routeDistanceMi) || baselineDistanceMi <= 0) return 0;
+  return Math.max(0, Math.min(100, ((baselineDistanceMi - routeDistanceMi) / baselineDistanceMi) * 100));
+}
+
+function calculateEtaMinutes(distanceMi: number | null) {
+  if (distanceMi === null || !Number.isFinite(distanceMi) || distanceMi <= 0) return null;
+  return Math.max(1, Math.round((distanceMi / 32) * 60));
 }
 
 function sortStopsForNavigation(stops: RouteStop[]) {
@@ -372,9 +383,9 @@ export default function VrdsRoutePlanningPage() {
 
   const [loading, setLoading] = useState(false);
   const [courierRoutes, setCourierRoutes] = useState<Map<string, OptimizeResponse>>(new Map());
+  const [lastGeneratedResult, setLastGeneratedResult] = useState<OptimizeResponse | null>(null);
   const [courierStopsMap, setCourierStopsMap] = useState<Map<string, string[]>>(new Map());
   const [selectedCourier, setSelectedCourier] = useState<string | null>(null);
-  const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>("balanced");
 
   const [creatingBookings, setCreatingBookings] = useState(false);
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
@@ -465,7 +476,7 @@ export default function VrdsRoutePlanningPage() {
       const status = String(parcel.status || "").trim().toUpperCase();
       if (["DELIVERED", "CANCELLED"].includes(status)) return false;
       const receivedAt = parcel.receivedAt ? new Date(parcel.receivedAt).getTime() : Date.now();
-      return Date.now() - receivedAt < PARCEL_PAGE_ACTIVE_WINDOW_MS;
+      return Date.now() - receivedAt < ACTIVE_PARCEL_WINDOW_MS;
     }),
     [parcels, locallyBookedParcelIds]
   );
@@ -782,6 +793,7 @@ export default function VrdsRoutePlanningPage() {
       if (courierRoutes.size > 0 || courierStopsMap.size > 0) {
         setCourierRoutes(new Map());
         setCourierStopsMap(new Map());
+        setLastGeneratedResult(null);
       }
       setBookingMessage(null);
       previousRouteSelectionKey.current = null;
@@ -955,12 +967,12 @@ export default function VrdsRoutePlanningPage() {
         origin,
         destination,
         stops: courierStops,
-        vehicleCount: Math.max(1, availableVehicleOptions.length),
-        availableVehicles: availableVehicleOptions,
+        vehicleCount: 1,
+        availableVehicles: availableVehicleOptions.slice(0, 1),
         initialDistanceMi: initialMetrics?.distanceMi ?? undefined,
         initialEtaMinutes: initialMetrics?.etaMinutes ?? undefined,
-        optimizationMode,
-        prioritizeFuelEfficiency: optimizationMode === "fuel",
+        optimizationMode: "balanced",
+        prioritizeFuelEfficiency: false,
       }),
     });
     if (!res.ok) throw new Error(`optimize-route failed: ${res.status}`);
@@ -1028,16 +1040,63 @@ export default function VrdsRoutePlanningPage() {
         }
       }
 
+      const normalizedSettled = settled.map((entry) => {
+        const polyline = entry.data.polyline?.length
+          ? entry.data.polyline
+          : entry.data.routes?.[0]?.polyline || [];
+        const polylineMetrics = polyline.length > 1 ? calculatePolylineMetrics(polyline) : null;
+        const distanceMi = entry.data.distanceMi > 0 ? entry.data.distanceMi : polylineMetrics?.distanceMi || 0;
+        const etaMinutes = entry.data.etaMinutes > 0
+          ? entry.data.etaMinutes
+          : polylineMetrics?.etaMinutes || calculateEtaMinutes(distanceMi) || 0;
+        const fuelSavingsPct = entry.data.fuelSavingsPct > 0
+          ? entry.data.fuelSavingsPct
+          : calculateFuelSavingsPct(initialMetrics?.distanceMi ?? null, distanceMi);
+        const etaImprovementMin = entry.data.etaImprovementMin > 0
+          ? entry.data.etaImprovementMin
+          : Math.max(0, (initialMetrics?.etaMinutes || calculateEtaMinutes(initialMetrics?.distanceMi ?? null) || 0) - etaMinutes);
+
+        return {
+          ...entry,
+          data: {
+            ...entry.data,
+            distanceMi,
+            etaMinutes,
+            fuelSavingsPct,
+            etaImprovementMin,
+            polyline: entry.data.polyline?.length ? entry.data.polyline : polyline,
+          },
+        };
+      });
+
       setCourierRoutes((prev) => {
         const next = new Map(prev);
-        settled.forEach((entry) => next.set(entry.courier, entry.data));
+        normalizedSettled.forEach((entry) => next.set(entry.courier, entry.data));
         return next;
       });
       setCourierStopsMap((prev) => {
         const next = new Map(prev);
-        settled.forEach((entry) => next.set(entry.courier, entry.stopIds));
+        normalizedSettled.forEach((entry) => next.set(entry.courier, entry.stopIds));
         return next;
       });
+
+      const generatedResult = normalizedSettled.length === 1
+        ? normalizedSettled[0].data
+        : {
+            orderedStopIds: normalizedSettled.flatMap((entry) => entry.data.orderedStopIds || []),
+            polyline: normalizedSettled.flatMap((entry) => entry.data.polyline || []),
+            routes: normalizedSettled.flatMap((entry) => entry.data.routes || []),
+            distanceMi: normalizedSettled.reduce((total, entry) => total + (entry.data.distanceMi || 0), 0),
+            etaMinutes: Math.max(...normalizedSettled.map((entry) => entry.data.etaMinutes || 0)),
+            fuelSavingsPct: normalizedSettled.length
+              ? normalizedSettled.reduce((total, entry) => total + (entry.data.fuelSavingsPct || 0), 0) / normalizedSettled.length
+              : 0,
+            etaImprovementMin: normalizedSettled.reduce((total, entry) => total + (entry.data.etaImprovementMin || 0), 0),
+            baselineDistanceMi: normalizedSettled[0]?.data.baselineDistanceMi,
+            baselineEtaMinutes: normalizedSettled[0]?.data.baselineEtaMinutes,
+            engine: normalizedSettled.some((entry) => entry.data.engine === "or-tools") ? "or-tools" : "heuristic-fallback",
+          } satisfies OptimizeResponse;
+      setLastGeneratedResult(generatedResult);
 
       return settled;
     } finally {
@@ -1095,28 +1154,6 @@ export default function VrdsRoutePlanningPage() {
 
   /* ---------------- Derived: which result set is "current" ---------------- */
 
-  const selectedCourierPreview = useMemo(() => {
-    if (!selectedCourier || courierRoutes.has(selectedCourier) || selectedCourierStops.length === 0) return null;
-
-    const polyline = buildWarehouseFirstPolyline({
-      stops: selectedCourierStops,
-      origin,
-      destination,
-      orderedIds: selectedCourierStops.map((stop) => stop.id),
-    });
-    const metrics = calculatePolylineMetrics(polyline);
-
-    return {
-      orderedStopIds: selectedCourierStops.map((stop) => stop.id),
-      polyline,
-      distanceMi: metrics.distanceMi,
-      etaMinutes: Math.max(1, metrics.etaMinutes),
-      fuelSavingsPct: 0,
-      etaImprovementMin: 0,
-      engine: "heuristic-fallback",
-    } satisfies OptimizeResponse;
-  }, [destination, origin, selectedCourier, selectedCourierStops, courierRoutes]);
-
   const currentResult = useMemo(() => {
     if (selectedCourier && courierRoutes.has(selectedCourier)) {
       const result = courierRoutes.get(selectedCourier)!;
@@ -1156,7 +1193,6 @@ export default function VrdsRoutePlanningPage() {
         engine: "heuristic-fallback" as const,
       } satisfies OptimizeResponse;
     }
-    if (selectedCourierPreview) return selectedCourierPreview;
     if (!selectedCourier && courierRoutes.size > 0) {
       const results = Array.from(courierRoutes.values());
       const polyline = results.flatMap((result) => result.polyline || []);
@@ -1165,19 +1201,42 @@ export default function VrdsRoutePlanningPage() {
         polyline,
         routes: results.flatMap((result) => result.routes || []),
         distanceMi: results.reduce((total, result) => total + (result.distanceMi || 0), 0),
-        etaMinutes: results.reduce((total, result) => total + (result.etaMinutes || 0), 0),
+        etaMinutes: Math.max(...results.map((result) => result.etaMinutes || 0)),
         fuelSavingsPct: results.length ? Math.round((results.reduce((total, result) => total + (result.fuelSavingsPct || 0), 0) / results.length) * 10) / 10 : 0,
         etaImprovementMin: results.reduce((total, result) => total + (result.etaImprovementMin || 0), 0),
         engine: "or-tools" as const,
       } satisfies OptimizeResponse;
     }
+    if (lastGeneratedResult && !selectedCourier) return lastGeneratedResult;
     return null;
-  }, [selectedCourier, courierRoutes, selectedCourierPreview]);
+  }, [lastGeneratedResult, selectedCourier, courierRoutes]);
 
-  const currentDistanceMi = currentResult?.distanceMi ?? initialMetrics?.distanceMi ?? null;
-  const currentEtaMinutes = currentResult?.etaMinutes ?? initialMetrics?.etaMinutes ?? null;
-  const baselineDistanceMi = initialMetrics?.distanceMi ?? null;
-  const baselineEtaMinutes = initialMetrics?.etaMinutes ?? null;
+  const baselineStops = selectedCourier ? selectedCourierStops : activeStops;
+  const baselineFallbackPolyline = buildWarehouseFirstPolyline({
+    stops: baselineStops,
+    origin,
+    destination,
+    orderedIds: baselineStops.map((stop) => stop.id),
+  });
+  const baselineFallbackMetrics = calculatePolylineMetrics(baselineFallbackPolyline);
+  const baselineDistanceMi = currentResult?.baselineDistanceMi
+    ?? initialMetrics?.distanceMi
+    ?? (baselineFallbackMetrics.distanceMi > 0 ? baselineFallbackMetrics.distanceMi : null);
+  const baselineEtaMinutes = calculateEtaMinutes(baselineDistanceMi);
+  const currentDistanceMi = currentResult?.distanceMi && currentResult.distanceMi > 0
+    ? currentResult.distanceMi
+    : initialMetrics?.distanceMi ?? null;
+  const currentEtaMinutes = currentResult?.etaMinutes && currentResult.etaMinutes > 0
+    ? currentResult.etaMinutes
+    : calculateEtaMinutes(currentDistanceMi);
+  const displayedFuelSavingsPct = currentResult
+    ? currentResult.fuelSavingsPct > 0
+      ? currentResult.fuelSavingsPct
+      : calculateFuelSavingsPct(baselineDistanceMi, currentDistanceMi)
+    : 0;
+  const displayedEtaImprovementMin = currentEtaMinutes !== null && baselineEtaMinutes !== null
+    ? Math.max(0, baselineEtaMinutes - currentEtaMinutes)
+    : 0;
   const routePlanningExplanation = planningParcels.length === 0
     ? "There are no picked-up parcels available for route planning. Select or receive parcels first."
     : activeStops.length === 0
@@ -1211,7 +1270,7 @@ export default function VrdsRoutePlanningPage() {
     if (selectedCourier) {
       const selectedStops = selectedCourierStops;
       if (currentResult) {
-        const routes = "routes" in currentResult ? currentResult.routes : [];
+        const routes = Array.isArray(currentResult.routes) ? currentResult.routes : [];
         const orderedIds = routes.length
           ? routes.flatMap((r) => r.orderedStopIds)
           : currentResult.orderedStopIds;
@@ -1248,7 +1307,7 @@ export default function VrdsRoutePlanningPage() {
   const orderedStops = useMemo(() => {
     if (selectedCourier) {
       if (currentResult) {
-        const routes = "routes" in currentResult ? currentResult.routes : [];
+        const routes = Array.isArray(currentResult.routes) ? currentResult.routes : [];
         const orderedIds = routes.length
           ? routes.flatMap((r) => r.orderedStopIds)
           : currentResult.orderedStopIds;
@@ -1423,198 +1482,138 @@ export default function VrdsRoutePlanningPage() {
   /* ---------------- Booking confirmation ---------------- */
 
   async function handleCreateBookings() {
-    const selectedOptimizedCourier =
-      selectedCourier && courierRoutes.has(selectedCourier)
-        ? selectedCourier
-        : availableCouriers.find((courier) => courierRoutes.has(courier)) ?? null;
-
-    if (!selectedOptimizedCourier) {
-      setBookingMessage("Generate or select an optimized courier route before creating the booking.");
-      return;
-    }
-
-    const parcelIds = planningParcels
-      .filter((parcel) => resolveCourierName(parcel.courier) === selectedOptimizedCourier)
-      .map((parcel) => parcel.id);
-
-    if (parcelIds.length === 0) {
-      setBookingMessage("No parcels remain for the optimized courier route.");
-      return;
-    }
-
-    const courierParcels = planningParcels.filter(
-      (parcel) => resolveCourierName(parcel.courier) === selectedOptimizedCourier
+      const generatedCouriers = Array.from(courierRoutes.keys()).filter((courier) =>
+      planningParcels.some((parcel) => resolveCourierName(parcel.courier) === courier)
     );
 
-    const courierStopsForPlan = ensureWarehouseFirst(
-      (activeStops.filter((stop) => stop.courier === selectedOptimizedCourier) || []).slice()
-    );
-
-    const stopById = new Map(courierStopsForPlan.map((stop) => [stop.id, stop]));
-    const orderedStopIds = (currentResult?.orderedStopIds?.length ? currentResult.orderedStopIds : courierStopsForPlan.map((stop) => stop.id))
-      .filter((id) => stopById.has(id));
-
-    const destinations = orderedStopIds
-      .map((id, index) => ({ stop: stopById.get(id), index }))
-      .filter(({ stop }) => Boolean(stop))
-      .map(({ stop, index }) => {
-        const safeIndex = index + 1;
-
-        if (stop!.kind === "warehouse") {
-          const cityLabel = stop!.city || "Warehouse";
-          const uniqueName = `${stop!.label} • ${cityLabel} • ${safeIndex}`;
-          return {
-            id: `${stop!.id}-route-stop-${safeIndex}`,
-            name: uniqueName,
-            lat: stop!.lat,
-            lng: stop!.lng,
-            latitude: stop!.lat,
-            longitude: stop!.lng,
-            city: cityLabel,
-            demand: 0,
-            parcel_ids: [],
-          };
-        }
-
-        const parcel = planningParcels.find((candidate) => String(candidate.id) === String(stop!.parcelId));
-        if (!parcel) return null;
-
-        const address = getParcelAddress(parcel) || "Parcel destination";
-        const city = resolveKnownCity(address) ?? resolveParcelCity(address) ?? "Unknown City";
-        const parcelCoord = hasDbCoords(parcel)
-          ? normalizePosition({ lat: parcel.destLat, lng: parcel.destLng })
-          : normalizePosition(resolvedPositions.get(parcel.id));
-
-        if (!parcelCoord) return null;
-
-        const uniqueName = `${stop!.label || address} • ${city} • ${safeIndex}`;
-        return {
-          id: `${stop!.id}-route-stop-${safeIndex}`,
-          name: uniqueName,
-          lat: parcelCoord.lat,
-          lng: parcelCoord.lng,
-          latitude: parcelCoord.lat,
-          longitude: parcelCoord.lng,
-          city,
-          demand: Math.max(0, Math.round(Number(parcel.weightKg || 0))),
-          parcel_ids: [String(parcel.id)],
-        };
-      })
-      .filter((d): d is NonNullable<typeof d> => d !== null);
-
-    if (destinations.length === 0) {
-      setBookingMessage(`${selectedOptimizedCourier}: no resolvable parcel or warehouse stops for this optimized route.`);
+    if (generatedCouriers.length === 0) {
+      setBookingMessage("Generate an optimized route before creating the bookings.");
       return;
     }
 
-    const byCity = new Map<string, { city: string; parcelIds: string[]; weightKg: number }>();
-    courierParcels.forEach((parcel) => {
-      const address = getParcelAddress(parcel) || "Parcel destination";
-      const city = resolveKnownCity(address) ?? resolveParcelCity(address) ?? "Unknown City";
-      const entry = byCity.get(city) || { city, parcelIds: [] as string[], weightKg: 0 };
-      entry.parcelIds.push(String(parcel.id));
-      entry.weightKg += Number(parcel.weightKg || 0);
-      byCity.set(city, entry);
-    });
-
-    const orderedDestinations = destinations.slice();
-
-    const routePlanKey = `${selectedOptimizedCourier}-${Date.now().toString(36)}`;
     setCreatingBookings(true);
     setBookingMessage(null);
 
     try {
-      const fallbackPolyline = buildWarehouseFirstPolyline({
-        stops: courierStopsForPlan,
-        origin,
-        destination,
-        orderedIds: orderedStopIds,
-      });
-      const fallbackMetrics = calculatePolylineMetrics(fallbackPolyline);
-      const optimizedResult = currentResult && currentResult.orderedStopIds?.length
-        ? currentResult
-        : {
-            orderedStopIds: orderedStopIds,
-            polyline: fallbackPolyline,
-            distanceMi: fallbackMetrics.distanceMi,
-            etaMinutes: Math.max(1, fallbackMetrics.etaMinutes),
-            fuelSavingsPct: 0,
-            etaImprovementMin: 0,
-            engine: "heuristic-fallback",
-          } as OptimizeResponse;
+      const bookedParcelIds: string[] = [];
+      const savedCouriers: string[] = [];
 
-      const routePlan = await createRoutePlan({
-        courier: selectedOptimizedCourier,
-        bulk_qr_code: routePlanKey,
-        pickup_location: origin.label,
-        pickup_latitude: origin.lat,
-        pickup_longitude: origin.lng,
-        delivery_destinations: destinations,
-        route_geojson: {
-          type: "FeatureCollection",
-          features: [
-            {
+      for (const courier of generatedCouriers) {
+        const optimizedResult = courierRoutes.get(courier);
+        if (!optimizedResult) continue;
+
+        const courierParcels = planningParcels.filter((parcel) => resolveCourierName(parcel.courier) === courier);
+        const parcelIds = courierParcels.map((parcel) => parcel.id);
+        const courierStopsForPlan = ensureWarehouseFirst(activeStops.filter((stop) => stop.courier === courier).slice());
+        const stopById = new Map(courierStopsForPlan.map((stop) => [stop.id, stop]));
+        const orderedStopIds = (optimizedResult.orderedStopIds?.length
+          ? optimizedResult.orderedStopIds
+          : courierStopsForPlan.map((stop) => stop.id)
+        ).filter((id) => stopById.has(id));
+        const destinations = orderedStopIds
+          .map((id, index) => ({ stop: stopById.get(id), index }))
+          .filter(({ stop }) => Boolean(stop))
+          .map(({ stop, index }) => {
+            const safeIndex = index + 1;
+            if (stop!.kind === "warehouse") {
+              const cityLabel = stop!.city || "Warehouse";
+              return {
+                id: `${stop!.id}-route-stop-${safeIndex}`,
+                name: `${stop!.label} • ${cityLabel} • ${safeIndex}`,
+                lat: stop!.lat,
+                lng: stop!.lng,
+                latitude: stop!.lat,
+                longitude: stop!.lng,
+                city: cityLabel,
+                demand: 0,
+                parcel_ids: [],
+              };
+            }
+
+            const parcel = courierParcels.find((candidate) => String(candidate.id) === String(stop!.parcelId));
+            if (!parcel) return null;
+            const address = getParcelAddress(parcel) || "Parcel destination";
+            const city = resolveKnownCity(address) ?? resolveParcelCity(address) ?? "Unknown City";
+            const parcelCoord = hasDbCoords(parcel)
+              ? normalizePosition({ lat: parcel.destLat, lng: parcel.destLng })
+              : normalizePosition(resolvedPositions.get(parcel.id));
+            if (!parcelCoord) return null;
+            return {
+              id: `${stop!.id}-route-stop-${safeIndex}`,
+              name: `${stop!.label || address} • ${city} • ${safeIndex}`,
+              lat: parcelCoord.lat,
+              lng: parcelCoord.lng,
+              latitude: parcelCoord.lat,
+              longitude: parcelCoord.lng,
+              city,
+              demand: Math.max(0, Math.round(Number(parcel.weightKg || 0))),
+              parcel_ids: [String(parcel.id)],
+            };
+          })
+          .filter((destination): destination is NonNullable<typeof destination> => destination !== null);
+
+        if (parcelIds.length === 0 || destinations.length === 0) continue;
+
+        const fallbackPolyline = buildWarehouseFirstPolyline({
+          stops: courierStopsForPlan,
+          origin,
+          destination,
+          orderedIds: orderedStopIds,
+        });
+        const routePolyline = optimizedResult.polyline?.length ? optimizedResult.polyline : fallbackPolyline;
+        const fallbackMetrics = calculatePolylineMetrics(fallbackPolyline);
+        const routePlanKey = `${courier}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+        const routePlan = await createRoutePlan({
+          courier,
+          bulk_qr_code: routePlanKey,
+          pickup_location: origin.label,
+          pickup_latitude: origin.lat,
+          pickup_longitude: origin.lng,
+          delivery_destinations: destinations,
+          route_geojson: {
+            type: "FeatureCollection",
+            features: [{
               type: "Feature",
-              geometry: {
-                type: "LineString",
-                coordinates: optimizedResult.polyline.map((point) => [point.lng, point.lat]),
-              },
+              geometry: { type: "LineString", coordinates: routePolyline.map((point) => [point.lng, point.lat]) },
               properties: {
-                orderedStopIds: optimizedResult.orderedStopIds,
-                distanceMi: optimizedResult.distanceMi,
-                etaMinutes: optimizedResult.etaMinutes,
+                orderedStopIds,
+                distanceMi: optimizedResult.distanceMi || fallbackMetrics.distanceMi,
+                etaMinutes: optimizedResult.etaMinutes || fallbackMetrics.etaMinutes,
                 fuelSavingsPct: optimizedResult.fuelSavingsPct,
               },
-            },
-          ],
-        },
-        distance_km: Number(((optimizedResult.distanceMi ?? 0) * 1.609344).toFixed(2)),
-        estimated_duration_min: Math.max(1, Math.round(optimizedResult.etaMinutes ?? 0)),
-        generated_by: optimizedResult.engine || "OR-Tools",
-        status: "assigned",
-      });
+            }],
+          },
+          distance_km: Number(((optimizedResult.distanceMi || fallbackMetrics.distanceMi) * 1.609344).toFixed(2)),
+          estimated_duration_min: Math.max(1, Math.round(optimizedResult.etaMinutes || fallbackMetrics.etaMinutes)),
+          generated_by: optimizedResult.engine || "OR-Tools",
+          status: "assigned",
+        });
 
-      if (!routePlan?.id) {
-        throw new Error(routePlan?.error || "Route plan save failed (missing ID).");
-      }
-
-      const persistedOrderedDestinations =
-        Array.isArray(routePlan?.deliveryDestinations) && routePlan.deliveryDestinations.length > 0
+        if (!routePlan?.id) throw new Error(`${courier}: route plan save failed.`);
+        const persistedDestinations = Array.isArray(routePlan.deliveryDestinations) && routePlan.deliveryDestinations.length
           ? routePlan.deliveryDestinations
           : destinations;
-      const dropoffLabel =
-        persistedOrderedDestinations.map((d: any) => d.name).filter(Boolean).join(" \u2192 ") || destination.label;
+        const dropoffLabel = persistedDestinations.map((item: any) => item.name).filter(Boolean).join(" \u2192 ") || destination.label;
+        const response = await createBulkBooking({
+          courier,
+          bulk_qr_code: routePlanKey,
+          parcel_ids: parcelIds,
+          pickup_location: origin.label,
+          pickup_latitude: origin.lat,
+          pickup_longitude: origin.lng,
+          dropoff_location: dropoffLabel,
+          route_plan_id: routePlan.id,
+        });
 
-      const response = await createBulkBooking({
-        courier: selectedOptimizedCourier,
-        bulk_qr_code: routePlanKey,
-        parcel_ids: parcelIds,
-        pickup_location: origin.label,
-        pickup_latitude: origin.lat,
-        pickup_longitude: origin.lng,
-        dropoff_location: dropoffLabel,
-        route_plan_id: routePlan.id,
-      });
+        createRouteBooking(parcelIds, `${origin.label} \u2192 ${dropoffLabel}`, response.booking?.id, routePlan.id, persistedDestinations);
+        bookedParcelIds.push(...parcelIds.map(String));
+        savedCouriers.push(courier);
+      }
 
-      createRouteBooking(
-        parcelIds,
-        `${origin.label} \u2192 ${dropoffLabel}`,
-        response.booking?.id,
-        routePlan.id,
-        persistedOrderedDestinations
-      );
-
-      setLocallyBookedParcelIds((current) => new Set([...current, ...parcelIds.map(String)]));
-
-      setSelectedRouteParcelIds((current) => {
-        const next = new Set(current);
-        parcelIds.forEach((id) => next.delete(id));
-        return next;
-      });
-
-      setBookingMessage(
-        `Optimized booking created for ${selectedOptimizedCourier} — ${persistedOrderedDestinations.length} stop${persistedOrderedDestinations.length === 1 ? "" : "s"} across ${byCity.size} cit${byCity.size === 1 ? "y" : "ies"}.`
-      );
+      if (savedCouriers.length === 0) throw new Error("No generated courier routes could be saved.");
+      setLocallyBookedParcelIds((current) => new Set([...current, ...bookedParcelIds]));
+      setSelectedRouteParcelIds((current) => new Set([...current].filter((id) => !bookedParcelIds.includes(String(id)))));
+      setBookingMessage(`Saved ${savedCouriers.length} courier booking${savedCouriers.length === 1 ? "" : "s"}: ${savedCouriers.join(", ")}.`);
     } catch (error) {
       setBookingMessage(error instanceof Error ? error.message : "Unable to create the optimized booking.");
     } finally {
@@ -1714,30 +1713,11 @@ export default function VrdsRoutePlanningPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Build a delivery plan from booked parcels, optimize the stop order, then send the confirmed plan to Bookings.
+              Build a delivery plan from booked parcels, automatically optimize the stop order, then send the confirmed plan to Bookings.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600">
-              <span className="material-symbols-outlined text-base text-[#b80049]">tune</span>
-              <span>Optimize for</span>
-              <select
-                value={optimizationMode}
-                onChange={(event) => {
-                  setOptimizationMode(event.target.value as OptimizationMode);
-                  setCourierRoutes(new Map());
-                  setCourierStopsMap(new Map());
-                }}
-                className="bg-transparent font-semibold text-slate-800 outline-none"
-                aria-label="Optimization objective"
-              >
-                <option value="balanced">Balanced</option>
-                <option value="fastest">Fastest ETA</option>
-                <option value="shortest">Shortest Distance</option>
-                <option value="fuel">Fuel Efficient</option>
-              </select>
-            </label>
             {currentResult && (
               <div className="flex items-center gap-2 self-start sm:self-auto text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600">
                 <span className="material-symbols-outlined text-base text-slate-500">memory</span>
@@ -1803,20 +1783,35 @@ export default function VrdsRoutePlanningPage() {
             </div>
 
             {/* KPI Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-pink-200 bg-white p-3 shadow-sm">
+              <div className="mb-3 flex items-center justify-between px-1">
+                <h3 className="text-sm font-bold text-slate-900">Generated route calculations</h3>
+                <span className="text-xs font-semibold text-emerald-600">{currentResult ? "Calculated" : "Generate a route plan"}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <KpiCard
                 label="Fuel Savings"
                 icon="local_gas_station"
                 iconColor="text-emerald-600"
-                value={currentResult ? `${formatFiveDigitValue(currentResult.fuelSavingsPct)}%` : "0%"}
-                caption="vs. unoptimized"
+                value={currentResult ? `${formatFiveDigitValue(displayedFuelSavingsPct)}%` : "0%"}
+                caption={currentResult && baselineDistanceMi !== null && currentDistanceMi !== null
+                  ? currentDistanceMi > baselineDistanceMi
+                    ? `Generated route is ${(currentDistanceMi - baselineDistanceMi).toFixed(1)} mi longer`
+                    : `Baseline ${baselineDistanceMi} mi → generated ${currentDistanceMi} mi`
+                  : "Calculated after generation"}
               />
               <KpiCard
                 label="ETA Impact"
                 icon="timer"
                 iconColor="text-blue-600"
-                value={currentResult && currentResult.etaImprovementMin > 0 ? `-${formatDuration(currentResult.etaImprovementMin)}` : "0m"}
-                caption="time reduced"
+                value={currentResult && displayedEtaImprovementMin > 0 ? `-${formatDuration(displayedEtaImprovementMin)}` : "0m"}
+                caption={currentResult
+                  ? displayedEtaImprovementMin > 0
+                    ? "time reduced"
+                    : currentEtaMinutes !== null && baselineEtaMinutes !== null && currentEtaMinutes > baselineEtaMinutes
+                    ? "longer than baseline"
+                    : "No time reduction"
+                  : "Calculated after generation"}
               />
               <KpiCard
                 label="Distance"
@@ -1844,6 +1839,7 @@ export default function VrdsRoutePlanningPage() {
                     : "in-transit time"
                 }
               />
+              </div>
             </div>
           </div>
 
@@ -2023,7 +2019,10 @@ export default function VrdsRoutePlanningPage() {
                   <span className="material-symbols-outlined text-slate-500 text-lg">format_list_bulleted</span>
                   Optimized Waypoint Sequence
                 </h3>
-                <span className="text-xs text-slate-400">{selectedRouteTotalStops} total stop{selectedRouteTotalStops === 1 ? "" : "s"}</span>
+                <div className="flex items-center gap-3">
+                  <span className="hidden text-xs text-slate-400 sm:inline">Click to preview; use Generate route plan to calculate</span>
+                  <span className="text-xs text-slate-400">{selectedRouteTotalStops} total stop{selectedRouteTotalStops === 1 ? "" : "s"}</span>
+                </div>
               </div>
 
               {visibleCourierWaypoints.length > 0 && (
@@ -2031,6 +2030,14 @@ export default function VrdsRoutePlanningPage() {
                   {visibleCourierWaypoints.map(([courier, courierStops]) => {
                     const isAllCouriersCard = courier === "All couriers";
                     const cardCourier = isAllCouriersCard ? "All couriers" : courier;
+                    const cardResult = isAllCouriersCard ? currentResult : courierRoutes.get(courier);
+                    const cardDistance = cardResult?.distanceMi && cardResult.distanceMi > 0 ? cardResult.distanceMi : null;
+                    const cardEta = cardResult?.etaMinutes && cardResult.etaMinutes > 0 ? cardResult.etaMinutes : calculateEtaMinutes(cardDistance);
+                    const cardFuel = cardResult
+                      ? cardResult.fuelSavingsPct > 0
+                        ? cardResult.fuelSavingsPct
+                        : calculateFuelSavingsPct(baselineDistanceMi, cardDistance)
+                      : null;
                     const courierLogo = isAllCouriersCard ? null : COURIER_LOGOS[courier] ?? null;
                     const courierShortLabel = isAllCouriersCard
                       ? "ALL"
@@ -2071,11 +2078,18 @@ export default function VrdsRoutePlanningPage() {
 
                         <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/5 via-black/15 to-black/45" />
 
-                        <div className="relative z-10 flex h-full min-h-[250px] justify-end transition-all duration-300 group-hover:blur-sm">
+                        <div className="relative z-10 flex h-full min-h-[250px] justify-end transition-all duration-300">
                           <div className="self-end w-full rounded-t-xl border-t border-white/15 bg-black/10 px-3 py-2.5 text-right text-xs text-white backdrop-blur-sm">
                             <span className="inline-flex rounded-full bg-white/90 px-2.5 py-1 font-bold text-slate-700 shadow-sm">
                               {courierStops.length} stop{courierStops.length === 1 ? "" : "s"}
                             </span>
+                            {cardResult && (
+                              <div className="mt-2 grid grid-cols-3 gap-1 text-left text-[10px] font-semibold text-white">
+                                <span className="rounded-md bg-black/35 px-1.5 py-1">{cardDistance !== null ? `${cardDistance} mi` : "Distance —"}</span>
+                                <span className="rounded-md bg-black/35 px-1.5 py-1">{cardEta !== null ? formatDuration(cardEta) : "ETA —"}</span>
+                                <span className="rounded-md bg-black/35 px-1.5 py-1">{cardFuel !== null ? `${formatFiveDigitValue(cardFuel)}%` : "Fuel —"}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -2111,7 +2125,7 @@ export default function VrdsRoutePlanningPage() {
                                 ) : (
                                   <>
                                     <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                                    Route
+                                    Generate route plan
                                   </>
                                 )}
                               </button>

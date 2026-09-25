@@ -1,6 +1,6 @@
 "use server";
 
-import { ftmSupabase } from "@/app/(supplyChain)/lib/services/client/ftmSupabase";
+import { ftmSupabase } from "../../../../lib/services/client/ftmSupabase";
 
 export interface Courier {
     id: number;

@@ -1,4 +1,4 @@
-import { ExecutiveChartModalProps } from "@/app/(supplyChain)/components/modals/ExecutiveChartModal";
+import { ExecutiveChartModalProps } from "../../../components/modals/ExecutiveChartModal";
 import { ExecutiveDataPayload } from "../hooks/useExecutiveData";
 import { downloadCSV } from "./exportUtils";
 

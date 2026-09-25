@@ -3,12 +3,13 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
+import { supabase } from "../../../lib/services/client/supabase";
 import { toast } from "sonner";
-import { useDebounce } from "@/app/(supplyChain)/hooks/useDebounce";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
+import { useDebounce } from "../../../hooks/useDebounce";
+import { useConfirm } from "../../../components/ui/ConfirmModal";
 import { Document, Supplier, Activity, DEFAULT_USER } from "../types";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
+import { user } from "../../../lib/services/Class/user";
+import { revokeCachedFilePreviewUrl, clearAllCachedFilePreviewUrls } from "../components/modals/SelectedFilesGridModal";
 
 export function useDocuments() {
     const searchParams = useSearchParams();
@@ -48,6 +49,9 @@ export function useDocuments() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
+    const [attachTargetDoc, setAttachTargetDoc] = useState<Document | null>(null);
+    const [ocrWarning, setOcrWarning] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [editingDoc, setEditingDoc] = useState<Document | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -82,6 +86,11 @@ export function useDocuments() {
     const [totalFiles, setTotalFiles] = useState(0);
     const [totalPhotos, setTotalPhotos] = useState(0);
     const [totalDocuments, setTotalDocuments] = useState(0);
+
+    const openAttachModal = useCallback((doc: Document) => {
+        setAttachTargetDoc(doc);
+        setIsAttachModalOpen(true);
+    }, []);
 
     // fetch current user
     const getCurrentUser = useCallback(async () => {
@@ -650,42 +659,153 @@ export function useDocuments() {
         }
     }, [selectedActivityIds, fetchActivities, confirm]);
 
-    // handle upload submission
+    // Periodic check to notify creators of pending documents (every 5 mins for testing)
+    const triggerPendingNotifications = useCallback(async () => {
+        try {
+            await fetch('/api/supplyChain/documents/pending-notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ intervalMs: 5 * 60 * 1000 }),
+            });
+        } catch (err) {
+            console.warn('Pending document notification check failed:', err);
+        }
+    }, []);
+
+    // handle upload submission with OCR check and fileless option
     const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        if (selectedFiles.length === 0) {
-            toast.warning('Please select files to upload');
+        const form = e.target as HTMLFormElement;
+        const formData = new FormData(form);
+
+        const isPendingFile = formData.get('isPendingFile') === 'on' || selectedFiles.length === 0;
+        const title = (formData.get('title') as string) || '';
+        const documentType = (formData.get('documentType') as string) || 'Other';
+        const category = (formData.get('category') as string) || 'documents';
+        const supplier = (formData.get('supplier') as string) || null;
+        const poNumber = (formData.get('poNumber') as string) || null;
+        const parcelBatch = (formData.get('parcelBatch') as string) || null;
+        const uploadedBy = (formData.get('uploadedBy') as string) || userName || DEFAULT_USER.name;
+        const notes = (formData.get('notes') as string) || null;
+        const price = (formData.get('price') as string) || null;
+
+        let currentUserId = userId;
+        if (!currentUserId) {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            currentUserId = authUser?.id || null;
+        }
+
+        const isPrivileged = ['Executive', 'Admin'].includes(userRole);
+
+        // Path 1: Create record without file
+        if (isPendingFile) {
+            if (!title.trim()) {
+                toast.warning('Please enter a document title for the record.');
+                return;
+            }
+
+            setIsUploading(true);
+            const toastId = toast.loading('Creating document record...');
+
+            try {
+                const insertData: any = {
+                    title: title.trim(),
+                    file_name: 'Pending Attachment',
+                    file_size: 0,
+                    file_type: 'pending',
+                    storage_path: '',
+                    category: category,
+                    document_type: documentType,
+                    supplier: supplier,
+                    po_number: poNumber,
+                    parcel_batch: parcelBatch,
+                    uploaded_by: uploadedBy,
+                    notes: notes,
+                    Price: price,
+                    version: 1,
+                    user_id: currentUserId || null,
+                    session_id: userSessionId || null,
+                    role: userRole || null,
+                };
+
+                const { data: insertedDoc, error: insertError } = await supabase
+                    .from('documents')
+                    .insert(insertData)
+                    .select()
+                    .single();
+
+                if (insertError) throw insertError;
+
+                await logActivity(
+                    'create',
+                    'Created Pending Document Record',
+                    insertedDoc?.id,
+                    title.trim(),
+                    { created_without_file: true, price: price }
+                );
+
+                // Insert immediate notification in notifications table for the uploader only
+                try {
+                    const notifData: any = {
+                        creator_name: uploadedBy || userName || DEFAULT_USER.name,
+                        creator_email: userEmail || DEFAULT_USER.email,
+                        title: `Missing File: "${title.trim()}"`,
+                        message: `Document "${title.trim()}" (Ref: ${(insertedDoc?.id || '').substring(0, 8)}) was created without an attachment. Please attach the required file.`,
+                        type: 'alert',
+                        link: '/documents',
+                        role: userRole || 'User',
+                        reference_type: 'document_pending',
+                        reference_id: insertedDoc?.id || null,
+                        is_read: false,
+                    };
+
+                    if (currentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUserId)) {
+                        notifData.user_id = currentUserId;
+                    }
+
+                    const { error: notifInsertError } = await supabase
+                        .from('notifications')
+                        .insert(notifData);
+
+                    if (notifInsertError && notifData.user_id) {
+                        console.warn('FK constraint failed on notification user_id, retrying without user_id:', notifInsertError.message);
+                        delete notifData.user_id;
+                        await supabase.from('notifications').insert(notifData);
+                    }
+                } catch (notifErr) {
+                    console.error('Failed to create pending document notification:', notifErr);
+                }
+
+                toast.success('Document record created! You can attach a file later.', { id: toastId });
+                setIsUploadModalOpen(false);
+                setSelectedFiles([]);
+                setOcrWarning(null);
+
+                await fetchStatistics();
+                await fetchDocuments(false);
+                await fetchActivities();
+            } catch (error: any) {
+                console.error('Error creating fileless document:', error);
+                toast.error(error.message || 'Failed to create document record', { id: toastId });
+            } finally {
+                setIsUploading(false);
+            }
             return;
         }
 
+        // Path 2: Upload with attached file(s) and run Gemini OCR check
         setIsUploading(true);
         setUploadProgress(0);
-        const toastId = toast.loading(`Uploading ${selectedFiles.length} file(s)...`);
+        const toastId = toast.loading(`Verifying & uploading ${selectedFiles.length} file(s)...`);
 
         try {
-            const form = e.target as HTMLFormElement;
-            const formData = new FormData(form);
-
-            const documentType = formData.get('documentType') as string || 'Other';
-            const category = formData.get('category') as string || 'documents';
-            const supplier = formData.get('supplier') as string || null;
-            const poNumber = formData.get('poNumber') as string || null;
-            const parcelBatch = formData.get('parcelBatch') as string || null;
-            const uploadedBy = formData.get('uploadedBy') as string || userName || DEFAULT_USER.name;
-            const notes = formData.get('notes') as string || null;
-
-            let currentUserId = userId;
-            if (!currentUserId) {
-                const { data: { user: authUser } } = await supabase.auth.getUser();
-                currentUserId = authUser?.id || null;
-            }
-
             let uploadedCount = 0;
             let skippedCount = 0;
             const skippedFiles: string[] = [];
 
             for (const file of selectedFiles) {
+                // Check duplicate
                 const { data: existingDocs, error: checkError } = await supabase
                     .from('documents')
                     .select('id, file_name, file_size, storage_path')
@@ -702,6 +822,52 @@ export function useDocuments() {
                     skippedCount++;
                     skippedFiles.push(file.name);
                     continue;
+                }
+
+                // OCR Document Validation via Gemini
+                try {
+                    const reader = new FileReader();
+                    const base64Promise = new Promise<string>((resolve, reject) => {
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.onerror = reject;
+                    });
+                    reader.readAsDataURL(file);
+                    const fileBase64 = await base64Promise;
+
+                    const ocrRes = await fetch('/ai/api/verify-document-ocr', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fileBase64,
+                            fileName: file.name,
+                            fileType: file.type,
+                            userRole: userRole,
+                        }),
+                    });
+
+                    const ocrData = await ocrRes.json();
+
+                    if (ocrData.success && !ocrData.is_valid_system_doc) {
+                        if (!isPrivileged) {
+                            // Non-admin hard rejection
+                            toast.error(
+                                `Document Rejected: ${ocrData.rejection_reason || 'Out-of-scope media detected.'}`,
+                                { id: toastId, duration: 6000 }
+                            );
+                            setIsUploading(false);
+                            return;
+                        } else {
+                            // Admin warning notice
+                            setOcrWarning(
+                                `Warning: Gemini OCR detected "${ocrData.detected_type || 'Unrelated media'}". ${ocrData.rejection_reason || 'Out-of-scope media.'} As an Admin/Executive, you may proceed with an override.`
+                            );
+                            toast.warning('AI Warning: Out-of-scope media detected. Review warning to override.', { id: toastId });
+                            setIsUploading(false);
+                            return;
+                        }
+                    }
+                } catch (ocrErr) {
+                    console.warn('Gemini OCR verification error (continuing):', ocrErr);
                 }
 
                 const fileExt = file.name.split('.').pop();
@@ -721,8 +887,9 @@ export function useDocuments() {
                     continue;
                 }
 
-                const insertData = {
-                    title: `${documentType} - ${file.name}`,
+                const docTitle = title.trim() || `${documentType} - ${file.name}`;
+                const insertData: any = {
+                    title: docTitle,
                     file_name: file.name,
                     file_size: file.size,
                     file_type: file.type || fileExt || 'unknown',
@@ -734,6 +901,7 @@ export function useDocuments() {
                     parcel_batch: parcelBatch,
                     uploaded_by: uploadedBy,
                     notes: notes,
+                    Price: price,
                     version: 1,
                     user_id: currentUserId || null,
                     session_id: userSessionId || null,
@@ -759,11 +927,6 @@ export function useDocuments() {
                     id: toastId,
                     duration: 5000,
                 });
-                if (skippedFiles.length > 0) {
-                    toast.info(`Skipped: ${skippedFiles.join(', ')}`, {
-                        duration: 5000,
-                    });
-                }
             } else if (uploadedCount > 0) {
                 toast.success(`Successfully uploaded ${uploadedCount} file(s)!`, {
                     id: toastId,
@@ -782,18 +945,140 @@ export function useDocuments() {
             }
 
             if (uploadedCount > 0 || skippedCount > 0) {
+                // Insert notification in notifications table for the uploader only
+                try {
+                    const notifData: any = {
+                        creator_name: uploadedBy || userName || DEFAULT_USER.name,
+                        creator_email: userEmail || DEFAULT_USER.email,
+                        title: `Document Uploaded: "${title.trim() || `${documentType} (${uploadedCount} file${uploadedCount > 1 ? 's' : ''})`}"`,
+                        message: `${uploadedCount} document(s) (${documentType}, ${category}) uploaded successfully.`,
+                        type: 'info',
+                        link: '/documents',
+                        role: userRole || 'User',
+                        reference_type: 'document_upload',
+                        is_read: false,
+                    };
+
+                    if (currentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUserId)) {
+                        notifData.user_id = currentUserId;
+                    }
+
+                    const { error: notifErr } = await supabase
+                        .from('notifications')
+                        .insert(notifData);
+
+                    if (notifErr && notifData.user_id) {
+                        delete notifData.user_id;
+                        await supabase.from('notifications').insert(notifData);
+                    }
+                } catch (notifErr) {
+                    console.warn('Could not insert document upload notification:', notifErr);
+                }
+
+                clearAllCachedFilePreviewUrls();
                 setSelectedFiles([]);
                 setUploadProgress(0);
                 setIsUploadModalOpen(false);
+                setOcrWarning(null);
                 await fetchStatistics();
                 await fetchDocuments(false);
+                await fetchActivities();
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Upload error:', error);
-            toast.error('Failed to upload files', {
+            toast.error(error.message || 'Failed to upload files', {
                 id: toastId,
                 duration: 5000,
             });
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    // Confirm force upload for privileged Admin/Executive
+    const handleConfirmForceUpload = async () => {
+        if (selectedFiles.length === 0) return;
+        setIsUploading(true);
+        const toastId = toast.loading('Uploading with Admin override...');
+
+        try {
+            let currentUserId = userId;
+            if (!currentUserId) {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                currentUserId = authUser?.id || null;
+            }
+
+            for (const file of selectedFiles) {
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
+                const filePath = `documents/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('documents')
+                    .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+                if (uploadError) throw uploadError;
+
+                const insertData: any = {
+                    title: `Admin Override - ${file.name}`,
+                    file_name: file.name,
+                    file_size: file.size,
+                    file_type: file.type || fileExt || 'unknown',
+                    storage_path: filePath,
+                    category: 'documents',
+                    document_type: 'Other',
+                    uploaded_by: userName || DEFAULT_USER.name,
+                    version: 1,
+                    user_id: currentUserId || null,
+                    session_id: userSessionId || null,
+                    role: userRole || null,
+                    force_inserted_by: currentUserId || null,
+                };
+
+                const { error: insertError } = await supabase
+                    .from('documents')
+                    .insert(insertData);
+
+                if (insertError) throw insertError;
+            }
+
+            toast.success('Files uploaded successfully with Admin override!', { id: toastId });
+
+            // Insert notification in notifications table
+            try {
+                const notifData: any = {
+                    creator_name: userName || DEFAULT_USER.name,
+                    creator_email: userEmail || DEFAULT_USER.email,
+                    title: `Admin Override Upload: ${selectedFiles.length} file(s)`,
+                    message: `Admin override upload of ${selectedFiles.length} document(s) completed by ${userName || DEFAULT_USER.name}.`,
+                    type: 'alert',
+                    link: '/documents',
+                    role: 'Admin',
+                    reference_type: 'document_override',
+                    is_read: false,
+                };
+                if (currentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUserId)) {
+                    notifData.user_id = currentUserId;
+                }
+                const { error: notifErr } = await supabase.from('notifications').insert(notifData);
+                if (notifErr && notifData.user_id) {
+                    delete notifData.user_id;
+                    await supabase.from('notifications').insert(notifData);
+                }
+            } catch (notifErr) {
+                console.warn('Could not insert admin override notification:', notifErr);
+            }
+
+            clearAllCachedFilePreviewUrls();
+            setSelectedFiles([]);
+            setOcrWarning(null);
+            setIsUploadModalOpen(false);
+            await fetchStatistics();
+            await fetchDocuments(false);
+            await fetchActivities();
+        } catch (err: any) {
+            console.error('Force upload error:', err);
+            toast.error(err.message || 'Failed to upload with override', { id: toastId });
         } finally {
             setIsUploading(false);
         }
@@ -806,11 +1091,12 @@ export function useDocuments() {
 
         const form = e.target as HTMLFormElement;
         const formData = new FormData(form);
+        const price = (formData.get('price') as string) || null;
 
         const toastId = toast.loading('Updating document...');
 
         try {
-            const updates = {
+            const updates: any = {
                 title: formData.get('title') as string,
                 document_type: formData.get('documentType') as string,
                 category: formData.get('category') as string,
@@ -819,6 +1105,7 @@ export function useDocuments() {
                 parcel_batch: formData.get('parcelBatch') as string || null,
                 uploaded_by: formData.get('uploadedBy') as string || null,
                 notes: formData.get('notes') as string || null,
+                Price: price,
                 updated_at: new Date().toISOString(),
                 version: (editingDoc.version || 0) + 1,
                 session_id: userSessionId || null,
@@ -860,6 +1147,10 @@ export function useDocuments() {
         setPreviewUrl(null);
 
         try {
+            if (!doc.storage_path) {
+                setPreviewLoading(false);
+                return;
+            }
             const { data: { publicUrl } } = supabase.storage
                 .from('documents')
                 .getPublicUrl(doc.storage_path);
@@ -881,6 +1172,10 @@ export function useDocuments() {
         setEditPreviewUrl(null);
 
         try {
+            if (!doc.storage_path) {
+                setEditPreviewLoading(false);
+                return;
+            }
             const { data: { publicUrl } } = supabase.storage
                 .from('documents')
                 .getPublicUrl(doc.storage_path);
@@ -912,16 +1207,46 @@ export function useDocuments() {
         setSelectedActivityIds(new Set());
     };
 
-    // file select handler
+    const MAX_FILES_PER_TRANSACTION = 10;
+
+    // file select handler with 10 max file limit
     const handleFileSelect = (files: FileList | null) => {
-        if (!files) return;
-        setSelectedFiles(prev => [...prev, ...Array.from(files)]);
-        toast.success(`${files.length} file(s) selected`);
+        if (!files || files.length === 0) return;
+        const incoming = Array.from(files);
+
+        setSelectedFiles(prev => {
+            const currentCount = prev.length;
+            const availableSlots = MAX_FILES_PER_TRANSACTION - currentCount;
+
+            if (availableSlots <= 0) {
+                toast.warning(`Maximum of ${MAX_FILES_PER_TRANSACTION} files allowed per transaction. Please remove some files to add new ones.`);
+                return prev;
+            }
+
+            if (incoming.length > availableSlots) {
+                toast.warning(`Maximum ${MAX_FILES_PER_TRANSACTION} files allowed per transaction. Only the first ${availableSlots} file(s) were added.`);
+                return [...prev, ...incoming.slice(0, availableSlots)];
+            }
+
+            toast.success(`${incoming.length} file(s) selected (${currentCount + incoming.length}/${MAX_FILES_PER_TRANSACTION})`);
+            return [...prev, ...incoming];
+        });
     };
 
     // remove file from staging list
     const removeFile = (index: number) => {
-        setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+        setSelectedFiles(prev => {
+            if (prev[index]) {
+                revokeCachedFilePreviewUrl(prev[index]);
+            }
+            return prev.filter((_, i) => i !== index);
+        });
+    };
+
+    // clear all staging files
+    const clearAllSelectedFiles = () => {
+        clearAllCachedFilePreviewUrls();
+        setSelectedFiles([]);
     };
 
     // toggle select all documents
@@ -942,7 +1267,7 @@ export function useDocuments() {
         }
     };
 
-    // initial data load
+    // initial data load & recurring 5-min pending notification interval
     useEffect(() => {
         getCurrentUser();
         fetchDocuments(true);
@@ -950,7 +1275,15 @@ export function useDocuments() {
         fetchSuppliers();
         fetchActivities();
         fetchArchiveCount();
-    }, [getCurrentUser, fetchDocuments, fetchStatistics, fetchSuppliers, fetchActivities, fetchArchiveCount]);
+        triggerPendingNotifications();
+
+        // 5 minutes interval for testing
+        const notifInterval = setInterval(() => {
+            triggerPendingNotifications();
+        }, 5 * 60 * 1000);
+
+        return () => clearInterval(notifInterval);
+    }, [getCurrentUser, fetchDocuments, fetchStatistics, fetchSuppliers, fetchActivities, fetchArchiveCount, triggerPendingNotifications]);
 
     // refetch on document filter change
     useEffect(() => {
@@ -1061,6 +1394,13 @@ export function useDocuments() {
         setIsPreviewModalOpen,
         isEditModalOpen,
         setIsEditModalOpen,
+        isAttachModalOpen,
+        setIsAttachModalOpen,
+        attachTargetDoc,
+        setAttachTargetDoc,
+        openAttachModal,
+        ocrWarning,
+        setOcrWarning,
         isUploading,
         editingDoc,
         setEditingDoc,
@@ -1080,6 +1420,7 @@ export function useDocuments() {
         activitiesPerPage,
         userName,
         userEmail,
+        userRole,
         archiveCount,
         activityDateFrom,
         setActivityDateFrom,
@@ -1103,12 +1444,15 @@ export function useDocuments() {
         deleteSelectedDocuments,
         deleteSelectedActivities,
         handleUpload,
+        handleConfirmForceUpload,
         handleUpdate,
         handleViewDocument,
         handleEditDocument,
         clearAllFilters,
         handleFileSelect,
         removeFile,
+        clearAllSelectedFiles,
+        maxFilesPerTransaction: MAX_FILES_PER_TRANSACTION,
         toggleSelectAllDocuments,
         toggleSelectAllActivities,
     };

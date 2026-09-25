@@ -1,4 +1,4 @@
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { supabase } from '../../../lib/services/client/supabase';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -36,11 +36,29 @@ export async function GET(request: Request) {
         }
 
         // get user role
+        let userRole: string | undefined = undefined;
         const { data: userData } = await supabase
             .from('users')
             .select('role')
             .eq('id', session.user_id)
             .maybeSingle();
+
+        if (userData?.role) {
+            userRole = userData.role;
+        } else {
+            const { data: hrData } = await supabase
+                .from('mock_employees')
+                .select('role, position')
+                .eq('email', email)
+                .maybeSingle();
+
+            if (hrData) {
+                const rawRole = (hrData.role || hrData.position || '').trim();
+                if (/manager/i.test(rawRole)) userRole = 'Manager';
+                else if (/operator/i.test(rawRole)) userRole = 'Operator';
+                else userRole = hrData.role || 'Employee';
+            }
+        }
 
         // check expiration
         const isExpired = new Date(session.expires_at) < new Date();
@@ -57,7 +75,7 @@ export async function GET(request: Request) {
             is_expired: isExpired,
             is_active: session.is_active,
             is_currently_active: isCurrentlyActive,
-            role: userData?.role || 'Employee',
+            role: userRole || 'Employee',
             user_id: session.user_id,
             session_token: session.session_token
         });

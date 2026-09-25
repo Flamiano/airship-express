@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { useConfirm } from "@/app/(supplyChain)/components/ui/ConfirmModal";
-import { deleteParcel } from "@/app/(supplyChain)/(pages)/warehousing/actions/incoming/delete";
+import { useConfirm } from "../../../../../components/ui/ConfirmModal";
+import { deleteParcel } from "../../../actions/incoming/delete";
 
 interface DeleteButtonProps {
     parcelId: string;

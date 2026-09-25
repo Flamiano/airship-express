@@ -4,9 +4,9 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Image as ImageIcon, Loader2, RefreshCw } from 'lucide-react';
-import { GallerySkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
+import { GallerySkeleton } from '../../components/ui/SkeletonLoader';
+import { AppButton } from '../../components/ui/AppButton';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useGallery } from './hooks/useGallery';
 import { GalleryHeader } from './components/common/GalleryHeader';
 import { GalleryFilterBar } from './components/common/GalleryFilterBar';

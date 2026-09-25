@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { ftmSupabase } from "@/app/(supplyChain)/lib/services/client/ftmSupabase";
-import { generateResponse } from "@/app/(supplyChain)/ai/lib/gemini";
+import { supabase } from "../../../../lib/services/client/supabase";
+import { ftmSupabase } from "../../../../lib/services/client/ftmSupabase";
+import { generateResponse } from "../../../../ai/lib/gemini";
 
 export interface AIChartResult {
     id: string;

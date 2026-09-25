@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     X,
@@ -15,8 +16,46 @@ import {
     LogIn,
     AlertTriangle,
     MessageSquare,
-    Eye as EyeIcon
+    Eye as EyeIcon,
+    Lock
 } from 'lucide-react';
+import { maskEmail } from '../services/scAuthService';
+
+const isUUID = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str.trim());
+};
+
+export const isDropOffPickupRider = (emp: any): boolean => {
+    if (!emp) return false;
+    const pos = (emp.position || '').toLowerCase();
+    const dept = (emp.department || '').toLowerCase();
+    const role = (emp.role || '').toLowerCase();
+    const title = (emp.job_title || emp.title || '').toLowerCase();
+    return (
+        pos.includes('rider') ||
+        pos.includes('driver') ||
+        pos.includes('drop-off') ||
+        pos.includes('drop off') ||
+        pos.includes('pick-up') ||
+        pos.includes('pick up') ||
+        title.includes('rider') ||
+        title.includes('driver') ||
+        dept.includes('rider') ||
+        dept.includes('driver') ||
+        role.includes('rider') ||
+        role.includes('driver')
+    );
+};
+
+const formatId = (id?: string | null): string => {
+    if (!id) return '';
+    const trimmed = id.trim();
+    if (isUUID(trimmed)) {
+        return trimmed.slice(0, 8) + '...';
+    }
+    return trimmed;
+};
 
 interface EmployeeSelectionModalProps {
     showEmployeeModal: boolean;
@@ -41,6 +80,7 @@ interface EmployeeSelectionModalProps {
     rememberMe: boolean;
     setRememberMe: (v: boolean) => void;
     countdown: number;
+    otpExpiresIn?: number;
     existingAppeal: any;
     blockedDeviceId: string | null;
     getRoleColor: (role: string) => string;
@@ -84,6 +124,7 @@ export default function EmployeeSelectionModal({
     rememberMe,
     setRememberMe,
     countdown,
+    otpExpiresIn = 300,
     existingAppeal,
     getRoleColor,
     handleEmployeeSelect,
@@ -102,16 +143,43 @@ export default function EmployeeSelectionModal({
     setOtpSuccess,
     setIsRemembered,
 }: EmployeeSelectionModalProps) {
-    const filteredEmployees = employees.filter(emp =>
-        (emp.display_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (emp.employee_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+    const [isDebouncing, setIsDebouncing] = useState(false);
 
-    const displayedEmployees = filteredEmployees.length > 5
-        ? filteredEmployees.slice(0, 5)
-        : filteredEmployees;
-    const remainingCount = filteredEmployees.length - 5;
+    useEffect(() => {
+        if (!searchTerm) {
+            setDebouncedSearchTerm('');
+            setIsDebouncing(false);
+            return;
+        }
+        setIsDebouncing(true);
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+            setIsDebouncing(false);
+        }, 250);
+
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    const isAdminOrExec = loggedInUser?.role === 'Admin' || loggedInUser?.role === 'Executive';
+
+    const filteredEmployees = useMemo(() => {
+        // Exclude Drop-Off Pick-Up Riders / Drivers from the selection modal
+        const eligibleEmployees = (employees || []).filter(emp => !isDropOffPickupRider(emp));
+
+        const query = debouncedSearchTerm.toLowerCase().trim();
+        if (!query) return eligibleEmployees;
+        return eligibleEmployees.filter(emp =>
+            (emp.display_name || '').toLowerCase().includes(query) ||
+            (emp.employee_id || '').toLowerCase().includes(query) ||
+            (emp.id || '').toLowerCase().includes(query) ||
+            (emp.email || '').toLowerCase().includes(query) ||
+            (emp.position || '').toLowerCase().includes(query) ||
+            (emp.department || '').toLowerCase().includes(query)
+        );
+    }, [employees, debouncedSearchTerm]);
+
+    const displayedEmployees = filteredEmployees;
 
     return (
         <AnimatePresence>
@@ -127,15 +195,27 @@ export default function EmployeeSelectionModal({
                         <div className="border-b border-white/60 dark:border-white/[0.06] p-4 sm:p-6 flex justify-between items-center bg-[#EEF2F6] dark:bg-[#161A23] shrink-0 transition-colors">
                             <div className="flex items-center gap-3 sm:gap-3.5">
                                 <div className="p-2 sm:p-2.5 rounded-2xl bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] border border-accent/20 text-accent shrink-0">
-                                    <Building size={20} className="text-accent sm:w-[22px] sm:h-[22px]" />
+                                    {isAdminOrExec ? (
+                                        <Lock size={20} className="text-accent sm:w-[22px] sm:h-[22px]" />
+                                    ) : (
+                                        <Building size={20} className="text-accent sm:w-[22px] sm:h-[22px]" />
+                                    )}
                                 </div>
                                 <div>
                                     <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white font-bricolage tracking-tight">
-                                        Select Employee from HR System
+                                        {loggedInUser?.role === 'Admin'
+                                            ? 'Select Admin Account'
+                                            : loggedInUser?.role === 'Executive'
+                                                ? 'Select Executive Account'
+                                                : 'Select Employee from HR System'}
                                     </h3>
                                     <div className="flex items-center gap-2 mt-0.5">
                                         <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400">
-                                            HR System Directory
+                                            {loggedInUser?.role === 'Admin'
+                                                ? 'Admin Directory'
+                                                : loggedInUser?.role === 'Executive'
+                                                    ? 'Executive Directory'
+                                                    : 'HR System Directory'}
                                         </p>
                                     </div>
                                 </div>
@@ -155,14 +235,14 @@ export default function EmployeeSelectionModal({
                             <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                                 <span className="text-slate-500 dark:text-slate-400 font-medium">Logged in as:</span>
                                 <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-none">
-                                    {loggedInUser?.display_name || loggedInUser?.email}
+                                    {loggedInUser?.display_name || maskEmail(loggedInUser?.email)}
                                 </span>
                                 <span className={`px-2.5 py-0.5 rounded-lg font-semibold text-[10px] sm:text-[11px] tracking-wide shadow-[1px_1px_3px_rgba(0,0,0,0.05)] ${getRoleColor(loggedInUser?.role)}`}>
                                     {loggedInUser?.role}
                                 </span>
                             </div>
                             <span className="text-slate-500 dark:text-slate-400 hidden sm:inline-block font-medium">
-                                Select an employee to verify
+                                {isAdminOrExec ? 'Select an account to verify' : 'Select an employee to verify'}
                             </span>
                         </div>
 
@@ -267,11 +347,26 @@ export default function EmployeeSelectionModal({
                                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 shrink-0 pointer-events-none" size={18} />
                                         <input
                                             type="text"
-                                            placeholder="Search employee by name, ID, or email..."
+                                            placeholder={isAdminOrExec ? "Search account by name, ID, or email..." : "Search employee by name, ID, or email..."}
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                            className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border border-transparent focus:border-accent/40 rounded-xl text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                         />
+                                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                            {isDebouncing && (
+                                                <Loader2 className="animate-spin text-accent shrink-0" size={15} />
+                                            )}
+                                            {searchTerm && !isDebouncing && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSearchTerm('')}
+                                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5 rounded-full hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                                                    aria-label="Clear search"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -279,52 +374,73 @@ export default function EmployeeSelectionModal({
                                     {isLoadingEmployees ? (
                                         <div className="text-center py-10 sm:py-14">
                                             <Loader2 className="animate-spin text-accent mx-auto" size={32} />
-                                            <p className="mt-2.5 text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium">Fetching directory from HR system...</p>
+                                            <p className="mt-2.5 text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium">
+                                                {isAdminOrExec ? 'Fetching accounts...' : 'Fetching directory from HR system...'}
+                                            </p>
                                         </div>
                                     ) : filteredEmployees.length === 0 ? (
                                         <div className="text-center py-10 sm:py-14 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.6),inset_-2px_-2px_6px_rgba(255,255,255,0.02)] rounded-2xl border border-white/40 dark:border-white/[0.06]">
                                             <div className="w-12 h-12 bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_6px_#d1dbe7,-3px_-3px_6px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400 dark:text-slate-500">
                                                 <User size={24} />
                                             </div>
-                                            <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white">No matching employees found</p>
+                                            <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white">
+                                                {isAdminOrExec ? 'No matching accounts found' : 'No matching employees found'}
+                                            </p>
                                             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Try adjusting your search terms</p>
                                         </div>
                                     ) : (
                                         <div className="space-y-3">
                                             {displayedEmployees.map((emp) => {
+                                                const isRider = isDropOffPickupRider(emp);
                                                 const isSelected = selectedEmployee?.id === emp.id;
-                                                const isDisabled = isSelectionLocked || isCheckingRemembered || isDeviceBlocked;
+                                                const isDisabled = isSelectionLocked || isCheckingRemembered || isDeviceBlocked || isRider;
 
                                                 return (
                                                     <button
                                                         key={emp.id}
                                                         type="button"
-                                                        onClick={() => handleEmployeeSelect(emp)}
+                                                        onClick={() => {
+                                                            if (isRider) return;
+                                                            handleEmployeeSelect(emp);
+                                                        }}
                                                         disabled={isDisabled}
+                                                        title={isRider ? "Drop-Off Pick-Up Drivers are field personnel and cannot access the web portal." : undefined}
                                                         className={`w-full text-left px-4 py-3 rounded-2xl transition-all duration-150 border
-                                                            ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-[0.99]'}
+                                                            ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer active:scale-[0.99]'}
                                                             ${isSelected
                                                                 ? 'bg-[#E2ECF6] dark:bg-[#192233] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.7),inset_-2px_-2px_6px_rgba(255,255,255,0.03)] border-accent/60'
-                                                                : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_5px_#c4d0df,inset_-2px_-2px_5px_#ffffff] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.7)] border-white/70 dark:border-white/[0.06] hover:border-accent/30'
+                                                                : isRider
+                                                                    ? 'bg-[#E5EBF2]/60 dark:bg-[#151821]/60 shadow-none border-dashed border-slate-300 dark:border-slate-800'
+                                                                    : 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_5px_#c4d0df,inset_-2px_-2px_5px_#ffffff] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.7)] border-white/70 dark:border-white/[0.06] hover:border-accent/30'
                                                             }`}
                                                     >
-                                                        <div className="flex justify-between items-start gap-3">
+                                                        <div className="flex items-center justify-between gap-3">
                                                             <div className="flex-1 min-w-0">
-                                                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                                                    <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                                                                {/* Row 1: Name + Short ID + Status */}
+                                                                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                                                    <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[180px] sm:max-w-[240px]">
                                                                         {emp.display_name}
                                                                     </span>
-                                                                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-[#EAF0F6] dark:bg-[#13161F] px-1.5 py-0.5 rounded-md border border-white/40 dark:border-white/[0.06] shrink-0">
-                                                                        {emp.employee_id}
-                                                                    </span>
+                                                                    {(emp.employee_id || emp.id) && (
+                                                                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-[#EAF0F6] dark:bg-[#13161F] px-1.5 py-0.5 rounded-md border border-white/40 dark:border-white/[0.06] shrink-0">
+                                                                            {formatId(emp.employee_id || emp.id)}
+                                                                        </span>
+                                                                    )}
 
-                                                                    {emp.is_active && (
+                                                                    {isRider && (
+                                                                        <span className="text-[10px] bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-500/30 shrink-0">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                                            Field Staff (Driver)
+                                                                        </span>
+                                                                    )}
+
+                                                                    {!isRider && emp.is_active && (
                                                                         <span className="text-[10px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-medium px-2 py-0.5 rounded-full flex items-center gap-1 border border-rose-200/60 dark:border-rose-900/40 shrink-0">
                                                                             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
                                                                             Active
                                                                         </span>
                                                                     )}
-                                                                    {!emp.is_active && emp.remembered && (
+                                                                    {!isRider && !emp.is_active && emp.remembered && (
                                                                         <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200/60 dark:border-emerald-900/40 shrink-0">
                                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                                             Remembered
@@ -332,24 +448,32 @@ export default function EmployeeSelectionModal({
                                                                     )}
                                                                 </div>
 
-                                                                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1">{emp.email}</div>
+                                                                {/* Row 2: Email (+ Department/Position) on left, Role badge on right */}
+                                                                <div className="flex items-center justify-between gap-2 mt-1.5">
+                                                                    <div className="flex items-center gap-1.5 min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
+                                                                        <span className="truncate">{maskEmail(emp.email)}</span>
+                                                                        {emp.department && emp.department.toLowerCase().trim() !== emp.role?.toLowerCase().trim() && (
+                                                                            <>
+                                                                                <span className="text-slate-300 dark:text-slate-600 shrink-0">•</span>
+                                                                                <span className="truncate">{emp.department}</span>
+                                                                            </>
+                                                                        )}
+                                                                        {emp.position && emp.position.toLowerCase().trim() !== emp.role?.toLowerCase().trim() && emp.position.toLowerCase().trim() !== emp.department?.toLowerCase().trim() && (
+                                                                            <>
+                                                                                <span className="text-slate-300 dark:text-slate-600 shrink-0">•</span>
+                                                                                <span className="truncate">{emp.position}</span>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
 
-                                                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
-                                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shadow-[1px_1px_3px_rgba(0,0,0,0.05)] shrink-0 ${getRoleColor(emp.role)}`}>
+                                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shadow-[1px_1px_3px_rgba(0,0,0,0.05)] shrink-0 ml-auto ${getRoleColor(emp.role)}`}>
                                                                         {emp.role}
-                                                                    </span>
-                                                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-[#EAF0F6] dark:bg-[#13161F] px-2 py-0.5 rounded-md truncate max-w-[120px] sm:max-w-none border border-white/40 dark:border-white/[0.06]">
-                                                                        {emp.department}
-                                                                    </span>
-                                                                    <span className="text-[10px] text-slate-400 dark:text-slate-600">•</span>
-                                                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[120px] sm:max-w-none">
-                                                                        {emp.position}
                                                                     </span>
                                                                 </div>
                                                             </div>
 
                                                             {isSelected && (
-                                                                <div className="mt-0.5 shrink-0 bg-accent/15 dark:bg-accent/20 p-1 rounded-full text-accent">
+                                                                <div className="shrink-0 bg-accent/15 dark:bg-accent/20 p-1 rounded-full text-accent ml-1">
                                                                     <CheckCircle size={18} />
                                                                 </div>
                                                             )}
@@ -357,12 +481,6 @@ export default function EmployeeSelectionModal({
                                                     </button>
                                                 );
                                             })}
-
-                                            {remainingCount > 0 && (
-                                                <div className="text-center py-2.5 text-xs text-slate-500 dark:text-slate-400 border-t border-dashed border-white/60 dark:border-white/10 mt-3 font-medium">
-                                                    + {remainingCount} more {remainingCount === 1 ? 'employee' : 'employees'} available
-                                                </div>
-                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -398,7 +516,9 @@ export default function EmployeeSelectionModal({
                                                 )}
                                             </div>
                                         ) : (
-                                            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Select an employee from the HR list</span>
+                                            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                                {isAdminOrExec ? 'Select an account from the list' : 'Select an employee from the HR list'}
+                                            </span>
                                         )}
                                     </div>
 
@@ -433,7 +553,7 @@ export default function EmployeeSelectionModal({
                                         ) : (
                                             <button
                                                 type="button"
-                                                onClick={requestOTP}
+                                                onClick={() => requestOTP()}
                                                 disabled={!selectedEmployee || isRequestingOTP || isCheckingRemembered || isDeviceBlocked}
                                                 className="flex-1 sm:flex-initial px-5 py-2.5 bg-accent hover:bg-accent-dark text-paper text-xs sm:text-sm font-semibold rounded-xl shadow-[4px_4px_10px_rgba(234,88,12,0.35),-2px_-2px_6px_rgba(255,255,255,0.3)] active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer border border-accent/30"
                                             >
@@ -472,13 +592,13 @@ export default function EmployeeSelectionModal({
                                             Enter the 6-digit verification code sent to
                                         </p>
                                         <p className="text-xs font-bold text-accent mt-0.5 tracking-tight break-all">
-                                            {selectedEmployee?.email}
+                                            {maskEmail(selectedEmployee?.email)}
                                         </p>
                                         <div className="flex items-center justify-center gap-1.5 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                                            <span>HR Employee:</span>
-                                            <span className="font-semibold text-slate-900 dark:text-white">{selectedEmployee?.display_name}</span>
-                                            {selectedEmployee?.employee_id && (
-                                                <span className="font-mono text-slate-400 dark:text-slate-500">({selectedEmployee.employee_id})</span>
+                                            <span>{isAdminOrExec ? 'Account:' : 'HR Employee:'}</span>
+                                            <span className="font-semibold text-slate-900 dark:text-white">{selectedEmployee?.display_name || loggedInUser?.display_name}</span>
+                                            {(selectedEmployee?.employee_id || selectedEmployee?.id) && (
+                                                <span className="font-mono text-slate-400 dark:text-slate-500">({formatId(selectedEmployee.employee_id || selectedEmployee.id)})</span>
                                             )}
                                         </div>
                                     </div>
@@ -497,7 +617,7 @@ export default function EmployeeSelectionModal({
                                         </div>
                                     )}
 
-                                    {countdown === 0 && otpCode.some(d => d) && !otpError && (
+                                    {otpExpiresIn === 0 && otpCode.some(d => d) && !otpError && (
                                         <div className="mb-3 text-xs text-rose-600 dark:text-rose-400 font-semibold flex items-center justify-center gap-1.5 text-center bg-rose-50/70 dark:bg-rose-950/40 p-2 rounded-xl border border-rose-200/80 dark:border-rose-900/40 animate-pulse">
                                             <AlertCircle size={14} className="shrink-0" />
                                             <span>Inputted OTP is already expired. Please click Resend Code.</span>
@@ -517,7 +637,7 @@ export default function EmployeeSelectionModal({
                                                 onKeyDown={(e) => handleOtpKeyDown(index, e)}
                                                 onPaste={index === 0 ? handleOtpPaste : undefined}
                                                 className={`w-10 h-12 sm:w-13 sm:h-14 text-center text-lg sm:text-2xl font-bold rounded-2xl transition-all duration-150 outline-none
-                                                    ${otpError || (countdown === 0 && digit)
+                                                    ${otpError || (otpExpiresIn === 0 && digit)
                                                         ? 'bg-rose-50/50 dark:bg-rose-950/30 border-2 border-rose-400 dark:border-rose-500 text-rose-600 dark:text-rose-400'
                                                         : digit
                                                             ? 'bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[3px_3px_6px_#d1dbe7,-3px_-3px_6px_#ffffff] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6),-2px_-2px_6px_rgba(255,255,255,0.03)] border-2 border-accent text-slate-900 dark:text-white'
@@ -548,10 +668,15 @@ export default function EmployeeSelectionModal({
                                         </span>
                                     </div>
 
-                                    {countdown > 0 ? (
+                                    {otpExpiresIn > 0 ? (
                                         <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">
                                             <Clock size={14} className="text-amber-500 dark:text-amber-400 animate-pulse" />
-                                            <span>Code expires in <strong className="text-amber-600 dark:text-amber-400 font-bold">{countdown}s</strong></span>
+                                            <span>
+                                                Code expires in{' '}
+                                                <strong className="text-amber-600 dark:text-amber-400 font-bold">
+                                                    {Math.floor(otpExpiresIn / 60)}:{(otpExpiresIn % 60).toString().padStart(2, '0')}
+                                                </strong>
+                                            </span>
                                         </div>
                                     ) : (
                                         <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-3">
@@ -580,7 +705,7 @@ export default function EmployeeSelectionModal({
                                     <div className="flex flex-col sm:flex-row gap-2.5">
                                         <button
                                             type="button"
-                                            onClick={resendOTP}
+                                            onClick={() => resendOTP()}
                                             disabled={countdown > 0 || isResending || isVerifying || isDeviceBlocked}
                                             className="w-full sm:w-auto px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 bg-[#EEF2F6] dark:bg-[#1A1F2B] shadow-[4px_4px_8px_#d1dbe7,-4px_-4px_8px_#ffffff] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.6),-3px_-3px_8px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_5px_#c4d0df,inset_-2px_-2px_5px_#ffffff] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.7)] border border-white/60 dark:border-white/[0.08] rounded-xl hover:text-slate-900 dark:hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                                         >
@@ -589,6 +714,8 @@ export default function EmployeeSelectionModal({
                                                     <Loader2 className="animate-spin text-muted dark:text-paper/60" size={14} />
                                                     <span>Resending...</span>
                                                 </>
+                                            ) : countdown > 0 ? (
+                                                <span>Resend in {countdown}s</span>
                                             ) : (
                                                 <span>Resend Code</span>
                                             )}
@@ -605,7 +732,7 @@ export default function EmployeeSelectionModal({
                                                     <Loader2 className="animate-spin" size={14} />
                                                     <span>Verifying...</span>
                                                 </>
-                                            ) : countdown === 0 ? (
+                                            ) : otpExpiresIn === 0 ? (
                                                 <span>Code Expired</span>
                                             ) : (
                                                 <span>Verify OTP</span>

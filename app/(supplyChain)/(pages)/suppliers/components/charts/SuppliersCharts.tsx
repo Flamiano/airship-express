@@ -3,7 +3,7 @@
 "use client";
 
 import React from "react";
-import { SupplierChartsSkeleton } from "@/app/(supplyChain)/components/ui/SkeletonLoader";
+import { SupplierChartsSkeleton } from "../../../../components/ui/SkeletonLoader";
 
 interface SuppliersChartsProps {
     isLoading: boolean;

@@ -5,9 +5,9 @@ import React, { memo } from 'react';
 import { Eye, Download, Image as ImageIcon, Calendar, User, HardDrive } from 'lucide-react';
 import { MediaItem } from '../../types';
 import { imageCache } from '../../utils/imageCache';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { getFileTypeInfo } from '@/app/(supplyChain)/components/ui/EmbeddedDocViewer';
+import { AppButton } from '../../../../components/ui/AppButton';
+import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { getFileTypeInfo } from '../../../../components/ui/EmbeddedDocViewer';
 
 export interface GalleryListItemProps {
     item: MediaItem;

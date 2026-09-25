@@ -4,9 +4,9 @@
 import React from 'react';
 import { Document } from '../../types';
 import { formatFileSize } from '../../utils/formatters';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
-import EmbeddedDocViewer from "@/app/(supplyChain)/components/ui/EmbeddedDocViewer";
-import Portal from '@/app/(supplyChain)/components/client/Portal';
+import { AppButton } from '../../../../components/ui/AppButton';
+import EmbeddedDocViewer from "../../../../components/ui/EmbeddedDocViewer";
+import Portal from '../../../../components/client/Portal';
 
 interface DocumentPreviewModalProps {
     isOpen: boolean;
@@ -113,6 +113,12 @@ export function DocumentPreviewModal({
                                                 <dt className="text-slate-500 dark:text-slate-400 font-medium">Size:</dt>
                                                 <dd className="text-slate-800 dark:text-slate-200 font-semibold">{formatFileSize(selectedDoc.file_size)}</dd>
                                             </div>
+                                            {selectedDoc.Price && (
+                                                <div className="flex justify-between items-center">
+                                                    <dt className="text-slate-500 dark:text-slate-400 font-medium">Price:</dt>
+                                                    <dd className="text-pink-600 dark:text-pink-400 font-bold font-mono">₱{selectedDoc.Price}</dd>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between items-center">
                                                 <dt className="text-slate-500 dark:text-slate-400 font-medium">Version:</dt>
                                                 <dd className="text-slate-800 dark:text-slate-200 font-semibold">v{selectedDoc.version || 1}</dd>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { AppButton } from "./AppButton";
+import Portal from "../client/Portal";
 
 interface ConfirmOptions {
     title?: string;

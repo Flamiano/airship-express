@@ -86,6 +86,10 @@ class UserService {
         return localStorage.getItem('user_id') || null;
     }
 
+    getId(): string | null {
+        return this.getUserId();
+    }
+
     getName(): string {
         if (typeof window === 'undefined') return 'User';
         return localStorage.getItem('user_name') || 'User';

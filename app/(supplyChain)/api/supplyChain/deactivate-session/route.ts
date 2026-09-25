@@ -1,7 +1,17 @@
-// app/(supplyChain)/api/supplyChain/deactivate-session/route.ts
-
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 export async function POST(request: Request) {
     try {
@@ -25,7 +35,7 @@ export async function POST(request: Request) {
         }
 
         // find the session
-        const { data: session, error: findError } = await supabase
+        const { data: session, error: findError } = await supabaseAdmin
             .from('sessions')
             .select('id, user_id')
             .eq('session_token', sessionToken)
@@ -39,7 +49,7 @@ export async function POST(request: Request) {
         }
 
         // deactivate the session
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
             .from('sessions')
             .update({
                 is_active: false,
@@ -57,7 +67,7 @@ export async function POST(request: Request) {
 
         // log activity
         try {
-            await supabase
+            await supabaseAdmin
                 .from('user_activity')
                 .insert({
                     user_id: session.user_id,

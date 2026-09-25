@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/app/(supplyChain)/lib/services/client/supabase";
-import { user } from "@/app/(supplyChain)/lib/services/Class/user";
-import { buildEmailTemplate } from "@/app/(supplyChain)/(pages)/procurement/api/send-email/template";
-import { PurchaseRequestItem, PurchaseOrderModalProps } from "@/app/(supplyChain)/(pages)/procurement/types/index";
-import { AppButton } from "@/app/(supplyChain)/components/ui/AppButton";
-import Portal from "@/app/(supplyChain)/components/client/Portal";
+import { supabase } from "../../lib/services/client/supabase";
+import { user } from "../../lib/services/Class/user";
+import { buildEmailTemplate } from "../../(pages)/procurement/api/send-email/template";
+import { PurchaseRequestItem, PurchaseOrderModalProps } from "../../(pages)/procurement/types/index";
+import { AppButton } from "../ui/AppButton";
+import Portal from "../client/Portal";
 
 export function PurchaseOrderModal({
     isOpen,
@@ -225,15 +225,15 @@ export function PurchaseOrderModal({
     };
 
     const getFullMessage = () => {
-        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+        const APP_URL = process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
         const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
         const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 
         if (emailMode === 'ai' && aiMessage) {
-            return `${aiMessage}\n\n---\n\n📋 **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
+            return `${aiMessage}\n\n---\n\n **Confirm this order:** ${confirmLink}\n\nPlease click the link above to confirm this purchase order.`;
         }
 
-        return `Hello ${request?.supplier_name || 'Vendor'},\n\nPlease review Purchase Order #${poNumber} for a total of ₱${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\nExpected Delivery: ${formData.delivery_date || 'Standard Timeline'}\n\n---\n\n📋 Confirm this order: ${confirmLink}`;
+        return `Hello ${request?.supplier_name || 'Vendor'},\n\nPlease review Purchase Order #${poNumber} for a total of ₱${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\nExpected Delivery: ${formData.delivery_date || 'Standard Timeline'}\n\n---\n\n Confirm this order: ${confirmLink}`;
     };
 
     const getSanitizedItems = () => {
@@ -328,7 +328,7 @@ export function PurchaseOrderModal({
 
             const fullMessage = getFullMessage();
             const sanitizedItems = getSanitizedItems();
-            const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+            const APP_URL = process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
             const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
             const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 
@@ -422,7 +422,7 @@ export function PurchaseOrderModal({
 
     if (!isOpen || !request) return null;
 
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const APP_URL = process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     const CONFIRM_PATH = process.env.NEXT_PUBLIC_CONFIRM_PATH || '/procurement/confirm';
     const confirmLink = `${APP_URL}${CONFIRM_PATH}?po=${poNumber}`;
 

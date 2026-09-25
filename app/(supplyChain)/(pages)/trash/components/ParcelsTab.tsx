@@ -2,18 +2,18 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/app/(supplyChain)/components/ui/ConfirmModal';
-import { supabase } from '@/app/(supplyChain)/lib/services/client/supabase';
-import { BulkActionsToolbar } from '@/app/(supplyChain)/components/global/BulkActionsToolbar';
-import { useDebounce } from '@/app/(supplyChain)/hooks/useDebounce';
-import { sanitizeSearch, sanitizeText, sanitizeNumber } from '@/app/(supplyChain)/components/global/sanitize';
-import { Pagination } from '@/app/(supplyChain)/components/global/pagination';
-import { TableContentLoader } from '@/app/(supplyChain)/components/global/Loader';
-import Cards from '@/app/(supplyChain)/components/global/Cards';
-import { CardsSkeleton, TableRowsSkeleton } from '@/app/(supplyChain)/components/ui/SkeletonLoader';
-import { CrudActionButton } from '@/app/(supplyChain)/components/ui/CrudActionButton';
-import { StatusBadge } from '@/app/(supplyChain)/components/ui/StatusBadge';
-import { AppButton } from '@/app/(supplyChain)/components/ui/AppButton';
+import { useConfirm } from '../../../components/ui/ConfirmModal';
+import { supabase } from '../../../lib/services/client/supabase';
+import { BulkActionsToolbar } from '../../../components/global/BulkActionsToolbar';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { sanitizeSearch, sanitizeText, sanitizeNumber } from '../../../components/global/sanitize';
+import { Pagination } from '../../../components/global/pagination';
+import { TableContentLoader } from '../../../components/global/Loader';
+import Cards from '../../../components/global/Cards';
+import { CardsSkeleton, TableRowsSkeleton } from '../../../components/ui/SkeletonLoader';
+import { CrudActionButton } from '../../../components/ui/CrudActionButton';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { AppButton } from '../../../components/ui/AppButton';
 import { trashCache } from '../utils/trashCache';
 import { TrashRetentionBadge } from './TrashRetentionBadge';
 
@@ -39,6 +39,7 @@ interface ArchivedParcel {
     received_by: string | null;
     bulk_qr_city: string | null;
     bulk_qr_courier: string | null;
+    scanned_by?: string | null;
     deleted_at: string;
     deleted_by: string;
     deletion_reason: string | null;
@@ -109,6 +110,7 @@ export function ParcelsTab() {
                 received_by: parcel.received_by ? sanitizeText(parcel.received_by) : null,
                 bulk_qr_city: parcel.bulk_qr_city ? sanitizeText(parcel.bulk_qr_city) : null,
                 bulk_qr_courier: parcel.bulk_qr_courier ? sanitizeText(parcel.bulk_qr_courier) : null,
+                scanned_by: parcel.scanned_by || null,
                 deleted_at: parcel.deleted_at || new Date().toISOString(),
                 deleted_by: sanitizeText(parcel.deleted_by || 'Unknown'),
                 deletion_reason: parcel.deletion_reason ? sanitizeText(parcel.deletion_reason) : null,
@@ -137,6 +139,75 @@ export function ParcelsTab() {
         if (confirmed) {
             setParcelLoading(true);
             try {
+                // Check if an active parcel with the same barcode already exists
+                const { data: existingActive } = await supabase
+                    .from('parcels')
+                    .select('id, barcode')
+                    .eq('barcode', parcel.barcode)
+                    .maybeSingle();
+
+                if (existingActive) {
+                    setParcelLoading(false);
+                    const shouldOverwrite = await confirm({
+                        title: 'Active Parcel Already Exists',
+                        message: `An active parcel with barcode "${sanitizeText(parcel.barcode)}" is already active in Inventory/Warehousing.\n\nDo you want to overwrite the active parcel with this archived record?`,
+                        confirmText: 'Overwrite Active',
+                        cancelText: 'Cancel',
+                        confirmVariant: 'warning'
+                    });
+
+                    if (!shouldOverwrite) {
+                        toast.info(`Restore cancelled: active parcel "${sanitizeText(parcel.barcode)}" already exists.`);
+                        return;
+                    }
+
+                    setParcelLoading(true);
+                    const { error: updateError } = await supabase
+                        .from('parcels')
+                        .update({
+                            tracking_number: parcel.tracking_number,
+                            sender_name: parcel.sender_name,
+                            destination: parcel.destination,
+                            courier: parcel.courier,
+                            status: parcel.status,
+                            updated_at: new Date().toISOString(),
+                            courier_id: parcel.courier_id,
+                            region: parcel.region,
+                            bulk_qr_code: parcel.bulk_qr_code,
+                            driver_name: parcel.driver_name,
+                            customer_name: parcel.customer_name,
+                            city: parcel.city,
+                            priority: parcel.priority,
+                            date_received: parcel.date_received,
+                            customer_number: parcel.customer_number,
+                            received_by: parcel.received_by,
+                            bulk_qr_city: parcel.bulk_qr_city,
+                            bulk_qr_courier: parcel.bulk_qr_courier,
+                            scanned_by: parcel.scanned_by || null,
+                        })
+                        .eq('id', existingActive.id);
+
+                    if (updateError) throw updateError;
+
+                    const { error: deleteError } = await supabase
+                        .from('parcels_archive')
+                        .delete()
+                        .eq('id', parcel.id);
+
+                    if (deleteError) throw deleteError;
+
+                    trashCache.removeItem('parcels', parcel.id);
+                    setArchivedParcels(prev => prev.filter(p => p.id !== parcel.id));
+                    setParcelTotalPages(Math.ceil((archivedParcels.length - 1) / ITEMS_PER_PAGE));
+                    setSelectedParcelIds(prev => {
+                        const updated = new Set(prev);
+                        updated.delete(parcel.id);
+                        return updated;
+                    });
+                    toast.success(`Active parcel "${sanitizeText(parcel.barcode)}" updated with archived details`);
+                    return;
+                }
+
                 const { error: insertError } = await supabase
                     .from('parcels')
                     .insert({
@@ -160,9 +231,16 @@ export function ParcelsTab() {
                         received_by: parcel.received_by,
                         bulk_qr_city: parcel.bulk_qr_city,
                         bulk_qr_courier: parcel.bulk_qr_courier,
+                        scanned_by: parcel.scanned_by || null,
                     });
 
-                if (insertError) throw insertError;
+                if (insertError) {
+                    if (insertError.code === '23505' || insertError.message?.includes('duplicate key') || insertError.message?.includes('uq_parcels_barcode')) {
+                        toast.error(`Cannot restore: An active parcel with barcode "${sanitizeText(parcel.barcode)}" already exists.`);
+                        return;
+                    }
+                    throw insertError;
+                }
 
                 const { error: deleteError } = await supabase
                     .from('parcels_archive')
@@ -180,8 +258,12 @@ export function ParcelsTab() {
                     return updated;
                 });
                 toast.success(`Parcel "${sanitizeText(parcel.barcode)}" restored successfully`);
-            } catch (error) {
-                toast.error('Failed to restore parcel');
+            } catch (error: any) {
+                if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
+                    toast.error(`Cannot restore: An active parcel with barcode "${sanitizeText(parcel.barcode)}" already exists.`);
+                } else {
+                    toast.error('Failed to restore parcel');
+                }
                 console.error(error);
             } finally {
                 setParcelLoading(false);
@@ -239,7 +321,25 @@ export function ParcelsTab() {
             setParcelLoading(true);
             try {
                 const parcelsToRestore = archivedParcels.filter(p => selectedParcelIds.has(p.id));
+                const allBarcodes = parcelsToRestore.map(p => p.barcode).filter(Boolean);
+
+                // Check which barcodes already exist in active parcels
+                const { data: existingActiveList } = await supabase
+                    .from('parcels')
+                    .select('barcode')
+                    .in('barcode', allBarcodes);
+
+                const activeBarcodes = new Set((existingActiveList || []).map(p => p.barcode));
+                const seenInBatch = new Set<string>();
+                const successfullyRestoredIds = new Set<number>();
+                const skippedConflictBarcodes: string[] = [];
+
                 for (const parcel of parcelsToRestore) {
+                    if (activeBarcodes.has(parcel.barcode) || seenInBatch.has(parcel.barcode)) {
+                        skippedConflictBarcodes.push(parcel.barcode);
+                        continue;
+                    }
+
                     const { error: insertError } = await supabase
                         .from('parcels')
                         .insert({
@@ -263,21 +363,49 @@ export function ParcelsTab() {
                             received_by: parcel.received_by,
                             bulk_qr_city: parcel.bulk_qr_city,
                             bulk_qr_courier: parcel.bulk_qr_courier,
+                            scanned_by: parcel.scanned_by || null,
                         });
 
-                    if (insertError) throw insertError;
+                    if (insertError) {
+                        if (insertError.code === '23505' || insertError.message?.includes('duplicate key')) {
+                            skippedConflictBarcodes.push(parcel.barcode);
+                            activeBarcodes.add(parcel.barcode);
+                            continue;
+                        }
+                        throw insertError;
+                    }
 
-                    await supabase
+                    const { error: deleteError } = await supabase
                         .from('parcels_archive')
                         .delete()
                         .eq('id', parcel.id);
+
+                    if (deleteError) {
+                        throw deleteError;
+                    }
+
+                    seenInBatch.add(parcel.barcode);
+                    successfullyRestoredIds.add(Number(parcel.id));
                 }
 
-                trashCache.removeItems('parcels', selectedParcelIds);
-                setArchivedParcels(prev => prev.filter(p => !selectedParcelIds.has(p.id)));
-                setParcelTotalPages(Math.ceil((archivedParcels.length - selectedParcelIds.size) / ITEMS_PER_PAGE));
-                toast.success(`${selectedParcelIds.size} parcel(s) restored successfully!`);
-                setSelectedParcelIds(new Set());
+                if (successfullyRestoredIds.size > 0) {
+                    trashCache.removeItems('parcels', successfullyRestoredIds);
+                    setArchivedParcels(prev => prev.filter(p => !successfullyRestoredIds.has(Number(p.id))));
+                    setParcelTotalPages(Math.ceil((archivedParcels.length - successfullyRestoredIds.size) / ITEMS_PER_PAGE));
+                    toast.success(`${successfullyRestoredIds.size} parcel(s) restored successfully!`);
+                    setSelectedParcelIds(prev => {
+                        const next = new Set(prev);
+                        successfullyRestoredIds.forEach(id => next.delete(id));
+                        return next;
+                    });
+                }
+
+                if (skippedConflictBarcodes.length > 0) {
+                    const uniqueSkipped = Array.from(new Set(skippedConflictBarcodes));
+                    toast.warning(
+                        `${skippedConflictBarcodes.length} parcel(s) skipped: Active parcel with barcode (${uniqueSkipped.slice(0, 3).join(', ')}${uniqueSkipped.length > 3 ? '...' : ''}) already exists.`
+                    );
+                }
             } catch (error) {
                 toast.error('Failed to restore parcels');
                 console.error(error);
