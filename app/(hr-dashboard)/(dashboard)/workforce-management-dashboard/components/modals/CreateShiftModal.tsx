@@ -47,6 +47,7 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           driver_id: initialData.employee_id,
           shift_date: initialData.shift_date,
           shift_time: initialData.shift_time || '08:00 AM - 05:00 PM',
+          break_duration_minutes: initialData.break_duration_minutes,
           vehicle: initialData.vehicle || '',
           expected_arrival: initialData.expected_arrival || '',
           priority: initialData.priority || 'Normal',
@@ -205,16 +206,33 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
         </div>
 
         {mode === 'office' && (
-          <div>
-            <label className="font-medium text-xs text-muted block mb-1">Time Block</label>
-            <input
-              type="text"
-              required
-              placeholder="08:00 AM - 05:00 PM"
-              value={form.shift_time || ''}
-              onChange={(e) => setForm({ ...form, shift_time: e.target.value })}
-              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-medium text-xs text-muted block mb-1">Time Block</label>
+              <input
+                type="text"
+                required
+                placeholder="08:00 AM - 05:00 PM"
+                value={form.shift_time || ''}
+                onChange={(e) => setForm({ ...form, shift_time: e.target.value })}
+                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+              />
+            </div>
+            <div>
+              <label className="font-medium text-xs text-muted block mb-1">Break Duration</label>
+              <select
+                value={form.break_duration_minutes ?? ''}
+                onChange={(e) => setForm({ ...form, break_duration_minutes: e.target.value ? parseInt(e.target.value) : undefined })}
+                className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+              >
+                <option value="">No Break</option>
+                <option value="15">15 mins</option>
+                <option value="30">30 mins</option>
+                <option value="45">45 mins</option>
+                <option value="60">1 hour</option>
+                <option value="90">1.5 hours</option>
+              </select>
+            </div>
           </div>
         )}
 

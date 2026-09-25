@@ -91,6 +91,11 @@ export default function ShiftsPage() {
           <Clock size={14} className="text-muted" />
           <span className="font-medium">{shift.shift_time || '08:00 AM - 05:00 PM'}</span>
         </div>
+        {shift.break_duration_minutes ? (
+          <span className="text-[10px] text-muted font-medium bg-ink/5 px-2 py-0.5 rounded-full border border-line">
+            {shift.break_duration_minutes}m break
+          </span>
+        ) : null}
       </div>
       {shift.override_reason && (
         <p className="text-[10px] text-amber-600/80 italic mt-2">Override: {shift.override_reason}</p>

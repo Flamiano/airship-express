@@ -87,7 +87,10 @@ export const SprintChart: React.FC<Props> = ({ shifts, onShiftClick }) => {
                   >
                     <div className="p-3 border-r border-line flex flex-col justify-center">
                       <span className="text-xs font-medium text-ink truncate group-hover:text-accent transition-colors">{shift.employee?.full_name || 'Unassigned'}</span>
-                      <span className="text-[10px] text-muted truncate">{getEmployeeGroup(shift.employee?.role)}</span>
+                      <span className="text-[10px] text-muted truncate">
+                        {getEmployeeGroup(shift.employee?.role)}
+                        {shift.break_duration_minutes ? ` • ${shift.break_duration_minutes}m break` : ''}
+                      </span>
                     </div>
                     <div className="relative grid" style={{ gridTemplateColumns: `repeat(${HOURS.length}, minmax(40px, 1fr))` }}>
                       {/* Grid lines */}

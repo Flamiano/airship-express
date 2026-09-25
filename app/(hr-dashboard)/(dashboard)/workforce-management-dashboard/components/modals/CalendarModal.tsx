@@ -111,22 +111,27 @@ export function CalendarModal({ open, onClose, shifts = [], onShiftClick }: Cale
                           {isCurrentMonth ? day : (day <= 0 ? 30 + day : day - 31)}
                         </div>
                         
-                        {/* Mock Schedule Pills */}
-                        {hasShift && (
-                          <div className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-bold truncate mb-1">
-                            Office Schedule
-                          </div>
-                        )}
-                        {day === 25 && (
-                          <div className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold truncate">
-                            Fully Staffed
-                          </div>
-                        )}
-                        {isToday && (
-                          <div className="px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400 text-[10px] font-bold truncate">
-                            3 Pending Dispatch
-                          </div>
-                        )}
+                        {/* Actual Shift Pills */}
+                        {shifts
+                          .filter(s => parseInt(s.shift_date.split('-')[2]) === day && isCurrentMonth)
+                          .map(shift => (
+                            <div
+                              key={shift.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onShiftClick?.(shift);
+                              }}
+                              className={`text-[9px] px-1.5 py-0.5 rounded truncate font-medium cursor-pointer transition-colors mb-1 ${
+                                shift.status === 'Completed'
+                                  ? 'bg-emerald-500/10 text-emerald-600'
+                                  : 'bg-accent/10 text-accent hover:bg-accent/20'
+                              }`}
+                            >
+                              <span className="font-bold">{shift.employee?.full_name?.split(' ')[0]}:</span>{' '}
+                              {shift.shift_time || shift.expected_arrival}
+                              {shift.break_duration_minutes ? ` (${shift.break_duration_minutes}m break)` : ''}
+                            </div>
+                        ))}
                       </div>
                     );
                   })}

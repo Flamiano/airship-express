@@ -10,6 +10,7 @@ export interface CreateShiftPayload {
   
   // Office fields
   shift_time?: string;
+  break_duration_minutes?: number;
   
   // Rider fields
   vehicle?: string;
