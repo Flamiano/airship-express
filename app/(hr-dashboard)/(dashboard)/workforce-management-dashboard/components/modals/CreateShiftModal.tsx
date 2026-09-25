@@ -10,7 +10,7 @@ interface CreateShiftModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateShiftPayload | UpdateShiftPayload) => Promise<void>;
-  drivers: Array<{ id: string; full_name: string }>;
+  drivers: Array<{ id: string; full_name: string; role?: string }>;
   initialData?: Shift | null;
 }
 
@@ -149,14 +149,28 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           <label className="font-medium text-xs text-muted block mb-1">
             {mode === 'office' ? 'Shift Title / Role' : 'Route / Dispatch Title'}
           </label>
-          <input
-            type="text"
-            required
-            placeholder={mode === 'office' ? "e.g. Morning HR Support" : "e.g. Mid-West Grain Transit"}
-            value={form.title || ''}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-            className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
-          />
+          {mode === 'office' ? (
+            <select
+              required
+              value={form.title || ''}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+            >
+              <option value="" disabled>Select Role...</option>
+              {Array.from(new Set(drivers.filter(d => d.role && getEmployeeGroup(d.role) === 'Office').map(d => d.role))).map(role => (
+                <option key={role} value={role}>{role}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              required
+              placeholder="e.g. Mid-West Grain Transit"
+              value={form.title || ''}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+            />
+          )}
         </div>
 
         <div>
@@ -165,7 +179,17 @@ export function CreateShiftModal({ open, onClose, onSubmit, drivers, initialData
           </label>
           <select
             value={form.driver_id ?? ''}
-            onChange={(e) => setForm({ ...form, driver_id: e.target.value || null })}
+            onChange={(e) => {
+              const selectedId = e.target.value || null;
+              const updates: any = { driver_id: selectedId };
+              if (selectedId && mode === 'office') {
+                const driver = drivers.find(d => d.id === selectedId);
+                if (driver?.role) {
+                  updates.title = driver.role;
+                }
+              }
+              setForm({ ...form, ...updates });
+            }}
             className="w-full bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-xl p-2.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all"
           >
             <option value="">Unassigned</option>

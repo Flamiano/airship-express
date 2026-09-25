@@ -18,7 +18,7 @@ import type { CreateShiftPayload } from '../../types/api';
 export default function ShiftsPage() {
   const { role } = useAuth();
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; role?: string }>>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export default function ShiftsPage() {
 
   useEffect(() => {
     load();
-    apiFetch<Array<{ id: string; full_name: string }>>('/api/drivers')
+    apiFetch<Array<{ id: string; full_name: string; role?: string }>>('/api/drivers')
       .then(res => setDrivers(res || []))
       .catch(() => setDrivers([]));
   }, [load]);
