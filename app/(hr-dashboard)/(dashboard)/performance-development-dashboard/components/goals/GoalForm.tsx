@@ -4,14 +4,31 @@ import { useEffect, useState } from "react";
 import type {
   EmployeeOption,
   GoalCreateInput,
+  GoalMeasurementType,
+  GoalProgressMethod,
   GoalUpdateInput,
   GoalWeightContext,
   PerformanceCycle,
   PerformanceGoal,
   PerformanceGoalStatus,
 } from "@/performance-development-dashboard/types";
-import { HR_GOAL_STATUS_TRANSITIONS } from "@/performance-development-dashboard/types";
+import {
+  GOAL_MEASUREMENT_TYPES,
+  HR_GOAL_STATUS_TRANSITIONS,
+} from "@/performance-development-dashboard/types";
+import { MEASUREMENT_TYPE_LABELS } from "@/performance-development-dashboard/lib/format/measurement";
+import { MAX_GOAL_MEASUREMENT_UNIT_LENGTH } from "@/performance-development-dashboard/lib/constants";
+import { SCORING_WEIGHT_TOLERANCE } from "@/performance-development-dashboard/lib/performance/scoring";
 import { formatDateOnly } from "@/performance-development-dashboard/lib/format/date";
+import {
+  PerformanceButton,
+  PerformanceField,
+  PerformanceProgress,
+  PerformanceSectionHeader,
+  PerformanceSelect,
+  PerformanceTextarea,
+  PerformanceTextInput,
+} from "@/performance-development-dashboard/components/ui/performance";
 
 const PRIORITIES = [
   { value: "low", label: "Low" },
@@ -51,9 +68,8 @@ type Props = {
   onCancel: () => void;
 };
 
-const emptySelect = "";
-const emptyDate = "";
-const emptyText = "";
+/** Shared empty value for unselected/unset form fields (select, date, text). */
+const EMPTY_FIELD = "";
 
 function formatWeightTotal(total: number): string {
   return Number.isInteger(total) ? String(total) : total.toFixed(2);
@@ -85,25 +101,37 @@ export function GoalForm({
   onSubmit,
   onCancel,
 }: Props) {
-  const [employeeId, setEmployeeId] = useState(initialGoal?.employee_id ?? emptySelect);
-  const [title, setTitle] = useState(initialGoal?.title ?? emptyText);
-  const [description, setDescription] = useState(initialGoal?.description ?? emptyText);
-  const [category, setCategory] = useState(initialGoal?.category ?? emptyText);
-  const [target, setTarget] = useState(initialGoal?.target ?? emptyText);
+  const [employeeId, setEmployeeId] = useState(initialGoal?.employee_id ?? EMPTY_FIELD);
+  const [title, setTitle] = useState(initialGoal?.title ?? EMPTY_FIELD);
+  const [description, setDescription] = useState(initialGoal?.description ?? EMPTY_FIELD);
+  const [category, setCategory] = useState(initialGoal?.category ?? EMPTY_FIELD);
+  const [target, setTarget] = useState(initialGoal?.target ?? EMPTY_FIELD);
   const [weight, setWeight] = useState(
-    initialGoal?.weight != null ? String(initialGoal.weight) : emptyText
+    initialGoal?.weight != null ? String(initialGoal.weight) : EMPTY_FIELD
+  );
+  const [progressMethod, setProgressMethod] = useState<GoalProgressMethod>(
+    initialGoal?.progress_method ?? "manual"
+  );
+  const [measurementType, setMeasurementType] = useState<
+    GoalMeasurementType | ""
+  >(initialGoal?.measurement_type ?? "");
+  const [targetValue, setTargetValue] = useState(
+    initialGoal?.target_value != null ? String(initialGoal.target_value) : EMPTY_FIELD
+  );
+  const [measurementUnit, setMeasurementUnit] = useState(
+    initialGoal?.measurement_unit ?? EMPTY_FIELD
   );
   const [priority, setPriority] = useState(
     initialGoal?.priority ?? "medium"
   );
-  const [roleId, setRoleId] = useState(initialGoal?.role_id ?? emptySelect);
+  const [roleId, setRoleId] = useState(initialGoal?.role_id ?? EMPTY_FIELD);
   const [cycleId, setCycleId] = useState(
     initialGoal
-      ? (initialGoal.cycle_id ?? emptySelect)
-      : (defaultCycleId ?? emptySelect)
+      ? (initialGoal.cycle_id ?? EMPTY_FIELD)
+      : (defaultCycleId ?? EMPTY_FIELD)
   );
-  const [startDate, setStartDate] = useState(initialGoal?.start_date ?? emptyDate);
-  const [dueDate, setDueDate] = useState(initialGoal?.due_date ?? emptyDate);
+  const [startDate, setStartDate] = useState(initialGoal?.start_date ?? EMPTY_FIELD);
+  const [dueDate, setDueDate] = useState(initialGoal?.due_date ?? EMPTY_FIELD);
   const [status, setStatus] = useState<PerformanceGoalStatus>(
     initialGoal?.status ?? "not_started"
   );
@@ -119,9 +147,9 @@ export function GoalForm({
     employees.find((employee) => employee.id === employeeId) ?? null;
 
   const weightContextEnabled =
-    mode === "create" && Boolean(onLoadWeightContext) && employeeId !== emptySelect;
+    Boolean(onLoadWeightContext) && employeeId !== EMPTY_FIELD;
   const weightContextKey = weightContextEnabled
-    ? `${employeeId}::${cycleId || emptySelect}`
+    ? `${mode}::${initialGoal?.id ?? "new"}::${employeeId}::${cycleId || EMPTY_FIELD}`
     : null;
   const weightContext =
     weightContextKey && weightResult?.key === weightContextKey
@@ -155,7 +183,7 @@ export function GoalForm({
   useEffect(() => {
     if (mode !== "create") return;
     if (!defaultCycleId) return;
-    if (cycleId !== emptySelect) return;
+    if (cycleId !== EMPTY_FIELD) return;
     setCycleId(defaultCycleId);
   }, [mode, defaultCycleId, cycleId]);
 
@@ -169,14 +197,37 @@ export function GoalForm({
   useEffect(() => {
     if (mode !== "create") return;
     const employee = employees.find((e) => e.id === employeeId);
-    setRoleId(employee?.job_position_id ?? emptySelect);
+    setRoleId(employee?.job_position_id ?? EMPTY_FIELD);
   }, [mode, employeeId, employees]);
 
-  const numericWeight = weight.trim() === emptyText ? null : Number(weight);
+  const numericWeight = weight.trim() === EMPTY_FIELD ? null : Number(weight);
   const weightOutOfRange =
     numericWeight !== null &&
     !Number.isNaN(numericWeight) &&
     (numericWeight <= 0 || numericWeight > 100);
+
+  /**
+   * Live allocation projection: stored weights for the employee/cycle,
+   * excluding this goal's own stored weight when editing, plus the value
+   * currently in the weight field. DISPLAY-ONLY guidance — the authoritative
+   * 100% rule is enforced server-side at appraisal finalization. Shown only
+   * once the stored context has loaded; hidden while loading, on load
+   * failure, or when the field holds a non-numeric value (covered by the
+   * existing "valid number" submit validation instead).
+   */
+  const storedOthersTotal =
+    weightContext != null
+      ? weightContext.weightTotal -
+        (mode === "edit" ? (initialGoal?.weight ?? 0) : 0)
+      : null;
+  const projectedTotal =
+    storedOthersTotal !== null &&
+    (numericWeight === null || Number.isFinite(numericWeight))
+      ? storedOthersTotal + (numericWeight ?? 0)
+      : null;
+  const projectedComplete =
+    projectedTotal !== null &&
+    Math.abs(projectedTotal - 100) < SCORING_WEIGHT_TOLERANCE;
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -194,9 +245,21 @@ export function GoalForm({
       setFieldError("Start date must be on or before the due date.");
       return;
     }
-    if (weight.trim() !== emptyText && Number.isNaN(Number(weight))) {
+    if (weight.trim() !== EMPTY_FIELD && Number.isNaN(Number(weight))) {
       setFieldError("Weight must be a valid number.");
       return;
+    }
+    if (progressMethod === "measurable") {
+      if (!measurementType) {
+        setFieldError("Select a measurement type for Target / Actual tracking.");
+        return;
+      }
+      const parsedTarget =
+        targetValue.trim() === EMPTY_FIELD ? NaN : Number(targetValue);
+      if (!Number.isFinite(parsedTarget) || parsedTarget <= 0) {
+        setFieldError("Target must be a number greater than 0.");
+        return;
+      }
     }
 
     setFieldError(null);
@@ -210,8 +273,19 @@ export function GoalForm({
       role_id: roleId || null,
       start_date: startDate || undefined,
       due_date: dueDate || undefined,
-      weight: weight.trim() === emptyText ? null : Number(weight),
+      weight: weight.trim() === EMPTY_FIELD ? null : Number(weight),
       ...(mode === "edit" ? { status } : {}),
+      progress_method: progressMethod,
+      ...(progressMethod === "measurable"
+        ? {
+            measurement_type: measurementType as GoalMeasurementType,
+            target_value: Number(targetValue),
+            measurement_unit:
+              measurementType === "percentage"
+                ? null
+                : measurementUnit.trim() || null,
+          }
+        : {}),
     };
 
     const payloadCycleId = cycleId || null;
@@ -231,26 +305,29 @@ export function GoalForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       {mode === "create" && (
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Employee
-          </span>
-          <select
-            value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
-            disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
-          >
-            <option value="">Select employee...</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <section className="flex flex-col gap-4">
+          <PerformanceSectionHeader
+            eyebrow="Ownership"
+            title="Who is this goal for?"
+          />
+          <PerformanceField label="Employee" htmlFor="goal-employee">
+            <PerformanceSelect
+              id="goal-employee"
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              disabled={submitting}
+            >
+              <option value="">Select employee...</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name}
+                </option>
+              ))}
+            </PerformanceSelect>
+          </PerformanceField>
+        </section>
       )}
 
       {mode === "create" && (
@@ -265,7 +342,7 @@ export function GoalForm({
                 : ""}
             </div>
             <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-              Read-only, from the employee's current job record.
+              Read-only, from the employee&apos;s current job record.
             </span>
           </div>
 
@@ -279,7 +356,7 @@ export function GoalForm({
                 : ""}
             </div>
             <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-              Read-only, from the employee's manager record.
+              Read-only, from the employee&apos;s manager record.
             </span>
           </div>
         </div>
@@ -299,16 +376,28 @@ export function GoalForm({
         </div>
       )}
 
+      <section className="flex flex-col gap-4">
+        <PerformanceSectionHeader
+          eyebrow="Planning"
+          title="When does this apply?"
+        />
       {mode === "create" ? (
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Performance cycle
-          </span>
-          <select
+        <PerformanceField
+          label="Performance cycle"
+          htmlFor="goal-cycle"
+          hint={
+            selectedCycle
+              ? `Performance period: ${formatDateOnly(
+                  selectedCycle.period_start
+                )} – ${formatDateOnly(selectedCycle.period_end)}`
+              : "Choose the performance period this expected outcome belongs to."
+          }
+        >
+          <PerformanceSelect
+            id="goal-cycle"
             value={cycleId}
             onChange={(e) => setCycleId(e.target.value)}
             disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
           >
             <option value="">No cycle</option>
             {cycles.map((cycle) => (
@@ -316,15 +405,8 @@ export function GoalForm({
                 {cycle.name}
               </option>
             ))}
-          </select>
-          <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-            {selectedCycle
-              ? `Performance period: ${formatDateOnly(
-                  selectedCycle.period_start
-                )} – ${formatDateOnly(selectedCycle.period_end)}`
-              : "Choose the performance period this expected outcome belongs to."}
-          </span>
-        </label>
+          </PerformanceSelect>
+        </PerformanceField>
       ) : (
         <div>
           <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -343,148 +425,178 @@ export function GoalForm({
       )}
 
       {mode === "edit" && initialGoal && (
-        <div>
-          <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Status
-          </p>
+        <PerformanceField
+          label="Status"
+          htmlFor="goal-status"
+          hint={
+            initialGoal.status === "completed"
+              ? "Completed goals cannot change status."
+              : "Status advances one step at a time. Only the next allowed status is offered."
+          }
+        >
           {initialGoal.status === "completed" ? (
-            <>
-              <p className="mt-1.5 text-sm text-ink">
-                {HR_GOAL_STATUS_TRANSITIONS.completed.length === 0
-                  ? "Completed"
-                  : initialGoal.status}
-              </p>
-              <p className="mt-0.5 text-[11.5px] text-muted">
-                Completed goals cannot change status.
-              </p>
-            </>
+            <p className="mt-1.5 text-sm text-ink">
+              {HR_GOAL_STATUS_TRANSITIONS.completed.length === 0
+                ? "Completed"
+                : initialGoal.status}
+            </p>
           ) : (
-            <>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as PerformanceGoalStatus)}
-                disabled={submitting}
-                className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
-              >
-                <option value={initialGoal.status}>
-                  {initialGoal.status.replace(/_/g, " ")}
-                </option>
-                {HR_GOAL_STATUS_TRANSITIONS[initialGoal.status].map((next) => (
-                  <option key={next} value={next}>
-                    {next.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-0.5 text-[11.5px] text-muted">
-                Status advances one step at a time. Only the next allowed status is offered.
-              </p>
-            </>
-          )}
-        </div>
-      )}
-
-      <label className="block">
-        <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-          Goal title
-        </span>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="e.g. Complete onboarding certification"
-          disabled={submitting}
-          className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-        />
-      </label>
-
-      <label className="block">
-        <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-          Description
-        </span>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={2}
-          placeholder="What does success look like?"
-          disabled={submitting}
-          className="mt-1.5 w-full resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-        />
-      </label>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Category
-          </span>
-          <input
-            type="text"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="e.g. Skill building"
-            disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Target
-          </span>
-          <input
-            type="text"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            placeholder="e.g. 90% customer satisfaction"
-            disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-          />
-        </label>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Weight
-          </span>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            placeholder="0.0"
-            disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-          />
-          <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-            Percentage of the goal score. Evaluated goals must total 100%.
-          </span>
-        </label>
-
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Priority
-          </span>
-          <select
-            value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-            disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
-          >
-            {PRIORITIES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+            <PerformanceSelect
+              id="goal-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as PerformanceGoalStatus)}
+              disabled={submitting}
+            >
+              <option value={initialGoal.status}>
+                {initialGoal.status.replace(/_/g, " ")}
               </option>
-            ))}
-          </select>
-        </label>
+              {HR_GOAL_STATUS_TRANSITIONS[initialGoal.status].map((next) => (
+                <option key={next} value={next}>
+                  {next.replace(/_/g, " ")}
+                </option>
+              ))}
+            </PerformanceSelect>
+          )}
+        </PerformanceField>
+      )}
+      </section>
 
+      <section className="flex flex-col gap-4">
+        <PerformanceSectionHeader
+          eyebrow="Goal details"
+          title="What should be accomplished?"
+        />
+        <PerformanceField label="Goal title" htmlFor="goal-title">
+          <PerformanceTextInput
+            id="goal-title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Complete onboarding certification"
+            disabled={submitting}
+          />
+        </PerformanceField>
+
+        <PerformanceField label="Description" htmlFor="goal-description" optional>
+          <PerformanceTextarea
+            id="goal-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="What does success look like?"
+            disabled={submitting}
+          />
+        </PerformanceField>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <PerformanceField label="Category" htmlFor="goal-category" optional>
+            <PerformanceTextInput
+              id="goal-category"
+              type="text"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Skill building"
+              disabled={submitting}
+            />
+          </PerformanceField>
+
+          <PerformanceField label="Target" htmlFor="goal-target" optional>
+            <PerformanceTextInput
+              id="goal-target"
+              type="text"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="e.g. 90% customer satisfaction"
+              disabled={submitting}
+            />
+          </PerformanceField>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <PerformanceField
+            label="Weight"
+            htmlFor="goal-weight"
+            optional
+            hint="Percentage of the goal score. Evaluated goals must total 100%."
+          >
+            <div className="relative">
+              <PerformanceTextInput
+                id="goal-weight"
+                type="number"
+                min="0"
+                step="any"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                placeholder="0.0"
+                disabled={submitting}
+                className="pr-9"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted"
+              >
+                %
+              </span>
+            </div>
+          </PerformanceField>
+
+          <PerformanceField label="Priority" htmlFor="goal-priority">
+            <PerformanceSelect
+              id="goal-priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              disabled={submitting}
+            >
+              {PRIORITIES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </PerformanceSelect>
+          </PerformanceField>
         </div>
 
       {weightOutOfRange && (
         <p className="text-[11.5px] text-muted">
           A single goal weight should be greater than 0 and at most 100. The evaluated goal weights must total exactly 100% at finalization.
         </p>
+      )}
+
+      {projectedTotal !== null && (
+        <div
+          aria-live="polite"
+          className="rounded-xl border border-line px-4 py-3 dark:border-paper/15"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <p className="text-[12.5px] font-medium text-ink">
+              Goal weight allocation
+            </p>
+            <p className="text-[13px] font-semibold tabular-nums text-ink">
+              {formatWeightTotal(projectedTotal)}% / 100%
+            </p>
+          </div>
+          <div className="mt-2">
+            <PerformanceProgress
+              value={projectedTotal}
+              label={`Goal weight allocation ${formatWeightTotal(projectedTotal)} percent of 100 percent`}
+            />
+          </div>
+          <p
+            className={`mt-1.5 text-[12px] leading-relaxed ${
+              projectedComplete
+                ? "font-medium text-emerald-600 dark:text-emerald-400"
+                : projectedTotal > 100
+                  ? "font-medium text-red-600"
+                  : "text-muted"
+            }`}
+          >
+            {projectedComplete
+              ? "Weight allocation complete."
+              : projectedTotal < 100
+                ? `${formatWeightTotal(100 - projectedTotal)}% remaining.`
+                : `Exceeds required total by ${formatWeightTotal(projectedTotal - 100)}%.`}
+          </p>
+        </div>
       )}
 
       {mode === "create" && employeeId && (weightContextLoading || weightContext) && (
@@ -503,33 +615,148 @@ export function GoalForm({
               }. The evaluated goal weights must total 100%.`}
         </p>
       )}
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <PerformanceSectionHeader
+          eyebrow="Measurement"
+          title="How is progress tracked?"
+        />
+        <div role="radiogroup" aria-label="Progress tracking">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {(
+              [
+                {
+                  value: "manual" as const,
+                  title: "Manual Progress",
+                  hint: "Enter a percentage as work proceeds.",
+                },
+                {
+                  value: "measurable" as const,
+                  title: "Target / Actual",
+                  hint: "Progress is calculated from recorded actuals.",
+                },
+              ]
+            ).map((option) => {
+              const checked = progressMethod === option.value;
+              return (
+                <label
+                  key={option.value}
+                  className={`flex flex-1 cursor-pointer items-start gap-2.5 rounded-xl border px-4 py-3 transition-colors ${
+                    checked
+                      ? "border-accent/60 bg-accent/[0.04]"
+                      : "border-line hover:border-accent/40 dark:border-paper/15"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="goal-progress-method"
+                    value={option.value}
+                    checked={checked}
+                    onChange={() => setProgressMethod(option.value)}
+                    disabled={submitting}
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                  />
+                  <span>
+                    <span className="block text-[13px] font-medium text-ink">
+                      {option.title}
+                    </span>
+                    <span className="mt-0.5 block text-[11.5px] text-muted">
+                      {option.hint}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {progressMethod === "measurable" && (
+          <>
+            <PerformanceField
+              label="Measurement type"
+              htmlFor="goal-measurement-type"
+            >
+              <PerformanceSelect
+                id="goal-measurement-type"
+                value={measurementType}
+                onChange={(e) =>
+                  setMeasurementType(
+                    e.target.value as GoalMeasurementType | ""
+                  )
+                }
+                disabled={submitting}
+              >
+                <option value="">Select type</option>
+                {GOAL_MEASUREMENT_TYPES.map((option) => (
+                  <option key={option} value={option}>
+                    {MEASUREMENT_TYPE_LABELS[option]}
+                  </option>
+                ))}
+              </PerformanceSelect>
+            </PerformanceField>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <PerformanceField
+                label="Target"
+                htmlFor="goal-target-value"
+                hint="Must be greater than 0. Actual values are recorded during execution."
+              >
+                <PerformanceTextInput
+                  id="goal-target-value"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={targetValue}
+                  onChange={(e) => setTargetValue(e.target.value)}
+                  placeholder="e.g. 1000000"
+                  disabled={submitting}
+                />
+              </PerformanceField>
+
+              {measurementType !== "percentage" && (
+                <PerformanceField
+                  label="Unit"
+                  htmlFor="goal-measurement-unit"
+                  optional
+                  hint="Display label only, e.g. PHP, Orders."
+                >
+                  <PerformanceTextInput
+                    id="goal-measurement-unit"
+                    type="text"
+                    value={measurementUnit}
+                    onChange={(e) => setMeasurementUnit(e.target.value)}
+                    maxLength={MAX_GOAL_MEASUREMENT_UNIT_LENGTH}
+                    placeholder="e.g. PHP"
+                    disabled={submitting}
+                  />
+                </PerformanceField>
+              )}
+            </div>
+          </>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Start date
-          </span>
-          <input
+        <PerformanceField label="Start date" htmlFor="goal-start-date" optional>
+          <PerformanceTextInput
+            id="goal-start-date"
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
           />
-        </label>
+        </PerformanceField>
 
-        <label className="block">
-          <span className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-            Due date
-          </span>
-          <input
+        <PerformanceField label="Due date" htmlFor="goal-due-date" optional>
+          <PerformanceTextInput
+            id="goal-due-date"
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
             disabled={submitting}
-            className="mt-1.5 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
           />
-        </label>
+        </PerformanceField>
       </div>
 
       {fieldError && (
@@ -541,20 +768,11 @@ export function GoalForm({
         </p>
       )}
 
-      <div className="mt-1 flex items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={submitting}
-          className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
-        >
+      <div className="mt-1 flex items-center justify-end gap-2">
+        <PerformanceButton variant="ghost" onClick={onCancel} disabled={submitting}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        </PerformanceButton>
+        <PerformanceButton type="submit" disabled={submitting}>
           {submitting
             ? mode === "create"
               ? "Creating..."
@@ -562,7 +780,7 @@ export function GoalForm({
             : mode === "create"
               ? "Create goal"
               : "Save changes"}
-        </button>
+        </PerformanceButton>
       </div>
     </form>
   );

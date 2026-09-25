@@ -3,7 +3,10 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { assertHrAdminScope } from "@/performance-development-dashboard/lib/auth/access";
-import { requireHrEmployee } from "@/performance-development-dashboard/lib/auth/hrIdentity";
+import {
+  isPerDevHrAdminRole,
+  requireHrEmployee,
+} from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import {
   auditActorFromIdentity,
   insertAuditEvent,
@@ -24,6 +27,7 @@ import {
   BAD_REQUEST_RESPONSE,
   CONFLICT_RESPONSE,
   FORBIDDEN_RESPONSE,
+  requireActiveEmployeeId,
   requireNonEmptyText,
   requireOptionalText,
   requireValidUuid,
@@ -630,13 +634,26 @@ export async function listCourseEnrollments(
   const identity = await requireHrEmployee();
   if (identity instanceof NextResponse) return identity;
 
-  const admin = await assertHrAdminScope();
+  // PerDev HR scope is computed, not probed through the logging hard gate:
+  // requireHrAdmin() console.errors on failure, which is correct for real
+  // denials but noise when merely selecting the employee branch of a
+  // dual-mode read. Equivalent here: actor.ts already rejects invalid HR
+  // roles at session resolution, so accountType + PerDev role fully
+  // determines the outcome.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
 
   let query = supabaseAdmin
     .from("hr3_course_enrollments")
     .select(ENROLLMENT_SELECT);
 
-  if (admin instanceof NextResponse) {
+  if (!isPerDevHrAdmin) {
+    // HR admin without a PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
     query = query.eq("employee_id", identity.employeeUuid);
   } else {
     if (input?.employee_id !== undefined && input?.employee_id !== null) {
@@ -681,6 +698,44 @@ export async function getCourseEnrollment(
   const id = requireValidUuid(enrollmentId, "enrollment id");
   if (id instanceof NextResponse) return id;
 
+  // Same non-logging scope computation as the list path above.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
+  if (!isPerDevHrAdmin) {
+    // HR admin with a non-PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
+    // Employee scope is applied inside the load: the record UUID AND the
+    // employee's own UUID constrain the SAME query, so out-of-scope rows are
+    // never read. Miss preserves this path's 403 denial.
+    const { data: scoped, error: scopedError } = await supabaseAdmin
+      .from("hr3_course_enrollments")
+      .select(ENROLLMENT_SELECT)
+      .eq("id", id)
+      .eq("employee_id", identity.employeeUuid)
+      .maybeSingle();
+
+    if (scopedError) {
+      console.error("getCourseEnrollment: query error:", scopedError);
+      return NextResponse.json(
+        { error: "Failed to load course enrollment" },
+        { status: 500 }
+      );
+    }
+
+    if (!scoped) {
+      console.error(
+        "getCourseEnrollment: employee attempted a foreign enrollment"
+      );
+      return FORBIDDEN_RESPONSE();
+    }
+
+    return scoped as CourseEnrollment;
+  }
+
   const { data, error } = await supabaseAdmin
     .from("hr3_course_enrollments")
     .select(ENROLLMENT_SELECT)
@@ -702,19 +757,7 @@ export async function getCourseEnrollment(
     );
   }
 
-  const enrollment = data as CourseEnrollment;
-
-  const admin = await assertHrAdminScope();
-  if (admin instanceof NextResponse) {
-    if (enrollment.employee_id !== identity.employeeUuid) {
-      console.error(
-        "getCourseEnrollment: employee attempted a foreign enrollment"
-      );
-      return FORBIDDEN_RESPONSE();
-    }
-  }
-
-  return enrollment;
+  return data as CourseEnrollment;
 }
 
 /**
@@ -730,7 +773,7 @@ export async function createCourseEnrollment(
   const admin = await assertHrAdminScope();
   if (admin instanceof NextResponse) return admin;
 
-  const employeeId = await requireExistingEmployeeId(input?.employee_id);
+  const employeeId = await requireActiveEmployeeId(input?.employee_id, "employee_id");
   if (employeeId instanceof NextResponse) return employeeId;
 
   const courseId = await requireExistingCourseId(input?.course_id, {
@@ -1287,13 +1330,21 @@ export async function listTrainingEnrollments(
   const identity = await requireHrEmployee();
   if (identity instanceof NextResponse) return identity;
 
-  const admin = await assertHrAdminScope();
+  // Same non-logging scope computation as the list path above.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
 
   let query = supabaseAdmin
     .from("hr3_training_enrollments")
     .select(TRAINING_ENROLLMENT_SELECT);
 
-  if (admin instanceof NextResponse) {
+  if (!isPerDevHrAdmin) {
+    // HR admin without a PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
     query = query.eq("employee_id", identity.employeeUuid);
   } else {
     if (input?.employee_id !== undefined && input?.employee_id !== null) {
@@ -1336,6 +1387,44 @@ export async function getTrainingEnrollment(
   const id = requireValidUuid(enrollmentId, "enrollment id");
   if (id instanceof NextResponse) return id;
 
+  // Same non-logging scope computation as the list path above.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
+  if (!isPerDevHrAdmin) {
+    // HR admin with a non-PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
+    // Employee scope is applied inside the load: the record UUID AND the
+    // employee's own UUID constrain the SAME query, so out-of-scope rows are
+    // never read. Miss preserves this path's 403 denial.
+    const { data: scoped, error: scopedError } = await supabaseAdmin
+      .from("hr3_training_enrollments")
+      .select(TRAINING_ENROLLMENT_SELECT)
+      .eq("id", id)
+      .eq("employee_id", identity.employeeUuid)
+      .maybeSingle();
+
+    if (scopedError) {
+      console.error("getTrainingEnrollment: query error:", scopedError);
+      return NextResponse.json(
+        { error: "Failed to load training enrollment" },
+        { status: 500 }
+      );
+    }
+
+    if (!scoped) {
+      console.error(
+        "getTrainingEnrollment: employee attempted a foreign enrollment"
+      );
+      return FORBIDDEN_RESPONSE();
+    }
+
+    return scoped as TrainingEnrollment;
+  }
+
   const { data, error } = await supabaseAdmin
     .from("hr3_training_enrollments")
     .select(TRAINING_ENROLLMENT_SELECT)
@@ -1357,19 +1446,7 @@ export async function getTrainingEnrollment(
     );
   }
 
-  const enrollment = data as TrainingEnrollment;
-
-  const admin = await assertHrAdminScope();
-  if (admin instanceof NextResponse) {
-    if (enrollment.employee_id !== identity.employeeUuid) {
-      console.error(
-        "getTrainingEnrollment: employee attempted a foreign enrollment"
-      );
-      return FORBIDDEN_RESPONSE();
-    }
-  }
-
-  return enrollment;
+  return data as TrainingEnrollment;
 }
 
 /**
@@ -1384,7 +1461,7 @@ export async function createTrainingEnrollment(
   const admin = await assertHrAdminScope();
   if (admin instanceof NextResponse) return admin;
 
-  const employeeId = await requireExistingEmployeeId(input?.employee_id);
+  const employeeId = await requireActiveEmployeeId(input?.employee_id, "employee_id");
   if (employeeId instanceof NextResponse) return employeeId;
 
   const sessionId = await requireExistingSessionId(input?.session_id);
@@ -1595,13 +1672,21 @@ export async function listTrainingEvaluations(
   const identity = await requireHrEmployee();
   if (identity instanceof NextResponse) return identity;
 
-  const admin = await assertHrAdminScope();
+  // Same non-logging scope computation as above.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
 
   let query = supabaseAdmin
     .from("hr3_training_evaluations")
     .select(EVALUATION_SELECT);
 
-  if (admin instanceof NextResponse) {
+  if (!isPerDevHrAdmin) {
+    // HR admin without a PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
     query = query.eq("employee_id", identity.employeeUuid);
   } else {
     if (input?.employee_id !== undefined && input?.employee_id !== null) {
@@ -1648,13 +1733,21 @@ export async function createTrainingEvaluation(
   const identity = await requireHrEmployee();
   if (identity instanceof NextResponse) return identity;
 
-  const admin = await assertHrAdminScope();
+  // Same non-logging scope computation as above.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
 
   const sessionId = await requireExistingSessionId(input?.session_id);
   if (sessionId instanceof NextResponse) return sessionId;
 
   let employeeId: string | NextResponse;
-  if (admin instanceof NextResponse) {
+  if (!isPerDevHrAdmin) {
+    // HR admin without a PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
     if (input?.employee_id !== undefined && input?.employee_id !== null) {
       if (String(input.employee_id).trim() !== identity.employeeUuid) {
         console.error(
@@ -1670,8 +1763,9 @@ export async function createTrainingEvaluation(
     employeeId = employeeId as string;
   }
 
-  const employeeScope =
-    admin instanceof NextResponse ? (identity.employeeUuid as string) : null;
+  const employeeScope = !isPerDevHrAdmin
+    ? (identity.employeeUuid as string)
+    : null;
 
   if (employeeScope) {
     const { data: enrolled } = await supabaseAdmin
@@ -1784,13 +1878,21 @@ export async function listCertifications(
   const identity = await requireHrEmployee();
   if (identity instanceof NextResponse) return identity;
 
-  const admin = await assertHrAdminScope();
+  // Same non-logging scope computation as above.
+  const isPerDevHrAdmin =
+    identity.accountType === "hr_admin" &&
+    isPerDevHrAdminRole(identity.role);
 
   let query = supabaseAdmin
     .from("hr3_certifications")
     .select(CERTIFICATION_SELECT);
 
-  if (admin instanceof NextResponse) {
+  if (!isPerDevHrAdmin) {
+    // HR admin without a PerDev role: explicit denial, no employee fallback.
+    if (identity.accountType === "hr_admin") {
+      return FORBIDDEN_RESPONSE();
+    }
+
     query = query.eq("employee_id", identity.employeeUuid);
   } else {
     if (input?.employee_id !== undefined && input?.employee_id !== null) {
@@ -1829,7 +1931,7 @@ export async function createCertification(
   const admin = await assertHrAdminScope();
   if (admin instanceof NextResponse) return admin;
 
-  const employeeId = await requireExistingEmployeeId(input?.employee_id);
+  const employeeId = await requireActiveEmployeeId(input?.employee_id, "employee_id");
   if (employeeId instanceof NextResponse) return employeeId;
 
   let courseId: string | null | typeof ABSENT = ABSENT;

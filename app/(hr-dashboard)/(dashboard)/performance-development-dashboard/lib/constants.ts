@@ -40,3 +40,28 @@ export const REWARDS_MAX_VISIBILITY_LENGTH = 50;
 /* ── Development Plan Items ─────────────────────────────────────────── */
 export const MAX_DEV_PLAN_ACTION_LENGTH = 2000;
 export const MAX_DEV_PLAN_TARGET_LENGTH = 2000;
+
+/* ── Goal Evidence ──────────────────────────────────────────────────── */
+export const EVIDENCE_STORAGE_BUCKET = "hr3";
+export const EVIDENCE_STORAGE_FOLDER = "goal-evidence";
+export const ALLOWED_EVIDENCE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/pdf",
+] as const;
+export const MAX_EVIDENCE_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+export const MAX_EVIDENCE_NOTE_LENGTH = 2000;
+export const MAX_EVIDENCE_ATTACHMENT_NAME_LENGTH = 255;
+export const EVIDENCE_SIGNED_URL_EXPIRY_SECONDS = 5 * 60;
+
+/* ── Feedback Requests ──────────────────────────────────────────────── */
+export const MAX_FEEDBACK_REQUEST_MESSAGE_LENGTH = 2000;
+export const MAX_FEEDBACK_RESPONSE_MESSAGE_LENGTH = 2000;
+
+/* ── Goal Measurement (hybrid progress) ───────────────────────────────── */
+export const MAX_GOAL_MEASUREMENT_UNIT_LENGTH = 24;
+export const MAX_GOAL_PROGRESS_NOTE_LENGTH = 1000;
+
+/* ── Goal Proposal Review ─────────────────────────────────────────────── */
+export const MAX_GOAL_REVIEW_NOTE_LENGTH = 2000;

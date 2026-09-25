@@ -30,7 +30,6 @@ export async function selectAll<Row>(
 
   const all: Row[] = [];
   let offset = 0;
-  let previousCount = -1;
 
   // Safety: stop after 100 000 pages to avoid accidental infinite loops.
   const maxPages = 100_000;
@@ -56,13 +55,6 @@ export async function selectAll<Row>(
     if (rows.length < pageSize) {
       break;
     }
-
-    // Guard against infinite loops when the server unexpectedly returns the
-    // same page size forever (should never happen with a stable order).
-    if (rows.length === previousCount && rows.length === 0) {
-      break;
-    }
-    previousCount = rows.length;
 
     offset += pageSize;
     pages += 1;

@@ -4,6 +4,12 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { Tooltip } from "@/performance-development-dashboard/components/ui/Tooltip";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
+import {
+  PerformanceButton,
+  PerformanceDialogPanel,
+  PerformanceField,
+  PerformanceTextInput,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type { UpdatePositionCompetencyRequirementInput } from "@/performance-development-dashboard/types";
 
 type Props = {
@@ -53,7 +59,10 @@ export function EditRequirementLevelModal({
       closeDisabled={submitting}
       labelledBy="edit-requirement-level-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel
+        size="sm"
+        labelledBy="edit-requirement-level-modal-title"
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -80,19 +89,17 @@ export function EditRequirementLevelModal({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-          <div className="rounded-xl border border-line bg-paper px-4 py-3 dark:border-paper/15">
+          <div className="rounded-xl border border-line px-4 py-3 dark:border-paper/15">
             <p className="text-[13.5px] font-medium text-ink">{competencyName}</p>
             <p className="text-[12px] text-muted">{positionTitle}</p>
           </div>
 
-          <div>
-            <label
-              htmlFor="requirement-level"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Required level
-            </label>
-            <input
+          <PerformanceField
+            label="Required level"
+            htmlFor="requirement-level"
+            hint="The level (1-5) this position should expect."
+          >
+            <PerformanceTextInput
               id="requirement-level"
               type="number"
               min={1}
@@ -100,12 +107,9 @@ export function EditRequirementLevelModal({
               step={1}
               value={requiredLevel}
               onChange={(e) => setRequiredLevel(e.target.value)}
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
+              disabled={submitting}
             />
-            <p className="mt-1 text-[11px] text-muted">
-              The level (1-5) this position should expect.
-            </p>
-          </div>
+          </PerformanceField>
 
           {formError && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
@@ -116,24 +120,19 @@ export function EditRequirementLevelModal({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <PerformanceButton
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PerformanceButton>
+            <PerformanceButton type="submit" disabled={submitting}>
               {submitting ? "Saving..." : "Save level"}
-            </button>
+            </PerformanceButton>
           </div>
         </form>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

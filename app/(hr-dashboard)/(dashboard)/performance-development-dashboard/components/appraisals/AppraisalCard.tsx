@@ -100,9 +100,7 @@ export function AppraisalCard({
             )}
             {finalized && (
               <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-                {appraisal.final_score !== null &&
-                  appraisal.final_score !== undefined &&
-                  appraisal.final_score.toFixed(2)}
+                {appraisal.final_score != null && appraisal.final_score.toFixed(2)}
                 {band ? ` · ${band.label}` : ""}
               </span>
             )}

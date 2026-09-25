@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  MessagesSquare,
   RefreshCw,
   Route,
   Target,
@@ -80,6 +81,7 @@ export function PerDevShell({ children }: { children: ReactNode }) {
   const learningActive = pathname.startsWith(
     `${DASHBOARD_PATH}/learning-development`,
   );
+  const feedbackActive = pathname.startsWith(`${DASHBOARD_PATH}/feedback`);
   const developmentActive = pathname.startsWith(
     `${DASHBOARD_PATH}/development-planning`,
   );
@@ -93,7 +95,12 @@ export function PerDevShell({ children }: { children: ReactNode }) {
     `${DASHBOARD_PATH}/recognition-rewards`,
   );
 
-  const isAdmin = user?.accountType === "hr_admin";
+  // PerDev administration capability, resolved server-side and delivered
+  // with the session. Deliberately NOT `accountType === "hr_admin"`: HR
+  // accounts without a PerDev role (non-PerDev HR) must not see HR-admin
+  // navigation. Pages and APIs re-authorize independently regardless.
+  const canAdministerPerDev =
+    user?.accountType === "hr_admin" && user?.isPerDevHrAdmin === true;
 
   async function handleLogout() {
     // Capture the server-resolved account type BEFORE clearing the session so
@@ -179,7 +186,7 @@ export function PerDevShell({ children }: { children: ReactNode }) {
                 <LayoutDashboard size={17} strokeWidth={1.9} />
                 Dashboard
               </Link>
-              {isAdmin && (
+              {canAdministerPerDev && (
                 <Link
                   href={`${DASHBOARD_PATH}/cycles`}
                   onClick={close}
@@ -259,7 +266,20 @@ export function PerDevShell({ children }: { children: ReactNode }) {
                 <GraduationCap size={17} strokeWidth={1.9} />
                 Learning &amp; Development
               </Link>
-              {isAdmin && (
+              <Link
+                href={`${DASHBOARD_PATH}/feedback`}
+                onClick={close}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium transition-all",
+                  feedbackActive
+                    ? "bg-accent text-paper shadow-sm shadow-accent/25"
+                    : "text-muted hover:bg-ink/[0.04] hover:text-ink dark:hover:bg-paper/[0.06]",
+                )}
+              >
+                <MessagesSquare size={17} strokeWidth={1.9} />
+                Feedback
+              </Link>
+              {canAdministerPerDev && (
                 <Link
                   href={`${DASHBOARD_PATH}/development-planning`}
                   onClick={close}
@@ -271,10 +291,10 @@ export function PerDevShell({ children }: { children: ReactNode }) {
                   )}
                 >
                   <Route size={17} strokeWidth={1.9} />
-                  Development Planning
+                  Development Profile
                 </Link>
               )}
-              {isAdmin && (
+              {canAdministerPerDev && (
                 <Link
                   href={`${DASHBOARD_PATH}/reports-analytics`}
                   onClick={close}
@@ -289,7 +309,7 @@ export function PerDevShell({ children }: { children: ReactNode }) {
                   Reports &amp; Analytics
                 </Link>
               )}
-              {isAdmin && (
+              {canAdministerPerDev && (
                 <Link
                   href={`${DASHBOARD_PATH}/succession-planning`}
                   onClick={close}
@@ -304,7 +324,7 @@ export function PerDevShell({ children }: { children: ReactNode }) {
                   Succession Planning
                 </Link>
               )}
-              {isAdmin && (
+              {canAdministerPerDev && (
                 <Link
                   href={`${DASHBOARD_PATH}/recognition-rewards`}
                   onClick={close}

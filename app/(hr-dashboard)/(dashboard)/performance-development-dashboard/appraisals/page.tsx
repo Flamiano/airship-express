@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
+import { Suspense } from "react";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
 import {
@@ -84,9 +85,13 @@ export default async function AppraisalsPage() {
         : undefined;
 
     const [employeesResult, employeeNamesById] = await Promise.all([
+      // New-appraisal subject selector: active employees only. Finalized and
+      // historical appraisals (including inactive subjects) still load via
+      // listAppraisals and resolve names through resolveReferencedNames.
       supabaseAdmin
         .from("hr1_employees")
         .select("id, first_name, last_name, department")
+        .eq("status", "active")
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true }),
       resolveReferencedNames(appraisals),
@@ -103,19 +108,21 @@ export default async function AppraisalsPage() {
       cyclesResult instanceof NextResponse ? [] : cyclesResult;
 
     return (
-      <AppraisalsManagement
-        serverUser={serverUser}
-        isHrAdmin
-        isManager={false}
-        initialAppraisals={appraisals}
-        initialError={initialError}
-        employees={employees}
-        cycles={cycles}
-        employeeNamesById={employeeNamesById}
-        reviewerByAccountNameById={{}}
-        currentUserEmployeeId={admin.employeeUuid}
-        defaultEmployeeId={admin.employeeUuid}
-      />
+      <Suspense>
+        <AppraisalsManagement
+          serverUser={serverUser}
+          isHrAdmin
+          isManager={false}
+          initialAppraisals={appraisals}
+          initialError={initialError}
+          employees={employees}
+          cycles={cycles}
+          employeeNamesById={employeeNamesById}
+          reviewerByAccountNameById={{}}
+          currentUserEmployeeId={admin.employeeUuid}
+          defaultEmployeeId={admin.employeeUuid}
+        />
+      </Suspense>
     );
   }
 
@@ -166,18 +173,20 @@ export default async function AppraisalsPage() {
   }
 
   return (
-    <AppraisalsManagement
-      serverUser={serverUser}
-      isHrAdmin={false}
-      isManager={isManager}
-      initialAppraisals={appraisals}
-      initialError={initialError}
-      employees={employees}
-      cycles={[]}
-      employeeNamesById={employeeNamesById}
-      reviewerByAccountNameById={{}}
-      currentUserEmployeeId={employee.employeeUuid}
-      defaultEmployeeId={null}
-    />
+    <Suspense>
+      <AppraisalsManagement
+        serverUser={serverUser}
+        isHrAdmin={false}
+        isManager={isManager}
+        initialAppraisals={appraisals}
+        initialError={initialError}
+        employees={employees}
+        cycles={[]}
+        employeeNamesById={employeeNamesById}
+        reviewerByAccountNameById={{}}
+        currentUserEmployeeId={employee.employeeUuid}
+        defaultEmployeeId={null}
+      />
+    </Suspense>
   );
 }

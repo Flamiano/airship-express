@@ -1,22 +1,25 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  ReactNode,
-} from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
-  Award,
-  GitBranch,
-  GraduationCap,
   RefreshCw,
   Search,
-  Target,
-  TrendingUp,
   User as UserIcon,
 } from "lucide-react";
 import { EmptyState } from "@/performance-development-dashboard/components/ui/EmptyState";
 import { SkeletonList } from "@/performance-development-dashboard/components/ui/Skeleton";
+import { FilterBar } from "@/performance-development-dashboard/components/ui/FilterBar";
+import {
+  PerformanceButton,
+  PerformanceEmptyState,
+  PerformanceErrorBanner,
+  PerformancePageHeader,
+  PerformancePanel,
+  PerformanceProgress,
+  PerformanceSectionHeader,
+  PerformanceStatusBadge,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type {
   CurrentPerDevUser,
   DevelopmentProfile,
@@ -24,15 +27,14 @@ import type {
   PerformanceGoalStatus,
 } from "@/performance-development-dashboard/types";
 import { PERFORMANCE_GOAL_STATUS_LABELS, PERFORMANCE_GOAL_STATUS_TONES } from "@/performance-development-dashboard/types";
+import { DEV_PLAN_ITEM_STATUS_LABELS } from "@/performance-development-dashboard/types";
+import type { DevPlanItemStatus } from "@/performance-development-dashboard/types";
 import { cn } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/utils/helpers/classNames";
 import { formatDate, formatDateOnly } from "@/performance-development-dashboard/lib/format/date";
 
 const DEVELOPMENT_API = "/performance-development-dashboard/api/performance/development";
 
 const EMPLOYEE_LISTBOX_ID = "development-employee-listbox";
-
-const STATUS_PILL =
-  "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide";
 
 const PRIORITY_LABELS: Record<string, string> = {
   low: "Low",
@@ -45,87 +47,121 @@ type Props = {
   employees: EmployeeOption[];
 };
 
-function courseStatusBadge(status: string | null | undefined): {
-  label: string;
-  className: string;
-} {
+/**
+ * Status tones mirror the previous pills exactly — only the markup moves to
+ * the shared badge. Labels are preserved verbatim.
+ */
+function courseStatusTone(status: string | null | undefined): string {
   switch (status) {
     case "completed":
-      return { label: "Completed", className: "bg-emerald-500/10 text-emerald-600" };
+      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
     case "in_progress":
-      return { label: "In progress", className: "bg-amber-500/10 text-amber-600" };
+      return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
     case "enrolled":
     case undefined:
     case null:
-      return { label: "Enrolled", className: "bg-accent/10 text-accent" };
+      return "bg-accent/10 text-accent";
     default:
-      return { label: status, className: "bg-line text-muted" };
+      return "bg-line text-muted";
   }
 }
 
-function approvalBadge(status: string | null | undefined): {
-  label: string;
-  className: string;
-} {
+function courseStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "in_progress":
+      return "In progress";
+    case "enrolled":
+    case undefined:
+    case null:
+      return "Enrolled";
+    default:
+      return status;
+  }
+}
+
+function approvalTone(status: string | null | undefined): string {
   switch (status) {
     case "approved":
-      return { label: "Approved", className: "bg-emerald-500/10 text-emerald-600" };
+      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
     case "pending":
-      return { label: "Pending approval", className: "bg-amber-500/10 text-amber-600" };
+      return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
     case "rejected":
-      return { label: "Rejected", className: "bg-red-500/10 text-red-600" };
+      return "bg-red-500/10 text-red-600 dark:text-red-400";
     default:
-      return { label: status ?? "—", className: "bg-line text-muted" };
+      return "bg-line text-muted";
   }
 }
 
-function attendanceBadge(status: string | null | undefined): {
-  label: string;
-  className: string;
-} {
+function approvalLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "approved":
+      return "Approved";
+    case "pending":
+      return "Pending approval";
+    case "rejected":
+      return "Rejected";
+    default:
+      return status ?? "—";
+  }
+}
+
+function attendanceTone(status: string | null | undefined): string {
   switch (status) {
     case "attended":
-      return { label: "Attended", className: "bg-emerald-500/10 text-emerald-600" };
+      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
     case "absent":
-      return { label: "Absent", className: "bg-red-500/10 text-red-600" };
+      return "bg-red-500/10 text-red-600 dark:text-red-400";
     default:
-      return { label: status ?? "—", className: "bg-line text-muted" };
+      return "bg-line text-muted";
   }
 }
 
-function goalStatusBadge(status: PerformanceGoalStatus): {
-  label: string;
-  className: string;
-} {
-  const tone =
-    PERFORMANCE_GOAL_STATUS_TONES[status] ?? PERFORMANCE_GOAL_STATUS_TONES.not_started;
-  const label = PERFORMANCE_GOAL_STATUS_LABELS[status] ?? status;
-  return { label, className: tone };
+function attendanceLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "attended":
+      return "Attended";
+    case "absent":
+      return "Absent";
+    default:
+      return status ?? "—";
+  }
 }
 
-function SectionHeading({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: ReactNode;
-  title: string;
-  subtitle?: string;
-}) {
+function goalStatusTone(status: PerformanceGoalStatus): string {
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-        {icon}
-      </span>
-      <div>
-        <h2 className="font-bricolage text-[15px] font-medium tracking-tight text-ink">{title}</h2>
-        {subtitle && <p className="text-[12px] text-muted">{subtitle}</p>}
-      </div>
-    </div>
+    PERFORMANCE_GOAL_STATUS_TONES[status] ?? PERFORMANCE_GOAL_STATUS_TONES.not_started
   );
 }
 
-function CompetencyChip({ name }: { name: string }) {
+function goalStatusLabel(status: PerformanceGoalStatus): string {
+  return PERFORMANCE_GOAL_STATUS_LABELS[status] ?? status;
+}
+
+/**
+ * Tones mirror the appraisal workflow's development-action pills. Unknown
+ * values stay neutral — the column is write-managed, not schema-constrained.
+ */
+function devActionTone(status: string): string {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+    case "in_progress":
+      return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+    default:
+      return "bg-line text-muted";
+  }
+}
+
+function devActionLabel(status: string): string {
+  return (
+    DEV_PLAN_ITEM_STATUS_LABELS[status as DevPlanItemStatus] ?? status
+  );
+}
+
+/** Non-status tag (competency names, goal categories): never uppercased. */
+function NeutralTag({ name }: { name: string }) {
   return (
     <span className="rounded-full bg-ink/[0.05] px-2 py-0.5 text-[10.5px] font-medium text-muted dark:bg-paper/[0.08]">
       {name}
@@ -211,6 +247,14 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
     setLoading(false);
   }
 
+  function handleRefresh() {
+    if (selectedEmployeeId) {
+      setLoading(true);
+      setError(null);
+      loadProfile(selectedEmployeeId);
+    }
+  }
+
   function handleComboboxKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     switch (event.key) {
       case "ArrowDown": {
@@ -274,43 +318,28 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
   }
 
   const needsTotal = profile?.developmentNeeds.length ?? 0;
+  const actionsTotal = profile?.developmentActions.length ?? 0;
   const goalTotal = profile?.goals.length ?? 0;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
-            Development Planning
-          </h1>
-          <p className="mt-2 max-w-xl text-[13px] text-muted">
-            {`Hello ${firstName}. Review an employee's development needs, learning
-            evidence, goals, and succession context. Everything on this page is
-            read-only context — nothing here edits a score, goal, or record.`}
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedEmployeeId) {
-                setLoading(true);
-                setError(null);
-                loadProfile(selectedEmployeeId);
-              }
-            }}
+      <PerformancePageHeader
+        title="Development Profile"
+        description={`Hello ${firstName}. Review an employee's development needs, appraisal development actions, learning evidence, goals, and succession context. Everything on this page is read-only context — nothing here edits a score, goal, or record.`}
+        actions={
+          <PerformanceButton
+            variant="ghost"
+            onClick={handleRefresh}
             disabled={loading || !selectedEmployeeId}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
           >
             <RefreshCw size={14} strokeWidth={1.75} className={loading ? "animate-spin" : ""} />
             Refresh
-          </button>
-        </div>
-      </div>
+          </PerformanceButton>
+        }
+      />
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-paper px-4 py-4 dark:border-paper/10">
-        <div>
+      <FilterBar>
+        <div className="w-full">
           <label
             htmlFor="development-employee-selector"
             className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted"
@@ -422,69 +451,36 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
             )}
             </div>
           </div>
+          <p className="mt-2 text-[12px] text-muted">
+            Search by employee name or employee ID.
+          </p>
         </div>
+      </FilterBar>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
-          <span>Search by employee name or employee ID.</span>
-        </div>
-
-        {profile && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-accent/30 bg-accent/[0.04] px-4 py-3 dark:bg-accent/[0.08]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
-                Development Needs
-              </p>
-              <p className="mt-1 font-bricolage text-[28px] font-medium leading-none tracking-tight text-ink">
-                {needsTotal}
-              </p>
-              <p className="mt-1 text-[12px] text-muted">Competency gaps</p>
-            </div>
-
-            <div className="rounded-xl border border-line bg-paper px-4 py-3 dark:border-paper/10">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                Performance Goals
-              </p>
-              <p className="mt-1 font-bricolage text-[28px] font-medium leading-none tracking-tight text-ink">
-                {goalTotal}
-              </p>
-              <p className="mt-1 text-[12px] text-muted">Goals in this plan</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {!selectedEmployeeId && (
-        <EmptyState message="Select an employee to review their development profile." />
+      {!selectedEmployeeId && !loading && !error && (
+        <PerformanceEmptyState
+          icon={<UserIcon size={22} strokeWidth={1.5} className="text-muted" />}
+          title="No employee selected"
+          message="Select an employee to review their development profile."
+        />
       )}
 
       {loading && (
-        <SkeletonList rows={3} />
+        <div aria-busy="true" role="status">
+          <span className="sr-only">Loading development profile...</span>
+          <SkeletonList rows={3} />
+        </div>
       )}
 
       {!loading && error && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-          <p className="text-[13px] font-medium text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedEmployeeId) {
-                setLoading(true);
-                setError(null);
-                loadProfile(selectedEmployeeId);
-              }
-            }}
-            className="text-[12.5px] font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
-          >
-            Try again
-          </button>
-        </div>
+        <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
       )}
 
       {!loading && !error && profile && (
         <div className="flex flex-col gap-4">
-          <section className="rounded-2xl border border-line bg-paper p-5 dark:border-paper/10">
-            <SectionHeading
-              icon={<UserIcon size={17} strokeWidth={1.75} />}
+          <PerformancePanel>
+            <PerformanceSectionHeader
+              eyebrow="Profile"
               title="Employee Profile"
             />
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -493,58 +489,108 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
               <ProfileFact label="Job position" value={profile.employee.jobPosition ?? "—"} />
               <ProfileFact label="Employee" value={profile.employee.name} />
             </div>
-          </section>
+          </PerformancePanel>
 
-          <section className="rounded-2xl border border-line bg-paper p-5 dark:border-paper/10">
-            <SectionHeading
-              icon={<TrendingUp size={17} strokeWidth={1.75} />}
-              title="Development Needs"
-              subtitle="Competency gaps where the current level falls below the effective required level."
+          <PerformancePanel>
+            <PerformanceSectionHeader
+              eyebrow="Gaps"
+              title={needsTotal > 0 ? `Development Needs (${needsTotal})` : "Development Needs"}
+              description="Competency gaps where the current level falls below the effective required level."
             />
             <div className="mt-4">
               {profile.developmentNeeds.length === 0 ? (
                 <EmptyState message="No development needs for this employee yet." />
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="divide-y divide-line dark:divide-paper/10">
                   {profile.developmentNeeds.map((need) => (
                     <li
                       key={need.competencyId}
-                      className="flex flex-col gap-2 rounded-xl border border-line px-4 py-3 dark:border-paper/10 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-[13px] font-medium text-ink">
                           {need.competencyName}
                         </p>
                         {need.competencyCategory && (
-                          <p className="mt-0.5 text-[11.5px] text-muted">
+                          <p className="mt-0.5 text-[11.5px] capitalize text-muted">
                             {need.competencyCategory}
                           </p>
                         )}
                       </div>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <span className="text-[12px] text-muted">
+                      <div className="flex shrink-0 flex-wrap items-center gap-3">
+                        <span className="text-[12px] tabular-nums text-muted">
                           Current {need.currentLevel} · Required{" "}
                           {need.effectiveRequiredLevel ?? "Not assigned"}
                         </span>
-                        <span className={cn(STATUS_PILL, "bg-amber-500/10 text-amber-600")}>
+                        <PerformanceStatusBadge tone="bg-amber-500/10 text-amber-600 dark:text-amber-400">
                           Below by {need.gap}
-                        </span>
+                        </PerformanceStatusBadge>
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-          </section>
+          </PerformancePanel>
 
-          <section className="rounded-2xl border border-line bg-paper p-5 dark:border-paper/10">
-            <SectionHeading
-              icon={<GraduationCap size={17} strokeWidth={1.75} />}
-              title="Learning & Training Evidence"
-              subtitle="Course and training enrollments are displayed as read-only context."
+          <PerformancePanel>
+            <PerformanceSectionHeader
+              eyebrow="Follow-through"
+              title={actionsTotal > 0 ? `Appraisal Development Actions (${actionsTotal})` : "Appraisal Development Actions"}
+              description="Actions agreed in the employee's appraisals. Historical records — locked with their appraisal and shown here for follow-through, not edited here."
             />
-            <div className="mt-4 flex flex-col gap-4">
-              <div>
+            <div className="mt-4">
+              {profile.developmentActions.length === 0 ? (
+                <EmptyState message="No appraisal development actions recorded for this employee yet." />
+              ) : (
+                <ul className="divide-y divide-line dark:divide-paper/10">
+                  {profile.developmentActions.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium text-ink">
+                          {item.action}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11.5px] text-muted">
+                          Target: {item.target}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11.5px] text-muted">
+                          {[
+                            item.appraisalReviewPeriod ?? "Unknown review",
+                            item.appraisalCycleName,
+                            item.appraisalStatus
+                              ? `Appraisal ${item.appraisalStatus.replace(/_/g, " ")}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-3">
+                        <span className="text-[12px] tabular-nums text-muted">
+                          Updated {formatDate(item.updated_at)}
+                        </span>
+                        <PerformanceStatusBadge tone={devActionTone(item.status)}>
+                          {devActionLabel(item.status)}
+                        </PerformanceStatusBadge>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </PerformancePanel>
+
+          <PerformancePanel>
+            <PerformanceSectionHeader
+              eyebrow="Learning"
+              title="Learning & Training Evidence"
+              description="Course and training enrollments are displayed as read-only context."
+            />
+            <div className="mt-4 flex flex-col gap-6">
+              <section>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
                   Course enrollments
                 </p>
@@ -553,66 +599,54 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
                     <EmptyState message="No course enrollments for this employee yet." />
                   </div>
                 ) : (
-                  <ul className="mt-2 flex flex-col gap-2">
-                    {profile.learning.courseEnrollments.map((enrollment) => {
-                      const status = courseStatusBadge(enrollment.status);
-                      return (
-                        <li
-                          key={enrollment.id}
-                          className="flex flex-col gap-2 rounded-xl border border-line px-4 py-3 dark:border-paper/10 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-medium text-ink">
-                              {enrollment.courseTitle ?? "Untitled course"}
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              {enrollment.competencyName && (
-                                <CompetencyChip name={enrollment.competencyName} />
-                              )}
+                  <ul className="mt-2 divide-y divide-line rounded-xl border border-line dark:divide-paper/10 dark:border-paper/15">
+                    {profile.learning.courseEnrollments.map((enrollment) => (
+                      <li
+                        key={enrollment.id}
+                        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-medium text-ink">
+                            {enrollment.courseTitle ?? "Untitled course"}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            {enrollment.competencyName && (
+                              <NeutralTag name={enrollment.competencyName} />
+                            )}
+                            <span className="text-[11.5px] text-muted">
+                              Enrolled {formatDate(enrollment.enrolled_at)}
+                            </span>
+                            {enrollment.completed_at && (
                               <span className="text-[11.5px] text-muted">
-                                Enrolled {formatDate(enrollment.enrolled_at)}
+                                · Completed {formatDate(enrollment.completed_at)}
                               </span>
-                              {enrollment.completed_at && (
-                                <span className="text-[11.5px] text-muted">
-                                  · Completed {formatDate(enrollment.completed_at)}
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </div>
-                          <div className="flex shrink-0 items-center gap-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[12px] font-semibold tabular-nums text-ink">
-                                {Math.round(enrollment.progress_percent)}%
-                              </span>
-                              <div className="h-2 w-24 overflow-hidden rounded-full bg-line">
-                                <div
-                                  className={cn(
-                                    "h-full rounded-full transition-all",
-                                    enrollment.status === "completed"
-                                      ? "bg-emerald-500"
-                                      : "bg-accent"
-                                  )}
-                                  style={{
-                                    width: `${Math.min(
-                                      100,
-                                      Math.max(0, enrollment.progress_percent)
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
+                          <div className="mt-2 flex max-w-[280px] items-center gap-2">
+                            <div className="flex-1">
+                              <PerformanceProgress
+                                value={enrollment.progress_percent}
+                                label={`Course progress ${Math.round(enrollment.progress_percent)}% for ${enrollment.courseTitle ?? "course"}`}
+                              />
                             </div>
-                            <span className={cn(STATUS_PILL, status.className)}>
-                              {status.label}
+                            <span className="shrink-0 text-[12px] font-semibold tabular-nums text-ink">
+                              {Math.round(enrollment.progress_percent)}%
                             </span>
                           </div>
-                        </li>
-                      );
-                    })}
+                        </div>
+                        <PerformanceStatusBadge
+                          tone={courseStatusTone(enrollment.status)}
+                          className="shrink-0 self-start sm:self-center"
+                        >
+                          {courseStatusLabel(enrollment.status)}
+                        </PerformanceStatusBadge>
+                      </li>
+                    ))}
                   </ul>
                 )}
-              </div>
+              </section>
 
-              <div>
+              <section>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
                   Training enrollments
                 </p>
@@ -621,82 +655,66 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
                     <EmptyState message="No training enrollments for this employee yet." />
                   </div>
                 ) : (
-                  <ul className="mt-2 flex flex-col gap-2">
-                    {profile.learning.trainingEnrollments.map((enrollment) => {
-                      const approval = approvalBadge(enrollment.approval_status);
-                      const attendance = attendanceBadge(enrollment.attendance_status);
-                      return (
-                        <li
-                          key={enrollment.id}
-                          className="flex flex-col gap-2 rounded-xl border border-line px-4 py-3 dark:border-paper/10 sm:flex-row sm:items-start sm:justify-between"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-medium text-ink">
-                              {enrollment.sessionTitle ?? "Untitled session"}
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              {enrollment.competencyName && (
-                                <CompetencyChip name={enrollment.competencyName} />
-                              )}
-                              {enrollment.scheduleDate && (
-                                <span className="text-[11.5px] text-muted">
-                                  {formatDate(enrollment.scheduleDate)}
-                                </span>
-                              )}
-                              {enrollment.trainerName && (
-                                <span className="text-[11.5px] text-muted">
-                                  by {enrollment.trainerName}
-                                </span>
-                              )}
-                              {enrollment.mode && (
-                                <span className="text-[11.5px] text-muted">{enrollment.mode}</span>
-                              )}
-                              {enrollment.venue && (
-                                <span className="text-[11.5px] text-muted">{enrollment.venue}</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span
-                              className={cn(
-                                STATUS_PILL,
-                                "capitalize",
-                                approval.className
-                              )}
-                            >
-                              {approval.label}
-                            </span>
-                            {enrollment.attendance_status && (
-                              <span
-                                className={cn(
-                                  STATUS_PILL,
-                                  "capitalize",
-                                  attendance.className
-                                )}
-                              >
-                                {attendance.label}
+                  <ul className="mt-2 divide-y divide-line rounded-xl border border-line dark:divide-paper/10 dark:border-paper/15">
+                    {profile.learning.trainingEnrollments.map((enrollment) => (
+                      <li
+                        key={enrollment.id}
+                        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-medium text-ink">
+                            {enrollment.sessionTitle ?? "Untitled session"}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {enrollment.competencyName && (
+                              <NeutralTag name={enrollment.competencyName} />
+                            )}
+                            {enrollment.scheduleDate && (
+                              <span className="text-[11.5px] text-muted">
+                                {formatDate(enrollment.scheduleDate)}
                               </span>
                             )}
+                            {enrollment.trainerName && (
+                              <span className="text-[11.5px] text-muted">
+                                by {enrollment.trainerName}
+                              </span>
+                            )}
+                            {enrollment.mode && (
+                              <span className="text-[11.5px] text-muted">{enrollment.mode}</span>
+                            )}
+                            {enrollment.venue && (
+                              <span className="text-[11.5px] text-muted">{enrollment.venue}</span>
+                            )}
                           </div>
-                        </li>
-                      );
-                    })}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <PerformanceStatusBadge tone={approvalTone(enrollment.approval_status)}>
+                            {approvalLabel(enrollment.approval_status)}
+                          </PerformanceStatusBadge>
+                          {enrollment.attendance_status && (
+                            <PerformanceStatusBadge tone={attendanceTone(enrollment.attendance_status)}>
+                              {attendanceLabel(enrollment.attendance_status)}
+                            </PerformanceStatusBadge>
+                          )}
+                        </div>
+                      </li>
+                    ))}
                   </ul>
                 )}
-              </div>
+              </section>
             </div>
-          </section>
+          </PerformancePanel>
 
-          <section className="rounded-2xl border border-line bg-paper p-5 dark:border-paper/10">
-            <SectionHeading
-              icon={<Award size={17} strokeWidth={1.75} />}
+          <PerformancePanel>
+            <PerformanceSectionHeader
+              eyebrow="Credentials"
               title="Certifications"
             />
             <div className="mt-4">
               {profile.learning.certifications.length === 0 ? (
                 <EmptyState message="No certifications for this employee yet." />
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="divide-y divide-line dark:divide-paper/10">
                   {profile.learning.certifications.map((certification) => {
                     const issued = formatDate(certification.issued_at);
                     const expires = formatDate(certification.expires_at);
@@ -707,19 +725,17 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
                     return (
                       <li
                         key={certification.id}
-                        className="flex flex-col gap-2 rounded-xl border border-line px-4 py-3 dark:border-paper/10 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0">
                           <p className="truncate text-[13px] font-medium text-ink">
                             {certification.courseTitle ?? "Untitled course"}
                           </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-3 text-[11.5px] text-muted">
-                            <span>Issued {issued}</span>
-                            <span className="text-line">|</span>
-                            <span>Expires {expires}</span>
-                          </div>
+                          <p className="mt-1 text-[11.5px] text-muted">
+                            Issued {issued} · Expires {expires}
+                          </p>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
                           {certification.certificate_url && (
                             <a
                               href={certification.certificate_url}
@@ -731,9 +747,9 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
                             </a>
                           )}
                           {isExpired && (
-                            <span className={cn(STATUS_PILL, "bg-red-500/10 text-red-600")}>
+                            <PerformanceStatusBadge tone="bg-red-500/10 text-red-600 dark:text-red-400">
                               Expired
-                            </span>
+                            </PerformanceStatusBadge>
                           )}
                         </div>
                       </li>
@@ -742,89 +758,75 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
                 </ul>
               )}
             </div>
-          </section>
+          </PerformancePanel>
 
-          <section className="rounded-2xl border border-line bg-paper p-5 dark:border-paper/10">
-            <SectionHeading
-              icon={<Target size={17} strokeWidth={1.75} />}
-              title="Performance Goals"
-              subtitle="Current goals for this employee, shown as read-only context."
+          <PerformancePanel>
+            <PerformanceSectionHeader
+              eyebrow="Goals"
+              title={goalTotal > 0 ? `Performance Goals (${goalTotal})` : "Performance Goals"}
+              description="Current goals for this employee, shown as read-only context."
             />
             <div className="mt-4">
               {profile.goals.length === 0 ? (
                 <EmptyState message="No performance goals for this employee yet." />
               ) : (
-                <ul className="flex flex-col gap-2">
-                  {profile.goals.map((goal) => {
-                    const status = goalStatusBadge(goal.status);
-                    return (
-                      <li
-                        key={goal.id}
-                        className="flex flex-col gap-2 rounded-xl border border-line px-4 py-3 dark:border-paper/10 sm:flex-row sm:items-start sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className={cn(STATUS_PILL, status.className)}>
-                              {status.label}
-                            </span>
-                            {goal.priority && (
-                              <span className="rounded-full bg-line px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                                {PRIORITY_LABELS[goal.priority] ?? goal.priority}
-                              </span>
-                            )}
-                            {goal.category && (
-                              <span className="rounded-full bg-line px-2.5 py-0.5 text-[11px] font-medium text-muted">
-                                {goal.category}
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-2 font-bricolage text-[16px] font-medium tracking-tight text-ink">
-                            {goal.title}
-                          </p>
-                          {goal.description && (
-                            <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted line-clamp-2">
-                              {goal.description}
-                            </p>
-                          )}
-                          {(goal.start_date || goal.due_date) && (
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-                              <span>
-                                {goal.start_date ? formatDateOnly(goal.start_date) : null}
-                                {goal.start_date && goal.due_date ? " – " : ""}
-                                {goal.due_date ? formatDateOnly(goal.due_date) : null}
-                              </span>
-                            </div>
-                          )}
+                <ul className="divide-y divide-line dark:divide-paper/10">
+                  {profile.goals.map((goal) => (
+                    <li key={goal.id} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <PerformanceStatusBadge tone={goalStatusTone(goal.status)}>
+                          {goalStatusLabel(goal.status)}
+                        </PerformanceStatusBadge>
+                        {goal.priority && (
+                          <PerformanceStatusBadge tone="bg-line text-muted">
+                            {PRIORITY_LABELS[goal.priority] ?? goal.priority}
+                          </PerformanceStatusBadge>
+                        )}
+                        {goal.category && (
+                          <NeutralTag name={goal.category} />
+                        )}
+                      </div>
+                      <p className="mt-2 font-bricolage text-[16px] font-medium tracking-tight text-ink">
+                        {goal.title}
+                      </p>
+                      {goal.description && (
+                        <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">
+                          {goal.description}
+                        </p>
+                      )}
+                      {(goal.start_date || goal.due_date) && (
+                        <p className="mt-2 text-[12px] text-muted">
+                          {goal.start_date ? formatDateOnly(goal.start_date) : null}
+                          {goal.start_date && goal.due_date ? " – " : ""}
+                          {goal.due_date ? formatDateOnly(goal.due_date) : null}
+                        </p>
+                      )}
+                      <div className="mt-2 flex max-w-[280px] items-center gap-2">
+                        <div className="flex-1">
+                          <PerformanceProgress
+                            value={goal.progress_percent}
+                            label={`Goal progress ${goal.progress_percent}% for ${goal.title}`}
+                          />
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className="text-[12px] font-semibold tabular-nums text-ink">
-                            {goal.progress_percent}%
-                          </span>
-                          <div className="h-2 w-24 overflow-hidden rounded-full bg-line">
-                            <div
-                              className="h-full rounded-full bg-accent transition-all"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, goal.progress_percent))}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
+                        <span className="shrink-0 text-[12px] font-semibold tabular-nums text-ink">
+                          {goal.progress_percent}%
+                        </span>
+                      </div>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
-          </section>
+          </PerformancePanel>
 
           {profile.succession && (
-            <section className="rounded-2xl border border-line bg-paper p-5 dark:border-paper/10">
-              <SectionHeading
-                icon={<GitBranch size={17} strokeWidth={1.75} />}
+            <PerformancePanel>
+              <PerformanceSectionHeader
+                eyebrow="Succession"
                 title="Succession Development Notes"
-                subtitle="Notes recorded for this employee as a succession candidate."
+                description="Notes recorded for this employee as a succession candidate."
               />
-              <div className="mt-4 rounded-xl border border-line px-4 py-3 dark:border-paper/10">
+              <div className="mt-3 rounded-xl border border-line px-4 py-3 dark:border-paper/15">
                 {profile.succession.developmentNotes ? (
                   <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
                     {profile.succession.developmentNotes}
@@ -835,7 +837,7 @@ export function DevelopmentPlanning({ serverUser, employees }: Props) {
                   </p>
                 )}
               </div>
-            </section>
+            </PerformancePanel>
           )}
         </div>
       )}

@@ -142,6 +142,49 @@ export const PERFORMANCE_GOAL_STATUSES = [
 export type PerformanceGoalStatus = (typeof PERFORMANCE_GOAL_STATUSES)[number];
 
 /**
+ * Proposal approval lifecycle for employee goal-setting. Orthogonal to
+ * `PerformanceGoalStatus` (execution/completion): approval tracks whether a
+ * goal is official, status tracks how far the work has progressed.
+ *
+ *   draft                    employee-authored proposal, editable by owner
+ *   pending_manager_approval submitted, awaiting manager/HR review
+ *   approved                 official goal (all pre-workflow goals are approved)
+ *   returned                 reviewer requested revision, editable by owner
+ *   rejected                 terminal refusal, read-only
+ */
+export const GOAL_APPROVAL_STATUSES = [
+  "draft",
+  "pending_manager_approval",
+  "approved",
+  "returned",
+  "rejected",
+] as const;
+
+export type GoalApprovalStatus = (typeof GOAL_APPROVAL_STATUSES)[number];
+
+/**
+ * Hybrid progress-tracking methods. Mirrors `GOAL_PROGRESS_METHODS` in
+ * `lib/performance/goals.ts`. Kept in sync manually because that file is
+ * server-only.
+ */
+export const GOAL_PROGRESS_METHODS = ["manual", "measurable"] as const;
+
+export type GoalProgressMethod = (typeof GOAL_PROGRESS_METHODS)[number];
+
+/**
+ * Measurement kinds for measurable goals. Mirrors `GOAL_MEASUREMENT_TYPES`
+ * in `lib/performance/goals.ts`. Display-only semantics.
+ */
+export const GOAL_MEASUREMENT_TYPES = [
+  "number",
+  "currency",
+  "percentage",
+  "custom",
+] as const;
+
+export type GoalMeasurementType = (typeof GOAL_MEASUREMENT_TYPES)[number];
+
+/**
  * HR-admin status transitions for goals. Mirrors the server-side
  * `HR_GOAL_ADMIN_STATUS_TRANSITIONS` in `lib/performance/goals.ts`. Kept in
  * sync manually because that file is server-only.
@@ -175,6 +218,30 @@ export type PerformanceGoal = {
   target: string | null;
   cycle_id: string | null;
   /**
+   * Hybrid progress tracking: `manual` (progress entered directly) or
+   * `measurable` (progress derived server-side from actual/target).
+   * NULL on rows predating the measurement migration behaves as `manual`.
+   */
+  progress_method: GoalProgressMethod | null;
+  measurement_type: GoalMeasurementType | null;
+  target_value: number | null;
+  actual_value: number | null;
+  measurement_unit: string | null;
+  /**
+   * Proposal approval state (see `GoalApprovalStatus`). Every goal created
+   * through manager/HR channels — including all rows predating the approval
+   * workflow — is `approved`; employee self-proposals start as `draft`.
+   */
+  approval_status: GoalApprovalStatus;
+  /** Server timestamp of the last proposal submission, null when never submitted. */
+  submitted_at: string | null;
+  /** Server timestamp of the last manager/HR review, null when never reviewed. */
+  reviewed_at: string | null;
+  /** `hr1_employees.id` of the reviewing manager/HR admin (server-derived), null when never reviewed. */
+  reviewed_by: string | null;
+  /** Reviewer note (required on return/reject, optional on approve). */
+  review_note: string | null;
+  /**
    * Presentation enrichment: the authenticated ACCOUNT (hr_admin) that created
    * the goal (`goal.created` audit actor), e.g. "cap cap". Resolved
    * server-side from the persisted audit trail on every scoped response.
@@ -201,6 +268,11 @@ export type GoalCreateInput = Partial<{
   target: string | null;
   role_id: string | null;
   cycle_id: string | null;
+  progress_method: GoalProgressMethod;
+  measurement_type: GoalMeasurementType | null;
+  target_value: number | null;
+  actual_value: number | null;
+  measurement_unit: string | null;
 }>;
 
 export type GoalUpdateInput = Partial<{
@@ -217,10 +289,19 @@ export type GoalUpdateInput = Partial<{
   cycle_id: string | null;
   progress_percent: number;
   status: PerformanceGoalStatus;
+  progress_method: GoalProgressMethod;
+  measurement_type: GoalMeasurementType | null;
+  target_value: number | null;
+  measurement_unit: string | null;
 }>;
 
 export type GoalProgressInput = {
   progress_percent: number;
+};
+
+export type GoalActualUpdateInput = {
+  actual_value: number;
+  note?: string | null;
 };
 
 /**
@@ -254,6 +335,55 @@ export const PERFORMANCE_GOAL_STATUS_TONES: Record<
   pending_completion: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   completed: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
 };
+
+/**
+ * Employee-facing labels for the proposal approval lifecycle. Kept separate
+ * from execution-status labels: approval answers "is this goal official?",
+ * status answers "how far along is the work?".
+ */
+export const GOAL_APPROVAL_STATUS_LABELS: Record<GoalApprovalStatus, string> =
+  {
+    draft: "Draft",
+    pending_manager_approval: "Pending Approval",
+    approved: "Approved",
+    returned: "Changes Requested",
+    rejected: "Rejected",
+  };
+
+export const GOAL_APPROVAL_STATUS_TONES: Record<GoalApprovalStatus, string> = {
+  draft: "bg-line text-muted",
+  pending_manager_approval:
+    "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  approved: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  returned: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  rejected: "bg-red-500/10 text-red-600 dark:text-red-400",
+};
+
+/**
+ * Client payload for employee proposal create/edit. Contains ONLY
+ * employee-proposable definition fields — ownership, weight, approval,
+ * status, and progress state are server-derived and never sent.
+ */
+export type GoalProposalInput = Partial<{
+  title: string;
+  description: string | null;
+  category: string | null;
+  target: string | null;
+  cycle_id: string | null;
+  start_date: string;
+  due_date: string;
+  priority: string;
+  progress_method: GoalProgressMethod;
+  measurement_type: GoalMeasurementType | null;
+  target_value: number | null;
+  measurement_unit: string | null;
+}>;
+
+/** Client payload for proposal review actions (approve/return/reject). */
+export type GoalReviewInput = Partial<{
+  weight: number | null;
+  review_note: string | null;
+}>;
 
 export type EmployeeOption = {
   id: string;
@@ -413,11 +543,82 @@ export type CheckInAcknowledgment = {
  * `messages` contains only visible conversation entries (message/reply) in
  * ascending order; the acknowledgment (if any) is exposed separately so it is
  * never rendered as an ordinary comment.
+ *
+ * `evidence` carries goal-evidence rows linked to this check-in (resolved
+ * server-side inside `listCheckInThread`, already scope-filtered). It is
+ * absent/empty for general check-ins, which render exactly as before.
  */
 export type PerformanceCheckInThread = {
   checkIn: PerformanceCheckIn;
   messages: PerformanceCheckInMessage[];
   acknowledgment: CheckInAcknowledgment | null;
+  evidence?: PerformanceGoalEvidenceItem[] | null;
+};
+
+/**
+ * Server-side representation of one Goal Evidence record stored in the
+ * append-only `hr3_performance_goal_evidence` table. Aligned EXACTLY to the
+ * migration `20260921_create_hr3_performance_goal_evidence.sql`.
+ *
+ * `employee_id` is the GOAL OWNER, always resolved server-side from the goal
+ * (never taken from the authenticated actor directly). `attachment_path` is
+ * the bucket-relative storage path and is intentionally NOT exposed to the
+ * browser; API responses expose `fileUrl` (a short-lived signed URL) instead.
+ */
+export type PerformanceGoalEvidence = {
+  id: string;
+  goal_id: string;
+  employee_id: string;
+  check_in_id: string | null;
+  progress_percent: number;
+  note: string | null;
+  attachment_path: string | null;
+  attachment_name: string | null;
+  attachment_mime: string | null;
+  attachment_size: number | null;
+  created_at: string;
+};
+
+/**
+ * Client-facing representation of Goal Evidence returned by the API.
+ *
+ * `attachment_path` is never leaked: consumers receive only attachment
+ * metadata plus a short-lived server-generated `fileUrl` (null when the record
+ * has no attachment or a signed URL could not be generated).
+ *
+ * `goal_title` is populated only on thread-context payloads (evidence
+ * attached to a check-in conversation) so the conversation can name the goal
+ * without a second lookup. It is absent on goal-scoped list responses.
+ */
+export type PerformanceGoalEvidenceItem = Omit<
+  PerformanceGoalEvidence,
+  "attachment_path"
+> & {
+  fileUrl: string | null;
+  goal_title?: string | null;
+};
+
+/**
+ * Client-supplied attachment payload for creating Goal Evidence.
+ *
+ * `name` is a display-only original file name — it is NEVER used as the
+ * storage path; the server derives the path (and its extension) from the MIME
+ * type. `data` is base64-encoded file content (a `data:*;base64,` prefix is
+ * tolerated and stripped server-side). `size` must match the decoded length.
+ */
+export type GoalEvidenceAttachmentInput = {
+  name?: string | null;
+  mime: string;
+  size: number;
+  data: string;
+};
+
+export type CreateGoalEvidenceInput = {
+  /** Optional check-in the evidence is tied to; MUST belong to the goal's employee. */
+  check_in_id?: string | null;
+  progress_percent: number;
+  note?: string | null;
+  attachment?: GoalEvidenceAttachmentInput | null;
 };
 
 export const APPRAISAL_STATUSES = [
@@ -692,15 +893,19 @@ export type AppraisalCompetencyRatingInput = {
   rating: number;
 };
 
-/** Body of the finalize request. Ratings are read from DB (persisted by the Manager at assessment time). */
-export type AppraisalFinalizeInput = Record<string, unknown>;
-
 /** A goal eligible for scoring within an appraisal. */
 export type AppraisalScoringGoal = {
   goal_id: string;
   title: string;
   weight: number | null;
   status: PerformanceGoalStatus;
+  /** Read-only measurement context for measurable goals (never scored). */
+  progress_percent: number | null;
+  progress_method: GoalProgressMethod | null;
+  measurement_type: GoalMeasurementType | null;
+  target_value: number | null;
+  actual_value: number | null;
+  measurement_unit: string | null;
 };
 
 /** A competency eligible for scoring within an appraisal. */
@@ -1500,6 +1705,8 @@ export type DevelopmentSuccessionContext = {
 export type DevelopmentProfile = {
   employee: DevelopmentEmployee;
   developmentNeeds: DevelopmentNeed[];
+  /** Appraisal-derived development actions (read-only follow-through). */
+  developmentActions: DevelopmentActionItem[];
   learning: {
     courseEnrollments: DevelopmentCourseEnrollment[];
     trainingEnrollments: DevelopmentTrainingEnrollment[];
@@ -1558,6 +1765,26 @@ export type UpdateDevelopmentPlanItemInput = {
   action?: string;
   target?: string;
   status?: DevPlanItemStatus;
+};
+
+/**
+ * One appraisal development action surfaced in the HR Development Profile
+ * (read-only follow-through view). The item row itself plus the source
+ * appraisal context (review period, status, cycle name) — all existing data,
+ * no new fields. The finalized appraisal record is never modified; this is a
+ * presentation of the same rows managed inside the appraisal workflow.
+ */
+export type DevelopmentActionItem = {
+  id: string;
+  appraisal_id: string;
+  action: string;
+  target: string;
+  status: DevPlanItemStatus;
+  created_at: string;
+  updated_at: string;
+  appraisalReviewPeriod: string | null;
+  appraisalStatus: string | null;
+  appraisalCycleName: string | null;
 };
 
 /* =====================================================================
@@ -1804,6 +2031,10 @@ export const PERDEV_NOTIFICATION_TYPES = [
   "checkin.created",
   "checkin.message_posted",
   "checkin.acknowledged",
+  "goal.proposal_submitted",
+  "goal.proposal_approved",
+  "goal.proposal_returned",
+  "goal.proposal_rejected",
 ] as const;
 
 export type PerDevNotificationType =
@@ -1822,4 +2053,99 @@ export type PerDevNotification = {
   is_read: boolean;
   read_at: string | null;
   created_at: string;
+};
+
+/* =====================================================================
+ * FEEDBACK REQUESTS (Phase 1: separate request model)
+ * ===================================================================== */
+
+/**
+ * A feedback request represents: "Employee A is requesting feedback from
+ * Employee B about Employee A." The requested feedback is ABOUT the
+ * requester (`requester_employee_id`); the recipient (`recipient_employee_id`)
+ * is the person asked to provide it.
+ *
+ * Lifecycle: `pending` → `fulfilled` (response recorded) or `pending` →
+ * `declined`. `fulfilled` / `declined` are terminal.
+ *
+ * Stored in the dedicated `hr3_performance_feedback_requests` table.
+ * `hr3_performance_feedback` (check_in / recognition / coaching /
+ * improvement) is never used for requests.
+ */
+export {
+  MAX_FEEDBACK_REQUEST_MESSAGE_LENGTH,
+  MAX_FEEDBACK_RESPONSE_MESSAGE_LENGTH,
+} from "@/performance-development-dashboard/lib/constants";
+
+/** Status vocabulary for a feedback request (DB CHECK-enforced). */
+export const FEEDBACK_REQUEST_STATUSES = [
+  "pending",
+  "fulfilled",
+  "declined",
+] as const;
+
+export type FeedbackRequestStatus =
+  (typeof FEEDBACK_REQUEST_STATUSES)[number];
+
+export const FEEDBACK_REQUEST_STATUS_LABELS: Record<
+  FeedbackRequestStatus,
+  string
+> = {
+  pending: "Pending",
+  fulfilled: "Fulfilled",
+  declined: "Declined",
+};
+
+/**
+ * Server-side representation of one Feedback Request row in
+ * `hr3_performance_feedback_requests`.
+ *
+ * `requester_employee_id` and `recipient_employee_id` both reference
+ * `hr1_employees.id` (verified by FK). `request_message` is the optional
+ * context the requester attached; `response_message` is the feedback response
+ * recorded on fulfillment (null when pending, may remain null on decline).
+ * `responded_at` is stamped when the request leaves `pending`.
+ */
+export type PerformanceFeedbackRequest = {
+  id: string;
+  requester_employee_id: string;
+  recipient_employee_id: string;
+  status: FeedbackRequestStatus;
+  request_message: string | null;
+  response_message: string | null;
+  requested_at: string;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * Input for creating a feedback request. The requester is always the
+ * authenticated employee, resolved server-side — it is never client-supplied.
+ */
+export type FeedbackRequestCreateInput = {
+  recipient_employee_id: string;
+  request_message?: string | null;
+};
+
+/**
+ * Input for responding to a feedback request. `decision` selects the terminal
+ * state; `response_message` carries the feedback on fulfillment and is
+ * optional on decline.
+ */
+export type FeedbackRequestRespondInput = {
+  decision: Exclude<FeedbackRequestStatus, "pending">;
+  response_message?: string | null;
+};
+
+/**
+ * Presentation enrichment for a Feedback Request. Names/employee numbers are
+ * resolved server-side from the referenced `hr1_employees` rows. Enrichment
+ * is display-only and never used for authorization.
+ */
+export type FeedbackRequestListItem = PerformanceFeedbackRequest & {
+  requesterName: string;
+  requesterNumber: string;
+  recipientName: string;
+  recipientNumber: string;
 };

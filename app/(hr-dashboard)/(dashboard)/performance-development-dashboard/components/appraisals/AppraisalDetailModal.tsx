@@ -16,7 +16,10 @@ import {
 import { calculateScoring, SCORING_WEIGHT_TOLERANCE } from "@/performance-development-dashboard/lib/performance/scoring";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
 import { Skeleton } from "@/performance-development-dashboard/components/ui/Skeleton";
+import { AttendanceContextSection } from "@/performance-development-dashboard/components/appraisals/AttendanceContextSection";
+import { LeaveContextSection } from "@/performance-development-dashboard/components/appraisals/LeaveContextSection";
 import { formatDateTime } from "@/performance-development-dashboard/lib/format/date";
+import { formatMeasuredPair } from "@/performance-development-dashboard/lib/format/measurement";
 import {
   MAX_APPRAISAL_TEXT_LENGTH,
   MAX_DEV_PLAN_ACTION_LENGTH,
@@ -183,6 +186,7 @@ export function AppraisalDetailModal({
   /* ── Development Plan Items state ───────────────────────────────── */
   const [devPlanItems, setDevPlanItems] = useState<DevelopmentPlanItem[]>([]);
   const [devPlanError, setDevPlanError] = useState<string | null>(null);
+  const [devPlanLoadError, setDevPlanLoadError] = useState<string | null>(null);
   const [devPlanAdding, setDevPlanAdding] = useState(false);
   const [newDevAction, setNewDevAction] = useState("");
   const [newDevTarget, setNewDevTarget] = useState("");
@@ -206,6 +210,7 @@ export function AppraisalDetailModal({
     if (!appraisal.id) return;
     let cancelled = false;
     const load = async () => {
+      setDevPlanLoadError(null);
       try {
         const res = await fetch(
           `${DEV_PLAN_API}?appraisal_id=${encodeURIComponent(appraisal.id)}`,
@@ -214,9 +219,15 @@ export function AppraisalDetailModal({
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) setDevPlanItems(Array.isArray(data) ? data : []);
+        } else if (!cancelled) {
+          // A failed fetch is not an empty list: surface it distinctly so a
+          // load failure never looks like "no development actions".
+          setDevPlanLoadError("Failed to load development actions.");
         }
       } catch {
-        // Silently handle fetch errors for dev plan items
+        if (!cancelled) {
+          setDevPlanLoadError("Failed to load development actions.");
+        }
       }
     };
     load();
@@ -751,21 +762,26 @@ export function AppraisalDetailModal({
         {/* ── Development Plan Items ───────────────────────────────── */}
         {(canManageDevPlan || devPlanItems.length > 0) && (
           <div className="mt-6 rounded-2xl border border-accent/25 bg-accent/[0.03] p-4">
-            <p className="text-[13px] font-medium text-ink">Development Plan</p>
+            <p className="text-[13px] font-medium text-ink">Development Actions</p>
             <p className="mt-1 text-[11.5px] text-muted">
               Specify actions to support goals, develop competencies, and
               perform job responsibilities.
             </p>
+            {devPlanLoadError && (
+              <p role="alert" className="mt-2 text-[11.5px] font-medium text-red-600">
+                {devPlanLoadError}
+              </p>
+            )}
 
             {devPlanItems.length > 0 && (
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-left text-[12.5px]">
                   <thead>
                     <tr className="border-b border-line text-[11px] font-medium uppercase tracking-wide text-muted">
-                      <th className="pb-1.5 pr-3">Actions to Be Taken</th>
-                      <th className="pb-1.5 pr-3">Target</th>
-                      <th className="pb-1.5 pr-3">Status</th>
-                      {canManageDevPlan && <th className="pb-1.5 w-20"></th>}
+                      <th scope="col" className="pb-1.5 pr-3">Actions to Be Taken</th>
+                      <th scope="col" className="pb-1.5 pr-3">Target</th>
+                      <th scope="col" className="pb-1.5 pr-3">Status</th>
+                      {canManageDevPlan && <th scope="col" className="pb-1.5 w-20"><span className="sr-only">Actions</span></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -784,6 +800,7 @@ export function AppraisalDetailModal({
                                 }
                                 maxLength={MAX_DEV_PLAN_ACTION_LENGTH}
                                 rows={2}
+                                aria-label="Edit action"
                                 className="w-full resize-none rounded-md border border-line bg-paper px-2 py-1.5 text-[12.5px] text-ink outline-none focus:border-accent"
                               />
                             </td>
@@ -795,6 +812,7 @@ export function AppraisalDetailModal({
                                 }
                                 maxLength={MAX_DEV_PLAN_TARGET_LENGTH}
                                 rows={2}
+                                aria-label="Edit target"
                                 className="w-full resize-none rounded-md border border-line bg-paper px-2 py-1.5 text-[12.5px] text-ink outline-none focus:border-accent"
                               />
                             </td>
@@ -806,6 +824,7 @@ export function AppraisalDetailModal({
                                     e.target.value as DevPlanItemStatus,
                                   )
                                 }
+                                aria-label="Edit status"
                                 className="rounded-md border border-line bg-paper px-2 py-1.5 text-[12.5px] text-ink outline-none focus:border-accent"
                               >
                                 {(
@@ -897,10 +916,11 @@ export function AppraisalDetailModal({
             {canManageDevPlan && devPlanAdding && (
               <div className="mt-3 rounded-xl border border-accent/30 bg-accent/[0.05] p-3 space-y-2">
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-muted">
+                  <label htmlFor="dev-plan-action-new" className="mb-1 block text-[11px] font-medium text-muted">
                     Actions to Be Taken
                   </label>
                   <textarea
+                    id="dev-plan-action-new"
                     value={newDevAction}
                     onChange={(e) => setNewDevAction(e.target.value)}
                     maxLength={MAX_DEV_PLAN_ACTION_LENGTH}
@@ -910,10 +930,11 @@ export function AppraisalDetailModal({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-muted">
+                  <label htmlFor="dev-plan-target-new" className="mb-1 block text-[11px] font-medium text-muted">
                     Target
                   </label>
                   <textarea
+                    id="dev-plan-target-new"
                     value={newDevTarget}
                     onChange={(e) => setNewDevTarget(e.target.value)}
                     maxLength={MAX_DEV_PLAN_TARGET_LENGTH}
@@ -923,10 +944,11 @@ export function AppraisalDetailModal({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-muted">
+                  <label htmlFor="dev-plan-status-new" className="mb-1 block text-[11px] font-medium text-muted">
                     Status
                   </label>
                   <select
+                    id="dev-plan-status-new"
                     value={newDevStatus}
                     onChange={(e) =>
                       setNewDevStatus(e.target.value as DevPlanItemStatus)
@@ -978,7 +1000,7 @@ export function AppraisalDetailModal({
                 className="mt-3 flex items-center gap-1.5 rounded-lg border border-dashed border-accent/40 px-3 py-2 text-[12px] text-accent hover:bg-accent/5"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add development plan item
+                Add development action
               </button>
             )}
           </div>
@@ -1018,10 +1040,17 @@ export function AppraisalDetailModal({
                       — weights must total exactly 100%
                     </span>
                   </p>
+                  <p className="mb-2 text-[11.5px] text-muted">
+                    {cycleName
+                      ? `Only goals in the appraisal's cycle (${cycleName}) are scored; goals from other cycles are excluded.`
+                      : "All of the employee's goals are scored."}
+                  </p>
                   {scoringInputs.goals.length === 0 ? (
                     <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[12.5px] text-amber-700">
                       This appraisal has no applicable goals. Assign goals to
-                      the employee before submitting the manager assessment.
+                      the employee
+                      {cycleName ? ` in the ${cycleName} cycle` : ""} before
+                      submitting the manager assessment.
                     </p>
                   ) : (
                     <div className="overflow-hidden rounded-xl border border-line bg-paper dark:border-paper/10">
@@ -1041,6 +1070,18 @@ export function AppraisalDetailModal({
                             <p className="text-[11.5px] text-muted">
                               Weight {formatWeight(goal.weight)}
                             </p>
+                            {(goal.progress_method ?? "manual") ===
+                              "measurable" && (
+                              <p className="text-[11.5px] tabular-nums text-muted">
+                                Progress {goal.progress_percent ?? 0}% ·{" "}
+                                {formatMeasuredPair(
+                                  goal.actual_value,
+                                  goal.target_value,
+                                  goal.measurement_type,
+                                  goal.measurement_unit
+                                )}
+                              </p>
+                            )}
                           </div>
                           <RatingSelect
                             label={`Goal rating for ${goal.title || "goal"}`}
@@ -1262,6 +1303,18 @@ export function AppraisalDetailModal({
                             <p className="text-[11.5px] text-muted">
                               Weight {formatWeight(goal.weight)}
                             </p>
+                            {(goal.progress_method ?? "manual") ===
+                              "measurable" && (
+                              <p className="text-[11.5px] tabular-nums text-muted">
+                                Progress {goal.progress_percent ?? 0}% ·{" "}
+                                {formatMeasuredPair(
+                                  goal.actual_value,
+                                  goal.target_value,
+                                  goal.measurement_type,
+                                  goal.measurement_unit
+                                )}
+                              </p>
+                            )}
                           </div>
                           <span className="rounded-lg border border-line bg-accent/[0.04] px-2.5 py-1.5 text-[13px] font-medium text-ink dark:border-paper/15">
                             {existingRating?.rating ?? "—"}
@@ -1331,6 +1384,26 @@ export function AppraisalDetailModal({
             )}
           </div>
         )}
+
+        {/* ── Time & Attendance Activity (supplemental external context) ── */}
+        {/* Read-only raw HR2 activity for this appraisal's review period.
+            Deliberately outside Goals (60%) / Competencies (40%) scoring,
+            assessment forms, Development Actions, and finalize/acknowledge
+            controls. Never influences ratings or submission state. */}
+        <AttendanceContextSection
+          appraisalId={appraisal.id}
+          isFinalized={status === "finalized" || status === "acknowledged"}
+        />
+
+        {/* ── Leave Activity (supplemental external context) ── */}
+        {/* Read-only current approved-request ranges for this appraisal's
+            review period. Independent from Time & Attendance Activity: no
+            reconciliation between them. Never influences ratings, scoring,
+            or submission state. */}
+        <LeaveContextSection
+          appraisalId={appraisal.id}
+          isFinalized={status === "finalized" || status === "acknowledged"}
+        />
 
         {canFinalize && (
           <div className="mt-6 space-y-4 rounded-2xl border border-accent/25 bg-accent/[0.03] p-4">

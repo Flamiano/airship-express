@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Briefcase, Pencil, Plus, Search } from "lucide-react";
+import { Briefcase, Plus, Search } from "lucide-react";
 import type {
   Competency,
   PositionCompetencyRequirement,
@@ -9,8 +9,16 @@ import type {
   PositionOption,
   UpdatePositionCompetencyRequirementInput,
 } from "@/performance-development-dashboard/types";
-import { Tooltip } from "@/performance-development-dashboard/components/ui/Tooltip";
+import { COMPETENCY_LEVEL_MAX } from "@/performance-development-dashboard/types";
 import { FilterBar } from "@/performance-development-dashboard/components/ui/FilterBar";
+import {
+  PerformanceButton,
+  PerformanceEmptyState,
+  PerformancePanel,
+  PerformanceProgress,
+  PerformanceSelect,
+  PerformanceStatusBadge,
+} from "@/performance-development-dashboard/components/ui/performance";
 import { AssignCompetencyModal } from "@/performance-development-dashboard/components/competencies/AssignCompetencyModal";
 import { EditRequirementLevelModal } from "@/performance-development-dashboard/components/competencies/EditRequirementLevelModal";
 
@@ -28,10 +36,6 @@ type Props = {
     input: UpdatePositionCompetencyRequirementInput
   ) => Promise<void>;
 };
-
-function barWidth(level: number, max: number): string {
-  return `${Math.max(10, Math.min(100, (level / max) * 100))}%`;
-}
 
 export function PositionRequirementsTab({
   requirements,
@@ -55,15 +59,6 @@ export function PositionRequirementsTab({
 
   const effectivePositionId = selectedPositionId ?? positions[0]?.id ?? null;
 
-  const maxLevel = useMemo(
-    () =>
-      requirements.reduce(
-        (max, requirement) => Math.max(max, requirement.required_level),
-        1
-      ),
-    [requirements]
-  );
-
   const matching = useMemo(() => {
     if (!effectivePositionId) return [];
     const query = search.trim().toLowerCase();
@@ -80,6 +75,8 @@ export function PositionRequirementsTab({
     (position) => position.id === effectivePositionId
   );
 
+  const filtering = search.trim() !== "";
+
   async function handleAssign(input: PositionCompetencyRequirementInput) {
     await onCreate(input);
     setAssignOpen(false);
@@ -94,145 +91,153 @@ export function PositionRequirementsTab({
 
   return (
     <div className="space-y-4">
-      <FilterBar className="sm:justify-between">
-          <label className="relative block w-full sm:max-w-[320px]">
-            <span className="sr-only">Search requirements</span>
-            <Search
-              size={14}
-              strokeWidth={1.75}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search competencies..."
-              className="w-full rounded-lg border border-line bg-paper py-2 pl-9 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-            />
-          </label>
+      <FilterBar>
+        <label className="relative block w-full sm:max-w-[320px]">
+          <span className="sr-only">Search requirements</span>
+          <Search
+            size={14}
+            strokeWidth={1.75}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search competencies..."
+            className="w-full rounded-lg border border-line bg-paper py-2 pl-9 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+          />
+        </label>
 
-          <div className="flex items-center gap-2">
-            <select
-              value={effectivePositionId ?? ""}
-              onChange={(e) => setSelectedPositionId(e.target.value || null)}
-              disabled={!isHrAdmin}
-              className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px] font-medium text-ink outline-none transition-colors focus:border-accent disabled:cursor-not-allowed disabled:opacity-60 dark:border-paper/15"
-            >
-              {positions.length === 0 && <option value="">No positions</option>}
-              {positions.map((position) => (
-                <option key={position.id} value={position.id}>
-                  {position.title}
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <PerformanceSelect
+            id="requirement-position-filter"
+            aria-label="Filter by position"
+            value={effectivePositionId ?? ""}
+            onChange={(e) => setSelectedPositionId(e.target.value || null)}
+            disabled={!isHrAdmin}
+            className="sm:w-auto sm:max-w-[240px]"
+          >
+            {positions.length === 0 && <option value="">No positions</option>}
+            {positions.map((position) => (
+              <option key={position.id} value={position.id}>
+                {position.title}
+              </option>
+            ))}
+          </PerformanceSelect>
 
-            {isHrAdmin && (
-              <button
-                type="button"
-                onClick={() => setAssignOpen(true)}
-                disabled={submitting || !effectivePositionId}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plus size={15} strokeWidth={2} />
-                Assign competency
-              </button>
-            )}
-          </div>
-      </FilterBar>
-
-      {!effectivePositionId ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
-          <Briefcase size={22} strokeWidth={1.5} className="text-muted" />
-          <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
-            No position available
-          </p>
-          <p className="max-w-sm text-[13px] text-muted">
-            {isHrAdmin
-              ? "Select a position from the dropdown to view its required levels."
-              : "Your profile is not linked to a job position yet."}
-          </p>
-        </div>
-      ) : matching.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
-          <Briefcase size={22} strokeWidth={1.5} className="text-muted" />
-          <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
-            {search
-              ? "No matching requirements"
-              : "No requirements yet"}
-          </p>
-          <p className="max-w-sm text-[13px] text-muted">
-            {search
-              ? "Try a different search term."
-              : isHrAdmin
-                ? "Assign competencies to set the levels this position should expect."
-                : "Your position has no required competencies assigned yet."}
-          </p>
-          {isHrAdmin && !search && (
+          {filtering && (
             <button
               type="button"
-              onClick={() => setAssignOpen(true)}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
+              onClick={() => setSearch("")}
+              className="rounded-lg px-2 py-1 text-[12px] font-medium text-accent hover:underline"
             >
-              <Plus size={15} strokeWidth={2} />
-              Assign your first requirement
+              Clear search
             </button>
           )}
         </div>
+
+        {isHrAdmin && (
+          <PerformanceButton
+            onClick={() => setAssignOpen(true)}
+            disabled={submitting || !effectivePositionId}
+          >
+            <Plus size={15} strokeWidth={2} />
+            Assign competency
+          </PerformanceButton>
+        )}
+      </FilterBar>
+
+      {!effectivePositionId ? (
+        <PerformanceEmptyState
+          icon={<Briefcase size={22} strokeWidth={1.5} className="text-muted" />}
+          title="No position available"
+          message={
+            isHrAdmin
+              ? "Select a position to view its required levels."
+              : "Your profile is not linked to a job position yet."
+          }
+        />
+      ) : matching.length === 0 ? (
+        <PerformanceEmptyState
+          icon={<Briefcase size={22} strokeWidth={1.5} className="text-muted" />}
+          title={filtering ? "No matching requirements" : "No requirements yet"}
+          message={
+            filtering
+              ? "Try a different search term."
+              : isHrAdmin
+                ? "Assign competencies to set the levels this position should expect."
+                : "Your position has no required competencies assigned yet."
+          }
+          action={
+            isHrAdmin && !filtering ? (
+              <PerformanceButton
+                onClick={() => setAssignOpen(true)}
+                className="mt-1"
+              >
+                <Plus size={15} strokeWidth={2} />
+                Assign your first requirement
+              </PerformanceButton>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="flex flex-col gap-3">
+        <PerformancePanel>
           {selectedPosition && (
-            <div className="flex items-center gap-2 rounded-2xl border border-line bg-paper px-5 py-4 dark:border-paper/10">
-              <Briefcase size={16} strokeWidth={1.75} className="text-accent" />
-              <p className="text-[13px] font-medium text-ink">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <p className="font-bricolage text-[17px] font-medium tracking-tight text-ink">
                 {selectedPosition.title}
               </p>
               {selectedPosition.department && (
-                <span className="text-[12px] text-muted">
-                  · {selectedPosition.department}
-                </span>
+                <p className="text-[12px] text-muted">
+                  {selectedPosition.department}
+                </p>
               )}
             </div>
           )}
-
-          {matching.map((requirement) => (
-            <div
-              key={requirement.id}
-              className="flex items-center gap-4 rounded-2xl border border-line bg-paper px-5 py-4 dark:border-paper/10"
-            >
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <p className="truncate font-medium text-ink">
-                    {competenciesById[requirement.competency_id] ??
-                      "Unknown competency"}
-                  </p>
-                  <span className="shrink-0 text-[12px] text-muted">
-                    Level {requirement.required_level}
-                  </span>
+          <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
+            {matching.map((requirement) => (
+              <li
+                key={requirement.id}
+                className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 truncate text-[13.5px] font-medium text-ink">
+                      {competenciesById[requirement.competency_id] ??
+                        "Unknown competency"}
+                    </p>
+                    <PerformanceStatusBadge
+                      tone="bg-line text-muted"
+                      className="shrink-0 tabular-nums"
+                    >
+                      Level {requirement.required_level} of {COMPETENCY_LEVEL_MAX}
+                    </PerformanceStatusBadge>
+                  </div>
+                  <div className="mt-2 max-w-[280px]">
+                    <PerformanceProgress
+                      value={
+                        (requirement.required_level / COMPETENCY_LEVEL_MAX) *
+                        100
+                      }
+                      label={`Required level ${requirement.required_level} of ${COMPETENCY_LEVEL_MAX} for ${competenciesById[requirement.competency_id] ?? "competency"}`}
+                    />
+                  </div>
                 </div>
-                <div className="h-1.5 w-full max-w-[280px] overflow-hidden rounded-full bg-line dark:bg-paper/10">
-                  <div
-                    className="h-full rounded-full bg-accent"
-                    style={{ width: barWidth(requirement.required_level, maxLevel) }}
-                  />
-                </div>
-              </div>
-
-              {isHrAdmin && (
-                <Tooltip label="Edit required level">
+                {isHrAdmin && (
                   <button
                     type="button"
                     onClick={() => setEditing(requirement)}
                     disabled={submitting}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-accent/[0.08] hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label={`Edit required level for ${competenciesById[requirement.competency_id]}`}
+                    aria-label={`Edit required level for ${competenciesById[requirement.competency_id] ?? "competency"}`}
+                    className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-medium text-muted transition-colors hover:border-accent/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 sm:self-center dark:border-paper/15"
                   >
-                    <Pencil size={14} strokeWidth={1.75} />
+                    Edit level
                   </button>
-                </Tooltip>
-              )}
-            </div>
-          ))}
-        </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </PerformancePanel>
       )}
 
       {assignOpen && effectivePositionId && (

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
+import { Suspense } from "react";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
 import {
@@ -7,6 +8,7 @@ import {
   loginRouteForAccountType,
 } from "@/performance-development-dashboard/lib/auth/redirect";
 import { resolveManagerDirectReportUuids } from "@/performance-development-dashboard/lib/auth/access";
+import { isPerDevHrAdminRole } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import { listCheckIns } from "@/performance-development-dashboard/lib/performance/checkins";
 import { CheckInsManagement } from "@/performance-development-dashboard/components/check-ins/CheckInsManagement";
 import type {
@@ -72,6 +74,12 @@ export default async function CheckInsPage() {
 
   const employeeNamesById = await resolveReferencedNames(checkIns);
 
+  // PerDev-aware HR flag for UI gating. actorType alone is not sufficient:
+  // non-PerDev HR roles share actorType "hr_admin" but are denied by every
+  // check-in API. The page data branches below are unchanged.
+  const isPerDevHrAdmin =
+    actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
+
   if (actor.actorType === "hr_admin") {
     if (actor.employeeUuid) {
       employeeNamesById[actor.employeeUuid] =
@@ -91,16 +99,19 @@ export default async function CheckInsPage() {
     }));
 
     return (
-      <CheckInsManagement
-        serverUser={serverUser}
-        actorType="hr_admin"
-        initialCheckIns={checkIns}
-        initialError={initialError}
-        employees={employees}
-        employeeNamesById={employeeNamesById}
-        defaultEmployeeId={actor.employeeUuid}
-        actorEmployeeUuid={actor.employeeUuid}
-      />
+      <Suspense>
+        <CheckInsManagement
+          serverUser={serverUser}
+          actorType="hr_admin"
+          isPerDevHrAdmin={isPerDevHrAdmin}
+          initialCheckIns={checkIns}
+          initialError={initialError}
+          employees={employees}
+          employeeNamesById={employeeNamesById}
+          defaultEmployeeId={actor.employeeUuid}
+          actorEmployeeUuid={actor.employeeUuid}
+        />
+      </Suspense>
     );
   }
 
@@ -124,16 +135,19 @@ export default async function CheckInsPage() {
     }));
 
     return (
-      <CheckInsManagement
-        serverUser={serverUser}
-        actorType="manager"
-        initialCheckIns={checkIns}
-        initialError={initialError}
-        employees={employees}
-        employeeNamesById={employeeNamesById}
-        defaultEmployeeId={actor.employeeUuid}
-        actorEmployeeUuid={actor.employeeUuid}
-      />
+      <Suspense>
+        <CheckInsManagement
+          serverUser={serverUser}
+          actorType="manager"
+          isPerDevHrAdmin={isPerDevHrAdmin}
+          initialCheckIns={checkIns}
+          initialError={initialError}
+          employees={employees}
+          employeeNamesById={employeeNamesById}
+          defaultEmployeeId={actor.employeeUuid}
+          actorEmployeeUuid={actor.employeeUuid}
+        />
+      </Suspense>
     );
   }
 
@@ -143,14 +157,17 @@ export default async function CheckInsPage() {
   }
 
   return (
-    <CheckInsManagement
-      serverUser={serverUser}
-      actorType="employee"
-      initialCheckIns={checkIns}
-      initialError={initialError}
-      employees={[]}
-      employeeNamesById={employeeNamesById}
-      actorEmployeeUuid={actor.employeeUuid}
-    />
+    <Suspense>
+      <CheckInsManagement
+        serverUser={serverUser}
+        actorType="employee"
+        isPerDevHrAdmin={isPerDevHrAdmin}
+        initialCheckIns={checkIns}
+        initialError={initialError}
+        employees={[]}
+        employeeNamesById={employeeNamesById}
+        actorEmployeeUuid={actor.employeeUuid}
+      />
+    </Suspense>
   );
 }

@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  GraduationCap,
   RefreshCw,
-  Trophy,
-  Users,
 } from "lucide-react";
-import { StatTile } from "@/performance-development-dashboard/components/ui/StatTile";
-import { Skeleton, SkeletonPanel, SkeletonStatTile } from "@/performance-development-dashboard/components/ui/Skeleton";
+import { Skeleton, SkeletonPanel } from "@/performance-development-dashboard/components/ui/Skeleton";
+import {
+  PerformanceButton,
+  PerformanceErrorBanner,
+  PerformancePageHeader,
+  PerformancePanel,
+  PerformanceSectionHeader,
+  PerformanceStatusBadge,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type {
   AppraisalStatus,
   CurrentPerDevUser,
@@ -81,10 +84,17 @@ const APPRAISAL_BAR_TONES: Record<string, string> = {
 type Props = {
   serverUser?: CurrentPerDevUser;
   actorType?: "hr_admin" | "manager" | "employee";
+  /**
+   * Server-resolved PerDev HR Admin flag (super_admin /
+   * hr_performance_admin). Only PerDev HR Admin may navigate to the HR-only
+   * cycle management page; employees, managers, and non-PerDev HR see the
+   * cycle panel read-only.
+   */
+  isPerDevHrAdmin: boolean;
   initialError?: string;
 };
 
-export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initialError }: Props) {
+export function PerformanceDashboard({ serverUser, actorType = "hr_admin", isPerDevHrAdmin, initialError }: Props) {
   const [data, setData] = useState<PerformanceDashboardSnapshot | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(initialError ?? null);
@@ -141,9 +151,9 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initi
   if (!data && !error) {
     return (
       <div className="space-y-6" aria-busy="true" role="status">
+        <span className="sr-only">Loading dashboard...</span>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="w-full max-w-xl space-y-2.5">
-            <Skeleton className="h-3 w-56 rounded-full" />
             <Skeleton className="h-8 w-44 rounded-lg" />
             <Skeleton className="h-3 w-full max-w-[360px] rounded-full" />
           </div>
@@ -152,11 +162,7 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initi
           </div>
         </div>
 
-        <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <SkeletonStatTile key={index} />
-          ))}
-        </div>
+        <SkeletonPanel lines={4} />
 
         <div className="grid gap-5 xl:grid-cols-3">
           <div className="space-y-5 xl:col-span-2">
@@ -181,16 +187,12 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initi
 
   if (error && !data) {
     return (
-      <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-        <p className="text-[13px] font-medium text-red-600">{error}</p>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-medium text-muted transition-colors hover:text-ink"
-        >
-          <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
-          Try again
-        </button>
+      <div className="space-y-6">
+        <PerformancePageHeader
+          title="Performance Development"
+          description="Your performance development overview."
+        />
+        <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
       </div>
     );
   }
@@ -212,82 +214,46 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initi
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
-            Dashboard
-          </h1>
-          <p className="mt-2 max-w-xl text-[13px] text-muted">
-            Hello {firstName}. {subtitleByActor[actorType] ?? subtitleByActor.hr_admin}
-          </p>
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
-          >
-            <RefreshCw
-              size={14}
-              strokeWidth={1.75}
-              className={refreshing ? "animate-spin" : ""}
-            />
-            Refresh
-          </button>
-          {data ? (
-            <p className="text-[11.5px] text-muted">
-              Updated {new Date(data.generatedAt).toLocaleTimeString()}
-            </p>
-          ) : null}
-        </div>
-      </div>
+      <PerformancePageHeader
+        title="Performance Development"
+        description={`Hello ${firstName}. ${subtitleByActor[actorType] ?? subtitleByActor.hr_admin}`}
+        actions={
+          <>
+            <PerformanceButton
+              variant="ghost"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw
+                size={14}
+                strokeWidth={1.75}
+                className={refreshing ? "animate-spin" : ""}
+              />
+              Refresh
+            </PerformanceButton>
+            {data ? (
+              <p className="text-[11.5px] text-muted">
+                Updated {new Date(data.generatedAt).toLocaleTimeString()}
+              </p>
+            ) : null}
+          </>
+        }
+      />
 
       {error && data && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-          <p className="text-[13px] font-medium text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="text-[12.5px] font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
-          >
-            Try again
-          </button>
-        </div>
+        <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
       )}
 
       {!data ? null : (
         <>
-          <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile
-              label="Total goals"
-              value={data.goals.total}
-              tone="bg-accent-dark"
-              href={GOALS_PATH}
-            />
-            <StatTile
-              label="Total appraisals"
-              value={data.appraisals.total}
-              tone="bg-accent"
-              href={APPRAISALS_PATH}
-            />
-            <StatTile
-              label="Competencies"
-              value={data.competencyAndDevelopment.competencies}
-              tone="bg-ink"
-              href={COMPETENCIES_PATH}
-            />
-            <StatTile
-              label="Action items"
-              value={actionItemsTotal}
-              tone="bg-emerald-600"
-            />
-          </div>
+          <SummaryPanel data={data} actionItemsTotal={actionItemsTotal} />
 
           <div className="grid gap-5 xl:grid-cols-3">
             <div className="space-y-5 xl:col-span-2">
-              <CurrentCyclePanel cycle={data.currentCycle} />
+              <CurrentCyclePanel
+                cycle={data.currentCycle}
+                canManageCycles={isPerDevHrAdmin}
+              />
               <ActionRequiredPanel data={data} total={actionItemsTotal} />
             </div>
             <div className="space-y-5">
@@ -314,47 +280,147 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", initi
   );
 }
 
+/**
+ * Restrained summary: compact factual rows with navigation into the real
+ * workflows. No giant colored tiles. `null` renders as "—", never 0 — a
+ * failed request surfaces as an error banner, not a zero count.
+ */
+function SummaryPanel({
+  data,
+  actionItemsTotal,
+}: {
+  data: PerformanceDashboardSnapshot;
+  actionItemsTotal: number;
+}) {
+  const rows: { label: string; detail: string; value: number; href?: string }[] = [
+    {
+      label: "Goals",
+      detail: data.actorType === "hr_admin" ? "Organization total" : "In scope",
+      value: data.goals.total,
+      href: GOALS_PATH,
+    },
+    {
+      label: "Appraisals",
+      detail: data.actorType === "hr_admin" ? "Organization total" : "In scope",
+      value: data.appraisals.total,
+      href: APPRAISALS_PATH,
+    },
+    {
+      label:
+        data.actorType === "hr_admin"
+          ? "Competencies in library"
+          : "Competency assessments",
+      detail:
+        data.actorType === "hr_admin"
+          ? "Organization library"
+          : "Recorded for you",
+      value: data.competencyAndDevelopment.competencies,
+      href: COMPETENCIES_PATH,
+    },
+    {
+      label: "Action items",
+      detail: "Awaiting attention",
+      value: actionItemsTotal,
+    },
+  ];
+
+  return (
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Summary"
+        title="At a glance"
+        description="Factual totals from the current snapshot. Open a module for detail."
+      />
+      <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
+        {rows.map((row) => (
+          <li
+            key={row.label}
+            className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-[13.5px] font-medium text-ink">
+                {row.label}
+              </p>
+              <p className="truncate text-[12px] text-muted">{row.detail}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="font-bricolage text-[20px] font-medium tabular-nums tracking-tight text-ink">
+                {row.value}
+              </span>
+              {row.href ? (
+                <Link
+                  href={row.href}
+                  aria-label={`Open ${row.label}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:border-accent/40 hover:text-ink dark:border-paper/15"
+                >
+                  <ArrowRight size={14} strokeWidth={1.75} />
+                </Link>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </PerformancePanel>
+  );
+}
+
 function CurrentCyclePanel({
   cycle,
+  canManageCycles,
 }: {
   cycle: DashboardCurrentCycle;
+  canManageCycles: boolean;
 }) {
   return (
-    <PanelCard title="Current Cycle" subtitle="Latest active performance cycle">
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Cycle"
+        title="Current Cycle"
+        description="Latest active performance cycle."
+        action={
+          canManageCycles && cycle ? (
+            <Link
+              href={CYCLES_PATH}
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-accent transition-colors hover:text-accent-dark"
+            >
+              Open cycles page
+              <ArrowRight size={13} />
+            </Link>
+          ) : undefined
+        }
+      />
       {!cycle ? (
-        <div className="flex flex-col items-start gap-3">
+        <div className="mt-4 flex flex-col items-start gap-3">
           <p className="text-[13px] text-muted">No active performance cycle.</p>
-          <Link
-            href={CYCLES_PATH}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
-          >
-            Manage cycles
-            <ArrowRight size={14} />
-          </Link>
+          {canManageCycles && (
+            <Link
+              href={CYCLES_PATH}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
+            >
+              Manage cycles
+              <ArrowRight size={14} />
+            </Link>
+          )}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="mt-4 flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill
-              label={
-                PERFORMANCE_CYCLE_STATUS_LABELS[
-                  cycle.status as PerformanceCycleStatus
-                ] ?? cycle.status
-              }
+            <PerformanceStatusBadge
               tone={
                 PERFORMANCE_CYCLE_STATUS_TONES[
                   cycle.status as PerformanceCycleStatus
                 ] ?? "bg-line text-muted"
               }
-            />
-            <StatusPill
-              label={
-                PERFORMANCE_CYCLE_STAGE_LABELS[
-                  cycle.stage as PerformanceCycleStage
-                ] ?? cycle.stage
-              }
-              tone="bg-accent/10 text-accent"
-            />
+            >
+              {PERFORMANCE_CYCLE_STATUS_LABELS[
+                cycle.status as PerformanceCycleStatus
+              ] ?? cycle.status}
+            </PerformanceStatusBadge>
+            <PerformanceStatusBadge tone="bg-accent/10 text-accent">
+              {PERFORMANCE_CYCLE_STAGE_LABELS[
+                cycle.stage as PerformanceCycleStage
+              ] ?? cycle.stage}
+            </PerformanceStatusBadge>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -365,17 +431,9 @@ function CurrentCyclePanel({
               {formatDate(cycle.periodStart)} – {formatDate(cycle.periodEnd)}
             </p>
           </div>
-
-          <Link
-            href={CYCLES_PATH}
-            className="inline-flex items-center gap-1 text-[12.5px] font-medium text-accent transition-colors hover:text-accent-dark"
-          >
-            Open cycles page
-            <ArrowRight size={13} />
-          </Link>
         </div>
       )}
-    </PanelCard>
+    </PerformancePanel>
   );
 }
 
@@ -390,48 +448,47 @@ function ActionRequiredPanel({
     {
       count: data.actionItems.goalsPendingCompletion,
       label: "Goals pending completion",
-      tone: "bg-amber-500",
+      href: GOALS_PATH,
     },
     {
       count: data.actionItems.appraisalsAwaitingSelfAssessment,
       label: "Appraisals awaiting self-assessment",
-      tone: "bg-accent",
+      href: APPRAISALS_PATH,
     },
     {
       count: data.actionItems.appraisalsAwaitingManagerAssessment,
       label: "Appraisals awaiting manager assessment",
-      tone: "bg-amber-500",
+      href: APPRAISALS_PATH,
     },
     {
       count: data.actionItems.appraisalsAwaitingFinalization,
       label: "Appraisals awaiting finalization",
-      tone: "bg-purple-500",
+      href: APPRAISALS_PATH,
     },
     {
       count: data.actionItems.redemptionsPending,
       label: "Pending reward redemptions",
-      tone: "bg-emerald-500",
     },
     {
       count: data.actionItems.trainingEnrollmentsPending,
       label: "Training approvals pending",
-      tone: "bg-ink",
     },
   ];
 
   return (
-    <PanelCard
-      title="Action Required"
-      subtitle="Items awaiting attention"
-      icon={<AlertTriangle size={15} />}
-    >
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Workflow"
+        title={total > 0 ? `Action Required (${total})` : "Action Required"}
+        description="Items awaiting attention."
+      />
       {total === 0 ? (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] font-medium text-emerald-600">
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] font-medium text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 size={15} />
           All caught up
         </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-line dark:divide-paper/10">
+        <ul className="mt-2 flex flex-col divide-y divide-line dark:divide-paper/10">
           {items
             .filter((item) => item.count > 0)
             .map((item) => (
@@ -439,36 +496,50 @@ function ActionRequiredPanel({
                 key={item.label}
                 className="flex items-center justify-between gap-3 py-2.5"
               >
-                <span className="flex items-center gap-2.5 text-[13px] text-ink">
-                  <span
-                    className={`h-2 w-2 rounded-full ${item.tone}`}
-                    aria-hidden="true"
-                  />
+                <span className="min-w-0 truncate text-[13px] text-ink">
                   {item.label}
                 </span>
-                <span className="font-bricolage text-[16px] font-medium text-ink">
-                  {item.count}
+                <span className="flex shrink-0 items-center gap-3">
+                  <span className="font-bricolage text-[16px] font-medium tabular-nums text-ink">
+                    {item.count}
+                  </span>
+                  {item.href ? (
+                    <Link
+                      href={item.href}
+                      aria-label={`Open ${item.label}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:border-accent/40 hover:text-ink dark:border-paper/15"
+                    >
+                      <ArrowRight size={13} strokeWidth={1.75} />
+                    </Link>
+                  ) : null}
                 </span>
               </li>
             ))}
         </ul>
       )}
-    </PanelCard>
+    </PerformancePanel>
   );
 }
 
 function GoalProgressPanel({ breakdown }: { breakdown: DashboardStatusBreakdown }) {
   return (
-    <PanelCard title="Goal Progress" subtitle="Goals by status">
-      <StatusBreakdown
-        breakdown={breakdown}
-        statusKeys={GOAL_STATUS_KEYS}
-        labels={PERFORMANCE_GOAL_STATUS_LABELS}
-        tones={PERFORMANCE_GOAL_STATUS_TONES}
-        barTones={GOAL_BAR_TONES}
-        emptyText="No goals yet"
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Goals"
+        title={breakdown.total > 0 ? `Goal Progress (${breakdown.total})` : "Goal Progress"}
+        description="Goals by status."
       />
-    </PanelCard>
+      <div className="mt-4">
+        <StatusBreakdown
+          breakdown={breakdown}
+          statusKeys={GOAL_STATUS_KEYS}
+          labels={PERFORMANCE_GOAL_STATUS_LABELS}
+          tones={PERFORMANCE_GOAL_STATUS_TONES}
+          barTones={GOAL_BAR_TONES}
+          emptyText="No goals yet"
+        />
+      </div>
+    </PerformancePanel>
   );
 }
 
@@ -478,16 +549,23 @@ function AppraisalProgressPanel({
   breakdown: DashboardStatusBreakdown;
 }) {
   return (
-    <PanelCard title="Appraisal Progress" subtitle="Appraisals by status">
-      <StatusBreakdown
-        breakdown={breakdown}
-        statusKeys={APPRAISAL_STATUS_KEYS}
-        labels={{ ...APPRAISAL_STATUS_LABELS, ...LEGACY_APPRAISAL_STATUS_LABELS }}
-        tones={{ ...APPRAISAL_STATUS_TONES, ...LEGACY_APPRAISAL_STATUS_TONES }}
-        barTones={APPRAISAL_BAR_TONES}
-        emptyText="No appraisals yet"
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Appraisals"
+        title={breakdown.total > 0 ? `Appraisal Progress (${breakdown.total})` : "Appraisal Progress"}
+        description="Appraisals by status."
       />
-    </PanelCard>
+      <div className="mt-4">
+        <StatusBreakdown
+          breakdown={breakdown}
+          statusKeys={APPRAISAL_STATUS_KEYS}
+          labels={{ ...APPRAISAL_STATUS_LABELS, ...LEGACY_APPRAISAL_STATUS_LABELS }}
+          tones={{ ...APPRAISAL_STATUS_TONES, ...LEGACY_APPRAISAL_STATUS_TONES }}
+          barTones={APPRAISAL_BAR_TONES}
+          emptyText="No appraisals yet"
+        />
+      </div>
+    </PerformancePanel>
   );
 }
 
@@ -519,7 +597,11 @@ function StatusBreakdown({
 
   return (
     <div className="space-y-4">
-      <div className="flex h-2.5 w-full gap-1 overflow-hidden rounded-full">
+      <div
+        className="flex h-2.5 w-full gap-1 overflow-hidden rounded-full"
+        role="img"
+        aria-label={`Status distribution across ${breakdown.total} records`}
+      >
         {keys.map((status) => {
           const count = breakdown.byStatus[status] ?? 0;
           const width = Math.round((count / total) * 100);
@@ -535,29 +617,26 @@ function StatusBreakdown({
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <ul className="flex flex-col divide-y divide-line dark:divide-paper/10">
         {keys.map((status) => {
           const count = breakdown.byStatus[status] ?? 0;
           const width = Math.round((count / total) * 100);
           return (
-            <div
+            <li
               key={status}
-              className="flex items-center justify-between gap-2 rounded-xl border border-line px-3 py-2 dark:border-paper/10"
+              className="flex items-center justify-between gap-2 py-2"
             >
-              <span className="flex items-center gap-2 text-[12.5px] text-ink">
-                <StatusPill
-                  label={labels[status] ?? status}
-                  tone={tones[status] ?? "bg-line text-muted"}
-                />
-              </span>
-              <span className="text-[13px] text-muted">
+              <PerformanceStatusBadge tone={tones[status] ?? "bg-line text-muted"}>
+                {labels[status] ?? status}
+              </PerformanceStatusBadge>
+              <span className="shrink-0 text-[13px] tabular-nums text-muted">
                 {count}
                 <span className="ml-1 text-[11.5px]">{width}%</span>
               </span>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }
@@ -593,17 +672,18 @@ function CompetencyDevelopmentPanel({
   ];
 
   return (
-    <PanelCard
-      title="Competency & Development"
-      subtitle="Competencies, training and learning"
-      icon={<GraduationCap size={15} />}
-    >
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Growth"
+        title="Competency & Development"
+        description="Competencies, training and learning."
+      />
+      <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
         {stats.map((stat) => (
-          <CompactStat key={stat.label} label={stat.label} value={stat.value} />
+          <SummaryRow key={stat.label} label={stat.label} value={stat.value} />
         ))}
-      </div>
-    </PanelCard>
+      </ul>
+    </PerformancePanel>
   );
 }
 
@@ -637,17 +717,30 @@ function SuccessionRecognitionPanel({
   ];
 
   return (
-    <PanelCard
-      title="Succession & Recognition"
-      subtitle="Critical roles, successors and rewards"
-      icon={<Trophy size={15} />}
-    >
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="People"
+        title="Succession & Recognition"
+        description="Critical roles, successors and rewards."
+      />
+      <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
         {stats.map((stat) => (
-          <CompactStat key={stat.label} label={stat.label} value={stat.value} />
+          <SummaryRow key={stat.label} label={stat.label} value={stat.value} />
         ))}
-      </div>
-    </PanelCard>
+      </ul>
+    </PerformancePanel>
+  );
+}
+
+/** Compact factual row. `null` (out-of-scope for this role) renders as "—". */
+function SummaryRow({ label, value }: { label: string; value: number | null }) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-2">
+      <span className="min-w-0 truncate text-[13px] text-muted">{label}</span>
+      <span className="shrink-0 text-[13.5px] font-medium tabular-nums text-ink">
+        {value === null ? "—" : value}
+      </span>
+    </li>
   );
 }
 
@@ -657,29 +750,31 @@ function RecentActivityPanel({
   items: PerformanceDashboardSnapshot["recentActivity"];
 }) {
   return (
-    <PanelCard
-      title="Recent Activity"
-      subtitle="Latest audit trail events"
-      action={
-        <Link
-          href={RECENT_ACTIVITY_PATH}
-          className="text-[12.5px] font-medium text-accent hover:text-accent-dark"
-        >
-          View all
-        </Link>
-      }
-    >
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Activity"
+        title="Recent Activity"
+        description="Latest audit trail events."
+        action={
+          <Link
+            href={RECENT_ACTIVITY_PATH}
+            className="text-[12.5px] font-medium text-accent hover:text-accent-dark"
+          >
+            View all
+          </Link>
+        }
+      />
       {items.length === 0 ? (
-        <p className="text-[13px] text-muted">No recent activity.</p>
+        <p className="mt-4 text-[13px] text-muted">No recent activity.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-line dark:divide-paper/10">
+        <ul className="mt-2 flex flex-col divide-y divide-line dark:divide-paper/10">
           {items.map((item) => (
             <li key={item.id} className="flex flex-col gap-1 py-3">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[13px] font-medium text-ink">
+                <p className="min-w-0 truncate text-[13px] font-medium text-ink">
                   {item.actorName ?? "System"}
                 </p>
-                <p className="text-[11.5px] text-muted">
+                <p className="shrink-0 text-[11.5px] tabular-nums text-muted">
                   {formatDateTime(item.createdAt)}
                 </p>
               </div>
@@ -696,7 +791,7 @@ function RecentActivityPanel({
           ))}
         </ul>
       )}
-    </PanelCard>
+    </PerformancePanel>
   );
 }
 
@@ -706,136 +801,61 @@ function DirectReportsPanel({
   reports: DirectReportSummary[];
 }) {
   return (
-    <PanelCard
-      title="Direct Reports"
-      subtitle={`${reports.length} team member${reports.length === 1 ? "" : "s"}`}
-      icon={<Users size={15} />}
-    >
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-line dark:border-paper/10">
-              <th className="pb-2 pr-4 font-medium text-muted">Name</th>
-              <th className="pb-2 pr-4 font-medium text-muted">Dept</th>
-              <th className="pb-2 pr-4 text-center font-medium text-muted">Goals</th>
-              <th className="pb-2 pr-4 text-center font-medium text-muted">Appraisal</th>
-              <th className="pb-2 font-medium text-muted">Last Check-in</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.map((report) => (
-              <tr
-                key={report.employeeUuid}
-                className="border-b border-line last:border-0 dark:border-paper/10"
-              >
-                <td className="py-2.5 pr-4 font-medium text-ink">
-                  {report.name}
-                  {report.employeeIdNumber ? (
-                    <span className="ml-1.5 text-[11px] text-muted">
-                      {report.employeeIdNumber}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="py-2.5 pr-4 text-muted">
-                  {report.department ?? "—"}
-                </td>
-                <td className="py-2.5 pr-4 text-center">
-                  {report.goalsTotal > 0 ? (
-                    <span className="text-ink">
-                      {report.goalsCompleted}/{report.goalsTotal}
-                    </span>
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </td>
-                <td className="py-2.5 pr-4 text-center">
-                  {report.appraisalStatus ? (
-                    <StatusPill
-                      label={
-                        APPRAISAL_STATUS_LABELS[
-                          report.appraisalStatus as AppraisalStatus
-                        ] ?? report.appraisalStatus
-                      }
-                      tone={
-                        APPRAISAL_STATUS_TONES[
-                          report.appraisalStatus as AppraisalStatus
-                        ] ?? "bg-line text-muted"
-                      }
-                    />
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </td>
-                <td className="py-2.5 text-muted">
-                  {report.latestCheckIn
-                    ? formatDate(report.latestCheckIn)
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </PanelCard>
-  );
-}
-
-function PanelCard({
-  icon,
-  title,
-  subtitle,
-  action,
-  children,
-}: {
-  icon?: React.ReactNode;
-  title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-line p-5 dark:border-paper/15">
-      <div className="flex items-center gap-2.5">
-        {icon ? (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            {icon}
-          </span>
-        ) : null}
-        <div>
-          <h2 className="font-bricolage text-[15px] font-medium tracking-tight text-ink">
-            {title}
-          </h2>
-          {subtitle ? (
-            <p className="text-[12px] text-muted">{subtitle}</p>
-          ) : null}
-        </div>
-        {action ? <span className="ml-auto shrink-0">{action}</span> : null}
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-function CompactStat({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div className="rounded-xl border border-line px-3.5 py-3 dark:border-paper/10">
-      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
-        {label}
-      </p>
-      <p className="mt-1 font-bricolage text-[20px] font-medium tracking-tight text-ink">
-        {value === null ? "—" : value}
-      </p>
-    </div>
-  );
-}
-
-function StatusPill({ label, tone }: { label: string; tone: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11.5px] font-medium ${tone}`}
-    >
-      {label}
-    </span>
+    <PerformancePanel>
+      <PerformanceSectionHeader
+        eyebrow="Team"
+        title="Direct Reports"
+        description={`${reports.length} team member${reports.length === 1 ? "" : "s"} — goals, appraisal state, and latest check-in.`}
+      />
+      <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
+        {reports.map((report) => (
+          <li key={report.employeeUuid} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-[13.5px] font-medium text-ink">
+                {report.name}
+                {report.employeeIdNumber ? (
+                  <span className="ml-1.5 text-[11px] font-normal text-muted">
+                    {report.employeeIdNumber}
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-0.5 truncate text-[12px] text-muted">
+                {[report.department ?? null, report.latestCheckIn ? `Last check-in ${formatDate(report.latestCheckIn)}` : "No check-ins"]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <span className="text-[12px] tabular-nums text-muted">
+                Goals{" "}
+                {report.goalsTotal > 0 ? (
+                  <span className="font-medium text-ink">
+                    {report.goalsCompleted}/{report.goalsTotal}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </span>
+              {report.appraisalStatus ? (
+                <PerformanceStatusBadge
+                  tone={
+                    APPRAISAL_STATUS_TONES[
+                      report.appraisalStatus as AppraisalStatus
+                    ] ?? "bg-line text-muted"
+                  }
+                >
+                  {APPRAISAL_STATUS_LABELS[
+                    report.appraisalStatus as AppraisalStatus
+                  ] ?? report.appraisalStatus}
+                </PerformanceStatusBadge>
+              ) : (
+                <span className="text-[12px] text-muted">No appraisal</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </PerformancePanel>
   );
 }
 

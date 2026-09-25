@@ -20,10 +20,14 @@ export async function GET(request: NextRequest) {
     const employeeId = searchParams.get("employee_id");
     const status = searchParams.get("status");
     const cycleId = searchParams.get("cycle_id");
+    const scope = searchParams.get("scope");
+    const department = searchParams.get("department");
 
     if (employeeId) query.employee_id = employeeId;
     if (status) query.status = status;
     if (cycleId) query.cycle_id = cycleId;
+    if (scope) query.scope = scope;
+    if (department) query.department = department;
 
     const goals = await listPerformanceGoals(query);
     if (goals instanceof NextResponse) return goals;

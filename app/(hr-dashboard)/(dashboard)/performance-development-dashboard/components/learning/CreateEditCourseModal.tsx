@@ -4,6 +4,14 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { Tooltip } from "@/performance-development-dashboard/components/ui/Tooltip";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
+import {
+  PerformanceButton,
+  PerformanceDialogPanel,
+  PerformanceField,
+  PerformanceSelect,
+  PerformanceTextInput,
+  PerformanceTextarea,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type { Course, CourseInput } from "@/performance-development-dashboard/types";
 import { MAX_COURSE_DESCRIPTION_LENGTH, MAX_COURSE_TITLE_LENGTH } from "@/performance-development-dashboard/lib/constants";
 
@@ -80,7 +88,7 @@ export function CreateEditCourseModal({
       closeDisabled={submitting}
       labelledBy="create-edit-course-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel labelledBy="create-edit-course-modal-title">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -108,37 +116,29 @@ export function CreateEditCourseModal({
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
           <div>
-            <label
-              htmlFor="course-title"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Title
-            </label>
-            <input
-              id="course-title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={MAX_COURSE_TITLE_LENGTH}
-              placeholder="e.g. Warehouse Safety Fundamentals"
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted">
-              <span className="tabular-nums">
-                {title.length}/{MAX_COURSE_TITLE_LENGTH}
-              </span>
+            <PerformanceField label="Title" htmlFor="course-title">
+              <PerformanceTextInput
+                id="course-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                maxLength={MAX_COURSE_TITLE_LENGTH}
+                placeholder="e.g. Warehouse Safety Fundamentals"
+                disabled={submitting}
+              />
+            </PerformanceField>
+            <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
+              {title.length}/{MAX_COURSE_TITLE_LENGTH}
             </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="course-duration"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Duration (minutes) <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField
+              label="Duration (minutes)"
+              htmlFor="course-duration"
+              optional
+            >
+              <PerformanceTextInput
                 id="course-duration"
                 type="number"
                 min={0}
@@ -149,24 +149,20 @@ export function CreateEditCourseModal({
                   )
                 }
                 placeholder="60"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="course-competency"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Linked competency{" "}
-                <span className="text-muted">(optional, display-only)</span>
-              </label>
-              <select
+            <PerformanceField
+              label="Linked competency"
+              htmlFor="course-competency"
+              hint="Optional reference only — completing a course never changes a competency level."
+            >
+              <PerformanceSelect
                 id="course-competency"
                 value={competencyId}
                 onChange={(e) => setCompetencyId(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent disabled:opacity-50 dark:border-paper/15"
               >
                 <option value="">None</option>
                 {competencyOptions.map((competency) => (
@@ -174,48 +170,44 @@ export function CreateEditCourseModal({
                     {competency.name}
                   </option>
                 ))}
-              </select>
-            </div>
+              </PerformanceSelect>
+            </PerformanceField>
           </div>
 
-          <div>
-            <label
-              htmlFor="course-url"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Content URL <span className="text-muted">(optional)</span>
-            </label>
-            <input
+          <PerformanceField
+            label="Content URL"
+            htmlFor="course-url"
+            optional
+          >
+            <PerformanceTextInput
               id="course-url"
               type="url"
               value={primaryContentUrl}
               onChange={(e) => setPrimaryContentUrl(e.target.value)}
               maxLength={MAX_COURSE_DESCRIPTION_LENGTH}
               placeholder="https://example.com/course/video"
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+              disabled={submitting}
             />
-          </div>
+          </PerformanceField>
 
           <div>
-            <label
+            <PerformanceField
+              label="Description"
               htmlFor="course-description"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
+              optional
             >
-              Description <span className="text-muted">(optional)</span>
-            </label>
-            <textarea
-              id="course-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={MAX_COURSE_DESCRIPTION_LENGTH}
-              rows={4}
-              placeholder="What will the learner know after finishing this course?"
-              className="w-full resize-none rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted">
-              <span className="tabular-nums">
-                {description.length}/{MAX_COURSE_DESCRIPTION_LENGTH}
-              </span>
+              <PerformanceTextarea
+                id="course-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={MAX_COURSE_DESCRIPTION_LENGTH}
+                rows={4}
+                placeholder="What will the learner know after finishing this course?"
+                disabled={submitting}
+              />
+            </PerformanceField>
+            <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
+              {description.length}/{MAX_COURSE_DESCRIPTION_LENGTH}
             </p>
           </div>
 
@@ -228,28 +220,23 @@ export function CreateEditCourseModal({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <PerformanceButton
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PerformanceButton>
+            <PerformanceButton type="submit" disabled={submitting}>
               {submitting
                 ? "Saving..."
                 : course
                   ? "Save changes"
                   : "Create course"}
-            </button>
+            </PerformanceButton>
           </div>
         </form>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

@@ -3,7 +3,9 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { assertHrAdminScope } from "@/performance-development-dashboard/lib/auth/access";
+import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
 import {
+  isPerDevHrAdminRole,
   requireHrEmployee,
 } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import {
@@ -26,8 +28,6 @@ import {
 } from "@/performance-development-dashboard/lib/performance/validation";
 import {
   COMPETENCY_CATEGORIES,
-  COMPETENCY_LEVEL_MAX,
-  COMPETENCY_LEVEL_MIN,
   type Competency,
   type CompetencyCategory,
   type CompetencyInput,
@@ -514,15 +514,38 @@ export type ListPositionRequirementsQuery = Record<string, unknown>;
 export async function listPositionCompetencyRequirements(
   input: ListPositionRequirementsQuery
 ): Promise<PositionCompetencyRequirement[] | NextResponse> {
-  const identity = await requireHrEmployee();
-  if (identity instanceof NextResponse) return identity;
+  // Authorization-first: resolve the actor/capability once, then execute the
+  // matching branch. Normal Employee/Manager reads must never intentionally
+  // trigger an HR-admin authorization failure as control flow (that probe is
+  // what logged `requireHrAdmin: Insufficient permissions` for employees).
+  const actor = await getAuthenticatedActor();
+  if (actor instanceof NextResponse) return actor;
+
+  const isPerDevHrAdmin =
+    actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
+
+  // HR admin with a non-PerDev role: explicit denial. Only PerDev HR Admin
+  // passes the scope above, so any hr_admin here is non-PerDev and must not
+  // fall back to employee-scoped access.
+  if (actor.actorType === "hr_admin" && !isPerDevHrAdmin) {
+    return FORBIDDEN_RESPONSE();
+  }
 
   let query = supabaseAdmin
     .from("hr3_position_competency_requirements")
     .select(REQUIREMENT_SELECT);
 
-  const admin = await assertHrAdminScope();
-  if (admin instanceof NextResponse) {
+  if (isPerDevHrAdmin) {
+    if (input?.position_id !== undefined && input?.position_id !== null) {
+      const positionId = await requireExistingPositionId(input.position_id);
+      if (positionId instanceof NextResponse) return positionId;
+      query = query.eq("position_id", positionId);
+    }
+  } else {
+    if (!actor.employeeUuid) {
+      return FORBIDDEN_RESPONSE();
+    }
+
     let ownPositionId: string | null = null;
 
     if (input?.position_id !== undefined && input?.position_id !== null) {
@@ -531,7 +554,7 @@ export async function listPositionCompetencyRequirements(
       ownPositionId = parsed;
     }
 
-    const employeeRow = await loadEmployeePosition(identity.employeeUuid);
+    const employeeRow = await loadEmployeePosition(actor.employeeUuid);
     const myPositionId = employeeRow?.job_position_id ?? null;
 
     if (ownPositionId && ownPositionId !== myPositionId) {
@@ -543,10 +566,6 @@ export async function listPositionCompetencyRequirements(
 
     if (!myPositionId) return [];
     query = query.eq("position_id", myPositionId);
-  } else if (input?.position_id !== undefined && input?.position_id !== null) {
-    const positionId = await requireExistingPositionId(input.position_id);
-    if (positionId instanceof NextResponse) return positionId;
-    query = query.eq("position_id", positionId);
   }
 
   const { data, error } = await query
@@ -571,11 +590,58 @@ export async function listPositionCompetencyRequirements(
 export async function getPositionCompetencyRequirement(
   requirementId: string
 ): Promise<PositionCompetencyRequirement | NextResponse> {
-  const identity = await requireHrEmployee();
-  if (identity instanceof NextResponse) return identity;
+  // Authorization-first: resolve the actor/capability once. Employee reads
+  // must not probe HR-admin scope as control flow.
+  const actor = await getAuthenticatedActor();
+  if (actor instanceof NextResponse) return actor;
+
+  const isPerDevHrAdmin =
+    actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
+
+  // HR admin with a non-PerDev role: explicit denial, no employee fallback.
+  if (actor.actorType === "hr_admin" && !isPerDevHrAdmin) {
+    return FORBIDDEN_RESPONSE();
+  }
 
   const id = requireValidUuid(requirementId, "requirement id");
   if (id instanceof NextResponse) return id;
+
+  if (!isPerDevHrAdmin) {
+    if (!actor.employeeUuid) {
+      return FORBIDDEN_RESPONSE();
+    }
+
+    // Employee scope is applied inside the load: the record UUID AND the
+    // employee's own position constrain the SAME query, so a missing record
+    // and a foreign-position record resolve without reading out-of-scope
+    // rows. Miss preserves this path's 403 denial.
+    const employeeRow = await loadEmployeePosition(actor.employeeUuid);
+    const myPositionId = employeeRow?.job_position_id ?? null;
+
+    const { data: scoped, error: scopedError } = await supabaseAdmin
+      .from("hr3_position_competency_requirements")
+      .select(REQUIREMENT_SELECT)
+      .eq("id", id)
+      .eq("position_id", myPositionId)
+      .maybeSingle();
+
+    if (scopedError) {
+      console.error("getPositionCompetencyRequirement: query error:", scopedError);
+      return NextResponse.json(
+        { error: "Failed to load position competency requirement" },
+        { status: 500 }
+      );
+    }
+
+    if (!scoped) {
+      console.error(
+        "getPositionCompetencyRequirement: employee attempted a foreign requirement"
+      );
+      return FORBIDDEN_RESPONSE();
+    }
+
+    return scoped as PositionCompetencyRequirement;
+  }
 
   const { data, error } = await supabaseAdmin
     .from("hr3_position_competency_requirements")
@@ -598,20 +664,7 @@ export async function getPositionCompetencyRequirement(
     );
   }
 
-  const requirement = data as PositionCompetencyRequirement;
-
-  const admin = await assertHrAdminScope();
-  if (admin instanceof NextResponse) {
-    const employeeRow = await loadEmployeePosition(identity.employeeUuid);
-    if (employeeRow?.job_position_id !== requirement.position_id) {
-      console.error(
-        "getPositionCompetencyRequirement: employee attempted a foreign requirement"
-      );
-      return FORBIDDEN_RESPONSE();
-    }
-  }
-
-  return requirement;
+  return data as PositionCompetencyRequirement;
 }
 
 /**
@@ -804,10 +857,23 @@ type ScoreRow = {
 export async function listEmployeeCompetencies(
   input: ListEmployeeCompetenciesQuery
 ): Promise<EmployeeCompetencyProfileItem[] | NextResponse> {
-  const identity = await requireHrEmployee();
-  if (identity instanceof NextResponse) return identity;
+  // Authorization-first: resolve the actor/capability once. Normal
+  // Employee/Manager profile reads must never probe HR-admin scope as control
+  // flow. Manager direct-report profile expansion is intentionally NOT
+  // invented here: non-HR callers remain own-profile-only per the established
+  // domain contract.
+  const actor = await getAuthenticatedActor();
+  if (actor instanceof NextResponse) return actor;
 
-  const admin = await assertHrAdminScope();
+  const isPerDevHrAdmin =
+    actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
+
+  // HR admin with a non-PerDev role: explicit denial. Only PerDev HR Admin
+  // passes the scope above, so any hr_admin here is non-PerDev and must not
+  // fall back to employee-scoped access.
+  if (actor.actorType === "hr_admin" && !isPerDevHrAdmin) {
+    return FORBIDDEN_RESPONSE();
+  }
 
   let employeeId: string | null = null;
   if (input?.employee_id !== undefined && input?.employee_id !== null) {
@@ -816,14 +882,18 @@ export async function listEmployeeCompetencies(
     employeeId = parsed;
   }
 
-  if (admin instanceof NextResponse) {
-    if (employeeId && employeeId !== identity.employeeUuid) {
+  if (!isPerDevHrAdmin) {
+    if (!actor.employeeUuid) {
+      return FORBIDDEN_RESPONSE();
+    }
+
+    if (employeeId && employeeId !== actor.employeeUuid) {
       console.error(
         "listEmployeeCompetencies: employee attempted another employee's profile"
       );
       return FORBIDDEN_RESPONSE();
     }
-    employeeId = identity.employeeUuid;
+    employeeId = actor.employeeUuid;
   } else if (employeeId) {
     const verified = await requireExistingEmployeeId(employeeId);
     if (verified instanceof NextResponse) return verified;

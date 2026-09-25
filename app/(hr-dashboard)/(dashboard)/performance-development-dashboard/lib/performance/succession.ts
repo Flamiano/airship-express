@@ -13,24 +13,22 @@ import {
   ABSENT,
   BAD_REQUEST_RESPONSE,
   CONFLICT_RESPONSE,
-  requireFiniteNumber,
+  requireActiveEmployeeId,
   requireNonEmptyText,
   requireOptionalText,
   requireValidUuid,
 } from "@/performance-development-dashboard/lib/performance/validation";
-import type {
-  CriticalPosition,
-  CriticalPositionInput,
-  CriticalPositionListItem,
-  SuccessionCandidate,
-  SuccessionCandidateInput,
-  SuccessionCandidateListItem,
-  UpdateCriticalPositionInput,
-  UpdateSuccessionCandidateInput,
-} from "@/performance-development-dashboard/types";
 import {
   SUCCESSION_POTENTIAL_RATING_MAX,
   SUCCESSION_POTENTIAL_RATING_MIN,
+  type CriticalPosition,
+  type CriticalPositionInput,
+  type CriticalPositionListItem,
+  type SuccessionCandidate,
+  type SuccessionCandidateInput,
+  type SuccessionCandidateListItem,
+  type UpdateCriticalPositionInput,
+  type UpdateSuccessionCandidateInput,
 } from "@/performance-development-dashboard/types";
 import {
   SUCCESSION_MAX_NOTES_LENGTH,
@@ -921,7 +919,7 @@ export async function createSuccessionCandidate(
   const positionId = await requireExistingCriticalPositionId(criticalPositionId);
   if (positionId instanceof NextResponse) return positionId;
 
-  const employeeId = await requireExistingEmployeeId(input?.employee_id);
+  const employeeId = await requireActiveEmployeeId(input?.employee_id, "employee_id");
   if (employeeId instanceof NextResponse) return employeeId;
 
   const readinessLevel = requireNonEmptyText(

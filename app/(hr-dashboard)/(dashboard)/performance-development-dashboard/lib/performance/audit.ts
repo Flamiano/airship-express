@@ -33,6 +33,12 @@ import type { PerDevActor } from "@/performance-development-dashboard/lib/auth/a
  *   goal.progress_updated  employee recorded progress
  *   goal.submitted         employee submitted for completion
  *   goal.completed         HR admin moved pending_completion → completed
+ *   goal.proposal_created  employee created a goal proposal (draft)
+ *   goal.proposal_updated  employee edited their draft/returned proposal
+ *   goal.proposal_submitted employee submitted a proposal for manager review
+ *   goal.proposal_approved reviewer approved a proposal (weight assigned)
+ *   goal.proposal_returned reviewer returned a proposal for revision
+ *   goal.proposal_rejected reviewer rejected a proposal (terminal)
  *   checkin.created        check-in was created
  *   checkin.message_posted a conversation message/reply was posted to a check-in
  *   checkin.acknowledged   the subject employee acknowledged a check-in
@@ -70,10 +76,16 @@ import type { PerDevActor } from "@/performance-development-dashboard/lib/auth/a
  *   badge.created                 badge library entry created
  *   badge.updated                 badge library fields edited
  *   badge.deleted                 badge library entry removed (only when unused)
- *   points.awarded                employee point balance set or adjusted
- *   redemption.created            reward redemption requested
- *   redemption.updated            redemption status/description changed
- *
+  *   points.awarded                employee point balance set or adjusted
+  *   redemption.created            reward redemption requested
+  *   redemption.updated            redemption status/description changed
+  *   feedback.requested            employee requested feedback from a peer/manager
+  *   feedback.responded            recipient fulfilled a feedback request
+  *   feedback.declined             recipient declined a feedback request
+  *   development_plan_item.created development plan item added to an appraisal
+  *   development_plan_item.updated development plan item fields edited
+  *   development_plan_item.deleted development plan item removed
+  *
  * Recognition is create-only (historical record; schema has no updated_at or
  * status columns), so no recognition.update/approve/reject events exist. Badge
  * assignment happens by attaching `badge_id` to a recognition (no separate
@@ -104,8 +116,12 @@ import type { PerDevActor } from "@/performance-development-dashboard/lib/auth/a
  *   badge → `hr3_badges` row (entity_id = the badge id)
  *   employee_points → `hr3_employee_points` row
  *               (entity_id = the balance row id)
- *   reward_redemption → `hr3_reward_redemptions` row
- *               (entity_id = the redemption id)
+  *   reward_redemption → `hr3_reward_redemptions` row
+  *               (entity_id = the redemption id)
+  *   feedback_request → `hr3_performance_feedback_requests` row
+  *               (entity_id = the request id). `old_data`/`new_data` carry
+  *               ids, status, and timestamps ONLY — never `request_message`
+  *               or `response_message` content.
  *
  * ATOMICITY LIMITATION
  * --------------------
@@ -124,6 +140,13 @@ export const PERFORMANCE_AUDIT_REASON = {
   goalProgressUpdated: "goal.progress_updated",
   goalSubmitted: "goal.submitted",
   goalCompleted: "goal.completed",
+  goalEvidenceCreated: "goal.evidence_created",
+  goalProposalCreated: "goal.proposal_created",
+  goalProposalUpdated: "goal.proposal_updated",
+  goalProposalSubmitted: "goal.proposal_submitted",
+  goalProposalApproved: "goal.proposal_approved",
+  goalProposalReturned: "goal.proposal_returned",
+  goalProposalRejected: "goal.proposal_rejected",
   checkInCreated: "checkin.created",
   checkInMessagePosted: "checkin.message_posted",
   checkInAcknowledged: "checkin.acknowledged",
@@ -166,6 +189,9 @@ export const PERFORMANCE_AUDIT_REASON = {
   pointsAwarded: "points.awarded",
   redemptionCreated: "redemption.created",
   redemptionUpdated: "redemption.updated",
+  feedbackRequested: "feedback.requested",
+  feedbackResponded: "feedback.responded",
+  feedbackDeclined: "feedback.declined",
   devPlanItemCreated: "development_plan_item.created",
   devPlanItemUpdated: "development_plan_item.updated",
   devPlanItemDeleted: "development_plan_item.deleted",
@@ -195,6 +221,7 @@ export const PERFORMANCE_AUDIT_ENTITY_TYPE = {
   badge: "badge",
   employeePoints: "employee_points",
   rewardRedemption: "reward_redemption",
+  feedbackRequest: "feedback_request",
   developmentPlanItem: "development_plan_item",
 } as const;
 

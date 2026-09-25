@@ -14,7 +14,7 @@ import {
   BAD_REQUEST_RESPONSE,
   CONFLICT_RESPONSE,
   NOT_FOUND_RESPONSE,
-  requireFiniteNumber,
+  requireActiveEmployeeId,
   requireNonEmptyText,
   requireNonNegativeInteger,
   requireOptionalText,
@@ -611,6 +611,13 @@ export async function getRecognition(
 /**
  * Creates a recognition (HR admin scope).
  *
+ * Recognition is a NEW/CURRENT employee award recorded at creation time
+ * (no backdate field; `created_at` is server-stamped). Both the SENDER
+ * (employee giving) and the RECIPIENT (employee being recognized) must
+ * therefore reference ACTIVE employees — inactive employees keep full
+ * historical visibility through the list/get enrichment, which resolves
+ * names regardless of status.
+ *
  * The SENDER is a business field — an employee the HR user selects (validated
  * against `hr1_employees`). It is never the linked employee of the acting
  * account and never used for authorization; the audit actor is always the
@@ -628,9 +635,9 @@ export async function createRecognition(
   if (identity instanceof NextResponse) return identity;
 
   const raw: Record<string, unknown> = isRecord(input) ? input : {};
-  const senderId = await requireExistingEmployeeId(raw.sender_id);
+  const senderId = await requireActiveEmployeeId(raw.sender_id, "sender_id");
   if (senderId instanceof NextResponse) return senderId;
-  const recipientId = await requireExistingEmployeeId(raw.recipient_id);
+  const recipientId = await requireActiveEmployeeId(raw.recipient_id, "recipient_id");
   if (recipientId instanceof NextResponse) return recipientId;
   if (senderId === recipientId) {
     return BAD_REQUEST_RESPONSE(

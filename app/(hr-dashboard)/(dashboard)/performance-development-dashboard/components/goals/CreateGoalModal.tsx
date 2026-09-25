@@ -10,6 +10,7 @@ import type {
 } from "@/performance-development-dashboard/types";
 import { GoalForm } from "@/performance-development-dashboard/components/goals/GoalForm";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
+import { PerformanceDialogPanel } from "@/performance-development-dashboard/components/ui/performance";
 
 type Props = {
   employees: EmployeeOption[];
@@ -46,7 +47,7 @@ export function CreateGoalModal({
       closeDisabled={submitting}
       labelledBy="create-goal-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel labelledBy="create-goal-modal-title">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -90,7 +91,7 @@ export function CreateGoalModal({
             onCancel={onClose}
           />
         </div>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

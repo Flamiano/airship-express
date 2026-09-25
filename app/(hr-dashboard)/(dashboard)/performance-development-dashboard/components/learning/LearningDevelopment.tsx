@@ -1,17 +1,15 @@
 "use client";
 
-import { cn } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/utils/helpers/classNames";
 import { useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { SkeletonList } from "@/performance-development-dashboard/components/ui/Skeleton";
 import {
-  Award,
-  BookOpen,
-  CalendarDays,
-  GraduationCap,
-  RefreshCw,
-  UserCheck,
-} from "lucide-react";
-import { SkeletonPanel } from "@/performance-development-dashboard/components/ui/Skeleton";
+  PerformanceButton,
+  PerformanceErrorBanner,
+  PerformancePageHeader,
+  PerformanceTabs,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type {
   Certification,
   CertificationInput,
@@ -54,13 +52,6 @@ type Props = {
 };
 
 type TabKey = "courses" | "enrollments" | "training" | "certifications";
-
-const TABS: { key: TabKey; label: string; icon: typeof BookOpen }[] = [
-  { key: "courses", label: "Courses", icon: BookOpen },
-  { key: "enrollments", label: "Course Enrollments", icon: UserCheck },
-  { key: "training", label: "Training", icon: CalendarDays },
-  { key: "certifications", label: "Certifications", icon: Award },
-];
 
 export function LearningDevelopment({
   serverUser,
@@ -246,28 +237,20 @@ export function LearningDevelopment({
     toast.success("Certification issued.");
   }
 
-  const coursesReady = activeTab === "courses" && !refreshing;
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
-            Learning &amp; Development
-          </h1>
-          <p className="mt-2 max-w-xl text-[13px] text-muted">
-            {isHrAdmin
-              ? `Hello ${firstName}. Maintain the course catalog, run training sessions, track who enrolls and completes, and issue certifications.`
-              : `Hello ${firstName}. Browse the course catalog and training schedule, and track your own learning progress.`}
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
+      <PerformancePageHeader
+        title="Learning & Development"
+        description={
+          isHrAdmin
+            ? `Hello ${firstName}. Maintain the course catalog, run training sessions, track who enrolls and completes, and issue certifications.`
+            : `Hello ${firstName}. Browse the course catalog and training schedule, and track your own learning progress.`
+        }
+        actions={
+          <PerformanceButton
+            variant="ghost"
             onClick={refreshAll}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
           >
             <RefreshCw
               size={14}
@@ -275,119 +258,106 @@ export function LearningDevelopment({
               className={refreshing ? "animate-spin" : ""}
             />
             Refresh
-          </button>
+          </PerformanceButton>
+        }
+      />
+
+      <PerformanceTabs
+        tabs={[
+          { key: "courses", label: "Courses", count: courses.length },
+          {
+            key: "enrollments",
+            label: "Enrollments",
+            count: courseEnrollments.length,
+          },
+          {
+            key: "training",
+            label: "Training",
+            count: trainingSessions.length,
+          },
+          {
+            key: "certifications",
+            label: "Certifications",
+            count: certifications.length,
+          },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+        ariaLabel="Learning and development views"
+      />
+
+      {error && (
+        <PerformanceErrorBanner message={error} onRetry={refreshAll} />
+      )}
+
+      {refreshing ? (
+        <div aria-busy="true" role="status">
+          <span className="sr-only">Loading learning data...</span>
+          <SkeletonList rows={3} />
         </div>
-      </div>
+      ) : (
+        <>
+          {activeTab === "courses" && (
+            <CoursesTab
+              courses={courses}
+              competenciesById={competenciesById}
+              enrollments={courseEnrollments}
+              isHrAdmin={isHrAdmin}
+              submitting={api.busy}
+              onCreate={handleCreateCourse}
+              onUpdate={handleUpdateCourse}
+            />
+          )}
 
-      <div className="flex flex-col gap-6">
-        <div className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-paper p-1 dark:border-paper/10">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium transition-colors",
-                activeTab === tab.key
-                  ? "bg-accent text-paper shadow-sm shadow-accent/25"
-                  : "text-muted hover:bg-ink/[0.04] hover:text-ink dark:hover:bg-paper/[0.06]"
-              )}
-            >
-              <tab.icon size={14} strokeWidth={1.75} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          {activeTab === "enrollments" && (
+            <CourseEnrollmentsTab
+              enrollments={courseEnrollments}
+              courses={courses}
+              employees={isHrAdmin ? employees : []}
+              isHrAdmin={isHrAdmin}
+              employeeNamesById={employeeNamesById}
+              currentUserEmployeeId={currentUserEmployeeId}
+              defaultEmployeeId={defaultEmployeeId}
+              submitting={api.busy}
+              onCreate={handleCreateCourseEnrollment}
+              onUpdate={handleUpdateCourseEnrollment}
+            />
+          )}
 
-        {error && (
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-            <p className="text-[13px] font-medium text-red-600">{error}</p>
-            <button
-              type="button"
-              onClick={refreshAll}
-              className="text-[12.5px] font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
-            >
-              Try again
-            </button>
-          </div>
-        )}
+          {activeTab === "training" && (
+            <TrainingTab
+              sessions={trainingSessions}
+              trainingEnrollments={trainingEnrollments}
+              evaluations={trainingEvaluations}
+              employees={isHrAdmin ? employees : []}
+              competenciesById={competenciesById}
+              employeeNamesById={employeeNamesById}
+              isHrAdmin={isHrAdmin}
+              currentUserEmployeeId={currentUserEmployeeId}
+              defaultEmployeeId={defaultEmployeeId}
+              submitting={api.busy}
+              onCreateSession={handleCreateTrainingSession}
+              onUpdateSession={handleUpdateTrainingSession}
+              onCreateEnrollment={handleCreateTrainingEnrollment}
+              onUpdateEnrollment={handleUpdateTrainingEnrollment}
+              onCreateEvaluation={handleCreateTrainingEvaluation}
+            />
+          )}
 
-        {refreshing && !coursesReady ? (
-          <div aria-busy="true" role="status">
-            <SkeletonPanel lines={6} />
-          </div>
-        ) : (
-          <>
-            {activeTab === "courses" && (
-              <CoursesTab
-                courses={courses}
-                competenciesById={competenciesById}
-                isHrAdmin={isHrAdmin}
-                submitting={api.busy}
-                onCreate={handleCreateCourse}
-                onUpdate={handleUpdateCourse}
-              />
-            )}
-
-            {activeTab === "enrollments" && (
-              <CourseEnrollmentsTab
-                enrollments={courseEnrollments}
-                courses={courses}
-                employees={isHrAdmin ? employees : []}
-                isHrAdmin={isHrAdmin}
-                employeeNamesById={employeeNamesById}
-                currentUserEmployeeId={currentUserEmployeeId}
-                defaultEmployeeId={defaultEmployeeId}
-                submitting={api.busy}
-                onCreate={handleCreateCourseEnrollment}
-                onUpdate={handleUpdateCourseEnrollment}
-              />
-            )}
-
-            {activeTab === "training" && (
-              <TrainingTab
-                sessions={trainingSessions}
-                trainingEnrollments={trainingEnrollments}
-                evaluations={trainingEvaluations}
-                employees={isHrAdmin ? employees : []}
-                competenciesById={competenciesById}
-                employeeNamesById={employeeNamesById}
-                isHrAdmin={isHrAdmin}
-                currentUserEmployeeId={currentUserEmployeeId}
-                defaultEmployeeId={defaultEmployeeId}
-                submitting={api.busy}
-                onCreateSession={handleCreateTrainingSession}
-                onUpdateSession={handleUpdateTrainingSession}
-                onCreateEnrollment={handleCreateTrainingEnrollment}
-                onUpdateEnrollment={handleUpdateTrainingEnrollment}
-                onCreateEvaluation={handleCreateTrainingEvaluation}
-              />
-            )}
-
-            {activeTab === "certifications" && (
-              <CertificationsTab
-                certifications={certifications}
-                courses={courses}
-                employees={isHrAdmin ? employees : []}
-                isHrAdmin={isHrAdmin}
-                employeeNamesById={employeeNamesById}
-                currentUserEmployeeId={currentUserEmployeeId}
-                defaultEmployeeId={defaultEmployeeId}
-                submitting={api.busy}
-                onCreate={handleCreateCertification}
-              />
-            )}
-          </>
-        )}
-      </div>
-
-      {courses.length === 0 && activeTab === "courses" && (
-        <div className="flex items-center justify-center gap-2 rounded-2xl border border-line px-6 py-4 text-[13px] text-muted dark:border-paper/10">
-          <GraduationCap size={15} strokeWidth={1.5} />
-          {isHrAdmin
-            ? "No courses in the catalog yet — add the first one to get started."
-            : "No courses have been published yet."}
-        </div>
+          {activeTab === "certifications" && (
+            <CertificationsTab
+              certifications={certifications}
+              courses={courses}
+              employees={isHrAdmin ? employees : []}
+              isHrAdmin={isHrAdmin}
+              employeeNamesById={employeeNamesById}
+              currentUserEmployeeId={currentUserEmployeeId}
+              defaultEmployeeId={defaultEmployeeId}
+              submitting={api.busy}
+              onCreate={handleCreateCertification}
+            />
+          )}
+        </>
       )}
     </div>
   );

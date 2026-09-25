@@ -14,16 +14,16 @@ import {
 import { MAX_CHECK_IN_MESSAGE_LENGTH } from "@/performance-development-dashboard/lib/constants";
 import {
   BAD_REQUEST_RESPONSE,
+  FORBIDDEN_RESPONSE,
   requireValidUuid,
 } from "@/performance-development-dashboard/lib/performance/validation";
 import {
   createNotifications,
-  type CreatePerDevNotificationInput,
 } from "@/performance-development-dashboard/lib/performance/notifications";
+import { listEvidenceForCheckIn } from "@/performance-development-dashboard/lib/performance/goalEvidence";
 import {
   CHECK_IN_FEEDBACK_TYPE,
   type CheckInAcknowledgment,
-  type CheckInMessageCreateInput,
   type CheckInThreadSummary,
   type PerformanceCheckIn,
   type PerformanceCheckInMessage,
@@ -84,8 +84,6 @@ import {
  * exact table (1000 characters).
  */
 
-export { MAX_CHECK_IN_MESSAGE_LENGTH } from "@/performance-development-dashboard/lib/constants";
-
 const CHECK_IN_SELECT =
   "id, employee_id, given_by, feedback_type, message, created_at";
 
@@ -104,16 +102,6 @@ const CHECK_IN_NOT_FOUND_RESPONSE = () =>
   NextResponse.json(
     { error: "Performance check-in not found" },
     { status: 404 },
-  );
-
-/**
- * Generic 403 so record existence is never revealed to an unauthorized
- * employee (matches the module's shared `FORBIDDEN_RECORD_RESPONSE`).
- */
-const FORBIDDEN_RECORD_RESPONSE = () =>
-  NextResponse.json(
-    { error: "Forbidden - You do not have access to this record" },
-    { status: 403 },
   );
 
 function requireNonEmptyText(
@@ -624,11 +612,11 @@ export async function listCheckIns(
 
   // HR admin with a non-PerDev role: reject, do not fall through.
   if (actor.actorType === "hr_admin") {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   if (!actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   let query = supabaseAdmin
@@ -669,22 +657,16 @@ export async function listCheckIns(
  * identity, or role is ever trusted.
  *
  * Scope:
- * - HR admin: may file a check-in for a selected `employee_id` (validated
- *   against `hr1_employees`); if none is supplied, defaults to the admin's own
- *   linked employee (preserving the prior feedback behavior).
- * - Employee: `employee_id` is ALWAYS the authenticated employee UUID. A
- *   client-supplied `employee_id` is never accepted from an employee request.
- *
- * If the authenticated account has no linked employee record,
- * the operation is rejected (403), because a check-in cannot be authored
- * without an employee identity for `given_by`.
- *
  * - HR admin: may file a check-in for any validated employee (defaults to own
  *   linked employee record when no employee_id is supplied).
  * - Manager: may file a check-in for themselves or an active direct report
  *   (server-verified). If no employee_id is supplied, defaults to self.
  * - Employee: employee_id is always the authenticated employee; a
  *   client-supplied employee_id is silently ignored.
+ *
+ * If the authenticated account has no linked employee record,
+ * the operation is rejected (403), because a check-in cannot be authored
+ * without an employee identity for `given_by`.
  */
 export async function createCheckIn(
   input: CreatePerformanceCheckInInput,
@@ -693,7 +675,7 @@ export async function createCheckIn(
   if (actor instanceof NextResponse) return actor;
 
   if (!actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   let employeeId: string;
@@ -714,7 +696,7 @@ export async function createCheckIn(
     }
   } else if (actor.actorType === "hr_admin") {
     // HR admin with a non-PerDev role: reject.
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   } else if (actor.actorType === "manager") {
     if (
       input?.employee_id === undefined ||
@@ -732,7 +714,7 @@ export async function createCheckIn(
         actor.employeeUuid,
       );
       if (!scopedIds.includes(parsedEmployeeId)) {
-        return FORBIDDEN_RECORD_RESPONSE();
+        return FORBIDDEN_RESPONSE();
       }
       employeeId = parsedEmployeeId;
     }
@@ -797,7 +779,8 @@ export async function createCheckIn(
           message: `A new check-in has been created for you.`,
           actor_employee_id: actor.employeeUuid,
           recipient_employee_id: recipientId,
-          link: null,
+          link: `/performance-development-dashboard/check-ins?checkin=${created.id}`,
+          entity_id: created.id,
         },
       ]);
     }
@@ -853,11 +836,11 @@ export async function getCheckIn(
 
   // HR admin with a non-PerDev role: reject, do not fall through.
   if (actor.actorType === "hr_admin") {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   if (!actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   if (actor.actorType === "manager") {
@@ -879,7 +862,7 @@ export async function getCheckIn(
     console.error(
       "getCheckIn: check-in is not within the requesting employee's scope",
     );
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   return existing;
@@ -932,6 +915,11 @@ async function loadParentMessageInThread(
  *
  * Author display names are resolved server-side; HR account names are attached
  * only for HR-admin readers.
+ *
+ * Goal evidence linked to the check-in is attached as `evidence`, resolved
+ * server-side through `listEvidenceForCheckIn` (per-row evidence read
+ * authorization applies; out-of-scope rows are omitted). General check-ins
+ * carry an empty array.
  */
 export async function listCheckInThread(
   checkInId: string,
@@ -1001,7 +989,7 @@ export async function listCheckInThread(
     };
   }
 
-  return { checkIn: root, messages, acknowledgment };
+  return { checkIn: root, messages, acknowledgment, evidence: await listEvidenceForCheckIn(checkInId, actor) };
 }
 
 /**
@@ -1035,21 +1023,21 @@ export async function createCheckInMessage(
   if (actor instanceof NextResponse) return actor;
 
   if (!actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   if (actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)) {
     // Existing HR scope applies (any authorized check-in).
   } else if (actor.actorType === "hr_admin") {
     // HR admin with a non-PerDev role: reject.
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   } else if (actor.actorType === "manager") {
     const scopedIds = await resolveManagerScopedEmployeeIds(actor.employeeUuid);
     if (!scopedIds.includes(root.employee_id)) {
-      return FORBIDDEN_RECORD_RESPONSE();
+      return FORBIDDEN_RESPONSE();
     }
   } else if (root.employee_id !== actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   const message = requireCheckInMessage(input?.message);
@@ -1136,7 +1124,8 @@ export async function createCheckInMessage(
           message: `A new message has been posted in your check-in conversation.`,
           actor_employee_id: actor.employeeUuid,
           recipient_employee_id: recipientId,
-          link: null,
+          link: `/performance-development-dashboard/check-ins?checkin=${root.id}`,
+          entity_id: root.id,
         },
       ]);
     }
@@ -1175,11 +1164,11 @@ export async function acknowledgeCheckIn(
   if (actor instanceof NextResponse) return actor;
 
   if (!actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   if (root.employee_id !== actor.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   const existing = await supabaseAdmin
@@ -1287,7 +1276,8 @@ export async function acknowledgeCheckIn(
           message: `The employee has acknowledged the check-in.`,
           actor_employee_id: actor.employeeUuid,
           recipient_employee_id: recipientId,
-          link: null,
+          link: `/performance-development-dashboard/check-ins?checkin=${root.id}`,
+          entity_id: root.id,
         },
       ]);
     }

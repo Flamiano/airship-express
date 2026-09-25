@@ -186,56 +186,6 @@ export type CreatePerDevNotificationInput = {
 };
 
 /**
- * Creates a single notification. Server-side only — never called from client
- * endpoints. Recipient identity is validated against `hr1_employees`.
- *
- * Best-effort: notification creation failure is logged but does NOT throw,
- * so the calling workflow mutation is not interrupted.
- */
-export async function createNotification(
-  input: CreatePerDevNotificationInput,
-): Promise<PerDevNotification | null> {
-  try {
-    const recipientId = requireValidUuid(
-      input.recipient_employee_id,
-      "recipient_employee_id",
-    );
-    if (recipientId instanceof NextResponse) {
-      console.error(
-        "createNotification: invalid recipient_employee_id:",
-        input.recipient_employee_id,
-      );
-      return null;
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("hr3_performance_notifications")
-      .insert({
-        recipient_employee_id: recipientId,
-        actor_employee_id: input.actor_employee_id ?? null,
-        actor_hr_admin_id: input.actor_hr_admin_id ?? null,
-        title: input.title,
-        message: input.message,
-        type: input.type,
-        link: input.link ?? null,
-        entity_id: input.entity_id ?? null,
-      })
-      .select(NOTIFICATION_SELECT)
-      .single();
-
-    if (error) {
-      console.error("createNotification: insert error:", error);
-      return null;
-    }
-
-    return data as PerDevNotification;
-  } catch (error) {
-    console.error("createNotification: unexpected error:", error);
-    return null;
-  }
-}
-
-/**
  * Creates notifications for multiple recipients in a single batch.
  * Deduplicates recipients (e.g. if actor == recipient, the notification is
  * skipped unless explicitly intended).

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import {
   COMPETENCY_LEVEL_MAX,
   COMPETENCY_LEVEL_MIN,
@@ -40,11 +41,8 @@ export const NOT_FOUND_RESPONSE = (label: string) =>
 
 /**
  * Sentinel for "field not supplied at all" (undefined), distinct from null.
- * `ABSENT_TEXT` is an alias kept for the domain modules that historically used
- * that name; both must compare equal so existing call sites are unaffected.
  */
 export const ABSENT = "__PERDEV_ABSENT__";
-export const ABSENT_TEXT = ABSENT;
 
 export const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,6 +55,51 @@ export function requireValidUuid(
     return BAD_REQUEST_RESPONSE(`${field} must be a valid UUID.`);
   }
   return value.trim().toLowerCase();
+}
+
+/**
+ * Validates that a value references an existing ACTIVE employee.
+ *
+ * Used exclusively for NEW assignments (goal/appraisal/enrollment/
+ * candidacy creation): PerDev follow-up work targets current employees.
+ * Historical reads, updates to existing records, and employee-scoped
+ * self access must NOT use this helper — inactive employees keep full
+ * historical visibility through the existing existence checks.
+ */
+export async function requireActiveEmployeeId(
+  value: unknown,
+  field: string
+): Promise<string | NextResponse> {
+  const id = requireValidUuid(value, field);
+  if (id instanceof NextResponse) return id;
+
+  const { data, error } = await supabaseAdmin
+    .from("hr1_employees")
+    .select("id, status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("requireActiveEmployeeId: query error:", error);
+    return NextResponse.json(
+      { error: "Failed to validate employee" },
+      { status: 500 }
+    );
+  }
+
+  if (!data) {
+    return BAD_REQUEST_RESPONSE(
+      `${field} does not reference an existing employee.`
+    );
+  }
+
+  if (data.status && data.status !== "active") {
+    return BAD_REQUEST_RESPONSE(
+      "New PerDev assignments require an active employee."
+    );
+  }
+
+  return id;
 }
 
 export function requireFiniteNumber(

@@ -7,6 +7,7 @@ import {
   loginRouteForAccountType,
 } from "@/performance-development-dashboard/lib/auth/redirect";
 import { resolveManagerDirectReportUuids } from "@/performance-development-dashboard/lib/auth/access";
+import { isPerDevHrAdminRole } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import { listPerformanceGoals } from "@/performance-development-dashboard/lib/performance/goals";
 import {
   chooseCurrentCycle,
@@ -169,14 +170,24 @@ export default async function GoalsPage() {
 
   const names = await resolveReferencedNames(goals);
 
-  if (actor.actorType === "hr_admin") {
+  // PerDev-aware HR branch: actorType alone is not sufficient evidence of
+  // PerDev HR Admin (super_admin / hr_performance_admin). Non-PerDev HR
+  // falls through to the scoped branches below, matching API enforcement.
+  const isPerDevHrAdmin =
+    actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role);
+
+  if (isPerDevHrAdmin) {
     const [cyclesResult, employeesResult] = await Promise.all([
       listPerformanceCycles(),
+      // New-assignment selector: active employees only. Historical goal rows
+      // (including inactive owners) still load via listPerformanceGoals and
+      // resolve names through resolveReferencedNames below.
       supabaseAdmin
         .from("hr1_employees")
         .select(
           "id, first_name, last_name, department, manager_id, job_position_id, job_position:hr1_job_positions(title)"
         )
+        .eq("status", "active")
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true }),
     ]);
@@ -192,10 +203,17 @@ export default async function GoalsPage() {
 
     const defaultCycleId = chooseCurrentCycle(cycles as PerformanceCycle[])?.id;
 
+    const departments = [...new Set(
+      employeeRows
+        .map((e) => (e.department ?? "").trim())
+        .filter((department) => department !== "")
+    )].sort((a, b) => a.localeCompare(b));
+
     return (
       <GoalsManagement
         serverUser={serverUser}
         actorType="hr_admin"
+        isPerDevHrAdmin={isPerDevHrAdmin}
         initialGoals={goals}
         initialError={initialError}
         cycles={cycles as PerformanceCycle[]}
@@ -203,12 +221,13 @@ export default async function GoalsPage() {
         cycleNamesById={names.cycleNamesById}
         employeeNamesById={names.employeeNamesById}
         defaultCycleId={defaultCycleId}
+        departments={departments}
+        actorEmployeeId={actor.employeeUuid}
       />
     );
   }
 
-  if (actor.actorType === "manager" && actor.employeeUuid) {
-    const directReportIds = await resolveManagerDirectReportUuids(
+  if (actor.actorType === "manager" && actor.employeeUuid) {    const directReportIds = await resolveManagerDirectReportUuids(
       actor.employeeUuid
     );
     const scopedIds = [actor.employeeUuid, ...directReportIds];
@@ -235,12 +254,15 @@ export default async function GoalsPage() {
       <GoalsManagement
         serverUser={serverUser}
         actorType="manager"
+        isPerDevHrAdmin={isPerDevHrAdmin}
         initialGoals={goals}
         initialError={initialError}
         cycles={[]}
         employees={employees}
         cycleNamesById={names.cycleNamesById}
         employeeNamesById={names.employeeNamesById}
+        departments={[]}
+        actorEmployeeId={actor.employeeUuid}
       />
     );
   }
@@ -249,12 +271,19 @@ export default async function GoalsPage() {
     <GoalsManagement
       serverUser={serverUser}
       actorType="employee"
+      isPerDevHrAdmin={isPerDevHrAdmin}
       initialGoals={goals}
       initialError={initialError}
       cycles={[]}
       employees={[]}
       cycleNamesById={names.cycleNamesById}
       employeeNamesById={names.employeeNamesById}
+      departments={[]}
+      actorEmployeeId={actor.employeeUuid}
+      // The employee view also serves edge actors (non-PerDev HR, accounts
+      // without a linked employee). Only genuine employee actors receive the
+      // proposal entry point; the service remains authoritative regardless.
+      canProposeGoal={actor.actorType === "employee"}
     />
   );
 }

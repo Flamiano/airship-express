@@ -22,9 +22,13 @@ function fullName(firstName: string, lastName: string): string {
 }
 
 async function loadEmployeeOptions(): Promise<EmployeeOption[]> {
+  // New-candidacy selector: active employees only. Existing candidates that
+  // later become inactive are preserved until explicit HR removal; their
+  // names remain server-enriched regardless of status.
   const { data, error } = await supabaseAdmin
     .from("hr1_employees")
     .select("id, first_name, last_name, department, job_position_id")
+    .eq("status", "active")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 

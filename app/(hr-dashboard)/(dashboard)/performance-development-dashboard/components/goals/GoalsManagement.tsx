@@ -1,15 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, RefreshCw, Search } from "lucide-react";
-import { StatTile } from "@/performance-development-dashboard/components/ui/StatTile";
 import { SkeletonList } from "@/performance-development-dashboard/components/ui/Skeleton";
 import { FilterBar } from "@/performance-development-dashboard/components/ui/FilterBar";
+import {
+  PerformanceButton,
+  PerformanceEmptyState,
+  PerformanceErrorBanner,
+  PerformancePageHeader,
+  PerformanceTabs,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type {
   CurrentPerDevUser,
   EmployeeOption,
+  GoalApprovalStatus,
   GoalCreateInput,
+  GoalProposalInput,
+  GoalReviewInput,
   GoalUpdateInput,
   GoalWeightContext,
   PerformanceCycle,
@@ -17,6 +27,8 @@ import type {
   PerformanceGoalStatus,
 } from "@/performance-development-dashboard/types";
 import {
+  GOAL_APPROVAL_STATUSES,
+  GOAL_APPROVAL_STATUS_LABELS,
   PERFORMANCE_GOAL_STATUSES,
   PERFORMANCE_GOAL_STATUS_LABELS,
 } from "@/performance-development-dashboard/types";
@@ -24,10 +36,22 @@ import { useGoalApi } from "@/performance-development-dashboard/hooks/useGoalApi
 import { GoalCard } from "@/performance-development-dashboard/components/goals/GoalCard";
 import { CreateGoalModal } from "@/performance-development-dashboard/components/goals/CreateGoalModal";
 import { GoalDetailModal } from "@/performance-development-dashboard/components/goals/GoalDetailModal";
+import { ProposeGoalModal } from "@/performance-development-dashboard/components/goals/ProposeGoalModal";
+import {
+  ApproveProposalDialog,
+  RejectProposalDialog,
+  ReturnProposalDialog,
+} from "@/performance-development-dashboard/components/goals/ProposalReviewDialogs";
 
 type Props = {
   serverUser: CurrentPerDevUser;
   actorType: "hr_admin" | "manager" | "employee";
+  /**
+   * Server-resolved PerDev HR Admin flag (super_admin /
+   * hr_performance_admin). actorType alone is not sufficient: non-PerDev HR
+   * roles share actorType "hr_admin" but are denied by every goal API.
+   */
+  isPerDevHrAdmin: boolean;
   initialGoals: PerformanceGoal[];
   initialError?: string;
   cycles: PerformanceCycle[];
@@ -35,11 +59,30 @@ type Props = {
   cycleNamesById: Record<string, string>;
   employeeNamesById: Record<string, string>;
   defaultCycleId?: string;
+  /**
+   * Distinct department names for the HR department picker (derived
+   * server-side from the employee roster). Empty for non-HR roles.
+   */
+  departments: string[];
+  /**
+   * Authenticated employee UUID for proposal ownership and review-queue
+   * partitioning. Null for HR Admin accounts without a linked employee.
+   */
+  actorEmployeeId?: string | null;
+  /**
+   * Server-derived permission to show the proposal entry point. Managers/HR
+   * keep the official creation flow; non-PerDev HR (which falls through to
+   * the employee view) must never receive it.
+   */
+  canProposeGoal?: boolean;
 };
+
+const UNKNOWN_EMPLOYEE = "Unknown employee";
 
 export function GoalsManagement({
   serverUser,
   actorType,
+  isPerDevHrAdmin,
   initialGoals,
   initialError,
   cycles,
@@ -47,13 +90,22 @@ export function GoalsManagement({
   cycleNamesById,
   employeeNamesById,
   defaultCycleId,
+  departments,
+  actorEmployeeId = null,
+  canProposeGoal = actorType === "employee",
 }: Props) {
   const api = useGoalApi();
   const listGoals = api.list;
+  const searchParams = useSearchParams();
 
-  const isHrAdmin = actorType === "hr_admin";
+  const isHrAdmin = isPerDevHrAdmin;
   const isManager = actorType === "manager";
   const canCreateGoals = isHrAdmin || isManager;
+  // Employee-only proposal entry point. Managers/HR keep the official
+  // creation flow (their goals are approved immediately); the proposal
+  // endpoints remain available at the API layer for self-proposals.
+  const canProposeGoals = canProposeGoal && !isHrAdmin && !isManager;
+  const canReviewProposals = isHrAdmin || isManager;
   const showEmployeeFilter = isHrAdmin || isManager;
 
   const resolvedEmployeeNamesById = useMemo(() => {
@@ -63,8 +115,6 @@ export function GoalsManagement({
     }
     return names;
   }, [employeeNamesById, employees]);
-
-  const UNKNOWN_EMPLOYEE = "Unknown employee";
 
   function resolveEmployeeName(
     employeeId: string | null | undefined
@@ -102,15 +152,65 @@ export function GoalsManagement({
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposalEditing, setProposalEditing] =
+    useState<PerformanceGoal | null>(null);
+  const [proposing, setProposing] = useState(false);
+  const [reviewDialog, setReviewDialog] = useState<{
+    action: "approve" | "return" | "reject";
+    goal: PerformanceGoal;
+  } | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewWeightContext, setReviewWeightContext] =
+    useState<GoalWeightContext | null>(null);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "" | PerformanceGoalStatus
   >("");
+  // Approval filter is a secondary client-side filter over the
+  // server-authorized list; it never widens scope.
+  const [approvalFilter, setApprovalFilter] = useState<"" | GoalApprovalStatus>(
+    ""
+  );
+  // Goal scope: "team" (manager self + direct reports) and "organization"
+  // (HR org-wide) reproduce the historical defaults by sending no scope
+  // param; "my" and "department" are explicit server-enforced scopes.
+  const [scope, setScope] = useState(
+    isHrAdmin ? "organization" : isManager ? "team" : "my"
+  );
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [cycleFilter, setCycleFilter] = useState("");
 
   const firstName = serverUser.fullName.split(" ")[0] || "there";
+
+  const scopeOptions = isHrAdmin
+    ? [
+        { key: "organization", label: "Organization" },
+        { key: "department", label: "Department" },
+        { key: "my", label: "My" },
+      ]
+    : isManager
+      ? [
+          { key: "team", label: "Team" },
+          { key: "my", label: "My" },
+          { key: "department", label: "Department" },
+        ]
+      : [
+          { key: "my", label: "My" },
+          { key: "department", label: "Department" },
+        ];
+
+  function handleScopeChange(value: string) {
+    setScope(value);
+    // Default the HR department picker on entry; cleared when leaving.
+    if (value === "department" && isHrAdmin && departments.length > 0) {
+      setDepartmentFilter((previous) => previous || departments[0]);
+    } else {
+      setDepartmentFilter("");
+    }
+  }
 
   const selectedGoal =
     goals.find((goal) => goal.id === selectedGoalId) ?? null;
@@ -119,6 +219,9 @@ export function GoalsManagement({
     const query = search.trim().toLowerCase();
     return goals.filter((goal) => {
       if (statusFilter && goal.status !== statusFilter) return false;
+      if (approvalFilter && (goal.approval_status ?? "approved") !== approvalFilter) {
+        return false;
+      }
       if (isHrAdmin && employeeFilter && goal.employee_id !== employeeFilter) {
         return false;
       }
@@ -139,30 +242,38 @@ export function GoalsManagement({
     goals,
     search,
     statusFilter,
+    approvalFilter,
     employeeFilter,
     cycleFilter,
     isHrAdmin,
     resolvedEmployeeNamesById,
   ]);
 
-  const counts = useMemo(
-    () => ({
-      total: displayed.length,
-      inProgress: displayed.filter((goal) => goal.status === "in_progress")
-        .length,
-      pendingCompletion: displayed.filter(
-        (goal) => goal.status === "pending_completion"
-      ).length,
-      completed: displayed.filter((goal) => goal.status === "completed").length,
-    }),
-    [displayed]
-  );
+  /**
+   * Review queue (manager/HR only): pending proposals owned by someone else,
+   * drawn from the already server-scoped list — never widened. For managers
+   * this is active direct reports' proposals; for HR it is organization-wide.
+   */
+  const pendingReviewQueue = useMemo(() => {
+    if (!canReviewProposals) return [];
+    return goals.filter(
+      (goal) =>
+        (goal.approval_status ?? "approved") === "pending_manager_approval" &&
+        goal.employee_id !== actorEmployeeId
+    );
+  }, [goals, canReviewProposals, actorEmployeeId]);
 
   const loadGoals = useCallback(async () => {
     const params: Record<string, string> = {};
     if (statusFilter) params.status = statusFilter;
     if (isHrAdmin && employeeFilter) params.employee_id = employeeFilter;
     if (isHrAdmin && cycleFilter) params.cycle_id = cycleFilter;
+    if (scope === "my" || scope === "department") {
+      params.scope = scope;
+      if (scope === "department" && isHrAdmin && departmentFilter) {
+        params.department = departmentFilter;
+      }
+    }
     try {
       const fresh = await listGoals(params);
       setGoals(fresh);
@@ -174,7 +285,7 @@ export function GoalsManagement({
           : "Failed to load performance goals."
       );
     }
-  }, [listGoals, isHrAdmin, statusFilter, employeeFilter, cycleFilter]);
+  }, [listGoals, isHrAdmin, statusFilter, employeeFilter, cycleFilter, scope, departmentFilter]);
 
   const didMountRef = useRef(false);
   useEffect(() => {
@@ -231,9 +342,14 @@ export function GoalsManagement({
     await loadGoals();
   }
 
-  async function handleProgress(id: string, progressPercent: number) {
+  async function handleProgress(
+    id: string,
+    input:
+      | { progress_percent: number; note?: string | null }
+      | { actual_value: number; note?: string | null }
+  ) {
     const next = await api.runAction(id, "progress", () =>
-      api.progress(id, { progress_percent: progressPercent })
+      api.progress(id, input)
     );
     toast.success(`Progress updated to ${next.progress_percent}%.`);
     await loadGoals();
@@ -253,9 +369,125 @@ export function GoalsManagement({
     await loadGoals();
   }
 
+  async function handlePropose(input: GoalProposalInput) {
+    setProposing(true);
+    try {
+      const goal = await api.proposeGoal(input);
+      setProposeOpen(false);
+      toast.success(
+        `Proposal "${goal.title}" saved as a draft. Submit it for manager review when ready.`
+      );
+      await loadGoals();
+      setSelectedGoalId(goal.id);
+    } finally {
+      setProposing(false);
+    }
+  }
+
+  async function handleProposalUpdate(input: GoalProposalInput) {
+    if (!proposalEditing) return;
+    setProposing(true);
+    try {
+      const goal = await api.updateProposal(proposalEditing.id, input);
+      setProposalEditing(null);
+      toast.success("Proposal updated.");
+      await loadGoals();
+      setSelectedGoalId(goal.id);
+    } finally {
+      setProposing(false);
+    }
+  }
+
+  async function handleSubmitProposal(id: string) {
+    const next = await api.runAction(id, "submit-proposal", () =>
+      api.submitProposal(id)
+    );
+    toast.success(
+      "This goal has been submitted for review."
+    );
+    await loadGoals();
+    setSelectedGoalId(next.id);
+  }
+
+  function openReviewDialog(
+    action: "approve" | "return" | "reject",
+    goal: PerformanceGoal
+  ) {
+    setReviewWeightContext(null);
+    setReviewDialog({ action, goal });
+    if (action === "approve") {
+      loadWeightContext({
+        employeeId: goal.employee_id,
+        cycleId: goal.cycle_id,
+      })
+        .then((context) => setReviewWeightContext(context))
+        .catch(() => setReviewWeightContext(null));
+    }
+  }
+
+  async function handleReviewSubmit(input: GoalReviewInput) {
+    if (!reviewDialog) return;
+    const { action, goal } = reviewDialog;
+    setReviewing(true);
+    try {
+      const next = await api.runAction(goal.id, action, () =>
+        action === "approve"
+          ? api.approveProposal(goal.id, input)
+          : action === "return"
+            ? api.returnProposal(goal.id, input)
+            : api.rejectProposal(goal.id, input)
+      );
+      setReviewDialog(null);
+      toast.success(
+        action === "approve"
+          ? `Goal "${next.title}" approved with a weight of ${next.weight}%.`
+          : action === "return"
+            ? `Goal "${next.title}" returned for revision.`
+            : `Goal "${next.title}" rejected.`
+      );
+      await loadGoals();
+      setSelectedGoalId(next.id);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  /**
+   * Record deep-link: `?goal=<id>` (e.g. from a proposal notification)
+   * opens the goal detail directly. Resolution is server-authorized: the
+   * row must be present in the scope-filtered list; invalid, missing, or
+   * out-of-scope ids surface a neutral message — never the record.
+   */
+  const deepLinkConsumedRef = useRef<string | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect -- query-param driven, scope-filtered record resolution with consumed-id guard */
+  useEffect(() => {
+    const id = searchParams.get("goal");
+    if (!id || deepLinkConsumedRef.current === id) return;
+    deepLinkConsumedRef.current = id;
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id.trim()
+      )
+    ) {
+      const found = goals.find((goal) => goal.id === id.trim().toLowerCase());
+      if (found) {
+        setSelectedGoalId(found.id);
+        return;
+      }
+    }
+    setError(
+      "That goal is no longer available. It may have been removed or moved outside your current scope."
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   function handleFilterChange(overrides: Record<string, string>) {
     if (overrides.status !== undefined) {
       setStatusFilter(overrides.status as "" | PerformanceGoalStatus);
+    }
+    if (overrides.approval_status !== undefined) {
+      setApprovalFilter(overrides.approval_status as "" | GoalApprovalStatus);
     }
     if (overrides.employee_id !== undefined) {
       setEmployeeFilter(overrides.employee_id);
@@ -277,62 +509,82 @@ export function GoalsManagement({
   }
 
   function resetFilters() {
-    handleFilterChange({ status: "", employee_id: "", cycle_id: "" });
+    handleFilterChange({
+      status: "",
+      approval_status: "",
+      employee_id: "",
+      cycle_id: "",
+    });
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
-            Goals
-          </h1>
-          <p className="mt-2 max-w-xl text-[13px] text-muted">
-            {isHrAdmin
-              ? `Hello ${firstName}. Goal Setting defines what each employee is expected to accomplish; Goal Execution tracks how much of it has actually been accomplished.`
-              : isManager
-                ? `Hello ${firstName}. Set goals for your team and track their execution progress.`
-                : `Hello ${firstName}. Review what you are expected to accomplish, then record your Goal Execution progress.`}
-          </p>
-        </div>
+      <PerformancePageHeader
+        title="Goals"
+        description={
+          isHrAdmin
+            ? `Hello ${firstName}. Goal Setting defines what each employee is expected to accomplish; Goal Execution tracks how much of it has actually been accomplished.`
+            : isManager
+              ? `Hello ${firstName}. Set goals for your team, review employee goal proposals, and track their execution progress.`
+              : `Hello ${firstName}. Review your goals, propose new ones for manager approval, then record your Goal Execution progress.`
+        }
+        actions={
+          <>
+            <PerformanceButton
+              variant="ghost"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw
+                size={14}
+                strokeWidth={1.75}
+                className={refreshing ? "animate-spin" : ""}
+              />
+              Refresh
+            </PerformanceButton>
+            {canProposeGoals && (
+              <PerformanceButton onClick={() => setProposeOpen(true)}>
+                <Plus size={15} strokeWidth={2} />
+                Propose a goal
+              </PerformanceButton>
+            )}
+            {canCreateGoals && (
+              <PerformanceButton onClick={() => setCreateOpen(true)}>
+                <Plus size={15} strokeWidth={2} />
+                Set a goal
+              </PerformanceButton>
+            )}
+          </>
+        }
+      />
 
-        <div className="flex shrink-0 items-center gap-2">
+      <PerformanceTabs
+        tabs={scopeOptions}
+        active={scope}
+        onChange={handleScopeChange}
+        ariaLabel="Goal scope"
+      />
+
+      {canReviewProposals && pendingReviewQueue.length > 0 && (
+        <div
+          role="status"
+          className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="text-[12.5px] font-medium text-amber-600 dark:text-amber-400">
+            {pendingReviewQueue.length} goal proposal
+            {pendingReviewQueue.length === 1 ? "" : "s"} awaiting your review.
+          </p>
           <button
             type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
+            onClick={() =>
+              handleFilterChange({ approval_status: "pending_manager_approval" })
+            }
+            className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-accent hover:underline"
           >
-            <RefreshCw
-              size={14}
-              strokeWidth={1.75}
-              className={refreshing ? "animate-spin" : ""}
-            />
-            Refresh
+            Show pending proposals
           </button>
-          {canCreateGoals && (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
-            >
-              <Plus size={15} strokeWidth={2} />
-              Set a goal
-            </button>
-          )}
         </div>
-      </div>
-
-      <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="Total goals" value={counts.total} tone="bg-accent-dark" />
-        <StatTile label="In progress" value={counts.inProgress} tone="bg-accent" />
-        <StatTile
-          label="Pending review"
-          value={counts.pendingCompletion}
-          tone="bg-ink"
-        />
-        <StatTile label="Completed" value={counts.completed} tone="bg-emerald-600" />
-      </div>
+      )}
 
       <FilterBar>
         <label className="relative block min-w-[200px] flex-1 sm:flex-none sm:w-[240px]">
@@ -352,9 +604,26 @@ export function GoalsManagement({
         </label>
 
         <div className="flex flex-1 flex-wrap items-center gap-2">
+          {isHrAdmin && scope === "department" && (
+            <select
+              value={departmentFilter}
+              aria-label="Filter by department"
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+              className="max-w-[220px] rounded-lg border border-line bg-paper px-3 py-2 text-[12.5px] font-medium text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
+            >
+              <option value="">Select department</option>
+              {departments.map((department) => (
+                <option key={department} value={department}>
+                  {department}
+                </option>
+              ))}
+            </select>
+          )}
+
           <select
             value={statusFilter}
-            onChange={(e) => void handleFilterChange({ status: e.target.value })}
+            aria-label="Filter by status"
+            onChange={(e) => handleFilterChange({ status: e.target.value })}
             className="rounded-lg border border-line bg-paper px-3 py-2 text-[12.5px] font-medium text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
           >
             <option value="">All statuses</option>
@@ -365,11 +634,28 @@ export function GoalsManagement({
             ))}
           </select>
 
+          <select
+            value={approvalFilter}
+            aria-label="Filter by approval"
+            onChange={(e) =>
+              handleFilterChange({ approval_status: e.target.value })
+            }
+            className="rounded-lg border border-line bg-paper px-3 py-2 text-[12.5px] font-medium text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
+          >
+            <option value="">All approvals</option>
+            {GOAL_APPROVAL_STATUSES.map((approval) => (
+              <option key={approval} value={approval}>
+                {GOAL_APPROVAL_STATUS_LABELS[approval]}
+              </option>
+            ))}
+          </select>
+
           {showEmployeeFilter && (
             <select
               value={employeeFilter}
+              aria-label="Filter by employee"
               onChange={(e) =>
-                void handleFilterChange({ employee_id: e.target.value })
+                handleFilterChange({ employee_id: e.target.value })
               }
               className="max-w-[220px] rounded-lg border border-line bg-paper px-3 py-2 text-[12.5px] font-medium text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
             >
@@ -385,8 +671,9 @@ export function GoalsManagement({
           {isHrAdmin && (
             <select
               value={cycleFilter}
+              aria-label="Filter by cycle"
               onChange={(e) =>
-                void handleFilterChange({ cycle_id: e.target.value })
+                handleFilterChange({ cycle_id: e.target.value })
               }
               className="max-w-[220px] rounded-lg border border-line bg-paper px-3 py-2 text-[12.5px] font-medium text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
             >
@@ -399,7 +686,7 @@ export function GoalsManagement({
             </select>
           )}
 
-          {(statusFilter || employeeFilter || cycleFilter) && (
+          {(statusFilter || approvalFilter || employeeFilter || cycleFilter) && (
             <button
               type="button"
               onClick={resetFilters}
@@ -412,45 +699,48 @@ export function GoalsManagement({
       </FilterBar>
 
       {error && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-          <p className="text-[13px] font-medium text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="text-[12.5px] font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
-          >
-            Try again
-          </button>
-        </div>
+        <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
       )}
 
       {refreshing ? (
         <div aria-busy="true" role="status">
+          <span className="sr-only">Loading goals...</span>
           <SkeletonList rows={3} />
         </div>
       ) : displayed.length === 0 && !error ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
-          <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
-            {goals.length > 0 ? "No matching goals" : "No goals set yet"}
-          </p>
-          <p className="max-w-sm text-[13px] text-muted">
-            {isHrAdmin
-              ? "Set your first goal to define an expected outcome for an employee within a performance cycle."
-              : isManager
-                ? "Set goals for your team to define expected outcomes within a performance cycle."
-                : "You have no assigned goals yet. Check back once your team sets one."}
-          </p>
-          {canCreateGoals && (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
-            >
-              <Plus size={15} strokeWidth={2} />
-              Create your first goal
-            </button>
-          )}
-        </div>
+        <PerformanceEmptyState
+          title={goals.length > 0 ? "No matching goals" : "No goals set yet"}
+          message={
+            goals.length > 0
+              ? "Try a different search or filter."
+              : isHrAdmin
+                ? "Set your first goal to define an expected outcome for an employee within a performance cycle."
+                : isManager
+                  ? pendingReviewQueue.length > 0
+                    ? "Set goals for your team to define expected outcomes within a performance cycle."
+                    : "Set goals for your team to define expected outcomes within a performance cycle. No goal proposals are awaiting your review."
+                  : "You have no goals yet. Propose your first goal for manager approval."
+          }
+          action={
+            canProposeGoals && goals.length === 0 ? (
+              <PerformanceButton
+                onClick={() => setProposeOpen(true)}
+                className="mt-1"
+              >
+                <Plus size={15} strokeWidth={2} />
+                Propose your first goal
+              </PerformanceButton>
+            ) : canCreateGoals && goals.length === 0 ? (
+              <PerformanceButton
+                onClick={() => setCreateOpen(true)}
+                className="mt-1"
+              >
+                <Plus size={15} strokeWidth={2} />
+                Create your first goal
+              </PerformanceButton>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="flex flex-col gap-4">
           {displayed.map((goal) => (
@@ -502,7 +792,75 @@ export function GoalsManagement({
           onSubmit={handleSubmit}
           onMarkCompleted={handleMarkCompleted}
           onUpdate={handleUpdate}
+          onLoadWeightContext={loadWeightContext}
+          actorEmployeeId={actorEmployeeId}
+          onEditProposal={() => {
+            setSelectedGoalId(null);
+            setProposalEditing(selectedGoal);
+          }}
+          onSubmitProposal={handleSubmitProposal}
+          onReviewProposal={(action) =>
+            openReviewDialog(action, selectedGoal)
+          }
         />
+      )}
+
+      {proposeOpen && canProposeGoals && (
+        <ProposeGoalModal
+          mode="create"
+          ownerDisplayName={serverUser.fullName}
+          cycles={cycles}
+          defaultCycleId={defaultCycleId}
+          submitting={proposing}
+          onSubmit={handlePropose}
+          onClose={() => setProposeOpen(false)}
+        />
+      )}
+
+      {proposalEditing && canProposeGoals && (
+        <ProposeGoalModal
+          mode="edit"
+          initialGoal={proposalEditing}
+          ownerDisplayName={serverUser.fullName}
+          cycles={cycles}
+          defaultCycleId={defaultCycleId}
+          submitting={proposing}
+          onSubmit={handleProposalUpdate}
+          onClose={() => setProposalEditing(null)}
+        />
+      )}
+
+      {reviewDialog && canReviewProposals && (
+        <>
+          {reviewDialog.action === "approve" && (
+            <ApproveProposalDialog
+              goal={reviewDialog.goal}
+              employeeName={resolveEmployeeName(reviewDialog.goal.employee_id)}
+              weightContext={reviewWeightContext}
+              submitting={reviewing}
+              onSubmit={handleReviewSubmit}
+              onClose={() => setReviewDialog(null)}
+            />
+          )}
+          {reviewDialog.action === "return" && (
+            <ReturnProposalDialog
+              goal={reviewDialog.goal}
+              employeeName={resolveEmployeeName(reviewDialog.goal.employee_id)}
+              submitting={reviewing}
+              onSubmit={handleReviewSubmit}
+              onClose={() => setReviewDialog(null)}
+            />
+          )}
+          {reviewDialog.action === "reject" && (
+            <RejectProposalDialog
+              goal={reviewDialog.goal}
+              employeeName={resolveEmployeeName(reviewDialog.goal.employee_id)}
+              submitting={reviewing}
+              onSubmit={handleReviewSubmit}
+              onClose={() => setReviewDialog(null)}
+            />
+          )}
+        </>
       )}
     </div>
   );

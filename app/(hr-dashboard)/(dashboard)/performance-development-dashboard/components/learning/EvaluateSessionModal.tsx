@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { X } from "lucide-react";
 import {
   TRAINING_EVALUATION_RATING_MAX,
@@ -9,6 +9,13 @@ import {
 } from "@/performance-development-dashboard/types";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
 import { Tooltip } from "@/performance-development-dashboard/components/ui/Tooltip";
+import {
+  PerformanceButton,
+  PerformanceDialogPanel,
+  PerformanceField,
+  PerformanceSelect,
+  PerformanceTextarea,
+} from "@/performance-development-dashboard/components/ui/performance";
 import { cn } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/utils/helpers/classNames";
 import { MAX_EVALUATION_COMMENT_LENGTH } from "@/performance-development-dashboard/lib/constants";
 
@@ -41,6 +48,29 @@ export function EvaluateSessionModal({
   const [rating, setRating] = useState<number | null>(null);
   const [comments, setComments] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const ratingGroupRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Arrow-key support for the star radiogroup (Tab/Enter/Space already work
+   * natively on the buttons). Up/Right increases, Down/Left decreases;
+   * focus follows the newly selected star.
+   */
+  function handleRatingKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const forward =
+      event.key === "ArrowRight" || event.key === "ArrowUp" ? true : null;
+    const backward =
+      event.key === "ArrowLeft" || event.key === "ArrowDown" ? true : null;
+    if (forward === null && backward === null) return;
+    event.preventDefault();
+    const base = rating ?? (forward ? 0 : 6);
+    const next = Math.min(5, Math.max(1, base + (forward ? 1 : -1)));
+    setRating(next);
+    requestAnimationFrame(() => {
+      ratingGroupRef.current
+        ?.querySelector<HTMLElement>(`[data-rating-value="${next}"]`)
+        ?.focus();
+    });
+  }
 
   const selectableEmployees = isHrAdmin
     ? employees.filter((employee) =>
@@ -85,7 +115,10 @@ export function EvaluateSessionModal({
       closeDisabled={submitting}
       labelledBy="evaluate-session-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel
+        size="sm"
+        labelledBy="evaluate-session-modal-title"
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -114,19 +147,15 @@ export function EvaluateSessionModal({
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
           {isHrAdmin && (
-            <div>
-              <label
-                htmlFor="eval-employee"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Attended employee
-              </label>
-              <select
+            <PerformanceField
+              label="Attended employee"
+              htmlFor="eval-employee"
+            >
+              <PerformanceSelect
                 id="eval-employee"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent disabled:opacity-50 dark:border-paper/15"
               >
                 {selectableEmployees.length === 0 && (
                   <option value="">No enrolled employees</option>
@@ -136,24 +165,37 @@ export function EvaluateSessionModal({
                     {employee.name}
                   </option>
                 ))}
-              </select>
-            </div>
+              </PerformanceSelect>
+            </PerformanceField>
           )}
 
           <div>
-            <label className="mb-1.5 block text-[12.5px] font-medium text-ink">
-              Rating <span className="text-muted">(optional)</span>
-            </label>
-            <div className="flex items-center gap-1.5">
+            <p
+              id="eval-rating-label"
+              className="text-[12.5px] font-medium text-ink"
+            >
+              Rating{" "}
+              <span className="ml-1.5 font-normal text-muted">(optional)</span>
+            </p>
+            <div
+              ref={ratingGroupRef}
+              className="mt-1.5 flex items-center gap-1.5"
+              role="radiogroup"
+              aria-labelledby="eval-rating-label"
+              onKeyDown={handleRatingKeyDown}
+            >
               {[1, 2, 3, 4, 5].map((value) => (
                 <Tooltip key={value} label={`${value} star${value === 1 ? "" : "s"}`}>
                   <button
                     type="button"
                     onClick={() => setRating(value)}
                     disabled={submitting}
+                    role="radio"
+                    aria-checked={rating === value}
                     aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                    data-rating-value={value}
                     className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition-colors",
+                      "flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500",
                       rating !== null && value <= rating
                         ? "border-amber-400/50 bg-amber-400/10 text-amber-500"
                         : "border-line text-muted/50 hover:text-amber-500 dark:border-paper/15"
@@ -172,30 +214,31 @@ export function EvaluateSessionModal({
           </div>
 
           <div>
-            <label
+            <PerformanceField
+              label="Comments"
               htmlFor="eval-comments"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
+              optional
             >
-              Comments <span className="text-muted">(optional)</span>
-            </label>
-            <textarea
-              id="eval-comments"
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              maxLength={MAX_EVALUATION_COMMENT_LENGTH}
-              rows={4}
-              placeholder="What worked well? What could be improved?"
-              className="w-full resize-none rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted">
-              <span className="tabular-nums">
-                {comments.length}/{MAX_EVALUATION_COMMENT_LENGTH}
-              </span>
+              <PerformanceTextarea
+                id="eval-comments"
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                maxLength={MAX_EVALUATION_COMMENT_LENGTH}
+                rows={4}
+                placeholder="What worked well? What could be improved?"
+                disabled={submitting}
+              />
+            </PerformanceField>
+            <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
+              {comments.length}/{MAX_EVALUATION_COMMENT_LENGTH}
             </p>
           </div>
 
           {formError && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+            <div
+              role="alert"
+              className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3"
+            >
               <p className="text-[12.5px] font-medium text-red-600">
                 {formError}
               </p>
@@ -203,24 +246,19 @@ export function EvaluateSessionModal({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <PerformanceButton
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PerformanceButton>
+            <PerformanceButton type="submit" disabled={submitting}>
               {submitting ? "Submitting..." : "Submit evaluation"}
-            </button>
+            </PerformanceButton>
           </div>
         </form>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

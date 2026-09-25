@@ -11,6 +11,13 @@ import {
   type UpdateCourseEnrollmentInput,
 } from "@/performance-development-dashboard/types";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
+import {
+  PerformanceButton,
+  PerformanceDialogPanel,
+  PerformanceField,
+  PerformanceSelect,
+  PerformanceTextInput,
+} from "@/performance-development-dashboard/components/ui/performance";
 
 type Props = {
   enrollment: CourseEnrollment;
@@ -74,7 +81,10 @@ export function UpdateEnrollmentModal({
       closeDisabled={submitting}
       labelledBy="update-enrollment-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel
+        size="sm"
+        labelledBy="update-enrollment-modal-title"
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -102,60 +112,44 @@ export function UpdateEnrollmentModal({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-          <div>
-            <label
-              htmlFor="enrollment-status"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Status
-            </label>
-            <select
+          <PerformanceField
+            label="Status"
+            htmlFor="enrollment-status"
+            hint="Marking a course completed records the completion time and sets progress to 100%. It does not change any competency level — those change only through an explicit HR assessment."
+          >
+            <PerformanceSelect
               id="enrollment-status"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
               disabled={submitting}
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent disabled:opacity-50 dark:border-paper/15"
             >
               {COURSE_ENROLLMENT_STATUSES.map((option) => (
                 <option key={option} value={option}>
                   {option.replace("_", " ")}
                 </option>
               ))}
-            </select>
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
-              Marking a course{" "}
-              <span className="font-medium text-ink">
-                completed
-              </span>{" "}
-              records the completion time and sets progress to 100%. It does not
-              change any competency level — those change only through an explicit
-              HR assessment.
-            </p>
-          </div>
+            </PerformanceSelect>
+          </PerformanceField>
 
           <div>
-            <label
-              htmlFor="enrollment-progress"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Progress %
-            </label>
-            <input
-              id="enrollment-progress"
-              type="number"
-              min={COURSE_PROGRESS_MIN}
-              max={COURSE_PROGRESS_MAX}
-              step="any"
-              value={progress}
-              onChange={(e) =>
-                setProgress(
-                  e.target.value === "" ? "" : Number(e.target.value)
-                )
-              }
-              placeholder="0"
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted tabular-nums">
+            <PerformanceField label="Progress %" htmlFor="enrollment-progress">
+              <PerformanceTextInput
+                id="enrollment-progress"
+                type="number"
+                min={COURSE_PROGRESS_MIN}
+                max={COURSE_PROGRESS_MAX}
+                step="any"
+                value={progress}
+                onChange={(e) =>
+                  setProgress(
+                    e.target.value === "" ? "" : Number(e.target.value)
+                  )
+                }
+                placeholder="0"
+                disabled={submitting}
+              />
+            </PerformanceField>
+            <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
               {COURSE_PROGRESS_MIN}–{COURSE_PROGRESS_MAX}
             </p>
           </div>
@@ -169,24 +163,19 @@ export function UpdateEnrollmentModal({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <PerformanceButton
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PerformanceButton>
+            <PerformanceButton type="submit" disabled={submitting}>
               {submitting ? "Saving..." : "Save changes"}
-            </button>
+            </PerformanceButton>
           </div>
         </form>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

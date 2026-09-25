@@ -2,9 +2,13 @@
 
 import { useCallback, useState } from "react";
 import type {
+  CreateGoalEvidenceInput,
   GoalCreateInput,
+  GoalProposalInput,
+  GoalReviewInput,
   GoalUpdateInput,
   PerformanceGoal,
+  PerformanceGoalEvidenceItem,
 } from "@/performance-development-dashboard/types";
 import { perDevFetch } from "@/performance-development-dashboard/lib/api/perDevFetch";
 
@@ -59,6 +63,84 @@ export function useGoalApi() {
     [request]
   );
 
+  const createEvidence = useCallback(
+    (goalId: string, input: CreateGoalEvidenceInput) =>
+      request(
+        `${GOALS_API}/${goalId}/evidence`,
+        "POST",
+        input
+      ) as Promise<PerformanceGoalEvidenceItem>,
+    [request]
+  );
+
+  const listEvidence = useCallback(
+    (goalId: string) =>
+      request(
+        `${GOALS_API}/${goalId}/evidence`
+      ) as Promise<PerformanceGoalEvidenceItem[]>,
+    [request]
+  );
+
+  /**
+   * Employee proposal workflow endpoints (Part 2 backend contract).
+   * Proposal payloads carry definition fields only; ownership, weight,
+   * approval, status, and progress state are server-derived.
+   */
+  const proposeGoal = useCallback(
+    (input: GoalProposalInput) =>
+      request(`${GOALS_API}/proposals`, "POST", input) as Promise<PerformanceGoal>,
+    [request]
+  );
+
+  const updateProposal = useCallback(
+    (id: string, input: GoalProposalInput) =>
+      request(
+        `${GOALS_API}/${id}/proposal`,
+        "PATCH",
+        input
+      ) as Promise<PerformanceGoal>,
+    [request]
+  );
+
+  const submitProposal = useCallback(
+    (id: string) =>
+      request(
+        `${GOALS_API}/${id}/submit-proposal`,
+        "POST"
+      ) as Promise<PerformanceGoal>,
+    [request]
+  );
+
+  const approveProposal = useCallback(
+    (id: string, input: GoalReviewInput) =>
+      request(
+        `${GOALS_API}/${id}/approve-proposal`,
+        "POST",
+        input
+      ) as Promise<PerformanceGoal>,
+    [request]
+  );
+
+  const returnProposal = useCallback(
+    (id: string, input: GoalReviewInput) =>
+      request(
+        `${GOALS_API}/${id}/return-proposal`,
+        "POST",
+        input
+      ) as Promise<PerformanceGoal>,
+    [request]
+  );
+
+  const rejectProposal = useCallback(
+    (id: string, input: GoalReviewInput) =>
+      request(
+        `${GOALS_API}/${id}/reject-proposal`,
+        "POST",
+        input
+      ) as Promise<PerformanceGoal>,
+    [request]
+  );
+
   const runAction = useCallback(
     async <T,>(
       id: string,
@@ -85,6 +167,14 @@ export function useGoalApi() {
     update,
     progress,
     submit,
+    createEvidence,
+    listEvidence,
+    proposeGoal,
+    updateProposal,
+    submitProposal,
+    approveProposal,
+    returnProposal,
+    rejectProposal,
     runAction,
     busy,
     error,

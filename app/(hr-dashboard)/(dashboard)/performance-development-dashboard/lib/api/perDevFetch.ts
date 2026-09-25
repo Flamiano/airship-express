@@ -49,22 +49,6 @@ export class PerDevHttpError extends Error {
   }
 }
 
-function isPerDevSessionExpiredError(
-  err: unknown
-): err is PerDevSessionExpiredError {
-  return err instanceof PerDevSessionExpiredError;
-}
-
-/**
- * Single top-level handler for session-expiry errors. Call this from catch
- * blocks to redirect to the account-appropriate sign-in page whenever a
- * `PerDevSessionExpiredError` escapes. No-ops for any other error.
- */
-export function handlePerDevError(err: unknown): void {
-  if (!isPerDevSessionExpiredError(err)) return;
-  redirectToLogin(cachedPerDevAccountType());
-}
-
 /**
  * Shared fetch wrapper for the PerDev API hooks.
  *
@@ -83,7 +67,7 @@ export function handlePerDevError(err: unknown): void {
  * structured error payloads (e.g. 409 readiness objects) without losing
  * information.
  *
- * No retries, caching, cancellation, or logging — deduplication only.
+ * No retries, caching, cancellation, or logging.
  */
 export async function perDevFetch(
   path: string,

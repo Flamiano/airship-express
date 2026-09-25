@@ -10,6 +10,13 @@ import type {
   EmployeeOption,
 } from "@/performance-development-dashboard/types";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
+import {
+  PerformanceButton,
+  PerformanceDialogPanel,
+  PerformanceField,
+  PerformanceSelect,
+  PerformanceTextInput,
+} from "@/performance-development-dashboard/components/ui/performance";
 
 type Props = {
   employees: EmployeeOption[];
@@ -116,7 +123,7 @@ export function AssessEmployeeModal({
       closeDisabled={submitting}
       labelledBy="assess-employee-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel labelledBy="assess-employee-modal-title">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -143,14 +150,8 @@ export function AssessEmployeeModal({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-          <div>
-            <label
-              htmlFor="assessment-employee"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Employee
-            </label>
-            <select
+          <PerformanceField label="Employee" htmlFor="assessment-employee">
+            <PerformanceSelect
               id="assessment-employee"
               value={employeeId}
               onChange={(e) => {
@@ -160,7 +161,6 @@ export function AssessEmployeeModal({
                 );
               }}
               disabled={submitting}
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent disabled:opacity-50 dark:border-paper/15"
             >
               {employees.length === 0 && (
                 <option value="">No employees</option>
@@ -171,17 +171,11 @@ export function AssessEmployeeModal({
                   {employee.department ? ` · ${employee.department}` : ""}
                 </option>
               ))}
-            </select>
-          </div>
+            </PerformanceSelect>
+          </PerformanceField>
 
-          <div>
-            <label
-              htmlFor="assessment-competency"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Competency
-            </label>
-            <select
+          <PerformanceField label="Competency" htmlFor="assessment-competency">
+            <PerformanceSelect
               id="assessment-competency"
               value={competencyId}
               onChange={(e) => {
@@ -190,7 +184,7 @@ export function AssessEmployeeModal({
                   latestStoredLevelFor(employeeId, e.target.value)
                 );
               }}
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
+              disabled={submitting}
             >
               <option value="">Select competency</option>
               {competencies.map((competency) => (
@@ -198,18 +192,15 @@ export function AssessEmployeeModal({
                   {competency.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </PerformanceSelect>
+          </PerformanceField>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="assessment-current"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Current level
-              </label>
-              <input
+            <PerformanceField
+              label="Current level"
+              htmlFor="assessment-current"
+            >
+              <PerformanceTextInput
                 id="assessment-current"
                 type="number"
                 min={1}
@@ -217,19 +208,16 @@ export function AssessEmployeeModal({
                 step={1}
                 value={currentLevel}
                 onChange={(e) => setCurrentLevel(e.target.value)}
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="assessment-required"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Required level{" "}
-                <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField
+              label="Required level"
+              htmlFor="assessment-required"
+              optional
+            >
+              <PerformanceTextInput
                 id="assessment-required"
                 type="number"
                 min={1}
@@ -238,13 +226,13 @@ export function AssessEmployeeModal({
                 value={requiredLevel}
                 onChange={(e) => setRequiredLevel(e.target.value)}
                 placeholder="Use position standard"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
           </div>
 
-          <p className="text-[11.5px] text-muted">
-            Current level is pre-filled from the employee's latest recorded
+          <p className="text-[11.5px] leading-relaxed text-muted">
+            Current level is pre-filled from the employee&apos;s latest recorded
             assessment and can be adjusted for a reassessment. As an HR
             account, you will be recorded as the assessor. Assessments are
             append-only: re-assessing the same competency creates a newer state
@@ -260,24 +248,19 @@ export function AssessEmployeeModal({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <PerformanceButton
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PerformanceButton>
+            <PerformanceButton type="submit" disabled={submitting}>
               {submitting ? "Recording..." : "Record assessment"}
-            </button>
+            </PerformanceButton>
           </div>
         </form>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

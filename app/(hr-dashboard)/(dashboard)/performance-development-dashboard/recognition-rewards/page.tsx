@@ -25,9 +25,13 @@ function fullName(firstName: string, lastName: string): string {
 }
 
 async function loadEmployeeOptions(): Promise<EmployeeOption[]> {
+  // New-recognition selector: active employees only (recognition is a
+  // current award with no backdate support). Historical recognitions remain
+  // visible via server-enriched sender/recipient names regardless of status.
   const { data, error } = await supabaseAdmin
     .from("hr1_employees")
     .select("id, first_name, last_name, department, job_position_id")
+    .eq("status", "active")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 

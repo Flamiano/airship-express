@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ClipboardList, Plus, RefreshCw, Search } from "lucide-react";
 import type {
@@ -15,6 +16,7 @@ import type {
 } from "@/performance-development-dashboard/types";
 import { useAppraisalApi } from "@/performance-development-dashboard/hooks/useAppraisalApi";
 import { SkeletonList } from "@/performance-development-dashboard/components/ui/Skeleton";
+import { PerformanceErrorBanner } from "@/performance-development-dashboard/components/ui/performance";
 import { AppraisalCard } from "@/performance-development-dashboard/components/appraisals/AppraisalCard";
 import { AppraisalDetailModal } from "@/performance-development-dashboard/components/appraisals/AppraisalDetailModal";
 import { CreateAppraisalModal } from "@/performance-development-dashboard/components/appraisals/CreateAppraisalModal";
@@ -60,6 +62,8 @@ export function AppraisalsManagement({
   const [scoringLoading, setScoringLoading] = useState(false);
   const [search, setSearch] = useState("");
   const modalOpenRef = useRef(false);
+  const searchParams = useSearchParams();
+  const deepLinkConsumedRef = useRef<string | null>(null);
 
   const resolvedEmployeeNamesById = useMemo(() => {
     const names = { ...employeeNamesById };
@@ -158,6 +162,41 @@ export function AppraisalsManagement({
     }
   }
 
+  /**
+   * Record deep-link: `?appraisal=<id>` (e.g. from a notification) opens the
+   * appraisal detail directly. Resolution is server-authorized: the row is
+   * found in the scope-filtered list when present, otherwise fetched via the
+   * scoped single-record endpoint. Invalid, deleted, or out-of-scope ids
+   * surface the standard error banner — never the record.
+   */
+  useEffect(() => {
+    const id = searchParams.get("appraisal");
+    if (!id || deepLinkConsumedRef.current === id) return;
+    deepLinkConsumedRef.current = id;
+    let cancelled = false;
+    void (async () => {
+      const listed = appraisals.find((appraisal) => appraisal.id === id);
+      if (listed) {
+        if (!cancelled) await handleOpen(listed);
+        return;
+      }
+      try {
+        const fresh = await api.getOne(id);
+        if (!cancelled) await handleOpen(fresh);
+      } catch {
+        if (!cancelled) {
+          setError(
+            "That appraisal is no longer available. It may have been removed or moved outside your current scope."
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   async function handleCreate(input: Record<string, unknown>) {
     setCreating(true);
     await api
@@ -251,34 +290,35 @@ export function AppraisalsManagement({
           </p>
         </div>
 
-        {(isHrAdmin || isManager) && (
-          <div className="flex shrink-0 items-center gap-2">
+        {/* Refresh is available to everyone viewing Appraisals — it only
+            reloads list data already in the viewer's authorized scope.
+            Administrative actions below stay independently gated. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
+          >
+            <RefreshCw
+              size={14}
+              strokeWidth={1.75}
+              className={refreshing ? "animate-spin" : ""}
+            />
+            Refresh
+          </button>
+          {isHrAdmin && (
             <button
               type="button"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
+              onClick={() => setCreateOpen(true)}
+              disabled={creating}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <RefreshCw
-                size={14}
-                strokeWidth={1.75}
-                className={refreshing ? "animate-spin" : ""}
-              />
-              Refresh
+              <Plus size={15} strokeWidth={2} />
+              Add appraisal
             </button>
-            {isHrAdmin && (
-              <button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                disabled={creating}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plus size={15} strokeWidth={2} />
-                Add appraisal
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-line bg-paper px-4 py-4 dark:border-paper/10">
@@ -300,33 +340,19 @@ export function AppraisalsManagement({
       </div>
 
       {error && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-          <p className="text-[13px] font-medium text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="text-[12.5px] font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
-          >
-            Try again
-          </button>
-        </div>
+        <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
       )}
 
       {refreshing ? (
         <div aria-busy="true" role="status">
+          <span className="sr-only">Loading appraisals...</span>
           <SkeletonList rows={3} />
         </div>
       ) : displayed.length === 0 && !error ? (
         <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
           <ClipboardList size={22} strokeWidth={1.5} className="text-muted" />
           <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
-            {isHrAdmin
-              ? search
-                ? "No matching appraisals"
-                : "No appraisals yet"
-              : search
-                ? "No matching appraisals"
-                : "No appraisals yet"}
+            {search ? "No matching appraisals" : "No appraisals yet"}
           </p>
           <p className="max-w-sm text-[13px] text-muted">
             {search

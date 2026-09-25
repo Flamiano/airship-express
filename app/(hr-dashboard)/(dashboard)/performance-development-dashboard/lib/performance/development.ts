@@ -1,8 +1,9 @@
 /**
  * Development Planning — read-only aggregation service.
  *
- * Composes existing read-only services into a single profile object.
- * No mutations, no audit events, no new tables, no local DB calls.
+ * Composes existing read-only services into a single profile object, plus
+ * two narrow identity lookups (employee row, job-position row). No mutations,
+ * no audit events, no new tables.
  */
 
 import "server-only";
@@ -25,6 +26,7 @@ import type {
   Competency,
   Course,
   CourseEnrollment,
+  DevelopmentActionItem,
   DevelopmentCertification,
   DevelopmentCourseEnrollment,
   DevelopmentEmployee,
@@ -94,6 +96,115 @@ async function loadEmployeeIdentity(
     department: employee.department ?? null,
     jobPosition,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Development actions (read-only appraisal follow-through)                */
+/* -------------------------------------------------------------------------- */
+
+type AppraisalContextRow = {
+  id: string;
+  review_period: string | null;
+  status: string | null;
+  cycle_id: string | null;
+  created_at: string;
+};
+
+type DevActionRow = {
+  id: string;
+  appraisal_id: string;
+  action: string;
+  target: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * Loads the employee's appraisal development actions with their source
+ * appraisal context (review period, status, cycle name) for the read-only
+ * follow-through section of the HR Development Profile.
+ *
+ * HR scope only (the caller already enforces `assertHrAdminScope`). Reads the
+ * same rows managed inside the appraisal workflow — including items on
+ * finalized appraisals, which are historical records. Nothing is written, so
+ * appraisal locking, scoring, and applicability snapshots are untouched.
+ */
+async function loadDevelopmentActions(
+  employeeId: string,
+): Promise<DevelopmentActionItem[] | NextResponse> {
+  const { data: appraisals, error: appraisalError } = await supabaseAdmin
+    .from("hr3_performance_appraisals")
+    .select("id, review_period, status, cycle_id, created_at")
+    .eq("employee_id", employeeId)
+    .order("created_at", { ascending: false });
+
+  if (appraisalError) {
+    console.error("[development] Failed to load appraisals:", appraisalError);
+    return NextResponse.json(
+      { error: "Failed to load development actions." },
+      { status: 500 },
+    );
+  }
+
+  const appraisalRows = (appraisals ?? []) as AppraisalContextRow[];
+  const appraisalById = new Map(appraisalRows.map((row) => [row.id, row]));
+
+  const cycleIds = [
+    ...new Set(
+      appraisalRows
+        .map((row) => row.cycle_id)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  const cycleNamesById = new Map<string, string>();
+  if (cycleIds.length > 0) {
+    const { data: cycles, error: cycleError } = await supabaseAdmin
+      .from("hr3_performance_cycles")
+      .select("id, name")
+      .in("id", cycleIds);
+    if (cycleError) {
+      console.error("[development] Failed to load cycles:", cycleError);
+      return NextResponse.json(
+        { error: "Failed to load development actions." },
+        { status: 500 },
+      );
+    }
+    for (const cycle of (cycles ?? []) as { id: string; name: string }[]) {
+      cycleNamesById.set(cycle.id, cycle.name);
+    }
+  }
+
+  const { data: items, error: itemsError } = await supabaseAdmin
+    .from("hr3_performance_development_plan_items")
+    .select("id, appraisal_id, action, target, status, created_at, updated_at")
+    .eq("employee_id", employeeId)
+    .order("created_at", { ascending: false });
+
+  if (itemsError) {
+    console.error("[development] Failed to load development actions:", itemsError);
+    return NextResponse.json(
+      { error: "Failed to load development actions." },
+      { status: 500 },
+    );
+  }
+
+  return ((items ?? []) as DevActionRow[]).map((item) => {
+    const appraisal = appraisalById.get(item.appraisal_id);
+    return {
+      id: item.id,
+      appraisal_id: item.appraisal_id,
+      action: item.action,
+      target: item.target,
+      status: item.status,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      appraisalReviewPeriod: appraisal?.review_period ?? null,
+      appraisalStatus: appraisal?.status ?? null,
+      appraisalCycleName:
+        (appraisal?.cycle_id && cycleNamesById.get(appraisal.cycle_id)) ?? null,
+    } as DevelopmentActionItem;
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -247,9 +358,13 @@ export async function getDevelopmentProfile(
         }
       : null;
 
+  const developmentActions = await loadDevelopmentActions(employeeId);
+  if (developmentActions instanceof NextResponse) return developmentActions;
+
   return {
     employee,
     developmentNeeds,
+    developmentActions,
     learning: {
       courseEnrollments: developmentCourseEnrollments,
       trainingEnrollments: developmentTrainingEnrollments,

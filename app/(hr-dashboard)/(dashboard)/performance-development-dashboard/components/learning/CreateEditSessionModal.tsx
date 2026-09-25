@@ -4,6 +4,13 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { Tooltip } from "@/performance-development-dashboard/components/ui/Tooltip";
 import { Modal } from "@/performance-development-dashboard/components/ui/Modal";
+import {
+  PerformanceButton,
+  PerformanceDialogPanel,
+  PerformanceField,
+  PerformanceSelect,
+  PerformanceTextInput,
+} from "@/performance-development-dashboard/components/ui/performance";
 import type { TrainingSession, TrainingSessionInput } from "@/performance-development-dashboard/types";
 import { MAX_SESSION_TITLE_LENGTH, MAX_SHORT_TEXT_LENGTH } from "@/performance-development-dashboard/lib/constants";
 
@@ -113,7 +120,7 @@ export function CreateEditSessionModal({
       closeDisabled={submitting}
       labelledBy="create-edit-session-modal-title"
     >
-      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-line bg-paper p-6 shadow-xl dark:border-paper/15">
+      <PerformanceDialogPanel labelledBy="create-edit-session-modal-title">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -141,171 +148,132 @@ export function CreateEditSessionModal({
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
           <div>
-            <label
-              htmlFor="session-title"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Title
-            </label>
-            <input
-              id="session-title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={MAX_SESSION_TITLE_LENGTH}
-              placeholder="e.g. Defensive Driving Refresher"
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted">
-              <span className="tabular-nums">
-                {title.length}/{MAX_SESSION_TITLE_LENGTH}
-              </span>
+            <PerformanceField label="Title" htmlFor="session-title">
+              <PerformanceTextInput
+                id="session-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                maxLength={MAX_SESSION_TITLE_LENGTH}
+                placeholder="e.g. Defensive Driving Refresher"
+                disabled={submitting}
+              />
+            </PerformanceField>
+            <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
+              {title.length}/{MAX_SESSION_TITLE_LENGTH}
             </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="session-status"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Status
-              </label>
-              <input
+            <PerformanceField label="Status" htmlFor="session-status">
+              <PerformanceTextInput
                 id="session-status"
                 type="text"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 maxLength={MAX_SHORT_TEXT_LENGTH}
                 placeholder="scheduled"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="session-type"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Session type
-              </label>
-              <select
+            <PerformanceField label="Session type" htmlFor="session-type">
+              <PerformanceSelect
                 id="session-type"
                 value={sessionType}
                 onChange={(e) => setSessionType(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent disabled:opacity-50 dark:border-paper/15"
               >
                 {SESSION_TYPE_PRESETS.map((option) => (
                   <option key={option} value={option}>
                     {option.charAt(0).toUpperCase() + option.slice(1)}
                   </option>
                 ))}
-              </select>
-            </div>
+              </PerformanceSelect>
+            </PerformanceField>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="session-trainer"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Trainer <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField
+              label="Trainer"
+              htmlFor="session-trainer"
+              optional
+            >
+              <PerformanceTextInput
                 id="session-trainer"
                 type="text"
                 value={trainerName}
                 onChange={(e) => setTrainerName(e.target.value)}
                 maxLength={MAX_SESSION_TITLE_LENGTH}
                 placeholder="e.g. Marcus Rivera"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="session-trainer-type"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Trainer type <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField
+              label="Trainer type"
+              htmlFor="session-trainer-type"
+              optional
+            >
+              <PerformanceTextInput
                 id="session-trainer-type"
                 type="text"
                 value={trainerType}
                 onChange={(e) => setTrainerType(e.target.value)}
                 maxLength={MAX_SHORT_TEXT_LENGTH}
                 placeholder="internal / external"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="session-mode"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Mode <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField label="Mode" htmlFor="session-mode" optional>
+              <PerformanceTextInput
                 id="session-mode"
                 type="text"
                 value={mode}
                 onChange={(e) => setMode(e.target.value)}
                 maxLength={MAX_SHORT_TEXT_LENGTH}
                 placeholder="in_person / virtual"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="session-venue"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Venue <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField label="Venue" htmlFor="session-venue" optional>
+              <PerformanceTextInput
                 id="session-venue"
                 type="text"
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
                 maxLength={MAX_SESSION_TITLE_LENGTH}
                 placeholder="HQ Training Room 2"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-3">
-            <div>
-              <label
-                htmlFor="session-date"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Schedule <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField
+              label="Schedule"
+              htmlFor="session-date"
+              optional
+            >
+              <PerformanceTextInput
                 id="session-date"
                 type="datetime-local"
                 value={scheduleDate}
                 onChange={(e) => setScheduleDate(e.target.value)}
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="session-capacity"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Capacity <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField
+              label="Capacity"
+              htmlFor="session-capacity"
+              optional
+            >
+              <PerformanceTextInput
                 id="session-capacity"
                 type="number"
                 min={0}
@@ -314,18 +282,12 @@ export function CreateEditSessionModal({
                   setCapacity(e.target.value === "" ? null : Number(e.target.value))
                 }
                 placeholder="20"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
 
-            <div>
-              <label
-                htmlFor="session-cost"
-                className="mb-1.5 block text-[12.5px] font-medium text-ink"
-              >
-                Cost <span className="text-muted">(optional)</span>
-              </label>
-              <input
+            <PerformanceField label="Cost" htmlFor="session-cost" optional>
+              <PerformanceTextInput
                 id="session-cost"
                 type="number"
                 min={0}
@@ -335,25 +297,21 @@ export function CreateEditSessionModal({
                   setCost(e.target.value === "" ? null : Number(e.target.value))
                 }
                 placeholder="500"
-                className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
+                disabled={submitting}
               />
-            </div>
+            </PerformanceField>
           </div>
 
-          <div>
-            <label
-              htmlFor="session-competency"
-              className="mb-1.5 block text-[12.5px] font-medium text-ink"
-            >
-              Linked competency{" "}
-              <span className="text-muted">(optional, display-only)</span>
-            </label>
-            <select
+          <PerformanceField
+            label="Linked competency"
+            htmlFor="session-competency"
+            hint="Optional reference only — attendance never changes a competency level."
+          >
+            <PerformanceSelect
               id="session-competency"
               value={competencyId}
               onChange={(e) => setCompetencyId(e.target.value)}
               disabled={submitting}
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors focus:border-accent disabled:opacity-50 dark:border-paper/15"
             >
               <option value="">None</option>
               {competencyOptions.map((competency) => (
@@ -361,8 +319,8 @@ export function CreateEditSessionModal({
                   {competency.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </PerformanceSelect>
+          </PerformanceField>
 
           {formError && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
@@ -373,28 +331,23 @@ export function CreateEditSessionModal({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <PerformanceButton
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PerformanceButton>
+            <PerformanceButton type="submit" disabled={submitting}>
               {submitting
                 ? "Saving..."
                 : session
                   ? "Save changes"
                   : "Create session"}
-            </button>
+            </PerformanceButton>
           </div>
         </form>
-      </div>
+      </PerformanceDialogPanel>
     </Modal>
   );
 }

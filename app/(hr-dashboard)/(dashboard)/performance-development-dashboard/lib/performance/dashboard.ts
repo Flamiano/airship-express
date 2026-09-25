@@ -92,7 +92,6 @@ export type PerformanceDashboardSnapshot = {
   generatedAt: string;
   actorType: "hr_admin" | "manager" | "employee";
   currentCycle: DashboardCurrentCycle;
-  cycles: DashboardStatusBreakdown;
   actionItems: DashboardActionItems;
   goals: DashboardStatusBreakdown;
   appraisals: DashboardStatusBreakdown;
@@ -256,7 +255,6 @@ async function buildDirectReportSummaries(
 
   const summaries: DirectReportSummary[] = [];
   for (const emp of employees) {
-    const isManager = emp.id === managerUuid;
     const goalStats = goalsByEmployee.get(emp.id) ?? { total: 0, completed: 0 };
     const fullName = [emp.first_name, emp.last_name]
       .filter(Boolean)
@@ -549,7 +547,10 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
           stage: chosenCycle.stage,
         }
       : null;
-    const cyclesBreakdown = breakdown(cycles);
+    // NOTE: no cycles status breakdown is computed here. The dashboard UI
+    // renders only the current cycle; a breakdown was previously computed but
+    // never displayed, so it was removed rather than fetched needlessly.
+    // The `cycles` rows above remain the source for `currentCycle`.
 
     const agreementPending = trainingApprovalRows.filter(
       (row) => (row.approval_status ?? "").toLowerCase() === "pending"
@@ -624,7 +625,6 @@ export async function getPerformanceDashboard(): Promise<PerformanceDashboardRes
       generatedAt: new Date().toISOString(),
       actorType,
       currentCycle,
-      cycles: cyclesBreakdown,
       actionItems,
       goals: breakdown(goalStatusRows),
       appraisals: breakdown(appraisalStatusRows),

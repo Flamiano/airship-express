@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
+import { isPerDevHrAdminRole } from "@/performance-development-dashboard/lib/auth/hrIdentity";
 import {
   cachedPerDevAccountType,
   loginRouteForAccountType,
@@ -27,6 +28,9 @@ export default async function PerformanceDevelopmentPage() {
     <PerformanceDashboard
       serverUser={serverUser}
       actorType={actor.actorType}
+      isPerDevHrAdmin={
+        actor.actorType === "hr_admin" && isPerDevHrAdminRole(actor.role)
+      }
     />
   );
 }

@@ -16,20 +16,21 @@ import {
 } from "@/performance-development-dashboard/lib/performance/audit";
 import {
   BAD_REQUEST_RESPONSE,
+  FORBIDDEN_RESPONSE,
+  requireNonEmptyText,
   requireValidUuid,
 } from "@/performance-development-dashboard/lib/performance/validation";
-import { requireNonEmptyText } from "@/performance-development-dashboard/lib/performance/validation";
 import {
   MAX_DEV_PLAN_ACTION_LENGTH,
   MAX_DEV_PLAN_TARGET_LENGTH,
 } from "@/performance-development-dashboard/lib/constants";
-import type {
-  CreateDevelopmentPlanItemInput,
-  DevelopmentPlanItem,
-  DevPlanItemStatus,
-  UpdateDevelopmentPlanItemInput,
+import {
+  DEV_PLAN_ITEM_STATUSES,
+  type CreateDevelopmentPlanItemInput,
+  type DevelopmentPlanItem,
+  type DevPlanItemStatus,
+  type UpdateDevelopmentPlanItemInput,
 } from "@/performance-development-dashboard/types";
-import { DEV_PLAN_ITEM_STATUSES } from "@/performance-development-dashboard/types";
 
 export type {
   CreateDevelopmentPlanItemInput,
@@ -109,11 +110,72 @@ async function loadAppraisalForDevPlan(
   return data;
 }
 
-const FORBIDDEN_RECORD_RESPONSE = () =>
-  NextResponse.json(
-    { error: "Forbidden - You do not have access to this record" },
-    { status: 403 },
-  );
+/**
+ * Actor scope for development-plan access, resolved BEFORE any appraisal or
+ * item row is read: org-wide for PerDev HR Admin, otherwise the
+ * server-resolved employee set (self for employees, self + active direct
+ * reports for managers).
+ */
+type DevPlanActorScope = { orgWide: true } | { employeeIds: string[] };
+
+async function resolveDevPlanActorScope(): Promise<
+  DevPlanActorScope | NextResponse
+> {
+  const hrScope = await assertHrAdminScope();
+  if (!(hrScope instanceof NextResponse)) {
+    return { orgWide: true };
+  }
+
+  const identity = await requireHrEmployee();
+  if (identity instanceof NextResponse) return identity;
+
+  if (identity.accountType === "manager") {
+    const directReports = await resolveManagerDirectReportUuids(
+      identity.employeeUuid,
+    );
+    return { employeeIds: [identity.employeeUuid, ...directReports] };
+  }
+
+  return { employeeIds: [identity.employeeUuid] };
+}
+
+/**
+ * Loads the appraisal anchor for a development-plan operation constrained by
+ * the actor's already-resolved scope, so out-of-scope appraisal rows are
+ * never read. HR scope preserves the 404 miss; scoped misses preserve the
+ * 403 denial (a missing id previously 404'd here — no data is disclosed
+ * either way).
+ */
+async function loadAppraisalForDevPlanScoped(
+  appraisalId: string,
+  scope: DevPlanActorScope,
+): Promise<{ employee_id: string; status: string } | NextResponse> {
+  if ("orgWide" in scope) {
+    return loadAppraisalForDevPlan(appraisalId);
+  }
+
+  if (scope.employeeIds.length === 0) {
+    return FORBIDDEN_RESPONSE();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("hr3_performance_appraisals")
+    .select("employee_id, status")
+    .eq("id", appraisalId)
+    .in("employee_id", scope.employeeIds)
+    .maybeSingle();
+
+  if (error) {
+    console.error("loadAppraisalForDevPlanScoped: query error:", error);
+    return badRequest("Failed to load appraisal.");
+  }
+
+  if (!data) {
+    return FORBIDDEN_RESPONSE();
+  }
+
+  return data;
+}
 
 /**
  * Authorize that the authenticated actor can manage development plan items
@@ -153,7 +215,7 @@ async function authorizeDevPlanAccess(
     }
   }
 
-  return FORBIDDEN_RECORD_RESPONSE();
+  return FORBIDDEN_RESPONSE();
 }
 
 /* ── Public API ────────────────────────────────────────────────────── */
@@ -169,7 +231,13 @@ export async function listDevPlanItems(
   const appraisalIdValid = requireValidUuid(appraisalId, "appraisal id");
   if (appraisalIdValid instanceof NextResponse) return appraisalIdValid;
 
-  const appraisal = await loadAppraisalForDevPlan(appraisalIdValid);
+  const listScope = await resolveDevPlanActorScope();
+  if (listScope instanceof NextResponse) return listScope;
+
+  const appraisal = await loadAppraisalForDevPlanScoped(
+    appraisalIdValid,
+    listScope,
+  );
   if (appraisal instanceof NextResponse) return appraisal;
 
   const authResult = await authorizeDevPlanAccess(appraisal.employee_id);
@@ -202,7 +270,13 @@ export async function createDevPlanItem(
   const appraisalIdValid = requireValidUuid(appraisalId, "appraisal id");
   if (appraisalIdValid instanceof NextResponse) return appraisalIdValid;
 
-  const appraisal = await loadAppraisalForDevPlan(appraisalIdValid);
+  const createScope = await resolveDevPlanActorScope();
+  if (createScope instanceof NextResponse) return createScope;
+
+  const appraisal = await loadAppraisalForDevPlanScoped(
+    appraisalIdValid,
+    createScope,
+  );
   if (appraisal instanceof NextResponse) return appraisal;
 
   // Cannot add items to finalized/acknowledged appraisals
@@ -286,8 +360,17 @@ export async function updateDevPlanItem(
   const existing = await loadDevPlanItemOr404(itemIdValid);
   if (existing instanceof NextResponse) return existing;
 
-  // Load the appraisal to check status and authorize
-  const appraisal = await loadAppraisalForDevPlan(existing.appraisal_id);
+  // Load the appraisal to check status and authorize, constrained by the
+  // actor's already-resolved scope so out-of-scope rows are never read.
+  // The item row itself is keyed by unguessable UUID and discarded unless
+  // its appraisal authorizes.
+  const itemScope = await resolveDevPlanActorScope();
+  if (itemScope instanceof NextResponse) return itemScope;
+
+  const appraisal = await loadAppraisalForDevPlanScoped(
+    existing.appraisal_id,
+    itemScope,
+  );
   if (appraisal instanceof NextResponse) return appraisal;
 
   if (appraisal.status === "finalized" || appraisal.status === "acknowledged") {
@@ -375,7 +458,13 @@ export async function deleteDevPlanItem(itemId: string): Promise<NextResponse> {
   const existing = await loadDevPlanItemOr404(itemIdValid);
   if (existing instanceof NextResponse) return existing;
 
-  const appraisal = await loadAppraisalForDevPlan(existing.appraisal_id);
+  const deleteScope = await resolveDevPlanActorScope();
+  if (deleteScope instanceof NextResponse) return deleteScope;
+
+  const appraisal = await loadAppraisalForDevPlanScoped(
+    existing.appraisal_id,
+    deleteScope,
+  );
   if (appraisal instanceof NextResponse) return appraisal;
 
   if (appraisal.status === "finalized" || appraisal.status === "acknowledged") {

@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, BellOff, Check, CheckCheck, Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/utils/helpers/classNames";
@@ -15,6 +16,26 @@ import type { PerDevNotification } from "@/performance-development-dashboard/typ
 
 const API_BASE =
   "/performance-development-dashboard/api/performance/notifications";
+
+/**
+ * Module-level fallback for historical notifications stored without a link.
+ * Record-level links are stored on new notifications; anything older (or
+ * with unrecognized metadata) resolves to its module page — never a guessed
+ * record id, and never the generic Dashboard. Unknown types navigate
+ * nowhere: the notification is still marked read and the menu closes.
+ */
+function fallbackPathForType(type: string): string | null {
+  if (type.startsWith("appraisal.")) {
+    return "/performance-development-dashboard/appraisals";
+  }
+  if (type.startsWith("checkin.")) {
+    return "/performance-development-dashboard/check-ins";
+  }
+  if (type.startsWith("goal.")) {
+    return "/performance-development-dashboard/goals";
+  }
+  return null;
+}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -37,6 +58,7 @@ const useBrowserOnly = () =>
   );
 
 export function PerDevNotificationBell() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<PerDevNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -133,6 +155,23 @@ export function PerDevNotificationBell() {
     if (isOpen) void fetchNotifications();
   }, [isOpen]); /* eslint-enable react-hooks/set-state-in-effect */
 
+  /**
+   * Activates one notification: marks it read (existing per-item behavior),
+   * then navigates to its record link, or to the module fallback when the
+   * stored notification predates record links. router.push preserves SPA
+   * navigation so browser Back returns to the previous location.
+   */
+  const activateNotification = useCallback(
+    (notif: PerDevNotification) => {
+      if (!notif.is_read) void markOneRead(notif.id);
+      const destination =
+        notif.link ?? fallbackPathForType(notif.type);
+      setIsOpen(false);
+      if (destination) router.push(destination);
+    },
+    [markOneRead, router],
+  );
+
   if (!mounted) return null;
 
   return (
@@ -201,21 +240,11 @@ export function PerDevNotificationBell() {
                     key={notif.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      if (!notif.is_read) markOneRead(notif.id);
-                      if (notif.link) {
-                        window.location.href = notif.link;
-                      }
-                      setIsOpen(false);
-                    }}
+                    onClick={() => activateNotification(notif)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        if (!notif.is_read) markOneRead(notif.id);
-                        if (notif.link) {
-                          window.location.href = notif.link;
-                        }
-                        setIsOpen(false);
+                        activateNotification(notif);
                       }
                     }}
                     className={cn(

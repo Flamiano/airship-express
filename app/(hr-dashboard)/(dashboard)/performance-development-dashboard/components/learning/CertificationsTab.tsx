@@ -9,6 +9,12 @@ import type {
 } from "@/performance-development-dashboard/types";
 import { IssueCertificationModal } from "@/performance-development-dashboard/components/learning/IssueCertificationModal";
 import { FilterBar } from "@/performance-development-dashboard/components/ui/FilterBar";
+import {
+  PerformanceButton,
+  PerformanceEmptyState,
+  PerformancePanel,
+  PerformanceSelect,
+} from "@/performance-development-dashboard/components/ui/performance";
 import { formatDate } from "@/performance-development-dashboard/lib/format/date";
 
 type Props = {
@@ -63,12 +69,15 @@ export function CertificationsTab({
 
   return (
     <div className="space-y-4">
-      <FilterBar className="sm:justify-between">
+      <FilterBar>
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           {isHrAdmin ? (
-            <select
+            <PerformanceSelect
+              id="certification-employee-filter"
+              aria-label="Select employee"
               value={effectiveEmployeeId ?? ""}
               onChange={(e) => setSelectedEmployeeId(e.target.value || null)}
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-[13px] font-medium text-ink outline-none transition-colors focus:border-accent sm:max-w-[320px] dark:border-paper/15"
+              className="sm:w-auto sm:max-w-[240px]"
             >
               {employees.length === 0 && <option value="">No employees</option>}
               {employees.map((employee) => (
@@ -76,105 +85,98 @@ export function CertificationsTab({
                   {employee.name}
                 </option>
               ))}
-            </select>
+            </PerformanceSelect>
           ) : (
-            <span className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-[13px] font-medium text-ink sm:max-w-[320px] dark:border-paper/15">
+            <span className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px] font-medium text-ink dark:border-paper/15">
               {selectedEmployeeName}
             </span>
           )}
+        </div>
 
-          {isHrAdmin && (
-            <button
-              type="button"
-              onClick={() => setIssueOpen(true)}
-              disabled={submitting || !effectiveEmployeeId}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Plus size={15} strokeWidth={2} />
-              Issue certification
-            </button>
-          )}
+        {isHrAdmin && (
+          <PerformanceButton
+            onClick={() => setIssueOpen(true)}
+            disabled={submitting || !effectiveEmployeeId}
+          >
+            <Plus size={15} strokeWidth={2} />
+            Issue certification
+          </PerformanceButton>
+        )}
       </FilterBar>
 
       {!effectiveEmployeeId ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
-          <Award size={22} strokeWidth={1.5} className="text-muted" />
-          <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
-            No employee selected
-          </p>
-        </div>
+        <PerformanceEmptyState
+          icon={<Award size={22} strokeWidth={1.5} className="text-muted" />}
+          title="No employee selected"
+          message="Select an employee to view their certifications."
+        />
       ) : matching.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-line px-6 py-14 text-center dark:border-paper/10">
-          <Award size={22} strokeWidth={1.5} className="text-muted" />
-          <p className="font-bricolage text-[18px] font-medium tracking-tight text-ink">
-            No certifications yet
-          </p>
-          <p className="max-w-sm text-[13px] text-muted">
-            {isHrAdmin
-              ? `Issue a certification to ${selectedEmployeeName} to record their credentials `
-                + "here. Dates are shown as facts; no validity status is derived."
-              : "Your certifications will appear here once issued by your performance team."}
-          </p>
-          {isHrAdmin && (
-            <button
-              type="button"
-              onClick={() => setIssueOpen(true)}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark"
-            >
-              <Plus size={15} strokeWidth={2} />
-              Issue certification
-            </button>
-          )}
-        </div>
+        <PerformanceEmptyState
+          icon={<Award size={22} strokeWidth={1.5} className="text-muted" />}
+          title="No certifications yet"
+          message={
+            isHrAdmin
+              ? `Issue a certification to ${selectedEmployeeName} to record their credentials here. Dates are shown as facts; no validity status is derived.`
+              : "Your certifications will appear here once issued by your performance team."
+          }
+          action={
+            isHrAdmin ? (
+              <PerformanceButton
+                onClick={() => setIssueOpen(true)}
+                className="mt-1"
+              >
+                <Plus size={15} strokeWidth={2} />
+                Issue certification
+              </PerformanceButton>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 rounded-2xl border border-line bg-paper px-5 py-4 dark:border-paper/10">
-            <p className="text-[13px] font-medium text-ink">
+        <PerformancePanel>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <p className="font-bricolage text-[17px] font-medium tracking-tight text-ink">
               {selectedEmployeeName}
             </p>
-            <span className="text-[12px] text-muted">
-              · {matching.length} certification{matching.length === 1 ? "" : "s"}
-            </span>
+            <p className="text-[12px] text-muted">
+              {matching.length} certification{matching.length === 1 ? "" : "s"}
+            </p>
           </div>
-
-          {matching.map((certification) => {
-            const courseTitle = certification.course_id
-              ? courseTitlesById[certification.course_id] ?? null
-              : null;
-            return (
-              <div
-                key={certification.id}
-                className="flex items-center gap-4 rounded-2xl border border-line bg-paper px-5 py-4 dark:border-paper/10"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-                  <Award size={18} strokeWidth={1.75} />
-                </div>
-
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <p className="truncate font-medium text-ink">
-                    {courseTitle ?? "Certification record"}
-                  </p>
-                  <p className="text-[12px] text-muted">
-                    Issued {formatDate(certification.issued_at)}
-                    {certification.expires_at
-                      ? ` · Expires ${formatDate(certification.expires_at)}`
-                      : " · No expiry recorded"}
-                  </p>
+          <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
+            {matching.map((certification) => {
+              const courseTitle = certification.course_id
+                ? courseTitlesById[certification.course_id] ?? null
+                : null;
+              return (
+                <li
+                  key={certification.id}
+                  className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-medium text-ink">
+                      {courseTitle ?? "Certification record"}
+                    </p>
+                    <p className="mt-1 text-[12px] text-muted">
+                      Issued {formatDate(certification.issued_at)}
+                      {certification.expires_at
+                        ? ` · Expires ${formatDate(certification.expires_at)}`
+                        : " · No expiry recorded"}
+                    </p>
+                  </div>
                   {certification.certificate_url && (
                     <a
                       href={certification.certificate_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="truncate text-[12px] font-medium text-accent hover:underline"
+                      className="shrink-0 self-start text-[12px] font-medium text-accent underline underline-offset-2 hover:text-accent-dark sm:self-center"
                     >
                       View certificate
                     </a>
                   )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </li>
+              );
+            })}
+          </ul>
+        </PerformancePanel>
       )}
 
       {issueOpen && effectiveEmployeeId && (

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MAX_CHECK_IN_MESSAGE_LENGTH } from "@/performance-development-dashboard/lib/constants";
+import { PerformanceButton } from "@/performance-development-dashboard/components/ui/performance";
 
 type Props = {
   submitting: boolean;
@@ -61,6 +62,7 @@ export function CheckInCommentForm({
         maxLength={MAX_CHECK_IN_MESSAGE_LENGTH}
         rows={3}
         placeholder="Write a comment..."
+        aria-label="Write a comment"
         className="w-full resize-none rounded-lg border border-line bg-paper px-3 py-2.5 text-[13.5px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
       />
 
@@ -68,13 +70,12 @@ export function CheckInCommentForm({
         <span className="tabular-nums text-[11px] text-muted">
           {text.length}/{MAX_CHECK_IN_MESSAGE_LENGTH}
         </span>
-        <button
+        <PerformanceButton
           type="submit"
           disabled={submitting || !trimmed}
-          className="inline-flex items-center rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? "Posting..." : "Post"}
-        </button>
+        </PerformanceButton>
       </div>
     </form>
   );

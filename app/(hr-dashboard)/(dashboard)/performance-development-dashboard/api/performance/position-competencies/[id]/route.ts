@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getPositionCompetencyRequirement,
   updatePositionCompetencyRequirement,
+  type UpdatePositionCompetencyRequirementInput,
 } from "@/performance-development-dashboard/lib/performance/competencies";
-import type { UpdatePositionCompetencyRequirementInput } from "@/performance-development-dashboard/lib/performance/competencies";
 
 export const dynamic = "force-dynamic";
 

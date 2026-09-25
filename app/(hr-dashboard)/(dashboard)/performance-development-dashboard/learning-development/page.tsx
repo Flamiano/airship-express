@@ -33,9 +33,15 @@ function fullName(firstName: string, lastName: string): string {
 }
 
 async function loadEmployeeOptions(): Promise<EmployeeOption[]> {
+  // Intentionally UNFILTERED by status: the L&D tabs render per-employee
+  // history (enrollments, evaluations, certifications) and the employee filter
+  // dropdowns are historical queries. New enrollment/certification assignment
+  // is restricted to active employees inside the creation modals
+  // (EnrollInCourseModal, EnrollInSessionModal, IssueCertificationModal);
+  // server creation endpoints reject inactive employees independently.
   const { data, error } = await supabaseAdmin
     .from("hr1_employees")
-    .select("id, first_name, last_name, department, job_position_id")
+    .select("id, first_name, last_name, department, job_position_id, status")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 
@@ -49,6 +55,7 @@ async function loadEmployeeOptions(): Promise<EmployeeOption[]> {
     name: fullName(employee.first_name, employee.last_name),
     department: employee.department,
     job_position_id: employee.job_position_id,
+    status: employee.status ?? null,
   }));
 }
 

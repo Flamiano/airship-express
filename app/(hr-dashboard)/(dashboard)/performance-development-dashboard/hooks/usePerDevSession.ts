@@ -19,12 +19,21 @@ type SessionResponse = {
   actor: PerDevSessionActor;
   employee: PerDevSessionEmployee | null;
   hasLinkedEmployee: boolean;
-  user: CurrentPerDevUser & { accountType: "hr_admin" | "manager" | "employee" };
+  user: CurrentPerDevUser & {
+    accountType: "hr_admin" | "manager" | "employee";
+    isPerDevHrAdmin?: boolean;
+  };
 };
 
 type PerDevSessionUser = CurrentPerDevUser & {
   initials: string;
   accountType: "hr_admin" | "manager" | "employee";
+  /**
+   * Server-resolved PerDev administration capability. Defaults to false for
+   * older cached responses — fail-closed, so admin navigation stays hidden
+   * until the server confirms the role.
+   */
+  isPerDevHrAdmin: boolean;
 };
 
 function initialsOf(fullName: string): string {
@@ -64,6 +73,7 @@ export function usePerDevSession() {
           email: data.user.email,
           initials: initialsOf(data.user.fullName),
           accountType: data.user.accountType,
+          isPerDevHrAdmin: data.user.isPerDevHrAdmin === true,
         });
         setLoading(false);
       } catch (error) {

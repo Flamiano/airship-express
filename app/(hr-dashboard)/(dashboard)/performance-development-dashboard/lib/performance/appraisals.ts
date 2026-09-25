@@ -22,6 +22,8 @@ import {
 } from "@/performance-development-dashboard/lib/performance/audit";
 import {
   BAD_REQUEST_RESPONSE,
+  FORBIDDEN_RESPONSE,
+  requireActiveEmployeeId,
   requireValidUuid,
 } from "@/performance-development-dashboard/lib/performance/validation";
 import {
@@ -112,11 +114,6 @@ import {
  *   `comments` field is reserved for the reviewer's evaluation narrative.
  */
 
-export {
-  MAX_REVIEW_PERIOD_LENGTH,
-  MAX_APPRAISAL_TEXT_LENGTH,
-} from "@/performance-development-dashboard/lib/constants";
-
 const APPRAISAL_SELECT =
   "id, employee_id, reviewer_id, review_period, status, comments, strengths, improvements, created_at, updated_at, finalized_at, acknowledged_at, reviewer_hr_admin_id, cycle_id, final_score, performance_rating, evaluator_id, applicable_goal_ids_snapshot, applicable_competency_ids_snapshot";
 
@@ -129,30 +126,10 @@ export type CreateAppraisalInput = Record<string, unknown>;
 export type SubmitSelfAssessmentInput = Record<string, unknown>;
 export type SubmitManagerAssessmentInput = Record<string, unknown>;
 
-/** Allowed one-step forward transitions. Off-map states have no transitions. */
-export const APPRAISAL_TRANSITIONS: Partial<
-  Record<AppraisalStatus, AppraisalStatus>
-> = {
-  draft: "self_assessment",
-  self_assessment: "manager_assessment",
-  manager_assessment: "finalized",
-  finalized: "acknowledged",
-};
-
 const APPRAISAL_NOT_FOUND_RESPONSE = () =>
   NextResponse.json(
     { error: "Performance appraisal not found" },
     { status: 404 },
-  );
-
-/**
- * 403: authenticated but not authorized. Generic so record existence and
- * reviewer identity are never revealed (matches module conventions).
- */
-const FORBIDDEN_RECORD_RESPONSE = () =>
-  NextResponse.json(
-    { error: "Forbidden - You do not have access to this record" },
-    { status: 403 },
   );
 
 const STATE_CONFLICT_RESPONSE = () =>
@@ -230,77 +207,6 @@ function requireReviewPeriod(value: unknown): string | NextResponse {
 }
 
 /**
- * Validates an appraisal subject against `hr1_employees`.
- */
-async function requireExistingEmployeeId(
-  value: unknown,
-): Promise<string | NextResponse> {
-  const id = requireValidUuid(value, "employee_id");
-  if (id instanceof NextResponse) return id;
-
-  const { data, error } = await supabaseAdmin
-    .from("hr1_employees")
-    .select("id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("requireExistingEmployeeId: query error:", error);
-    return NextResponse.json(
-      { error: "Failed to validate employee" },
-      { status: 500 },
-    );
-  }
-
-  if (!data) {
-    return BAD_REQUEST_RESPONSE(
-      "employee_id does not reference an existing employee.",
-    );
-  }
-
-  return id;
-}
-
-/**
- * Validates an evaluator against `hr1_employees` and rejects inactive employees.
- * Used when reassigning evaluators to ensure the target is a valid, active employee.
- */
-async function requireActiveEmployeeId(
-  value: unknown,
-): Promise<string | NextResponse> {
-  const id = requireValidUuid(value, "evaluator_id");
-  if (id instanceof NextResponse) return id;
-
-  const { data, error } = await supabaseAdmin
-    .from("hr1_employees")
-    .select("id, status")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("requireActiveEmployeeId: query error:", error);
-    return NextResponse.json(
-      { error: "Failed to validate employee" },
-      { status: 500 },
-    );
-  }
-
-  if (!data) {
-    return BAD_REQUEST_RESPONSE(
-      "evaluator_id does not reference an existing employee.",
-    );
-  }
-
-  if (data.status && data.status !== "active") {
-    return BAD_REQUEST_RESPONSE(
-      "Cannot assign an inactive employee as evaluator.",
-    );
-  }
-
-  return id;
-}
-
-/**
  * Resolves the evaluator (direct manager) for an employee from
  * `hr1_employees.manager_id`. Returns the manager's employee UUID, or NULL
  * if the employee has no manager. Server-side only — never from client input.
@@ -374,6 +280,8 @@ async function loadAppraisalScoped(
   appraisalId: string,
   constraints: {
     employee_id?: string;
+    employee_ids?: string[];
+    evaluator_id?: string;
     reviewer_hr_admin_id?: string | null;
     reviewer_id?: string;
   } = {},
@@ -385,6 +293,23 @@ async function loadAppraisalScoped(
 
   if (constraints.employee_id) {
     query = query.eq("employee_id", constraints.employee_id);
+  }
+  // Owner-or-evaluator scope: employee coverage (single or set) OR-ed with
+  // the evaluator assignment in the SAME query, so out-of-scope rows are
+  // never loaded. UUIDs contain no OR-syntax characters.
+  const scopeEmployeeIds = [
+    ...(constraints.employee_id ? [constraints.employee_id] : []),
+    ...(constraints.employee_ids ?? []),
+  ];
+  const scopeFilters: string[] = [];
+  if (scopeEmployeeIds.length > 0) {
+    scopeFilters.push(`employee_id.in.(${scopeEmployeeIds.join(",")})`);
+  }
+  if (constraints.evaluator_id) {
+    scopeFilters.push(`evaluator_id.eq.${constraints.evaluator_id}`);
+  }
+  if (scopeFilters.length > 0) {
+    query = query.or(scopeFilters.join(","));
   }
   if (constraints.reviewer_hr_admin_id) {
     query = query.eq("reviewer_hr_admin_id", constraints.reviewer_hr_admin_id);
@@ -461,12 +386,45 @@ type ApplicableGoalRow = {
   title: string;
   weight: number | null;
   status: string;
+  progress_percent: number | null;
+  progress_method: string | null;
+  measurement_type: string | null;
+  target_value: number | null;
+  actual_value: number | null;
+  measurement_unit: string | null;
 };
 
 /**
+ * Read-only measurement context attached to scoring-inventory goal rows.
+ * Display only: progress, target, and actual never influence scoring.
+ */
+function scoringGoalMeasurementContext(goal: ApplicableGoalRow): {
+  progress_percent: number | null;
+  progress_method: AppraisalScoringInputs["goals"][number]["progress_method"];
+  measurement_type: AppraisalScoringInputs["goals"][number]["measurement_type"];
+  target_value: number | null;
+  actual_value: number | null;
+  measurement_unit: string | null;
+} {
+  return {
+    progress_percent: goal.progress_percent,
+    progress_method:
+      goal.progress_method as AppraisalScoringInputs["goals"][number]["progress_method"],
+    measurement_type:
+      goal.measurement_type as AppraisalScoringInputs["goals"][number]["measurement_type"],
+    target_value: goal.target_value,
+    actual_value: goal.actual_value,
+    measurement_unit: goal.measurement_unit,
+  };
+}
+
+/**
  * The goals applicable to an appraisal: the subject employee's goals, scoped
- * to the appraisal cycle when one is set (`cycle_id`). These are the goals
- * that must all be rated and whose weights must total exactly 100%.
+ * to the appraisal cycle when one is set (`cycle_id`). Only OFFICIAL goals
+ * (`approval_status = 'approved'`) are applicable: draft, pending, returned,
+ * and rejected employee proposals never enter appraisal scoring or snapshots.
+ * These are the goals that must all be rated and whose weights must total
+ * exactly 100%.
  */
 async function loadApplicableGoals(
   employeeId: string,
@@ -474,8 +432,11 @@ async function loadApplicableGoals(
 ): Promise<ApplicableGoalRow[] | NextResponse> {
   let query = supabaseAdmin
     .from("hr3_performance_goals")
-    .select("id, title, weight, status")
-    .eq("employee_id", employeeId);
+    .select(
+      "id, title, weight, status, progress_percent, progress_method, measurement_type, target_value, actual_value, measurement_unit"
+    )
+    .eq("employee_id", employeeId)
+    .eq("approval_status", "approved");
   if (cycleId) query = query.eq("cycle_id", cycleId);
 
   const { data, error } = await query
@@ -793,7 +754,7 @@ async function assertReviewerScope(
     console.error(
       "assertReviewerScope: actor is not the reviewer recorded on this appraisal",
     );
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   return identity;
@@ -1135,7 +1096,7 @@ export async function listAppraisals(
   // HR admin with a non-PerDev role: reject, do not fall through to
   // employee/manager logic.
   if (actor.actorType === "hr_admin") {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   // Manager or Employee: require employee identity
@@ -1265,7 +1226,7 @@ export async function getAppraisal(
   // HR admin with a non-PerDev role: reject, do not fall through to
   // employee/manager logic.
   if (actor.actorType === "hr_admin") {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   // Manager or Employee: require employee identity
@@ -1273,21 +1234,19 @@ export async function getAppraisal(
   if (identity instanceof NextResponse) return identity;
 
   // Manager scope: self + active direct reports, plus any appraisal where
-  // the manager is the assigned evaluator.
+  // the manager is the assigned evaluator. Scope is applied inside the load
+  // so out-of-scope rows are never read; miss and out-of-scope resolve to
+  // the same not-found response as before.
   if (identity.accountType === "manager") {
     const scopedIds = await resolveManagerScopedEmployeeIds(
       identity.employeeUuid,
     );
 
-    const existing = await loadAppraisalOr404(id);
+    const existing = await loadAppraisalScoped(id, {
+      employee_ids: scopedIds,
+      evaluator_id: identity.employeeUuid,
+    });
     if (existing instanceof NextResponse) return existing;
-
-    const isInScope = scopedIds.includes(existing.employee_id);
-    const isEvaluator = isCurrentUserEvaluator(existing, identity);
-
-    if (!isInScope && !isEvaluator) {
-      return APPRAISAL_NOT_FOUND_RESPONSE();
-    }
 
     const withScoring = await enrichAppraisalWithScoring(existing);
 
@@ -1299,16 +1258,14 @@ export async function getAppraisal(
   }
 
   // Employee scope: own appraisal, plus any appraisal where the employee
-  // is the assigned evaluator.
-  const existing = await loadAppraisalOr404(id);
+  // is the assigned evaluator. Scope is applied inside the load so
+  // out-of-scope rows are never read; miss and out-of-scope resolve to
+  // the same not-found response as before.
+  const existing = await loadAppraisalScoped(id, {
+    employee_ids: [identity.employeeUuid],
+    evaluator_id: identity.employeeUuid,
+  });
   if (existing instanceof NextResponse) return existing;
-
-  const isOwner = existing.employee_id === identity.employeeUuid;
-  const isEvaluator = isCurrentUserEvaluator(existing, identity);
-
-  if (!isOwner && !isEvaluator) {
-    return APPRAISAL_NOT_FOUND_RESPONSE();
-  }
 
   const withScoring = await enrichAppraisalWithScoring(existing);
 
@@ -1343,15 +1300,23 @@ export async function getAppraisalScoringInputs(
     const employee = await requireHrEmployee();
     if (employee instanceof NextResponse) return employee;
 
-    const existing = await loadAppraisalOr404(id);
-    if (existing instanceof NextResponse) return existing;
+    const existing = await loadAppraisalScoped(id, {
+      evaluator_id: employee.employeeUuid,
+    });
+    if (existing instanceof NextResponse) {
+      // Scoped miss covers a missing appraisal and a non-evaluator caller;
+      // preserve this path's 403 denial. Query errors (500) propagate.
+      return existing.status === 500
+        ? existing
+        : FORBIDDEN_RESPONSE();
+    }
 
     // Authorization: actor must be the assigned evaluator
     if (
       !existing.evaluator_id ||
       existing.evaluator_id !== employee.employeeUuid
     ) {
-      return FORBIDDEN_RECORD_RESPONSE();
+      return FORBIDDEN_RESPONSE();
     }
 
     // Use snapshot when available (submitted appraisal); fall back to live.
@@ -1365,7 +1330,9 @@ export async function getAppraisalScoringInputs(
     if (evaluatorUseSnapshot) {
       const { data: goalRows, error: goalRowsError } = await supabaseAdmin
         .from("hr3_performance_goals")
-        .select("id, title, weight, status")
+        .select(
+          "id, title, weight, status, progress_percent, progress_method, measurement_type, target_value, actual_value, measurement_unit"
+        )
         .in("id", existing.applicable_goal_ids_snapshot!);
 
       if (goalRowsError) {
@@ -1451,6 +1418,7 @@ export async function getAppraisalScoringInputs(
         weight: goal.weight,
         status:
           goal.status as AppraisalScoringInputs["goals"][number]["status"],
+        ...scoringGoalMeasurementContext(goal),
       })),
       weight_total: weightTotal,
       competencies: competencies.map((competency) => ({
@@ -1495,7 +1463,9 @@ export async function getAppraisalScoringInputs(
   if (hrUseSnapshot) {
     const { data: goalRows, error: goalRowsError } = await supabaseAdmin
       .from("hr3_performance_goals")
-      .select("id, title, weight, status")
+      .select(
+        "id, title, weight, status, progress_percent, progress_method, measurement_type, target_value, actual_value, measurement_unit"
+      )
       .in("id", existing.applicable_goal_ids_snapshot!);
 
     if (goalRowsError) {
@@ -1580,6 +1550,7 @@ export async function getAppraisalScoringInputs(
       title: goal.title,
       weight: goal.weight,
       status: goal.status as AppraisalScoringInputs["goals"][number]["status"],
+      ...scoringGoalMeasurementContext(goal),
     })),
     weight_total: weightTotal,
     competencies: competencies.map((competency) => ({
@@ -1623,7 +1594,7 @@ export async function createAppraisal(
   const identity = await requireHrEmployee();
   if (identity instanceof NextResponse) return identity;
 
-  const employeeId = await requireExistingEmployeeId(input?.employee_id);
+  const employeeId = await requireActiveEmployeeId(input?.employee_id, "employee_id");
   if (employeeId instanceof NextResponse) return employeeId;
 
   const reviewPeriod = requireReviewPeriod(input?.review_period);
@@ -1703,7 +1674,8 @@ export async function createAppraisal(
         message: `Your ${reviewPeriod} appraisal has been created${cycleLabel ? ` for ${cycleLabel}` : ""}.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: employeeId,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${created.id}`,
+        entity_id: created.id,
       },
     ];
     if (evaluatorId && evaluatorId !== employeeId) {
@@ -1713,7 +1685,8 @@ export async function createAppraisal(
         message: `A ${reviewPeriod} appraisal has been created for one of your direct reports.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: evaluatorId,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${created.id}`,
+        entity_id: created.id,
       });
     }
     await createNotifications(notifPayload);
@@ -1812,7 +1785,8 @@ export async function submitSelfAssessment(
         message: `An employee has submitted their self-assessment for ${result.review_period}.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: evaluatorUuid,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${result.id}`,
+        entity_id: result.id,
       });
     }
     if (
@@ -1826,7 +1800,8 @@ export async function submitSelfAssessment(
         message: `A self-assessment has been submitted for ${result.review_period}.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: hrUuid,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${result.id}`,
+        entity_id: result.id,
       });
     }
     if (notifPayload.length > 0) await createNotifications(notifPayload);
@@ -1873,7 +1848,7 @@ export async function submitManagerAssessment(
 
   // Authorization: the authenticated employee must be the assigned evaluator.
   if (!loaded.evaluator_id || loaded.evaluator_id !== identity.employeeUuid) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   const existing = loaded;
@@ -2122,7 +2097,8 @@ export async function submitManagerAssessment(
         message: `Your manager has completed their assessment for ${result.review_period}.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: employeeUuid,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${result.id}`,
+        entity_id: result.id,
       });
     }
     if (hrUuid && hrUuid !== employeeUuid && hrUuid !== identity.employeeUuid) {
@@ -2132,7 +2108,8 @@ export async function submitManagerAssessment(
         message: `A manager assessment has been submitted for ${result.review_period}.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: hrUuid,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${result.id}`,
+        entity_id: result.id,
       });
     }
     if (notifPayload.length > 0) await createNotifications(notifPayload);
@@ -2173,7 +2150,7 @@ export async function finalizeAppraisal(
   // Finalization is HR Admin reviewer only — Manager cannot finalize.
   // HR admins with a non-PerDev role are also rejected here.
   if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   const reviewerIdentity = await requireHrEmployee();
@@ -2413,7 +2390,8 @@ export async function finalizeAppraisal(
         message: `Your ${finalized.review_period} appraisal has been finalized by HR.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: employeeUuid,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${finalized.id}`,
+        entity_id: finalized.id,
       });
     }
     if (
@@ -2427,7 +2405,8 @@ export async function finalizeAppraisal(
         message: `The ${finalized.review_period} appraisal you assessed has been finalized by HR.`,
         actor_employee_id: identity.employeeUuid,
         recipient_employee_id: evaluatorUuid,
-        link: null,
+        link: `/performance-development-dashboard/appraisals?appraisal=${finalized.id}`,
+        entity_id: finalized.id,
       });
     }
     if (notifPayload.length > 0) await createNotifications(notifPayload);
@@ -2512,7 +2491,8 @@ export async function acknowledgeAppraisal(
           message: `The employee has acknowledged their ${result.review_period} appraisal.`,
           actor_employee_id: identity.employeeUuid,
           recipient_employee_id: hrUuid,
-          link: null,
+          link: `/performance-development-dashboard/appraisals?appraisal=${result.id}`,
+          entity_id: result.id,
         },
       ]);
     }
@@ -2540,7 +2520,7 @@ export async function startSelfAssessmentByHrAdmin(
   if (actor instanceof NextResponse) return actor;
 
   if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   const reviewerIdentity = await requireHrEmployee();
@@ -2594,7 +2574,7 @@ export async function reassignAppraisalEvaluator(
   if (actor instanceof NextResponse) return actor;
 
   if (actor.actorType !== "hr_admin" || !isPerDevHrAdminRole(actor.role)) {
-    return FORBIDDEN_RECORD_RESPONSE();
+    return FORBIDDEN_RESPONSE();
   }
 
   const reviewerIdentity = await requireHrEmployee();
@@ -2620,7 +2600,7 @@ export async function reassignAppraisalEvaluator(
   if (closedCycleError) return closedCycleError;
 
   // Validate the new evaluator exists in hr1_employees and is active.
-  const validatedEvaluatorId = await requireActiveEmployeeId(evaluatorId);
+  const validatedEvaluatorId = await requireActiveEmployeeId(evaluatorId, "evaluator_id");
   if (validatedEvaluatorId instanceof NextResponse) return validatedEvaluatorId;
 
   if (existing.evaluator_id === validatedEvaluatorId) {

@@ -140,12 +140,6 @@ function requireValidDate(
   return trimmed;
 }
 
-function requireValidCycleId(value: unknown): string | NextResponse {
-  const id = requireValidUuid(value, "cycle id");
-  if (id instanceof NextResponse) return id;
-  return id;
-}
-
 async function loadCycleOr404(
   cycleId: string
 ): Promise<PerformanceCycle | NextResponse> {
@@ -333,7 +327,7 @@ export async function openPerformanceCycle(
   const identity = await assertHrAdminScope();
   if (identity instanceof NextResponse) return identity;
 
-  const id = requireValidCycleId(cycleId);
+  const id = requireValidUuid(cycleId, "cycle id");
   if (id instanceof NextResponse) return id;
 
   const existing = await loadCycleOr404(id);
@@ -760,7 +754,7 @@ export async function getCycleReadiness(
   const identity = await assertHrAdminScope();
   if (identity instanceof NextResponse) return identity;
 
-  const id = requireValidCycleId(cycleId);
+  const id = requireValidUuid(cycleId, "cycle id");
   if (id instanceof NextResponse) return id;
 
   const cycle = await loadCycleOr404(id);
@@ -796,7 +790,7 @@ export async function advancePerformanceCycle(
   const identity = await assertHrAdminScope();
   if (identity instanceof NextResponse) return identity;
 
-  const id = requireValidCycleId(cycleId);
+  const id = requireValidUuid(cycleId, "cycle id");
   if (id instanceof NextResponse) return id;
 
   const existing = await loadCycleOr404(id);
@@ -875,7 +869,7 @@ export async function closePerformanceCycle(
   const identity = await assertHrAdminScope();
   if (identity instanceof NextResponse) return identity;
 
-  const id = requireValidCycleId(cycleId);
+  const id = requireValidUuid(cycleId, "cycle id");
   if (id instanceof NextResponse) return id;
 
   const existing = await loadCycleOr404(id);
