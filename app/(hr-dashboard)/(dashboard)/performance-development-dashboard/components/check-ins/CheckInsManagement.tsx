@@ -195,6 +195,18 @@ export function CheckInsManagement({
         payload.employee_id = input.employee_id;
       }
 
+      // Goal-linkage intent for the server-side closed-cycle pre-write
+      // guard: the linked goal's cycle must not be closed. The check-in row
+      // itself stores no goal (schema unchanged); the durable link is the
+      // evidence row filed below via check_in_id.
+      const linkedGoalId =
+        typeof input.goal_id === "string" && input.goal_id
+          ? input.goal_id
+          : null;
+      if (linkedGoalId) {
+        payload.goal_id = linkedGoalId;
+      }
+
       const created = await api.runCreate(payload);
 
       const employeeName = employees.find(
@@ -217,10 +229,7 @@ export function CheckInsManagement({
       // Goal-linked check-in: the check-in above is created first with the
       // unchanged flow, then evidence is filed against it. The evidence API
       // is the authorization boundary (owner-only, server-enforced).
-      const goalId =
-        typeof input.goal_id === "string" && input.goal_id
-          ? input.goal_id
-          : null;
+      const goalId = linkedGoalId;
 
       if (goalId) {
         const rawProgress = input.progress_percent;
@@ -491,6 +500,12 @@ export function CheckInsManagement({
             className="w-full rounded-lg border border-line bg-paper py-2 pl-9 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
           />
         </label>
+        <p
+          aria-live="polite"
+          className="text-[12px] tabular-nums text-muted sm:ml-auto"
+        >
+          {displayed.length} of {checkIns.length} check-in{displayed.length === 1 ? "" : "s"}
+        </p>
       </FilterBar>
 
       {error && (

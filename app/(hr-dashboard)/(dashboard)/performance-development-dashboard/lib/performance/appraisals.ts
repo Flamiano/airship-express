@@ -30,6 +30,7 @@ import {
   createNotifications,
   type CreatePerDevNotificationInput,
 } from "@/performance-development-dashboard/lib/performance/notifications";
+import { rejectIfDraftCycle } from "@/performance-development-dashboard/lib/performance/cycles";
 import {
   MAX_APPRAISAL_TEXT_LENGTH,
   MAX_REVIEW_PERIOD_LENGTH,
@@ -1755,6 +1756,12 @@ export async function submitSelfAssessment(
   const closedCycleError = await rejectIfClosedCycle(existing.cycle_id);
   if (closedCycleError) return closedCycleError;
 
+  // Draft-cycle activation: self-assessment submission is active
+  // participation and requires an opened cycle. Viewing/creation stay
+  // available during planning.
+  const draftCycleError = await rejectIfDraftCycle(existing.cycle_id);
+  if (draftCycleError) return draftCycleError;
+
   const result = await transitionAppraisal({
     id,
     expectedFrom: "self_assessment",
@@ -1872,6 +1879,12 @@ export async function submitManagerAssessment(
 
   const closedCycleError = await rejectIfClosedCycle(existing.cycle_id);
   if (closedCycleError) return closedCycleError;
+
+  // Draft-cycle activation: manager-assessment submission (results,
+  // snapshots, transition) requires an opened cycle. Scoring-input reads
+  // stay available during planning.
+  const draftCycleError = await rejectIfDraftCycle(existing.cycle_id);
+  if (draftCycleError) return draftCycleError;
 
   // Manager assessment intentionally uses a conservative one-submission model.
   // Because the status remains manager_assessment after submission, the status
@@ -2173,6 +2186,11 @@ export async function finalizeAppraisal(
 
   const closedCycleError = await rejectIfClosedCycle(existing.cycle_id);
   if (closedCycleError) return closedCycleError;
+
+  // Draft-cycle activation: finalization requires an opened cycle.
+  // Preparation and review reads stay available during planning.
+  const draftCycleError = await rejectIfDraftCycle(existing.cycle_id);
+  if (draftCycleError) return draftCycleError;
 
   // Use the frozen applicability snapshots when available (post-migration
   // appraisals that have been submitted).  This prevents applicability drift

@@ -465,9 +465,20 @@ export function AppraisalDetailModal({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span
+                title={`Lifecycle state: ${
+                  status === "manager_assessment" && hasManagerSubmitted
+                    ? "Awaiting HR Finalization"
+                    : status === "finalized"
+                      ? "Finalized — Awaiting Employee Acknowledgment"
+                      : statusLabel
+                }`}
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusTone}`}
               >
-                {statusLabel}
+                {status === "manager_assessment" && hasManagerSubmitted
+                  ? "Awaiting HR Finalization"
+                  : status === "finalized"
+                    ? "Finalized — Awaiting Employee Acknowledgment"
+                    : statusLabel}
               </span>
               <span className="text-[12px] font-medium text-muted">
                 Created {formatDateTime(appraisal.created_at)}
@@ -513,17 +524,35 @@ export function AppraisalDetailModal({
         )}
 
         {isKnownStage && (
-          <div className="mt-5 flex items-center gap-2">
+          <div className="mt-5 flex items-center gap-2" role="list" aria-label="Appraisal progress">
             {STAGE_ORDER.map((stage, index) => {
-              const reached = index <= currentStageIndex;
-              const isCurrent = index === currentStageIndex;
+              // Display-only progress position: a submitted manager
+              // assessment still carries database status manager_assessment,
+              // so the stepper advances past it to awaiting HR finalization.
+              // Backend status and transitions are untouched.
+              const displayIndex =
+                status === "manager_assessment" && hasManagerSubmitted
+                  ? Math.min(currentStageIndex + 1, STAGE_ORDER.length - 1)
+                  : currentStageIndex;
+              const reached = index <= displayIndex;
+              const isCurrent = index === displayIndex;
               return (
                 <div
                   key={stage}
+                  role="listitem"
+                  aria-label={`${APPRAISAL_STATUS_LABELS[stage] ?? stage}: ${
+                    isCurrent
+                      ? "Current stage"
+                      : reached
+                        ? "Completed stage"
+                        : "Upcoming stage"
+                  }`}
+                  aria-current={isCurrent ? "step" : undefined}
                   className="flex flex-1 items-center gap-2 last:flex-none"
                 >
-                  <div className="flex flex-1 flex-col items-center gap-1 text-center">
+                  <div className="flex flex-col items-center gap-1 text-center">
                     <span
+                      aria-hidden="true"
                       className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
                         reached
                           ? "bg-accent text-paper"
@@ -549,14 +578,18 @@ export function AppraisalDetailModal({
                     </span>
                     {isCurrent && (
                       <span className="text-[9px] leading-none text-muted">
-                        {STAGE_AWAITING_DESCRIPTIONS[stage]}
+                        {status === "manager_assessment" &&
+                        hasManagerSubmitted
+                          ? "Submitted — awaiting HR finalization"
+                          : STAGE_AWAITING_DESCRIPTIONS[stage]}
                       </span>
                     )}
                   </div>
                   {index < STAGE_ORDER.length - 1 && (
                     <span
+                      aria-hidden="true"
                       className={`mb-4 h-px flex-1 ${
-                        index < currentStageIndex
+                        index < displayIndex
                           ? "bg-accent"
                           : "bg-line dark:bg-paper/10"
                       }`}
@@ -1014,6 +1047,11 @@ export function AppraisalDetailModal({
             <p className="text-[13px] font-medium text-ink">
               Record your manager assessment
             </p>
+            <p className="-mt-2 text-[12px] leading-relaxed text-muted">
+              Rate each item 1–5 from your own judgment. Progress, weights,
+              and current levels are shown for context only — they never set
+              the rating automatically.
+            </p>
 
             {scoringLoading ? (
               <div className="flex flex-col gap-3 py-1">
@@ -1415,7 +1453,8 @@ export function AppraisalDetailModal({
               ratings below. Finalization computes the official result: Final
               Score = (Goal Score × 60%) + (Competency Score × 40%), mapped to a
               single rating band. This is locked in at finalization and is never
-              recalculated afterwards.
+              recalculated afterwards. Finalizing does not edit the
+              Manager&apos;s ratings.
             </p>
 
             {scoringLoading ? (

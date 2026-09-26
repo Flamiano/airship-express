@@ -77,15 +77,44 @@ function DialogShell({
   );
 }
 
-function GoalContextSummary({ goal }: { goal: PerformanceGoal }) {
+function GoalContextSummary({
+  goal,
+  tone = "neutral",
+}: {
+  goal: PerformanceGoal;
+  tone?: "neutral" | "destructive";
+}) {
+  const measurement =
+    (goal.progress_method ?? "manual") === "measurable" &&
+    goal.target_value !== null &&
+    goal.target_value !== undefined
+      ? `Measured: ${goal.target_value}${goal.measurement_unit ? ` ${goal.measurement_unit}` : ""}`
+      : "Manual progress tracking";
+  const timeframe =
+    goal.start_date || goal.due_date
+      ? [goal.start_date ?? null, goal.due_date ?? null]
+          .filter(Boolean)
+          .join(" – ")
+      : null;
+
   return (
-    <div className="rounded-xl border border-line bg-ink/[0.02] px-4 py-3 dark:border-paper/10 dark:bg-paper/[0.04]">
+    <div
+      className={`rounded-xl border px-4 py-3 ${
+        tone === "destructive"
+          ? "border-red-500/30 bg-red-500/[0.04]"
+          : "border-line bg-ink/[0.02] dark:border-paper/10 dark:bg-paper/[0.04]"
+      }`}
+    >
       <p className="text-[13.5px] font-medium text-ink">{goal.title}</p>
       {goal.description && (
         <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">
           {goal.description}
         </p>
       )}
+      <p className="mt-1.5 text-[11.5px] text-muted">
+        {measurement}
+        {timeframe ? ` · ${timeframe}` : ""}
+      </p>
     </div>
   );
 }
@@ -258,6 +287,16 @@ export function ApproveProposalDialog({
           </div>
         )}
 
+        {!goal.cycle_id && (
+          <p
+            aria-live="polite"
+            className="rounded-lg bg-line/40 px-3 py-2 text-[11.5px] leading-relaxed text-muted"
+          >
+            Weight allocation unavailable because this goal has no performance
+            cycle. Return it so the employee can select a cycle before approval.
+          </p>
+        )}
+
         <ReviewNoteField
           id="approve-note"
           value={note}
@@ -275,7 +314,7 @@ export function ApproveProposalDialog({
           </p>
         )}
 
-        <div className="mt-1 flex items-center justify-end gap-2">
+        <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           <PerformanceButton
             variant="ghost"
             onClick={onClose}
@@ -356,7 +395,7 @@ export function ReturnProposalDialog({
           </p>
         )}
 
-        <div className="mt-1 flex items-center justify-end gap-2">
+        <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           <PerformanceButton
             variant="ghost"
             onClick={onClose}
@@ -408,10 +447,10 @@ export function RejectProposalDialog({
       onClose={onClose}
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <GoalContextSummary goal={goal} />
+        <GoalContextSummary goal={goal} tone="destructive" />
         <p className="text-[12.5px] leading-relaxed text-muted">
           The employee will be able to view the decision and review note, but
-          this proposal cannot be resubmitted.
+          this proposal cannot be resubmitted. This action cannot be undone.
         </p>
         <ReviewNoteField
           id="reject-note"
@@ -430,7 +469,7 @@ export function RejectProposalDialog({
           </p>
         )}
 
-        <div className="mt-1 flex items-center justify-end gap-2">
+        <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           <PerformanceButton
             variant="ghost"
             onClick={onClose}

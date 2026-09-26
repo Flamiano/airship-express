@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Award,
+  BellRing,
   CheckCircle2,
+  ClipboardList,
   RefreshCw,
+  Target,
 } from "lucide-react";
 import { Skeleton, SkeletonPanel } from "@/performance-development-dashboard/components/ui/Skeleton";
 import {
@@ -189,7 +194,7 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", isPer
     return (
       <div className="space-y-6">
         <PerformancePageHeader
-          title="Performance Development"
+          title="Performance & Development"
           description="Your performance development overview."
         />
         <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
@@ -215,7 +220,7 @@ export function PerformanceDashboard({ serverUser, actorType = "hr_admin", isPer
   return (
     <div className="space-y-6">
       <PerformancePageHeader
-        title="Performance Development"
+        title="Performance & Development"
         description={`Hello ${firstName}. ${subtitleByActor[actorType] ?? subtitleByActor.hr_admin}`}
         actions={
           <>
@@ -292,18 +297,26 @@ function SummaryPanel({
   data: PerformanceDashboardSnapshot;
   actionItemsTotal: number;
 }) {
-  const rows: { label: string; detail: string; value: number; href?: string }[] = [
+  const rows: {
+    label: string;
+    detail: string;
+    value: number;
+    href?: string;
+    icon: ReactNode;
+  }[] = [
     {
       label: "Goals",
       detail: data.actorType === "hr_admin" ? "Organization total" : "In scope",
       value: data.goals.total,
       href: GOALS_PATH,
+      icon: <Target size={16} strokeWidth={1.9} />,
     },
     {
       label: "Appraisals",
       detail: data.actorType === "hr_admin" ? "Organization total" : "In scope",
       value: data.appraisals.total,
       href: APPRAISALS_PATH,
+      icon: <ClipboardList size={16} strokeWidth={1.9} />,
     },
     {
       label:
@@ -316,51 +329,59 @@ function SummaryPanel({
           : "Recorded for you",
       value: data.competencyAndDevelopment.competencies,
       href: COMPETENCIES_PATH,
+      icon: <Award size={16} strokeWidth={1.9} />,
     },
     {
       label: "Action items",
       detail: "Awaiting attention",
       value: actionItemsTotal,
+      icon: <BellRing size={16} strokeWidth={1.9} />,
     },
   ];
 
   return (
-    <PerformancePanel>
+    <section aria-label="Summary">
       <PerformanceSectionHeader
         eyebrow="Summary"
         title="At a glance"
         description="Factual totals from the current snapshot. Open a module for detail."
       />
-      <ul className="mt-4 divide-y divide-line dark:divide-paper/10">
+      <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {rows.map((row) => (
           <li
             key={row.label}
-            className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+            className="flex min-h-[132px] flex-col rounded-2xl border border-line bg-paper p-4 dark:border-paper/10 sm:p-5"
           >
-            <div className="min-w-0">
-              <p className="truncate text-[13.5px] font-medium text-ink">
-                {row.label}
-              </p>
-              <p className="truncate text-[12px] text-muted">{row.detail}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="font-bricolage text-[20px] font-medium tabular-nums tracking-tight text-ink">
-                {row.value}
+            <div className="flex items-start justify-between gap-3">
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent"
+              >
+                {row.icon}
               </span>
               {row.href ? (
                 <Link
                   href={row.href}
                   aria-label={`Open ${row.label}`}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:border-accent/40 hover:text-ink dark:border-paper/15"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:border-accent/40 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent dark:border-paper/15"
                 >
                   <ArrowRight size={14} strokeWidth={1.75} />
                 </Link>
               ) : null}
             </div>
+            <p className="mt-3 truncate text-[13px] font-medium text-ink">
+              {row.label}
+            </p>
+            <p className="mt-0.5 font-bricolage text-[28px] font-medium tabular-nums leading-none tracking-tight text-ink">
+              {row.value}
+            </p>
+            <p className="mt-1.5 truncate text-[12px] text-muted">
+              {row.detail}
+            </p>
           </li>
         ))}
       </ul>
-    </PerformancePanel>
+    </section>
   );
 }
 
@@ -429,6 +450,11 @@ function CurrentCyclePanel({
             </p>
             <p className="text-[12.5px] text-muted">
               {formatDate(cycle.periodStart)} – {formatDate(cycle.periodEnd)}
+            </p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+              Prepare → Open → Monitor → Close. The stage above is
+              coordination context — employee workflows progress
+              independently.
             </p>
           </div>
         </div>
@@ -527,7 +553,7 @@ function GoalProgressPanel({ breakdown }: { breakdown: DashboardStatusBreakdown 
       <PerformanceSectionHeader
         eyebrow="Goals"
         title={breakdown.total > 0 ? `Goal Progress (${breakdown.total})` : "Goal Progress"}
-        description="Goals by status."
+        description="Goals by status, including proposals and official goals."
       />
       <div className="mt-4">
         <StatusBreakdown

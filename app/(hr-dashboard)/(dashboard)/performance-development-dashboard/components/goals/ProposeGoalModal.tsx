@@ -75,6 +75,14 @@ type Props = {
   defaultCycleId?: string;
   submitting: boolean;
   onSubmit: (input: GoalProposalInput) => Promise<void>;
+  /**
+   * One-click Save & Resubmit for returned proposals. When provided and the
+   * edited goal is `returned`, the form offers a second primary action that
+   * saves the edit and immediately submits it for manager review
+   * (PATCH /proposal followed by POST /submit-proposal). Draft edits keep
+   * the existing save-only path so drafting without submitting still works.
+   */
+  onSaveAndResubmit?: (input: GoalProposalInput) => Promise<void>;
   onCancel: () => void;
 };
 
@@ -88,6 +96,7 @@ export function ProposeGoalForm({
   defaultCycleId,
   submitting,
   onSubmit,
+  onSaveAndResubmit,
   onCancel,
 }: Props) {
   const [title, setTitle] = useState(initialGoal?.title ?? EMPTY_FIELD);
@@ -123,24 +132,27 @@ export function ProposeGoalForm({
 
   const selectedCycle = cycles.find((cycle) => cycle.id === cycleId) ?? null;
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const showResubmit =
+    mode === "edit" &&
+    initialGoal?.approval_status === "returned" &&
+    onSaveAndResubmit !== undefined;
 
+  function buildProposalInput(): GoalProposalInput | null {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setFieldError("Goal title is required.");
-      return;
+      return null;
     }
     if (startDate && dueDate && startDate > dueDate) {
       setFieldError("Start date must be on or before the due date.");
-      return;
+      return null;
     }
     if (metricChoice !== "manual") {
       const parsedTarget =
         targetValue.trim() === EMPTY_FIELD ? NaN : Number(targetValue);
       if (!Number.isFinite(parsedTarget) || parsedTarget <= 0) {
         setFieldError("Target must be a number greater than 0.");
-        return;
+        return null;
       }
     }
 
@@ -149,7 +161,7 @@ export function ProposeGoalForm({
     // Proposal payload: definition fields ONLY. Ownership, weight,
     // approval, status, and progress state are server-derived and never
     // sent — the server ignores/forces them regardless.
-    const input: GoalProposalInput = {
+    return {
       title: trimmedTitle,
       description: description.trim() || null,
       category: category.trim() || null,
@@ -170,6 +182,13 @@ export function ProposeGoalForm({
                 : measurementUnit.trim() || null,
           }),
     };
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const input = buildProposalInput();
+    if (!input) return;
 
     onSubmit(input).catch((err) => {
       setFieldError(
@@ -178,11 +197,33 @@ export function ProposeGoalForm({
     });
   }
 
+  function handleSaveAndResubmit() {
+    // Returned → Edit → Save & Resubmit must carry a valid cycle: submission
+    // fails closed server-side, so fail fast here with the same guidance
+    // instead of saving a still-cycle-less edit and surfacing a submit error.
+    // Save Draft / Save Changes (handleSubmit) intentionally still allow a
+    // missing cycle so drafts stay editable; only resubmission requires it.
+    if (!cycleId) {
+      setFieldError(
+        "Select a performance cycle before resubmitting. Weight allocation and appraisal applicability are evaluated against the cycle."
+      );
+      return;
+    }
+    const input = buildProposalInput();
+    if (!input || !onSaveAndResubmit) return;
+
+    onSaveAndResubmit(input).catch((err) => {
+      setFieldError(
+        err instanceof Error ? err.message : "Failed to resubmit this proposal."
+      );
+    });
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <section className="flex flex-col gap-4">
         <PerformanceSectionHeader
-          eyebrow="Your proposal"
+          eyebrow="Basic information"
           title="What do you want to achieve?"
         />
         <PerformanceField label="Goal title" htmlFor="proposal-title">
@@ -213,7 +254,7 @@ export function ProposeGoalForm({
       </section>
 
       <section className="flex flex-col gap-4">
-        <PerformanceSectionHeader eyebrow="Goal details" title="Details" />
+        <PerformanceSectionHeader eyebrow="Timeframe & ownership" title="Who and when" />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
@@ -242,14 +283,14 @@ export function ProposeGoalForm({
         </div>
 
         <PerformanceField
-          label="Timeframe"
+          label="Performance Cycle *"
           htmlFor="proposal-cycle"
           hint={
             selectedCycle
               ? `Performance period: ${formatDateOnly(
                   selectedCycle.period_start
                 )} – ${formatDateOnly(selectedCycle.period_end)}`
-              : "Choose the performance period this goal belongs to."
+              : "Required before submit for approval — drafts may be saved without it, but weight allocation and appraisal applicability need a cycle."
           }
         >
           <PerformanceSelect
@@ -292,27 +333,12 @@ export function ProposeGoalForm({
             />
           </PerformanceField>
         </div>
-
-        <PerformanceField label="Priority" htmlFor="proposal-priority">
-          <PerformanceSelect
-            id="proposal-priority"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-            disabled={submitting}
-          >
-            {PRIORITIES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </PerformanceSelect>
-        </PerformanceField>
       </section>
 
       <section className="flex flex-col gap-4">
         <PerformanceSectionHeader
           eyebrow="Measurement"
-          title="Progress metric type"
+          title="How will progress be measured?"
         />
         <div role="radiogroup" aria-label="Progress metric type">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -398,8 +424,23 @@ export function ProposeGoalForm({
       </section>
 
       <section className="flex flex-col gap-4">
-        <PerformanceSectionHeader eyebrow="More details" title="More details" />
+        <PerformanceSectionHeader eyebrow="Additional details" title="Anything else?" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <PerformanceField label="Priority" htmlFor="proposal-priority">
+            <PerformanceSelect
+              id="proposal-priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              disabled={submitting}
+            >
+              {PRIORITIES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </PerformanceSelect>
+          </PerformanceField>
+
           <PerformanceField
             label="Category"
             htmlFor="proposal-category"
@@ -437,7 +478,7 @@ export function ProposeGoalForm({
         </p>
       )}
 
-      <div className="mt-1 flex items-center justify-end gap-2">
+      <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
         <PerformanceButton
           variant="ghost"
           onClick={onCancel}
@@ -454,6 +495,15 @@ export function ProposeGoalForm({
               ? "Save draft"
               : "Save changes"}
         </PerformanceButton>
+        {showResubmit && (
+          <PerformanceButton
+            type="button"
+            onClick={handleSaveAndResubmit}
+            disabled={submitting}
+          >
+            {submitting ? "Resubmitting..." : "Save & Resubmit"}
+          </PerformanceButton>
+        )}
       </div>
     </form>
   );
@@ -467,6 +517,7 @@ type ProposeGoalModalProps = {
   defaultCycleId?: string;
   submitting: boolean;
   onSubmit: (input: GoalProposalInput) => Promise<void>;
+  onSaveAndResubmit?: (input: GoalProposalInput) => Promise<void>;
   onClose: () => void;
 };
 
@@ -478,6 +529,7 @@ export function ProposeGoalModal({
   defaultCycleId,
   submitting,
   onSubmit,
+  onSaveAndResubmit,
   onClose,
 }: ProposeGoalModalProps) {
   return (
@@ -528,6 +580,7 @@ export function ProposeGoalModal({
             defaultCycleId={defaultCycleId}
             submitting={submitting}
             onSubmit={onSubmit}
+            onSaveAndResubmit={onSaveAndResubmit}
             onCancel={onClose}
           />
         </div>

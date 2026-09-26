@@ -21,6 +21,9 @@ export function AdvanceCycleModal({
   onClose,
   onConfirm,
 }: Props) {
+  // Terminal advance (finalization → closed) closes the cycle. The modal
+  // covers both cases; the direct Close button keeps its existing behavior.
+  const isTerminalAdvance = readiness.nextStage === "closed";
   return (
     <Modal
       onClose={onClose}
@@ -56,6 +59,25 @@ export function AdvanceCycleModal({
         </div>
 
         <p className="mt-3 text-[13px] text-muted">{cycle.name}</p>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+          You are advancing the organization-wide performance cycle.
+          Individual employee records are not automatically changed by this
+          action.
+        </p>
+        {isTerminalAdvance && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+            <AlertTriangle
+              size={15}
+              strokeWidth={2}
+              className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+            />
+            <p className="text-[12.5px] leading-relaxed text-amber-700 dark:text-amber-400">
+              Closing this cycle is terminal under the current system. It
+              prevents further goal-plan and appraisal workflow changes for
+              this cycle. Historical records remain available.
+            </p>
+          </div>
+        )}
 
         {readiness.ready ? (
           <>
@@ -100,6 +122,9 @@ export function AdvanceCycleModal({
               </p>
             </div>
 
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Before advancing
+            </p>
             {readiness.blockers.map((blocker) => (
               <div
                 key={blocker.code}
@@ -119,6 +144,9 @@ export function AdvanceCycleModal({
 
         {readiness.warnings.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Review before advancing
+            </p>
             {readiness.warnings.map((warning) => (
               <div
                 key={warning.code}
@@ -142,7 +170,11 @@ export function AdvanceCycleModal({
           </div>
         )}
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <p className="mt-4 text-[11.5px] text-muted">
+          Readiness is based on records currently associated with this cycle.
+        </p>
+
+        <div className="mt-4 flex items-center justify-end gap-3">
           {readiness.ready ? (
             <>
               <button
@@ -159,7 +191,15 @@ export function AdvanceCycleModal({
                 disabled={confirming}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {confirming ? "Advancing..." : "Advance"}
+                {confirming
+                  ? isTerminalAdvance
+                    ? "Closing..."
+                    : "Advancing..."
+                  : isTerminalAdvance
+                    ? "Close Cycle"
+                    : readiness.nextStage
+                      ? `Advance to ${PERFORMANCE_CYCLE_STAGE_LABELS[readiness.nextStage]}`
+                      : "Advance"}
               </button>
             </>
           ) : (

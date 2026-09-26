@@ -25,7 +25,7 @@ type Props = {
   onLoadWeightContext?: (input: {
     employeeId: string;
     cycleId: string | null;
-  }) => Promise<GoalWeightContext>;
+  }) => Promise<GoalWeightContext | null>;
   submitting: boolean;
   onSubmit: (input: GoalCreateInput) => Promise<void>;
   onClose: () => void;

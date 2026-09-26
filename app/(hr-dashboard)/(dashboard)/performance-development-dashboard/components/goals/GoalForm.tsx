@@ -57,12 +57,14 @@ type Props = {
    * DISPLAY-ONLY loader for the Goal Setting weight indicator. Resolves the
    * weights already stored for the selected employee (scoped to the cycle when
    * one is chosen) using the existing goals list API. When omitted, no weight
-   * indicator is shown. It never writes and never validates.
+   * indicator is shown. It never writes and never validates. Returns null
+   * when the allocation cannot be evaluated (no cycle selected or load
+   * failure) so callers fail closed instead of showing a cross-cycle total.
    */
   onLoadWeightContext?: (input: {
     employeeId: string;
     cycleId: string | null;
-  }) => Promise<GoalWeightContext>;
+  }) => Promise<GoalWeightContext | null>;
   submitting: boolean;
   onSubmit: (input: GoalCreateInput | GoalUpdateInput) => Promise<void>;
   onCancel: () => void;
@@ -597,6 +599,17 @@ export function GoalForm({
                 : `Exceeds required total by ${formatWeightTotal(projectedTotal - 100)}%.`}
           </p>
         </div>
+      )}
+
+      {weightContextEnabled && !cycleId && projectedTotal === null && (
+        <p
+          aria-live="polite"
+          className="rounded-lg bg-line/40 px-3 py-2 text-[11.5px] leading-relaxed text-muted"
+        >
+          Weight allocation unavailable because no performance cycle is
+          selected. Select a cycle to evaluate allocation against the correct
+          performance period.
+        </p>
       )}
 
       {mode === "create" && employeeId && (weightContextLoading || weightContext) && (

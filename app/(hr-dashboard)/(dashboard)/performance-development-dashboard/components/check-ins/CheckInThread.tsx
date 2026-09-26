@@ -95,7 +95,7 @@ function EvidenceSection({
       </p>
 
       <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
-        Progress reported
+        Progress snapshot
       </p>
       <p className="mt-1 text-[13px] font-semibold tabular-nums text-ink">
         {item.progress_percent}%
@@ -282,7 +282,8 @@ export function CheckInThread({
               Progress snapshot{" "}
               <span className="font-semibold tabular-nums text-ink">
                 {latestEvidence.progress_percent}%
-              </span>
+              </span>{" "}
+              · recorded with this check-in
             </p>
           </div>
         ) : null}

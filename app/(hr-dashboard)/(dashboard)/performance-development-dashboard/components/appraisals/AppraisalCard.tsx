@@ -16,6 +16,12 @@ type Props = {
   evaluatorName?: string;
   reviewerByAccountName?: string | null;
   cycleName?: string | null;
+  /**
+   * Whether persisted manager ratings exist (manager has submitted).
+   * Null/undefined means unknown — the card falls back to the raw status
+   * label. Presentation only; the server remains authoritative.
+   */
+  managerSubmitted?: boolean | null;
   selectable?: boolean;
   onOpen?: () => void;
 };
@@ -26,14 +32,25 @@ export function AppraisalCard({
   evaluatorName,
   reviewerByAccountName,
   cycleName,
+  managerSubmitted = null,
   selectable = true,
   onOpen,
 }: Props) {
   const status = appraisal.status as AppraisalStatus;
-  const statusLabel =
-    APPRAISAL_STATUS_LABELS[status] ?? (appraisal.status || "Unknown stage");
-  const statusTone =
-    APPRAISAL_STATUS_TONES[status] ?? "bg-line text-muted";
+  // User-facing lifecycle state. A submitted manager assessment still
+  // carries database status manager_assessment, so the submitted flag
+  // distinguishes "awaiting manager" from "awaiting HR finalization".
+  // Finalized always awaits employee acknowledgment next.
+  const displayLabel =
+    status === "manager_assessment" && managerSubmitted === true
+      ? "Awaiting HR Finalization"
+      : status === "finalized"
+        ? "Finalized — Awaiting Employee Acknowledgment"
+        : (APPRAISAL_STATUS_LABELS[status] ?? appraisal.status ?? "Unknown stage");
+  const displayTone =
+    status === "manager_assessment" && managerSubmitted === true
+      ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+      : (APPRAISAL_STATUS_TONES[status] ?? "bg-line text-muted");
 
   const finalized =
     appraisal.final_score !== null &&
@@ -51,9 +68,10 @@ export function AppraisalCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusTone}`}
+              title={`Lifecycle state: ${displayLabel}`}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${displayTone}`}
             >
-              {statusLabel}
+              {displayLabel}
             </span>
             <span className="text-[12px] font-medium text-muted">
               {formatDate(appraisal.created_at)}

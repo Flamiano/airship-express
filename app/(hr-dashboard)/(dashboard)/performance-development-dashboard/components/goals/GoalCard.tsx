@@ -88,26 +88,25 @@ export function GoalCard({
         </p>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           {showApprovalBadge && (
-            <PerformanceStatusBadge tone={approvalTone}>
-              {GOAL_APPROVAL_STATUS_LABELS[approval]}
-            </PerformanceStatusBadge>
+            <span title={`Approval state: ${GOAL_APPROVAL_STATUS_LABELS[approval]}`}>
+              <PerformanceStatusBadge tone={approvalTone}>
+                {GOAL_APPROVAL_STATUS_LABELS[approval]}
+              </PerformanceStatusBadge>
+            </span>
           )}
-          <PerformanceStatusBadge tone={statusTone}>
-            {PERFORMANCE_GOAL_STATUS_LABELS[goal.status]}
-          </PerformanceStatusBadge>
+          <span title={`Execution state: ${PERFORMANCE_GOAL_STATUS_LABELS[goal.status]}`}>
+            <PerformanceStatusBadge tone={statusTone}>
+              {PERFORMANCE_GOAL_STATUS_LABELS[goal.status]}
+            </PerformanceStatusBadge>
+          </span>
         </div>
       </div>
 
-      {(goal.priority || goal.weight != null || goal.category) && (
+      {(goal.priority || goal.category) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {goal.priority && (
             <span className="rounded-full bg-line px-2.5 py-0.5 text-[11px] font-medium text-muted">
               {PRIORITY_LABELS[goal.priority] ?? goal.priority}
-            </span>
-          )}
-          {goal.weight != null && (
-            <span className="rounded-full bg-line px-2.5 py-0.5 text-[11px] font-medium tabular-nums text-muted">
-              Weight {goal.weight}%
             </span>
           )}
           {goal.category && (
@@ -138,6 +137,11 @@ export function GoalCard({
           </p>
           <p className="text-[13px] font-semibold tabular-nums text-ink">
             {goal.progress_percent}%
+            {goal.weight != null && (
+              <span className="ml-2 font-normal text-muted">
+                · Weight {goal.weight}%
+              </span>
+            )}
           </p>
         </div>
         {(goal.progress_method ?? "manual") === "measurable" && (

@@ -19,6 +19,8 @@ import {
   PERFORMANCE_AUDIT_ENTITY_TYPE,
   PERFORMANCE_AUDIT_REASON,
 } from "@/performance-development-dashboard/lib/performance/audit";
+import { rejectIfDraftCycle } from "@/performance-development-dashboard/lib/performance/cycles";
+import { createNotifications } from "@/performance-development-dashboard/lib/performance/notifications";
 import {
   buildEvidenceAttachmentPath,
   createEvidenceFileUrl,
@@ -30,6 +32,7 @@ import {
 import {
   ABSENT,
   BAD_REQUEST_RESPONSE,
+  CONFLICT_RESPONSE,
   FORBIDDEN_RESPONSE,
   NOT_FOUND_RESPONSE,
   requireOptionalText,
@@ -80,6 +83,8 @@ type EvidenceGoalRef = {
   employee_id: string;
   title: string | null;
   approval_status: string | null;
+  cycle_id: string | null;
+  status: string | null;
 };
 
 const EVIDENCE_SELECT = [
@@ -105,7 +110,7 @@ async function loadGoalOr404(
 ): Promise<EvidenceGoalRef | NextResponse> {
   const { data, error } = await supabaseAdmin
     .from("hr3_performance_goals")
-    .select("id, employee_id, title, approval_status")
+    .select("id, employee_id, title, approval_status, cycle_id, status")
     .eq("id", goalId)
     .maybeSingle();
 
@@ -123,6 +128,8 @@ async function loadGoalOr404(
     employee_id: data.employee_id,
     title: (data.title as string | null) ?? null,
     approval_status: (data.approval_status as string | null) ?? null,
+    cycle_id: (data.cycle_id as string | null) ?? null,
+    status: (data.status as string | null) ?? null,
   } as EvidenceGoalRef;
 }
 
@@ -165,6 +172,60 @@ function isGoalInManagerScope(
   scopedIds: string[]
 ): boolean {
   return scopedIds.includes(goalEmployeeId);
+}
+
+/** Loads the authoritative manager (`hr1_employees.manager_id`) of an employee. */
+async function loadEvidenceOwnerManagerId(
+  employeeUuid: string
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("hr1_employees")
+    .select("manager_id")
+    .eq("id", employeeUuid)
+    .maybeSingle();
+
+  return (data?.manager_id as string | null) ?? null;
+}
+
+/**
+ * Best-effort evidence notification: the owner's CURRENT active manager
+ * receives `goal.evidence_uploaded` with a goal deep link. Failures never
+ * roll back the evidence workflow; a missing/inactive manager safely no-ops.
+ * Mirrors the proposal `notifyProposalEvent` pattern in `goals.ts`.
+ */
+async function notifyEvidenceUploaded(input: {
+  goalId: string;
+  goalTitle: string | null;
+  ownerEmployeeId: string;
+  actor: PerDevActor;
+}): Promise<void> {
+  try {
+    const managerId = await loadEvidenceOwnerManagerId(input.ownerEmployeeId);
+    if (!managerId) return;
+
+    const { data: manager } = await supabaseAdmin
+      .from("hr1_employees")
+      .select("id, status")
+      .eq("id", managerId)
+      .maybeSingle();
+    if (!manager || (manager.status && manager.status !== "active")) return;
+
+    const goalLabel = input.goalTitle ? `"${input.goalTitle}"` : "their goal";
+    await createNotifications([
+      {
+        recipient_employee_id: manager.id as string,
+        actor_employee_id: input.actor.employeeUuid,
+        actor_hr_admin_id: input.actor.hrAdminId,
+        title: "New Goal Evidence",
+        message: `${input.actor.accountFullName} uploaded supporting evidence for ${goalLabel}.`,
+        type: "goal.evidence_uploaded",
+        link: `/performance-development-dashboard/goals?goal=${input.goalId}`,
+        entity_id: input.goalId,
+      },
+    ]);
+  } catch (error) {
+    console.error("notifyEvidenceUploaded (goal.evidence_uploaded):", error);
+  }
 }
 
 /**
@@ -357,6 +418,46 @@ export async function createGoalEvidence(
     );
   }
 
+  // Closed-cycle governance: a closed performance period accepts no new
+  // evidence. Rejected BEFORE storage upload, DB insert, audit, and
+  // notification, so a denied attempt leaves no side effects. Reads,
+  // signed URLs, and history are unaffected. Goals without a cycle
+  // (legacy NULL) keep existing behavior and never match a cycle.
+  if (goal.cycle_id) {
+    const { data: cycle, error: cycleError } = await supabaseAdmin
+      .from("hr3_performance_cycles")
+      .select("status")
+      .eq("id", goal.cycle_id)
+      .maybeSingle();
+    if (cycleError) {
+      console.error("createGoalEvidence: cycle query error:", cycleError);
+      return NextResponse.json(
+        { error: "Failed to validate performance cycle" },
+        { status: 500 }
+      );
+    }
+    if (cycle?.status === "closed") {
+      return CONFLICT_RESPONSE(
+        "The performance cycle is closed. Goal plan changes are not allowed."
+      );
+    }
+  }
+
+  // Draft-cycle activation: evidence upload is active execution and
+  // requires an opened cycle. Reads, signed URLs, and history are
+  // unaffected; legacy NULL-cycle goals keep existing behavior.
+  const draftCycleError = await rejectIfDraftCycle(goal.cycle_id);
+  if (draftCycleError) return draftCycleError;
+
+  // Completed-goal immutability: a completed goal is a terminal historical
+  // record and accepts no new evidence. Reads, signed URLs, and history
+  // are unaffected.
+  if (goal.status === "completed") {
+    return CONFLICT_RESPONSE(
+      "This goal is already completed and can no longer accept new evidence."
+    );
+  }
+
   let checkInId: string | null = null;
   if (
     input.check_in_id !== undefined &&
@@ -544,6 +645,15 @@ export async function createGoalEvidence(
     },
   });
   if (auditError instanceof NextResponse) return auditError;
+
+  // Secondary side effect: notify the owner's current active manager.
+  // Best-effort only — evidence success is returned regardless.
+  await notifyEvidenceUploaded({
+    goalId: goal.id,
+    goalTitle: goal.title,
+    ownerEmployeeId: goal.employee_id,
+    actor,
+  });
 
   return toEvidenceItemWithUrl(createdEvidence);
 }

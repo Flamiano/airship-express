@@ -16,7 +16,12 @@ import type {
 } from "@/performance-development-dashboard/types";
 import { useAppraisalApi } from "@/performance-development-dashboard/hooks/useAppraisalApi";
 import { SkeletonList } from "@/performance-development-dashboard/components/ui/Skeleton";
-import { PerformanceErrorBanner } from "@/performance-development-dashboard/components/ui/performance";
+import { FilterBar } from "@/performance-development-dashboard/components/ui/FilterBar";
+import {
+  PerformanceButton,
+  PerformanceErrorBanner,
+  PerformancePageHeader,
+} from "@/performance-development-dashboard/components/ui/performance";
 import { AppraisalCard } from "@/performance-development-dashboard/components/appraisals/AppraisalCard";
 import { AppraisalDetailModal } from "@/performance-development-dashboard/components/appraisals/AppraisalDetailModal";
 import { CreateAppraisalModal } from "@/performance-development-dashboard/components/appraisals/CreateAppraisalModal";
@@ -89,6 +94,49 @@ export function AppraisalsManagement({
   }
 
   const firstName = serverUser.fullName.split(" ")[0] || "there";
+
+  /**
+   * Per-row manager-submission state for manager_assessment appraisals,
+   * resolved from the existing scoring-inputs endpoint (submitted ⟺
+   * persisted goal ratings exist). Mirrors the check-ins classification
+   * pattern: quiet, best-effort, presentation-only. Missing entries mean
+   * "unknown" and cards fall back to the raw status label.
+   */
+  const [submittedById, setSubmittedById] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  useEffect(() => {
+    const missing = appraisals
+      .filter(
+        (appraisal) =>
+          appraisal.status === "manager_assessment" &&
+          !(appraisal.id in submittedById)
+      )
+      .map((appraisal) => appraisal.id);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const results = await Promise.allSettled(
+        missing.map((id) => api.getScoringInputs(id))
+      );
+      if (cancelled) return;
+      setSubmittedById((previous) => {
+        const next = { ...previous };
+        results.forEach((result, index) => {
+          if (result.status !== "fulfilled") return;
+          if (missing[index] in next) return;
+          next[missing[index]] =
+            result.value.existing_goal_ratings.length > 0;
+        });
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appraisals]);
 
   const displayed = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -276,52 +324,46 @@ export function AppraisalsManagement({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
-            Appraisals
-          </h1>
-          <p className="mt-2 max-w-xl text-[13px] text-muted">
-            {isHrAdmin
-              ? `Hello ${firstName}. Initiate formal evaluations and move each appraisal through its stages: self assessment, manager assessment, finalized, acknowledged.`
-              : isManager
-                ? `Hello ${firstName}. Evaluate your direct reports by rating their Goals/KPI and Competencies and submitting the Manager Assessment.`
-                : `Hello ${firstName}. Your formal appraisal record, from your self assessment through final acknowledgement.`}
-          </p>
-        </div>
-
-        {/* Refresh is available to everyone viewing Appraisals — it only
-            reloads list data already in the viewer's authorized scope.
-            Administrative actions below stay independently gated. */}
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 dark:border-paper/15"
-          >
-            <RefreshCw
-              size={14}
-              strokeWidth={1.75}
-              className={refreshing ? "animate-spin" : ""}
-            />
-            Refresh
-          </button>
-          {isHrAdmin && (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              disabled={creating}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+      <PerformancePageHeader
+        title="Appraisals"
+        description={
+          isHrAdmin
+            ? `Hello ${firstName}. Initiate formal evaluations and move each appraisal through its stages: self assessment, manager assessment, finalized, acknowledged.`
+            : isManager
+              ? `Hello ${firstName}. Evaluate your direct reports by rating their Goals/KPI and Competencies and submitting the Manager Assessment.`
+              : `Hello ${firstName}. Your formal appraisal record, from your self assessment through final acknowledgement.`
+        }
+        actions={
+          <>
+            {/* Refresh is available to everyone viewing Appraisals — it only
+                reloads list data already in the viewer's authorized scope.
+                Administrative actions below stay independently gated. */}
+            <PerformanceButton
+              variant="ghost"
+              onClick={handleRefresh}
+              disabled={refreshing}
             >
-              <Plus size={15} strokeWidth={2} />
-              Add appraisal
-            </button>
-          )}
-        </div>
-      </div>
+              <RefreshCw
+                size={14}
+                strokeWidth={1.75}
+                className={refreshing ? "animate-spin" : ""}
+              />
+              Refresh
+            </PerformanceButton>
+            {isHrAdmin && (
+              <PerformanceButton
+                onClick={() => setCreateOpen(true)}
+                disabled={creating}
+              >
+                <Plus size={15} strokeWidth={2} />
+                Add appraisal
+              </PerformanceButton>
+            )}
+          </>
+        }
+      />
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-paper px-4 py-4 dark:border-paper/10">
+      <FilterBar>
         <label className="relative block w-full sm:max-w-[320px]">
           <span className="sr-only">Search appraisals</span>
           <Search
@@ -337,7 +379,13 @@ export function AppraisalsManagement({
             className="w-full rounded-lg border border-line bg-paper py-2 pl-9 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-accent dark:border-paper/15"
           />
         </label>
-      </div>
+        <p
+          aria-live="polite"
+          className="text-[12px] tabular-nums text-muted sm:ml-auto"
+        >
+          {displayed.length} of {appraisals.length} appraisal{displayed.length === 1 ? "" : "s"}
+        </p>
+      </FilterBar>
 
       {error && (
         <PerformanceErrorBanner message={error} onRetry={handleRefresh} />
@@ -380,6 +428,7 @@ export function AppraisalsManagement({
             <AppraisalCard
               key={appraisal.id}
               appraisal={appraisal}
+              managerSubmitted={submittedById[appraisal.id] ?? null}
               employeeName={resolveEmployeeName(appraisal.employee_id)}
               evaluatorName={resolveEmployeeName(appraisal.evaluator_id)}
               reviewerByAccountName={appraisal.reviewerByAccountName}

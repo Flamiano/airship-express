@@ -77,6 +77,22 @@ export type PerformanceCycleReadiness = {
   warnings: PerformanceCycleReadinessWarning[];
 };
 
+/**
+ * Closure readiness for the Open/Monitor/Close operating model. Narrower
+ * than stage-advance readiness: only whether every cycle-linked appraisal
+ * has reached `finalized`/`acknowledged`. Pending acknowledgment alone
+ * never blocks. Returned on close rejection (409) and consumed by the
+ * close-confirmation UI.
+ */
+export type PerformanceCycleClosureReadiness = {
+  cycleId: string;
+  ready: boolean;
+  totalAppraisals: number;
+  finalizedAppraisals: number;
+  unfinishedAppraisals: number;
+  blockers: PerformanceCycleReadinessBlocker[];
+};
+
 export type CurrentPerDevUser = {
   fullName: string;
   role: string;
@@ -455,6 +471,13 @@ export type PerformanceCheckIn = {
 export type CheckInCreateInput = {
   employee_id?: string;
   message: string;
+  /**
+   * Optional goal linkage intent for a goal-linked check-in. Consumed
+   * server-side ONLY for the closed-cycle pre-write guard; it is never
+   * persisted (the schema has no check-in ↔ goal column) — the durable link
+   * is the evidence row filed afterwards via `check_in_id`.
+   */
+  goal_id?: string;
 };
 
 /**
@@ -1788,6 +1811,85 @@ export type DevelopmentActionItem = {
 };
 
 /* =====================================================================
+ * MY DEVELOPMENT (employee self-scope, read-only aggregation view)
+ * ===================================================================== */
+
+/**
+ * One competency in the employee's own development view. Narrow projection
+ * of the existing profile model: display fields plus the server-derived
+ * required level and gap. No assessor attribution, no other employees.
+ */
+export type MyDevelopmentCompetency = {
+  competencyId: string;
+  competencyName: string;
+  competencyCategory: string | null;
+  currentLevel: number;
+  effectiveRequiredLevel: number | null;
+  gap: number | null;
+};
+
+/** Own course enrollment with display labels (narrow, read-only). */
+export type MyDevelopmentCourseEnrollment = {
+  id: string;
+  courseId: string;
+  courseTitle: string | null;
+  competencyName: string | null;
+  progressPercent: number;
+  status: string;
+  enrolledAt: string;
+  completedAt: string | null;
+};
+
+/**
+ * Own training enrollment with session context (narrow, read-only).
+ * Approver identity is intentionally omitted.
+ */
+export type MyDevelopmentTrainingEnrollment = {
+  id: string;
+  sessionId: string;
+  sessionTitle: string | null;
+  scheduleDate: string | null;
+  trainerName: string | null;
+  mode: string | null;
+  venue: string | null;
+  competencyName: string | null;
+  approvalStatus: string;
+  attendanceStatus: string | null;
+};
+
+/** Own certification (narrow, read-only). */
+export type MyDevelopmentCertification = {
+  id: string;
+  courseTitle: string | null;
+  certificateUrl: string | null;
+  issuedAt: string;
+  expiresAt: string | null;
+};
+
+export type MyDevelopmentSummary = {
+  openDevelopmentActions: number;
+  competencyGaps: number;
+  learningInProgress: number;
+  certifications: number;
+};
+
+/**
+ * Employee self-scope development payload. Intentionally narrow: own
+ * finalized-history actions, own competencies, own learning summary, own
+ * certifications. No succession, no other employees, no HR attribution.
+ */
+export type MyDevelopmentData = {
+  developmentActions: DevelopmentActionItem[];
+  competencies: MyDevelopmentCompetency[];
+  learning: {
+    courseEnrollments: MyDevelopmentCourseEnrollment[];
+    trainingEnrollments: MyDevelopmentTrainingEnrollment[];
+  };
+  certifications: MyDevelopmentCertification[];
+  summary: MyDevelopmentSummary;
+};
+
+/* =====================================================================
  * REPORTS & ANALYTICS (read-only, HR-admin-only org-wide snapshot)
  * ===================================================================== */
 
@@ -2035,6 +2137,8 @@ export const PERDEV_NOTIFICATION_TYPES = [
   "goal.proposal_approved",
   "goal.proposal_returned",
   "goal.proposal_rejected",
+  "goal.evidence_uploaded",
+  "goal.completion_confirmed",
 ] as const;
 
 export type PerDevNotificationType =

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Edit3, ExternalLink, FileText, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Edit3, ExternalLink, FileText, ImagePlus, X } from "lucide-react";
 import { Tooltip } from "@/performance-development-dashboard/components/ui/Tooltip";
 import type {
+  CreateGoalEvidenceInput,
   EmployeeOption,
+  GoalEvidenceAttachmentInput,
   GoalUpdateInput,
   GoalWeightContext,
   PerformanceCycle,
@@ -38,6 +40,11 @@ import {
   formatMeasuredPair,
 } from "@/performance-development-dashboard/lib/format/measurement";
 import { MAX_GOAL_PROGRESS_NOTE_LENGTH } from "@/performance-development-dashboard/lib/constants";
+import {
+  ALLOWED_EVIDENCE_MIME_TYPES,
+  MAX_EVIDENCE_FILE_SIZE_BYTES,
+  MAX_EVIDENCE_NOTE_LENGTH,
+} from "@/performance-development-dashboard/lib/constants";
 import { useGoalApi } from "@/performance-development-dashboard/hooks/useGoalApi";
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -78,12 +85,13 @@ type Props = {
   onUpdate: (id: string, input: GoalUpdateInput) => Promise<void>;
   /**
    * DISPLAY-ONLY loader for the edit form's live weight-allocation summary.
-   * Same loader the create form uses; never writes, never validates.
+   * Same loader the create form uses; never writes, never validates. Null
+   * when the allocation cannot be evaluated (no cycle or load failure).
    */
   onLoadWeightContext?: (input: {
     employeeId: string;
     cycleId: string | null;
-  }) => Promise<GoalWeightContext>;
+  }) => Promise<GoalWeightContext | null>;
   /**
    * Authenticated employee UUID for proposal ownership checks. When it
    * matches the goal owner, owner-only proposal actions (edit draft,
@@ -96,6 +104,16 @@ type Props = {
   onSubmitProposal?: (id: string) => Promise<void>;
   /** Opens the manager/HR review dialog for a pending proposal. */
   onReviewProposal?: (action: "approve" | "return" | "reject") => void;
+  /**
+   * Files goal evidence (owner-only, approved goals). The evidence API is the
+   * authorization boundary; the modal only exposes the action when the
+   * authenticated employee owns the goal. Uploads go through the existing
+   * private-storage + signed-URL architecture — never a public URL.
+   */
+  onUploadEvidence?: (
+    id: string,
+    input: CreateGoalEvidenceInput
+  ) => Promise<PerformanceGoalEvidenceItem>;
 };
 
 /**
@@ -195,6 +213,7 @@ export function GoalDetailModal({
   onEditProposal,
   onSubmitProposal,
   onReviewProposal,
+  onUploadEvidence,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [progressInput, setProgressInput] = useState(goal.progress_percent ?? 0);
@@ -238,6 +257,44 @@ export function GoalDetailModal({
   }, [goal.id, evidenceGoalId, listEvidence]);
 
   const evidenceLoading = evidenceGoalId !== goal.id;
+
+  /**
+   * Single-CTA rule: an authorized uploader sees exactly ONE primary
+   * "Upload Evidence" action at any time. While the list is empty (including
+   * loading/error reads, where the outcome is still unknown) the empty-state
+   * card owns the CTA; the section header owns it only once rows exist.
+   * Read-only actors never satisfy `canUploadEvidence`, so they see zero.
+   */
+  const isEvidenceEmpty =
+    !evidenceLoading && !evidenceError && evidence.length === 0;
+
+  // Direct evidence upload (owner-only, approved goals). Mirrors the
+  // goal-linked check-in attachment pattern: same MIME allowlist, same 10 MB
+  // cap, same base64 payload shape. The evidence API remains the
+  // authorization boundary — this UI only exposes the existing capability.
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(
+    goal.progress_percent ?? 0
+  );
+  const [uploadNote, setUploadNote] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * Owner-only upload affordance. Backend rule (unchanged): only the goal
+   * owner may file evidence, and only on approved goals. Managers/HR stay
+   * read-only here even though they can view scoped evidence history.
+   * (`isApproved` below resolves the same way; this inline check avoids
+   * referencing declarations further down.)
+   */
+  const canUploadEvidence =
+    (goal.approval_status ?? "approved") === "approved" &&
+    actorEmployeeId !== null &&
+    actorEmployeeId === goal.employee_id &&
+    goal.status !== "completed" &&
+    onUploadEvidence !== undefined;
 
   useEffect(() => {
     setProgressInput(goal.progress_percent ?? 0);
@@ -316,6 +373,15 @@ export function GoalDetailModal({
     !isHrAdmin && !isManager &&
     (goal.status === "not_started" || goal.status === "in_progress");
 
+  /**
+   * Completion readiness (display-only mirror of the server rule in
+   * `submitGoalCompletion`): submission requires canonical progress exactly
+   * 100%. The server remains authoritative — this only controls whether the
+   * action is offered. Applies to manual and measurable goals alike since
+   * both store capped canonical `progress_percent`.
+   */
+  const canSubmitCompletion = (goal.progress_percent ?? 0) >= 100;
+
   const managerCanEditProgress =
     isApproved &&
     isManager &&
@@ -328,6 +394,18 @@ export function GoalDetailModal({
 
   const hrCanComplete =
     isApproved && isHrAdmin && goal.status === "pending_completion";
+  /**
+   * Normal completion confirmation: the owner's current manager confirms a
+   * 100% pending goal. Display-only mirror of the server rule in
+   * `updatePerformanceGoal` (approved + pending_completion + canonical 100%,
+   * direct-report-only, never own goal). The server remains authoritative.
+   */
+  const managerCanConfirmCompletion =
+    isApproved &&
+    isManager &&
+    !isOwner &&
+    goal.status === "pending_completion" &&
+    canSubmitCompletion;
   const hrCanEdit =
     isApproved && isHrAdmin && goal.status !== "completed";
   const managerCanEdit =
@@ -381,6 +459,112 @@ export function GoalDetailModal({
   async function handleEditSave(input: GoalUpdateInput) {
     await onUpdate(goal.id, input);
     setEditing(false);
+  }
+
+  function handleUploadFileChange(file: File | null) {
+    setUploadError(null);
+    if (!file) {
+      setUploadFile(null);
+      if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
+      return;
+    }
+    if (
+      !(ALLOWED_EVIDENCE_MIME_TYPES as readonly string[]).includes(file.type)
+    ) {
+      setUploadError("Unsupported file type. Use PNG, JPG, WebP, or PDF.");
+      return;
+    }
+    if (file.size > MAX_EVIDENCE_FILE_SIZE_BYTES) {
+      setUploadError("File is too large. Maximum size is 10 MB.");
+      return;
+    }
+    if (file.size === 0) {
+      setUploadError("File is empty. Choose a different file.");
+      return;
+    }
+    setUploadFile(file);
+  }
+
+  function readUploadAttachmentPayload(
+    file: File
+  ): Promise<GoalEvidenceAttachmentInput> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () =>
+        reject(new Error("Could not read the selected file."));
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          reject(new Error("Could not read the selected file."));
+          return;
+        }
+        // Strip the `data:<mime>;base64,` prefix; the server tolerates and
+        // strips it as well, but the declared size must match decoded bytes.
+        const base64 = result.replace(/^data:[^;]+;base64,/, "");
+        resolve({
+          name: file.name,
+          mime: file.type,
+          size: file.size,
+          data: base64,
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function refreshEvidence() {
+    try {
+      const rows = await listEvidence(goal.id);
+      setEvidence(rows);
+      setEvidenceError(null);
+      setEvidenceGoalId(goal.id);
+    } catch (err) {
+      setEvidenceError(
+        err instanceof Error ? err.message : "Failed to load evidence."
+      );
+      setEvidenceGoalId(goal.id);
+    }
+  }
+
+  async function handleEvidenceUpload() {
+    if (!onUploadEvidence) return;
+    setUploadError(null);
+    let attachment: GoalEvidenceAttachmentInput | null = null;
+    if (uploadFile) {
+      try {
+        attachment = await readUploadAttachmentPayload(uploadFile);
+      } catch (err) {
+        setUploadError(
+          err instanceof Error
+            ? err.message
+            : "Could not read the selected file."
+        );
+        return;
+      }
+    }
+    setUploading(true);
+    try {
+      const input: CreateGoalEvidenceInput = {
+        progress_percent: Math.min(
+          100,
+          Math.max(0, Math.round(uploadProgress))
+        ),
+        note: uploadNote.trim() || null,
+        ...(attachment ? { attachment } : {}),
+      };
+      await onUploadEvidence(goal.id, input);
+      setShowUploadForm(false);
+      setUploadNote("");
+      setUploadFile(null);
+      if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
+      await refreshEvidence();
+    } catch (err) {
+      setUploadError(
+        err instanceof Error ? err.message : "Failed to upload evidence."
+      );
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -848,18 +1032,29 @@ export function GoalDetailModal({
                         : "Save progress"}
                   </PerformanceButton>
                   {employeeEditable && goal.status !== "pending_completion" && goal.status !== "completed" && (
-                    <PerformanceButton
-                      onClick={handleSubmit}
-                      disabled={progressSaving}
-                      className="px-3 py-1.5 text-[12.5px]"
-                    >
-                      Submit completion
-                    </PerformanceButton>
+                    canSubmitCompletion ? (
+                      <PerformanceButton
+                        onClick={handleSubmit}
+                        disabled={progressSaving}
+                        className="px-3 py-1.5 text-[12.5px]"
+                      >
+                        Submit completion
+                      </PerformanceButton>
+                    ) : (
+                      <PerformanceButton
+                        disabled
+                        title="Progress must reach 100% before this goal can be submitted for completion."
+                        className="px-3 py-1.5 text-[12.5px]"
+                      >
+                        Submit completion
+                      </PerformanceButton>
+                    )
                   )}
                 </div>
                 <p className="text-[11.5px] leading-relaxed text-muted">
-                  Submitting marks the goal as pending HR confirmation. Status
-                  changes follow the existing goal workflow.
+                  {canSubmitCompletion
+                    ? "Submitting marks the goal as pending manager confirmation. Status changes follow the existing goal workflow."
+                    : "Progress must reach 100% before this goal can be submitted for completion."}
                 </p>
               </div>
             ) : null}
@@ -867,7 +1062,7 @@ export function GoalDetailModal({
             {goal.status === "pending_completion" && !isHrAdmin && (
               <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
                 <p className="text-[12.5px] font-medium text-amber-600">
-                  Submitted for review — pending HR confirmation.
+                  Submitted for review — pending manager confirmation.
                 </p>
               </div>
             )}
@@ -876,6 +1071,10 @@ export function GoalDetailModal({
               <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
                 <p className="text-[12.5px] font-medium text-emerald-600">
                   This goal has been completed.
+                </p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
+                  Completed goals are read-only — progress, evidence, and
+                  details are preserved for history.
                 </p>
               </div>
             )}
@@ -889,7 +1088,146 @@ export function GoalDetailModal({
             <PerformanceSectionHeader
               eyebrow="Evidence"
               title="Evidence & Check-ins"
+              description="Supporting files and documents for this goal."
+              action={
+                canUploadEvidence && !showUploadForm && !isEvidenceEmpty ? (
+                  <PerformanceButton
+                    onClick={() => {
+                      setUploadError(null);
+                      setUploadProgress(goal.progress_percent ?? 0);
+                      setShowUploadForm(true);
+                    }}
+                    disabled={goalBusy !== null}
+                    className="px-3 py-1.5 text-[12.5px]"
+                  >
+                    Upload Evidence
+                  </PerformanceButton>
+                ) : undefined
+              }
             />
+            {canUploadEvidence && showUploadForm && (
+              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line px-4 py-4 dark:border-paper/10">
+                <div className="flex items-end gap-3">
+                  <label className="flex-1">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+                      Progress snapshot
+                    </span>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={uploadProgress}
+                        aria-label="Evidence progress snapshot"
+                        onChange={(e) =>
+                          setUploadProgress(
+                            Math.min(
+                              100,
+                              Math.max(0, Number(e.target.value))
+                            )
+                          )
+                        }
+                        disabled={uploading}
+                        className="flex-1 text-accent accent-current"
+                      />
+                      <span className="w-12 text-right text-[12px] font-semibold tabular-nums text-ink">
+                        {Math.round(uploadProgress)}%
+                      </span>
+                    </div>
+                    <span className="mt-1 block text-[11.5px] text-muted">
+                      Snapshot for this evidence only — your goal&apos;s current
+                      progress stays unchanged here.
+                    </span>
+                  </label>
+                </div>
+                <PerformanceField
+                  label="Note"
+                  htmlFor="goal-evidence-note"
+                  optional
+                >
+                  <PerformanceTextarea
+                    id="goal-evidence-note"
+                    value={uploadNote}
+                    onChange={(e) => setUploadNote(e.target.value)}
+                    maxLength={MAX_EVIDENCE_NOTE_LENGTH}
+                    rows={2}
+                    placeholder="Optional context for this evidence…"
+                    disabled={uploading}
+                  />
+                </PerformanceField>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+                    File{" "}
+                    <span className="font-normal normal-case tracking-normal">
+                      (optional)
+                    </span>
+                  </p>
+                  <label
+                    htmlFor="goal-evidence-file"
+                    className={`mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[12.5px] font-medium text-muted transition-colors hover:border-accent/40 hover:text-ink dark:border-paper/15 ${
+                      uploading ? "pointer-events-none opacity-50" : ""
+                    }`}
+                  >
+                    <ImagePlus size={15} strokeWidth={1.75} />
+                    {uploadFile ? "Change file" : "Attach photo or PDF"}
+                  </label>
+                  <input
+                    ref={uploadFileInputRef}
+                    id="goal-evidence-file"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,application/pdf"
+                    disabled={uploading}
+                    className="sr-only"
+                    onChange={(e) =>
+                      handleUploadFileChange(e.target.files?.[0] ?? null)
+                    }
+                  />
+                  <p className="mt-1 text-[11.5px] text-muted">
+                    PNG, JPG, WebP, or PDF · up to 10 MB.
+                  </p>
+                  {uploadFile && (
+                    <p className="mt-1 truncate text-[12.5px] font-medium text-ink">
+                      {uploadFile.name}{" "}
+                      <span className="font-normal tabular-nums text-muted">
+                        ({(uploadFile.size / 1024).toFixed(1)} KB)
+                      </span>
+                    </p>
+                  )}
+                </div>
+                {uploadError && (
+                  <p
+                    aria-live="polite"
+                    className="rounded-lg bg-red-500/10 px-3 py-2 text-[12.5px] font-medium text-red-600"
+                  >
+                    {uploadError}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <PerformanceButton
+                    onClick={handleEvidenceUpload}
+                    disabled={uploading}
+                    className="px-3 py-1.5 text-[12.5px]"
+                  >
+                    {uploading ? "Uploading..." : "Upload"}
+                  </PerformanceButton>
+                  <PerformanceButton
+                    variant="ghost"
+                    onClick={() => {
+                      setShowUploadForm(false);
+                      setUploadError(null);
+                      setUploadFile(null);
+                      if (uploadFileInputRef.current)
+                        uploadFileInputRef.current.value = "";
+                    }}
+                    disabled={uploading}
+                    className="px-3 py-1.5 text-[12.5px]"
+                  >
+                    Cancel
+                  </PerformanceButton>
+                </div>
+              </div>
+            )}
             {evidenceError ? (
               <p className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-[12.5px] font-medium text-red-600">
                 {evidenceError}
@@ -899,9 +1237,31 @@ export function GoalDetailModal({
                 Loading evidence…
               </p>
             ) : evidence.length === 0 ? (
-              <p className="mt-2 text-[12.5px] text-muted">
-                No evidence recorded yet.
-              </p>
+              <div className="mt-4 rounded-xl border border-line px-4 py-4 text-center dark:border-paper/10">
+                <p className="text-[13px] font-medium text-ink">
+                  {canUploadEvidence
+                    ? "No evidence uploaded yet."
+                    : "No evidence has been uploaded for this goal yet."}
+                </p>
+                <p className="mx-auto mt-1 max-w-sm text-[12px] leading-relaxed text-muted">
+                  {canUploadEvidence
+                    ? "Attach supporting files or record a progress snapshot for this goal."
+                    : "Evidence uploaded by the goal owner will appear here."}
+                </p>
+                {canUploadEvidence && !showUploadForm && (
+                  <PerformanceButton
+                    onClick={() => {
+                      setUploadError(null);
+                      setUploadProgress(goal.progress_percent ?? 0);
+                      setShowUploadForm(true);
+                    }}
+                    disabled={goalBusy !== null}
+                    className="mt-3 px-3 py-1.5 text-[12.5px]"
+                  >
+                    Upload Evidence
+                  </PerformanceButton>
+                )}
+              </div>
             ) : (
               <div className="mt-4 space-y-3">
                 {evidence.map((item) => (
@@ -923,7 +1283,7 @@ export function GoalDetailModal({
         )}
 
         {!editing && (
-          <div className="mt-6 flex items-center justify-end gap-2 border-t border-line pt-5 dark:border-paper/10">
+          <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5 dark:border-paper/10">
             {(hrCanEdit || managerCanEdit) && (
               <PerformanceButton
                 variant="ghost"
@@ -943,6 +1303,14 @@ export function GoalDetailModal({
                 disabled={goalBusy !== null}
               >
                 Mark complete
+              </PerformanceButton>
+            )}
+            {managerCanConfirmCompletion && (
+              <PerformanceButton
+                onClick={() => onMarkCompleted(goal.id)}
+                disabled={goalBusy !== null}
+              >
+                Confirm Completion
               </PerformanceButton>
             )}
             <PerformanceButton

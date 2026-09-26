@@ -14,12 +14,15 @@ import {
 import { MAX_CHECK_IN_MESSAGE_LENGTH } from "@/performance-development-dashboard/lib/constants";
 import {
   BAD_REQUEST_RESPONSE,
+  CONFLICT_RESPONSE,
   FORBIDDEN_RESPONSE,
+  NOT_FOUND_RESPONSE,
   requireValidUuid,
 } from "@/performance-development-dashboard/lib/performance/validation";
 import {
   createNotifications,
 } from "@/performance-development-dashboard/lib/performance/notifications";
+import { rejectIfDraftCycle } from "@/performance-development-dashboard/lib/performance/cycles";
 import { listEvidenceForCheckIn } from "@/performance-development-dashboard/lib/performance/goalEvidence";
 import {
   CHECK_IN_FEEDBACK_TYPE,
@@ -724,6 +727,72 @@ export async function createCheckIn(
 
   const message = requireCheckInMessage(input?.message);
   if (message instanceof NextResponse) return message;
+
+  // Closed-cycle governance for goal-linked check-ins. When the caller
+  // links the new check-in to a goal (`goal_id` is linkage intent only and
+  // is never persisted — the schema has no check-in ↔ goal/cycle column),
+  // the goal's cycle must not be closed. This runs BEFORE the shell/message
+  // row is written so a rejection can never orphan a check-in, and before
+  // audit/notification so denial is side-effect free. General check-ins
+  // (no goal_id) are cycle-unaware by schema and always proceed. The
+  // evidence filed afterwards re-enforces the same rule inside
+  // createGoalEvidence.
+  const rawGoalId = input?.goal_id;
+  if (rawGoalId !== undefined && rawGoalId !== null && rawGoalId !== "") {
+    if (typeof rawGoalId !== "string") {
+      return BAD_REQUEST_RESPONSE("goal_id must be a string.");
+    }
+    const goalId = requireValidUuid(rawGoalId, "goal_id");
+    if (goalId instanceof NextResponse) return goalId;
+
+    const { data: goal, error: goalError } = await supabaseAdmin
+      .from("hr3_performance_goals")
+      .select("id, employee_id, cycle_id")
+      .eq("id", goalId)
+      .maybeSingle();
+
+    if (goalError) {
+      console.error("createCheckIn: linked goal query error:", goalError);
+      return NextResponse.json(
+        { error: "Failed to validate linked goal" },
+        { status: 500 }
+      );
+    }
+    if (!goal) return NOT_FOUND_RESPONSE("Performance goal");
+
+    // The linked goal must belong to the check-in subject (mirrors the
+    // ownership rule createGoalEvidence enforces for check_in_id).
+    if (goal.employee_id !== employeeId) {
+      return BAD_REQUEST_RESPONSE(
+        "goal_id must reference a goal belonging to this check-in's employee."
+      );
+    }
+
+    if (goal.cycle_id) {
+      const { data: cycle, error: cycleError } = await supabaseAdmin
+        .from("hr3_performance_cycles")
+        .select("status")
+        .eq("id", goal.cycle_id)
+        .maybeSingle();
+      if (cycleError) {
+        console.error("createCheckIn: cycle query error:", cycleError);
+        return NextResponse.json(
+          { error: "Failed to validate performance cycle" },
+          { status: 500 }
+        );
+      }
+      if (cycle?.status === "closed") {
+        return CONFLICT_RESPONSE(
+          "The performance cycle is closed. Goal plan changes are not allowed."
+        );
+      }
+
+      // Draft-cycle activation: a goal-linked check-in is active execution
+      // and requires an opened cycle. General check-ins never reach here.
+      const draftCycleError = await rejectIfDraftCycle(goal.cycle_id);
+      if (draftCycleError) return draftCycleError;
+    }
+  }
 
   const { data, error } = await supabaseAdmin
     .from("hr3_performance_feedback")

@@ -14,6 +14,7 @@ import {
   PerformanceTabs,
 } from "@/performance-development-dashboard/components/ui/performance";
 import type {
+  CreateGoalEvidenceInput,
   CurrentPerDevUser,
   EmployeeOption,
   GoalApprovalStatus,
@@ -301,6 +302,12 @@ export function GoalsManagement({
    * (employee-scoped; cycle-scoped when a cycle is chosen) to summarise the
    * weights already recorded. It performs no writes and does not validate or
    * enforce the 100% rule — that stays server-side in appraisal scoring.
+   *
+   * Fail-closed for NULL cycle: without a cycle the allocation cannot be
+   * evaluated against the correct performance period, so no cross-cycle total
+   * is ever computed (previously a NULL-cycle proposal summed goals across
+   * different cycles, e.g. 100+100+100 → "300% / 100%"). Callers render a
+   * "no performance cycle" notice instead.
    */
   const loadWeightContext = useCallback(
     async ({
@@ -309,9 +316,12 @@ export function GoalsManagement({
     }: {
       employeeId: string;
       cycleId: string | null;
-    }): Promise<GoalWeightContext> => {
-      const params: Record<string, string> = { employee_id: employeeId };
-      if (cycleId) params.cycle_id = cycleId;
+    }): Promise<GoalWeightContext | null> => {
+      if (!cycleId) return null;
+      const params: Record<string, string> = {
+        employee_id: employeeId,
+        cycle_id: cycleId,
+      };
       const fresh = await listGoals(params);
       return {
         goalCount: fresh.length,
@@ -369,6 +379,24 @@ export function GoalsManagement({
     await loadGoals();
   }
 
+  /**
+   * Owner-only evidence upload through the existing private-storage +
+   * signed-URL architecture (`api.createEvidence`). The evidence API is the
+   * authorization boundary (owner-only, approved-only); this handler only
+   * surfaces success feedback. The detail modal refreshes its own evidence
+   * list from the returned record, so no goal reload is needed.
+   */
+  async function handleUploadEvidence(
+    id: string,
+    input: CreateGoalEvidenceInput
+  ) {
+    const created = await api.runAction(id, "evidence", () =>
+      api.createEvidence(id, input)
+    );
+    toast.success("Evidence uploaded.");
+    return created;
+  }
+
   async function handlePropose(input: GoalProposalInput) {
     setProposing(true);
     try {
@@ -393,6 +421,34 @@ export function GoalsManagement({
       toast.success("Proposal updated.");
       await loadGoals();
       setSelectedGoalId(goal.id);
+    } finally {
+      setProposing(false);
+    }
+  }
+
+  /**
+   * One-click Save & Resubmit for returned proposals (UAT defect fix).
+   *
+   * Previously the edit modal only saved the definition (PATCH /proposal,
+   * approval stays `returned`), so an employee who clicked "Save changes"
+   * believing it resubmitted left the DB as `returned` and the manager kept
+   * seeing CHANGES REQUESTED after hard refresh. This chains the existing
+   * save with the existing submit-proposal call (returned →
+   * pending_manager_approval, review state cleared server-side) so the
+   * manager scoped loader receives `pending_manager_approval`. Draft edits
+   * keep the save-only path above; execution/weight/appraisal semantics are
+   * untouched (server-derived).
+   */
+  async function handleProposalUpdateAndResubmit(input: GoalProposalInput) {
+    if (!proposalEditing) return;
+    setProposing(true);
+    try {
+      const updated = await api.updateProposal(proposalEditing.id, input);
+      const next = await api.submitProposal(updated.id);
+      setProposalEditing(null);
+      toast.success("This goal has been submitted for review.");
+      await loadGoals();
+      setSelectedGoalId(next.id);
     } finally {
       setProposing(false);
     }
@@ -695,6 +751,12 @@ export function GoalsManagement({
               Clear filters
             </button>
           )}
+          <p
+            aria-live="polite"
+            className="ml-auto text-[12px] tabular-nums text-muted"
+          >
+            {displayed.length} of {goals.length} goal{displayed.length === 1 ? "" : "s"}
+          </p>
         </div>
       </FilterBar>
 
@@ -794,6 +856,7 @@ export function GoalsManagement({
           onUpdate={handleUpdate}
           onLoadWeightContext={loadWeightContext}
           actorEmployeeId={actorEmployeeId}
+          onUploadEvidence={handleUploadEvidence}
           onEditProposal={() => {
             setSelectedGoalId(null);
             setProposalEditing(selectedGoal);
@@ -826,6 +889,7 @@ export function GoalsManagement({
           defaultCycleId={defaultCycleId}
           submitting={proposing}
           onSubmit={handleProposalUpdate}
+          onSaveAndResubmit={handleProposalUpdateAndResubmit}
           onClose={() => setProposalEditing(null)}
         />
       )}

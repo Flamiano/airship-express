@@ -35,6 +35,7 @@ import {
 } from "@/performance-development-dashboard/lib/constants";
 import { createNotifications } from "@/performance-development-dashboard/lib/performance/notifications";
 import { roundScore } from "@/performance-development-dashboard/lib/performance/scoring";
+import { rejectIfDraftCycle } from "@/performance-development-dashboard/lib/performance/cycles";
 
 /**
  * Resolves the set of employee IDs a Manager may access: the manager's own
@@ -1089,6 +1090,35 @@ export async function listPerformanceGoals(
       query = query.eq("status", status);
     }
 
+    // Scope-safe read filters for DISPLAY-ONLY helpers (weight allocation).
+    // Without these, `loadWeightContext` as manager/employee ignores its
+    // `employee_id`/`cycle_id` params and sums cross-cycle / cross-employee
+    // rows (e.g. 100+100+100 across cycles → "300% / 100%"). `employee_id`
+    // is restricted to the caller's scoped set (never widened); `cycle_id`
+    // is a pure read filter (closed cycles remain readable).
+    if (
+      input?.employee_id !== undefined &&
+      input?.employee_id !== null &&
+      input?.employee_id !== ""
+    ) {
+      const employeeId = requireValidUuid(input.employee_id, "employee_id");
+      if (employeeId instanceof NextResponse) return employeeId;
+      if (!scopedIds.includes(employeeId)) {
+        return FORBIDDEN_RESPONSE();
+      }
+      query = query.eq("employee_id", employeeId);
+    }
+
+    if (
+      input?.cycle_id !== undefined &&
+      input?.cycle_id !== null &&
+      input?.cycle_id !== ""
+    ) {
+      const cycleId = requireValidUuid(input.cycle_id, "cycle_id");
+      if (cycleId instanceof NextResponse) return cycleId;
+      query = query.eq("cycle_id", cycleId);
+    }
+
     const { data, error } = await query
       .order("created_at", { ascending: false })
       .order("id", { ascending: false });
@@ -1533,6 +1563,17 @@ export async function updatePerformanceGoal(
     );
   }
 
+  // Completed-goal immutability: a completed goal is a terminal historical
+  // record. Definition, weight, progress, and status edits are rejected;
+  // reads and history are unaffected. The dedicated completion-confirmation
+  // transition (pending_completion → completed) runs while the goal is
+  // still pending, so it is never subject to this guard.
+  if (existing.status === "completed") {
+    return CONFLICT_RESPONSE(
+      "This goal is already completed and can no longer be modified."
+    );
+  }
+
   const patch: Record<string, unknown> = {};
 
   if ("title" in input) {
@@ -1782,6 +1823,38 @@ export async function updatePerformanceGoal(
     patch.status = status;
   }
 
+  // Completion-confirmation governance (normal workflow: employee submits at
+  // 100% → manager confirms; HR Admin retains administrative fallback).
+  // The transition map above already restricts completion to
+  // pending_completion → completed. Additionally:
+  // - Manager authority is direct-report-only: a manager may never confirm
+  //   their own goal through manager authority (self remains in the edit
+  //   scope above, but completion requires someone else's confirmation).
+  // - Effective canonical progress must be exactly 100%, so a 0–99% pending
+  //   goal (including legacy rows predating the submit gate) can never be
+  //   completed through this service.
+  if (patch.status === "completed") {
+    if (!isHrAdmin) {
+      if (!actor.employeeUuid || existing.employee_id === actor.employeeUuid) {
+        return FORBIDDEN_RESPONSE();
+      }
+    }
+    // Draft-cycle activation: completion confirmation is active execution
+    // and requires an opened cycle.
+    const draftCycleError = await rejectIfDraftCycle(existing.cycle_id);
+    if (draftCycleError) return draftCycleError;
+    const effectiveProgress =
+      "progress_percent" in patch &&
+      typeof patch.progress_percent === "number"
+        ? (patch.progress_percent as number)
+        : existing.progress_percent;
+    if (effectiveProgress !== 100) {
+      return CONFLICT_RESPONSE(
+        "Goal progress must reach 100% before completion can be confirmed."
+      );
+    }
+  }
+
   // Goal-plan editability guard: prevent mutations when the relevant appraisal
   // is in a protected stage. Checks the existing employee/cycle, and when
   // employee_id or cycle_id changes, also checks the new target.
@@ -1853,6 +1926,32 @@ export async function updatePerformanceGoal(
     });
     if (auditError instanceof NextResponse) return auditError;
 
+    // Best-effort completion notification: the goal owner learns their goal
+    // was confirmed as completed. Failures never roll back the completion.
+    // `createNotifications` skips actor==recipient, so an HR admin confirming
+    // a linked-employee own goal produces no self-notification.
+    if (completedByAdmin) {
+      try {
+        await createNotifications([
+          {
+            recipient_employee_id: updated.employee_id,
+            actor_employee_id: actor.employeeUuid,
+            actor_hr_admin_id: actor.hrAdminId,
+            title: "Goal Completed",
+            message: `Your goal "${updated.title}" has been confirmed as completed.`,
+            type: "goal.completion_confirmed",
+            link: `/performance-development-dashboard/goals?goal=${updated.id}`,
+            entity_id: updated.id,
+          },
+        ]);
+      } catch (notificationError) {
+        console.error(
+          "updatePerformanceGoal (goal.completion_confirmed):",
+          notificationError
+        );
+      }
+    }
+
     const [enriched] = await enrichGoalsWithAssignerAccount([updated]);
     return enriched;
   }
@@ -1922,6 +2021,11 @@ export async function updateGoalProgress(
       `Cannot update progress: approval state "${existing.approval_status}" does not allow progress updates. Only approved goals accept progress updates.`
     );
   }
+
+  // Draft-cycle activation: active execution requires an opened cycle.
+  // Planning (proposals, reviews, assignment) stays available in draft.
+  const draftCycleError = await rejectIfDraftCycle(existing.cycle_id);
+  if (draftCycleError) return draftCycleError;
 
   if (existing.status !== "not_started" && existing.status !== "in_progress") {
     return CONFLICT_RESPONSE(
@@ -2033,9 +2137,26 @@ export async function submitGoalCompletion(
     );
   }
 
+  // Draft-cycle activation: completion submission is active execution and
+  // requires an opened cycle.
+  const draftCycleError = await rejectIfDraftCycle(existing.cycle_id);
+  if (draftCycleError) return draftCycleError;
+
   if (existing.status !== "not_started" && existing.status !== "in_progress") {
     return CONFLICT_RESPONSE(
       `Cannot submit goal: status "${existing.status}" does not allow submission. Only not_started or in_progress goals can be submitted.`
+    );
+  }
+
+  // Completion governance: an approved goal may be submitted for completion
+  // ONLY when its canonical progress is exactly 100%. This holds for both
+  // manual goals (employee-recorded 0–100) and measurable goals (canonical
+  // progress is already capped at 100 by calculateMeasuredProgress, so
+  // 100% and 120% achievement are both eligible). 100% never auto-submits;
+  // the employee must explicitly invoke this operation.
+  if (existing.progress_percent !== 100) {
+    return CONFLICT_RESPONSE(
+      "Goal progress must reach 100% before it can be submitted for completion."
     );
   }
 
@@ -2583,6 +2704,20 @@ export async function submitGoalProposal(
       `Only draft or returned proposals can be submitted. Current approval state: "${existing.approval_status}".`
     );
   }
+
+  // A proposal without a performance cycle cannot be weight-evaluated by the
+  // reviewer (weight allocation is cycle-scoped) and can never become
+  // appraisal-applicable (applicability filters by cycle). Drafts may exist
+  // without a cycle, but submission fails closed so direct API calls cannot
+  // bypass the requirement. The cycle must exist and must not be closed,
+  // reusing the existing goal-cycle validation.
+  if (!existing.cycle_id) {
+    return BAD_REQUEST_RESPONSE(
+      "A performance cycle is required before this proposal can be submitted for manager review. Edit your proposal to select a performance cycle."
+    );
+  }
+  const submitCycle = await requireExistingCycleId(existing.cycle_id);
+  if (submitCycle instanceof NextResponse) return submitCycle;
 
   const planError = await assertGoalPlanEditable({
     employeeId: existing.employee_id,

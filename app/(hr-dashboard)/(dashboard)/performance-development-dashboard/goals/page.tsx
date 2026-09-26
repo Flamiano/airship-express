@@ -151,6 +151,35 @@ async function resolveReferencedNames(
   return { cycleNamesById, employeeNamesById };
 }
 
+/**
+ * Employee/Manager-safe proposal cycle choices (read-only).
+ *
+ * The HR cycle administration list (`listPerformanceCycles`) requires
+ * PerDev HR Admin scope, so the manager/employee Goals branches historically
+ * received `cycles={[]}` and every proposal saved `cycle_id=NULL`. Reading a
+ * cycle to select it for a proposal is not cycle administration: this loads
+ * only usable (non-closed) cycles with the same display fields HR receives,
+ * newest first. No mutation, no privileged controls, no scope widening — the
+ * proposal and submit services remain authoritative (existence + not-closed).
+ */
+async function loadProposalCycles(): Promise<PerformanceCycle[]> {
+  const { data, error } = await supabaseAdmin
+    .from("hr3_performance_cycles")
+    .select(
+      "id, name, period_start, period_end, status, stage, created_by, created_at, opened_at, closed_at"
+    )
+    .neq("status", "closed")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
+
+  if (error) {
+    console.error("loadProposalCycles: query error:", error);
+    return [];
+  }
+
+  return (data ?? []) as PerformanceCycle[];
+}
+
 export default async function GoalsPage() {
   const actor = await getAuthenticatedActor();
   if (actor instanceof NextResponse) redirect(loginRouteForAccountType(cachedPerDevAccountType()));
@@ -232,7 +261,7 @@ export default async function GoalsPage() {
     );
     const scopedIds = [actor.employeeUuid, ...directReportIds];
 
-    const [employeesResult] = await Promise.all([
+    const [employeesResult, proposalCycles] = await Promise.all([
       supabaseAdmin
         .from("hr1_employees")
         .select(
@@ -241,6 +270,7 @@ export default async function GoalsPage() {
         .in("id", scopedIds)
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true }),
+      loadProposalCycles(),
     ]);
 
     const employeeRows = (employeesResult.data ?? []) as unknown as EmployeeRow[];
@@ -257,15 +287,18 @@ export default async function GoalsPage() {
         isPerDevHrAdmin={isPerDevHrAdmin}
         initialGoals={goals}
         initialError={initialError}
-        cycles={[]}
+        cycles={proposalCycles}
         employees={employees}
         cycleNamesById={names.cycleNamesById}
         employeeNamesById={names.employeeNamesById}
+        defaultCycleId={chooseCurrentCycle(proposalCycles)?.id}
         departments={[]}
         actorEmployeeId={actor.employeeUuid}
       />
     );
   }
+
+  const proposalCycles = await loadProposalCycles();
 
   return (
     <GoalsManagement
@@ -274,10 +307,11 @@ export default async function GoalsPage() {
       isPerDevHrAdmin={isPerDevHrAdmin}
       initialGoals={goals}
       initialError={initialError}
-      cycles={[]}
+      cycles={proposalCycles}
       employees={[]}
       cycleNamesById={names.cycleNamesById}
       employeeNamesById={names.employeeNamesById}
+      defaultCycleId={chooseCurrentCycle(proposalCycles)?.id}
       departments={[]}
       actorEmployeeId={actor.employeeUuid}
       // The employee view also serves edge actors (non-PerDev HR, accounts

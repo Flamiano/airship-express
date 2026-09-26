@@ -93,7 +93,8 @@ export function CheckInCard({
             Progress snapshot{" "}
             <span className="font-semibold tabular-nums text-ink">
               {linked.snapshot}%
-            </span>
+            </span>{" "}
+            · recorded with this check-in
           </p>
         </div>
       ) : null}

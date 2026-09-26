@@ -82,6 +82,9 @@ export function PerDevShell({ children }: { children: ReactNode }) {
     `${DASHBOARD_PATH}/learning-development`,
   );
   const feedbackActive = pathname.startsWith(`${DASHBOARD_PATH}/feedback`);
+  const myDevelopmentActive = pathname.startsWith(
+    `${DASHBOARD_PATH}/my-development`,
+  );
   const developmentActive = pathname.startsWith(
     `${DASHBOARD_PATH}/development-planning`,
   );
@@ -279,6 +282,21 @@ export function PerDevShell({ children }: { children: ReactNode }) {
                 <MessagesSquare size={17} strokeWidth={1.9} />
                 Feedback
               </Link>
+              {!canAdministerPerDev && (
+                <Link
+                  href={`${DASHBOARD_PATH}/my-development`}
+                  onClick={close}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium transition-all",
+                    myDevelopmentActive
+                      ? "bg-accent text-paper shadow-sm shadow-accent/25"
+                      : "text-muted hover:bg-ink/[0.04] hover:text-ink dark:hover:bg-paper/[0.06]",
+                  )}
+                >
+                  <Trophy size={17} strokeWidth={1.9} />
+                  My Development
+                </Link>
+              )}
               {canAdministerPerDev && (
                 <Link
                   href={`${DASHBOARD_PATH}/development-planning`}

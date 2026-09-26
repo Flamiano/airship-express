@@ -209,6 +209,51 @@ async function transitionCycle(
 }
 
 /**
+ * Draft-cycle activation guard for ACTIVE execution/assessment operations.
+ *
+ * A `draft` cycle is HR preparation only: planning (proposals, reviews,
+ * official assignment, appraisal creation) is allowed, but cycle-specific
+ * active performance activity requires an opened cycle. Returns a 409
+ * lifecycle conflict when the given cycle is still a draft, null otherwise.
+ *
+ * Server-authoritative: the cycle status is loaded server-side from the
+ * given cycle id — never from client input. Authorization stays separate
+ * (callers check authority first or after; this answers only lifecycle).
+ * NULL/legacy cycle ids keep existing behavior (never blocked here).
+ */
+export async function rejectIfDraftCycle(
+  cycleId: string | null | undefined
+): Promise<NextResponse | null> {
+  if (!cycleId) return null;
+
+  const { data: cycle, error } = await supabaseAdmin
+    .from("hr3_performance_cycles")
+    .select("status")
+    .eq("id", cycleId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("rejectIfDraftCycle: cycle query error:", error);
+    return NextResponse.json(
+      { error: "Failed to validate performance cycle" },
+      { status: 500 }
+    );
+  }
+
+  if (cycle?.status === "draft") {
+    return NextResponse.json(
+      {
+        error:
+          "This performance cycle has not been opened yet. Active performance activity begins after HR opens the cycle.",
+      },
+      { status: 409 }
+    );
+  }
+
+  return null;
+}
+
+/**
  * HR administrative operation. Requires the module-level HR admin scope
  * (`super_admin` / `hr_performance_admin`) via the authorization layer, which
  * delegates to `requireHrAdmin()`.
@@ -850,16 +895,88 @@ export async function advancePerformanceCycle(
 }
 
 /**
- * Closes a cycle that has reached the finalization portion of the lifecycle.
- * Draft cycles and cycles still before finalization are rejected, so a draft
- * can never be closed and an open cycle cannot be closed directly. Both
+ * Closure readiness for the Open/Monitor/Close operating model.
+ *
+ * Intermediate stages are coordination markers, not gates: an OPEN cycle may
+ * be closed from any active stage once every cycle-linked appraisal has
+ * reached a substantively complete state (`finalized` or `acknowledged`).
+ * Acknowledgment is receipt after finalization, so pending acknowledgment
+ * alone never blocks closure (and acknowledgment stays allowed after close).
+ *
+ * Population honesty: readiness covers records associated with the cycle
+ * (there is no canonical employee-cycle roster). An empty cycle — no linked
+ * appraisals — is eligible to close.
+ */
+async function computeCycleClosureReadiness(
+  cycle: PerformanceCycle
+): Promise<
+  | {
+      ready: boolean;
+      totalAppraisals: number;
+      finalizedAppraisals: number;
+      unfinishedAppraisals: number;
+      blockers: PerformanceCycleReadinessBlocker[];
+    }
+  | NextResponse
+> {
+  const { data: appraisals, error: appraisalError } = await supabaseAdmin
+    .from("hr3_performance_appraisals")
+    .select("id, status")
+    .eq("cycle_id", cycle.id);
+
+  if (appraisalError) {
+    console.error(
+      "computeCycleClosureReadiness: appraisal query error:",
+      appraisalError
+    );
+    return NextResponse.json(
+      { error: "Failed to load performance cycle closure readiness" },
+      { status: 500 }
+    );
+  }
+
+  const rows = appraisals ?? [];
+  const finalized = rows.filter(
+    (appraisal) =>
+      appraisal.status === "finalized" || appraisal.status === "acknowledged"
+  ).length;
+  const unfinished = rows.length - finalized;
+
+  const blockers: PerformanceCycleReadinessBlocker[] = [];
+  if (unfinished > 0) {
+    blockers.push({
+      code: "appraisals_not_finalized",
+      label: "Appraisals not finalized",
+      count: unfinished,
+      description: `${unfinished} appraisal${
+        unfinished === 1 ? "" : "s"
+      } linked to this cycle ${
+        unfinished === 1 ? "has" : "have"
+      } not reached a finalized state yet.`,
+    });
+  }
+
+  return {
+    ready: unfinished === 0,
+    totalAppraisals: rows.length,
+    finalizedAppraisals: finalized,
+    unfinishedAppraisals: unfinished,
+    blockers,
+  };
+}
+
+/**
+ * Closes an OPEN cycle directly (Open/Monitor/Close operating model).
+ * Intermediate stages are coordination markers, not gates: HR is never
+ * required to walk every stage before closing. Draft cycles must still be
+ * opened first, and already-closed cycles cannot be closed again. Both
  * `status` and `stage` become `"closed"` and `closed_at` is stamped.
  * Reopening is intentionally never offered.
  *
- * Defense-in-depth: requires `stage = "finalization"` AND `status` to be one
- * of the active statuses (`"open"`, `"in_review"`, or `"finalization"`).
- * This rejects draft and already-closed cycles even if stage were somehow
- * mismatched.
+ * Defense-in-depth: requires an active `status` (`"open"`, `"in_review"`,
+ * or `"finalization"`). A fresh server-side closure-readiness check then
+ * requires every cycle-linked appraisal to be finalized or acknowledged;
+ * otherwise close is rejected with 409 and structured readiness.
  *
  * Mutation → audit (`cycle.closed`) with the acting HR account as the actor.
  */
@@ -875,9 +992,9 @@ export async function closePerformanceCycle(
   const existing = await loadCycleOr404(id);
   if (existing instanceof NextResponse) return existing;
 
-  if (existing.stage !== "finalization") {
+  if (existing.status === "draft") {
     return BAD_REQUEST_RESPONSE(
-      `Cannot close performance cycle: only cycles in the finalization portion of the lifecycle can be closed. Current stage: "${existing.stage}".`
+      "Cannot close performance cycle: draft cycles must be opened before they can be closed."
     );
   }
 
@@ -891,9 +1008,32 @@ export async function closePerformanceCycle(
     );
   }
 
+  // Fresh authoritative closure readiness: every cycle-linked appraisal
+  // must be finalized or acknowledged. Pending acknowledgment alone never
+  // blocks (receipt after substance).
+  const closure = await computeCycleClosureReadiness(existing);
+  if (closure instanceof NextResponse) return closure;
+
+  if (!closure.ready) {
+    return NextResponse.json(
+      {
+        error: "Performance cycle is not ready to close.",
+        closureReadiness: {
+          cycleId: existing.id,
+          ready: closure.ready,
+          totalAppraisals: closure.totalAppraisals,
+          finalizedAppraisals: closure.finalizedAppraisals,
+          unfinishedAppraisals: closure.unfinishedAppraisals,
+          blockers: closure.blockers,
+        },
+      },
+      { status: 409 }
+    );
+  }
+
   const closed = await transitionCycle(
     id,
-    { stage: "finalization", status: existing.status },
+    { stage: existing.stage, status: existing.status },
     {
       status: "closed",
       stage: "closed",
