@@ -11,7 +11,7 @@ import {
     XCircle,
     AlertTriangle,
 } from 'lucide-react';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
+import { CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
 import { useApi } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
@@ -26,11 +26,11 @@ const PAY_SCHEDULE_LABELS: Record<string, string> = {
 };
 
 const ATTENDANCE_STATUS_STYLES: Record<string, string> = {
-    'On-Shift': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    'On-Break': 'bg-amber-50 text-amber-700 border-amber-200',
-    'Tardy': 'bg-red-50 text-red-700 border-red-200',
-    'Absent': 'bg-gray-50 text-gray-600 border-gray-200',
-    'No record': 'bg-gray-50 text-gray-400 border-gray-200',
+    'On-Shift': 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800/40',
+    'On-Break': 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/40',
+    'Tardy': 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800/40',
+    'Absent': 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800/30 dark:text-gray-400 dark:border-gray-700',
+    'No record': 'bg-gray-50 text-gray-400 border-gray-200 dark:bg-gray-800/30 dark:text-gray-500 dark:border-gray-700',
 };
 
 const EmployeePayrollInfoManager = () => {
@@ -97,8 +97,8 @@ const EmployeePayrollInfoManager = () => {
     return (
         <div className="space-y-5">
             <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink/5 border border-line">
-                    <Landmark className="h-4.5 w-4.5 text-ink/70" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper dark:border-paper/10">
+                    <Landmark className="h-4.5 w-4.5 text-blue-500" />
                 </div>
                 <div className="min-w-0">
                     <h3 className="text-base font-semibold font-bricolage text-ink leading-tight">
@@ -112,9 +112,13 @@ const EmployeePayrollInfoManager = () => {
             </div>
 
             {missingBankCount > 0 && (
-                <div className="flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50/60 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/30">
-                    <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
-                    <div className="min-w-0">
+                <div className="relative flex items-start gap-3 overflow-hidden rounded-xl border border-line border-l-4 border-l-amber-500 bg-amber-50/60 px-4 py-3 dark:border-paper/10 dark:bg-amber-950/30">
+                    <AlertTriangle
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-amber-500 opacity-[0.06]"
+                    />
+                    <AlertTriangle className="relative h-5 w-5 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
+                    <div className="relative min-w-0">
                         <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 font-rethink">
                             {missingBankCount} employee{missingBankCount === 1 ? ' has' : 's have'} incomplete bank information
                         </p>
@@ -126,57 +130,78 @@ const EmployeePayrollInfoManager = () => {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="flex items-center gap-3 rounded-xl border border-line bg-paper p-3.5 dark:border-line/30">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
-                        <Landmark className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-wide text-muted font-rethink">Active Payroll</p>
-                        <p className="text-sm font-semibold font-mono tabular-nums text-ink">{activeCount}</p>
-                    </div>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper px-4 py-3.5 dark:border-paper/10">
+                    <Landmark
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-blue-500 opacity-[0.06]"
+                    />
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        Active Payroll
+                    </p>
+                    <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-ink">
+                        {activeCount}
+                    </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">
+                        Employees on payroll
+                    </p>
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-line bg-paper p-3.5 dark:border-line/30">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
-                        <CheckCircle2 className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-wide text-muted font-rethink">With Bank Details</p>
-                        <p className="text-sm font-semibold font-mono tabular-nums text-ink">{withBankCount}</p>
-                    </div>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-emerald-500 bg-paper px-4 py-3.5 dark:border-paper/10">
+                    <CheckCircle2
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-emerald-500 opacity-[0.06]"
+                    />
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        With Bank Details
+                    </p>
+                    <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-ink">
+                        {withBankCount}
+                    </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">
+                        Ready for payout
+                    </p>
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-line bg-paper p-3.5 dark:border-line/30">
-                    <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${missingBankCount > 0
-                                ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'
-                                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
+                <div
+                    className={`relative overflow-hidden rounded-xl border border-line border-l-4 bg-paper px-4 py-3.5 dark:border-paper/10 ${missingBankCount > 0 ? 'border-l-red-500' : 'border-l-emerald-500'
+                        }`}
+                >
+                    {missingBankCount > 0 ? (
+                        <XCircle
+                            size={72}
+                            className="pointer-events-none absolute -bottom-3 -right-3 text-red-500 opacity-[0.06]"
+                        />
+                    ) : (
+                        <CheckCircle2
+                            size={72}
+                            className="pointer-events-none absolute -bottom-3 -right-3 text-emerald-500 opacity-[0.06]"
+                        />
+                    )}
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        Missing Bank Details
+                    </p>
+                    <p
+                        className={`relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight ${missingBankCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-ink'
                             }`}
                     >
-                        {missingBankCount > 0 ? (
-                            <XCircle className="h-4.5 w-4.5" />
-                        ) : (
-                            <CheckCircle2 className="h-4.5 w-4.5" />
-                        )}
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-wide text-muted font-rethink">Missing Bank Details</p>
-                        <p
-                            className={`text-sm font-semibold font-mono tabular-nums ${missingBankCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-ink'
-                                }`}
-                        >
-                            {missingBankCount}
-                        </p>
-                    </div>
+                        {missingBankCount}
+                    </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">
+                        {missingBankCount > 0 ? 'Blocked from processing' : 'All complete'}
+                    </p>
                 </div>
             </div>
 
-            <Card variant="default" padding="none" className="bg-paper border-line overflow-hidden">
+            <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper dark:border-paper/10">
+                <Landmark
+                    size={96}
+                    className="pointer-events-none absolute -bottom-4 -right-4 text-blue-500 opacity-[0.04]"
+                />
                 {loading ? (
-                    <div className="flex items-center justify-center gap-3 py-14 text-sm text-muted font-rethink">
-                        <Loader2 className="h-5 w-5 animate-spin text-ink/40" />
+                    <div className="relative flex items-center justify-center gap-3 py-14 text-sm text-muted font-rethink">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
                         Loading employee payroll information…
                     </div>
                 ) : records.length === 0 ? (
-                    <CardBody className="p-6 sm:p-8">
+                    <CardBody className="relative p-6 sm:p-8">
                         <Alert
                             variant="info"
                             message="No employee payroll records are currently available. Please ensure that employees have been registered and payroll information has been configured before proceeding."
@@ -184,7 +209,7 @@ const EmployeePayrollInfoManager = () => {
                     </CardBody>
                 ) : (
                     <>
-                        <div className="hidden md:block overflow-x-auto">
+                        <div className="relative hidden md:block overflow-x-auto">
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="border-b-2 border-line">
@@ -207,7 +232,7 @@ const EmployeePayrollInfoManager = () => {
                                                 animate={{ opacity: 1 }}
                                                 exit={{ opacity: 0 }}
                                                 transition={{ duration: 0.15 }}
-                                                className="border-b border-line last:border-b-0 transition-colors hover:bg-ink/[0.015]"
+                                                className="border-b border-line last:border-b-0 transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/10"
                                             >
                                                 <td className="px-5 py-3.5 whitespace-nowrap">
                                                     <p className="text-sm font-medium text-ink font-rethink">
@@ -231,12 +256,12 @@ const EmployeePayrollInfoManager = () => {
                                                 </td>
                                                 <td className="px-5 py-3.5 whitespace-nowrap">
                                                     {record.has_complete_bank ? (
-                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
                                                             <CheckCircle2 className="h-3.5 w-3.5" />
                                                             Complete
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-red-600">
+                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-red-600 dark:text-red-400">
                                                             <XCircle className="h-3.5 w-3.5" />
                                                             Missing
                                                         </span>
@@ -261,7 +286,7 @@ const EmployeePayrollInfoManager = () => {
                                                 </td>
                                                 <td className="px-5 py-3.5 whitespace-nowrap">
                                                     {record.is_active ? (
-                                                        <span className="text-xs font-medium text-emerald-700">Active</span>
+                                                        <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Active</span>
                                                     ) : (
                                                         <span className="text-xs font-medium text-muted">Inactive</span>
                                                     )}
@@ -273,7 +298,7 @@ const EmployeePayrollInfoManager = () => {
                             </table>
                         </div>
 
-                        <div className="md:hidden space-y-2.5 p-3">
+                        <div className="relative md:hidden space-y-2.5 p-3">
                             <AnimatePresence initial={false}>
                                 {paginatedRecords.map((record: any) => (
                                     <motion.div
@@ -283,7 +308,7 @@ const EmployeePayrollInfoManager = () => {
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
                                         transition={{ duration: 0.15 }}
-                                        className="rounded-lg border border-line p-3.5"
+                                        className="rounded-lg border border-line p-3.5 dark:border-line/30"
                                     >
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
@@ -298,7 +323,7 @@ const EmployeePayrollInfoManager = () => {
                                                 {formatCurrency(record.daily_rate || 0)}
                                             </p>
                                         </div>
-                                        <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
+                                        <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5 dark:border-line/30">
                                             <span
                                                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium font-rethink ${ATTENDANCE_STATUS_STYLES[record.attendance_status] ||
                                                     'bg-gray-50 text-gray-400 border-gray-200'
@@ -309,12 +334,12 @@ const EmployeePayrollInfoManager = () => {
                                             </span>
                                             <div className="flex items-center gap-2">
                                                 {record.has_complete_bank ? (
-                                                    <span className="text-[10px] text-emerald-600">Bank OK</span>
+                                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Bank OK</span>
                                                 ) : (
-                                                    <span className="text-[10px] text-red-600">No bank</span>
+                                                    <span className="text-[10px] text-red-600 dark:text-red-400">No bank</span>
                                                 )}
                                                 {record.is_active ? (
-                                                    <span className="text-xs font-medium text-emerald-700">Active</span>
+                                                    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Active</span>
                                                 ) : (
                                                     <span className="text-xs font-medium text-muted">Inactive</span>
                                                 )}
@@ -326,7 +351,7 @@ const EmployeePayrollInfoManager = () => {
                         </div>
 
                         {totalPages > 1 && (
-                            <div className="border-t border-line px-4 py-3 sm:px-5">
+                            <div className="relative border-t border-line px-4 py-3 sm:px-5 dark:border-line/30">
                                 <Pagination
                                     currentPage={currentPage}
                                     totalPages={totalPages}
@@ -336,7 +361,7 @@ const EmployeePayrollInfoManager = () => {
                         )}
                     </>
                 )}
-            </Card>
+            </div>
         </div>
     );
 };

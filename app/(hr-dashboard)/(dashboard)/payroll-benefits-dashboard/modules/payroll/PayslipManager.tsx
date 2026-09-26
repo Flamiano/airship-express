@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { ArrowLeft, Eye, Loader2, Wallet, Building2, Users, Clock } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, Wallet, Building2, Users } from 'lucide-react';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
+import { CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
 import { Badge } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Badge';
@@ -97,8 +97,8 @@ const PayslipManager = ({ run, onBack }: PayslipManagerProps) => {
                         <ArrowLeft className="h-4 w-4" />
                     </button>
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 border border-accent/20">
-                            <Wallet className="h-4.5 w-4.5 text-accent" />
+                        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper dark:border-paper/10">
+                            <Wallet className="h-4.5 w-4.5 text-blue-500" />
                         </div>
                         <div className="min-w-0">
                             <h3 className="text-base font-semibold font-bricolage text-ink leading-tight">
@@ -120,35 +120,72 @@ const PayslipManager = ({ run, onBack }: PayslipManagerProps) => {
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-lg border border-line bg-paper p-3.5 dark:border-line/30">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted font-rethink">Total Gross</p>
-                    <p className="mt-1 text-lg font-mono font-semibold text-ink">{peso(totals.gross)}</p>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper px-4 py-3.5 dark:border-paper/10">
+                    <Wallet
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-blue-500 opacity-[0.06]"
+                    />
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        Total Gross
+                    </p>
+                    <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-ink">
+                        {peso(totals.gross)}
+                    </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">Across all payslips</p>
                 </div>
-                <div className="rounded-lg border border-line bg-paper p-3.5 dark:border-line/30">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted font-rethink">Total Deductions</p>
-                    <p className="mt-1 text-lg font-mono font-semibold text-red-600">{peso(totals.deductions)}</p>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-red-500 bg-paper px-4 py-3.5 dark:border-paper/10">
+                    <Building2
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-red-500 opacity-[0.06]"
+                    />
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        Total Deductions
+                    </p>
+                    <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-red-600">
+                        {peso(totals.deductions)}
+                    </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">SSS + PH + PI + Tax</p>
                 </div>
-                <div className="rounded-lg border border-line bg-paper p-3.5 dark:border-line/30">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted font-rethink">Total Net Pay</p>
-                    <p className="mt-1 text-lg font-mono font-semibold text-emerald-600">{peso(totals.net)}</p>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-emerald-500 bg-paper px-4 py-3.5 dark:border-paper/10">
+                    <Wallet
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-emerald-500 opacity-[0.06]"
+                    />
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        Total Net Pay
+                    </p>
+                    <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-emerald-600">
+                        {peso(totals.net)}
+                    </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">Amount to disburse</p>
                 </div>
-                <div className="rounded-lg border border-line bg-paper p-3.5 dark:border-line/30">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted font-rethink">Employees</p>
-                    <p className="mt-1 text-lg font-mono font-semibold text-ink flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted" />
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-purple-500 bg-paper px-4 py-3.5 dark:border-paper/10">
+                    <Users
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-purple-500 opacity-[0.06]"
+                    />
+                    <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+                        Employees
+                    </p>
+                    <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-ink">
                         {totals.employeeCount}
                     </p>
+                    <p className="relative mt-1 text-[11px] text-muted truncate">Payslips in this run</p>
                 </div>
             </div>
 
-            <Card variant="default" padding="none" className="bg-paper border-line overflow-hidden dark:border-line/30">
+            <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper dark:border-paper/10">
+                <Wallet
+                    size={96}
+                    className="pointer-events-none absolute -bottom-4 -right-4 text-blue-500 opacity-[0.04]"
+                />
                 {loading ? (
-                    <div className="flex items-center justify-center gap-3 py-14 text-sm text-muted font-rethink">
-                        <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                    <div className="relative flex items-center justify-center gap-3 py-14 text-sm text-muted font-rethink">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
                         Loading payslips…
                     </div>
                 ) : payslips.length === 0 ? (
-                    <CardBody className="p-6 sm:p-8">
+                    <CardBody className="relative p-6 sm:p-8">
                         <Alert
                             variant="info"
                             message={
@@ -162,28 +199,16 @@ const PayslipManager = ({ run, onBack }: PayslipManagerProps) => {
                     </CardBody>
                 ) : (
                     <>
-                        <div className="hidden md:block overflow-x-auto">
+                        <div className="relative hidden md:block overflow-x-auto">
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="border-b-2 border-line bg-paper dark:border-line/30">
-                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Employee
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Basic Pay
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Gross Pay
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Deductions
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Net Pay
-                                        </th>
-                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                                            Actions
-                                        </th>
+                                        <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Employee</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Basic Pay</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Gross Pay</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Deductions</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Net Pay</th>
+                                        <th className="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -196,7 +221,7 @@ const PayslipManager = ({ run, onBack }: PayslipManagerProps) => {
                                                 animate={{ opacity: 1 }}
                                                 exit={{ opacity: 0 }}
                                                 transition={{ duration: 0.15 }}
-                                                className="group border-b border-line last:border-b-0 transition-colors hover:bg-ink/[0.015] dark:border-line/30 dark:hover:bg-ink/[0.05]"
+                                                className="group border-b border-line last:border-b-0 transition-colors hover:bg-blue-50/40 dark:border-line/30 dark:hover:bg-blue-950/10"
                                             >
                                                 <td className="px-5 py-3.5 whitespace-nowrap">
                                                     <p className="text-sm font-medium text-ink font-rethink">
@@ -236,7 +261,7 @@ const PayslipManager = ({ run, onBack }: PayslipManagerProps) => {
                             </table>
                         </div>
 
-                        <div className="md:hidden space-y-2.5 p-3">
+                        <div className="relative md:hidden space-y-2.5 p-3">
                             <AnimatePresence initial={false}>
                                 {paginatedPayslips.map((slip: any) => (
                                     <motion.div
@@ -271,15 +296,14 @@ const PayslipManager = ({ run, onBack }: PayslipManagerProps) => {
                         </div>
 
                         {totalPages > 1 && (
-                            <div className="border-t border-line px-4 py-3 sm:px-5 dark:border-line/30">
+                            <div className="relative border-t border-line px-4 py-3 sm:px-5 dark:border-line/30">
                                 <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                             </div>
                         )}
                     </>
                 )}
-            </Card>
+            </div>
 
-            {/* Payslip Breakdown Modal */}
             {selected && (
                 <Modal isOpen={!!selected} onClose={() => setSelected(null)} title="Payslip Breakdown" className="max-w-2xl">
                     <div className="space-y-4 font-rethink">

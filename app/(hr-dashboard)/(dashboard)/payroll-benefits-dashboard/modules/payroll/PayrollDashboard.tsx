@@ -23,7 +23,6 @@ import {
     UserPlus,
     PieChart,
     Search,
-    Sparkles,
     RefreshCw,
 } from 'lucide-react';
 import Chart from 'chart.js/auto';
@@ -48,6 +47,8 @@ const CATEGORY_STYLES: Record<string, string> = {
     inactive: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800',
     incomplete: 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800',
 };
+
+const BRIEFING_TIMEOUT_MS = 25000;
 
 function cssVar(name: string, fallback: string) {
     if (typeof window === 'undefined') return fallback;
@@ -74,36 +75,73 @@ function calculateTenure(dateHired: string | null | undefined) {
     }
 }
 
-interface StatCardProps {
-    icon: React.ReactNode;
-    label: string;
-    value: string | number;
-    tint: 'blue' | 'amber' | 'emerald' | 'purple' | 'red' | 'gray' | 'pink';
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('Timeout')), ms);
+        p.then(
+            (v) => {
+                clearTimeout(t);
+                resolve(v);
+            },
+            (e) => {
+                clearTimeout(t);
+                reject(e);
+            }
+        );
+    });
 }
 
-const TINT_MAP: Record<StatCardProps['tint'], string> = {
-    blue: 'bg-blue-50 text-blue-500 dark:bg-blue-950/40 dark:text-blue-400',
-    amber: 'bg-amber-50 text-amber-500 dark:bg-amber-950/40 dark:text-amber-400',
-    emerald: 'bg-emerald-50 text-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-400',
-    purple: 'bg-purple-50 text-purple-500 dark:bg-purple-950/40 dark:text-purple-400',
-    red: 'bg-red-50 text-red-500 dark:bg-red-950/40 dark:text-red-400',
-    gray: 'bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400',
-    pink: 'bg-pink-50 text-pink-500 dark:bg-pink-950/40 dark:text-pink-400',
-};
+function pickNum(obj: any, ...keys: string[]): number {
+    if (!obj) return 0;
+    for (const k of keys) {
+        const v = obj[k];
+        if (typeof v === 'number' && !Number.isNaN(v)) return v;
+        if (typeof v === 'string') {
+            const n = Number(v);
+            if (!Number.isNaN(n)) return n;
+        }
+    }
+    return 0;
+}
 
-const StatCard = ({ icon, label, value, tint }: StatCardProps) => (
-    <div className="flex items-center gap-3 rounded-xl border border-line bg-paper px-4 py-3.5 dark:border-line/30">
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${TINT_MAP[tint]}`}>
-            {icon}
-        </div>
-        <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted font-rethink">
-                {label}
-            </p>
-            <p className="text-base font-mono font-semibold text-ink truncate">
-                {value}
-            </p>
-        </div>
+function timeOfDay(): 'morning' | 'afternoon' | 'evening' {
+    const h = new Date().getHours();
+    if (h < 12) return 'morning';
+    if (h < 18) return 'afternoon';
+    return 'evening';
+}
+
+function timeOfDayLabel(): string {
+    const t = timeOfDay();
+    if (t === 'morning') return 'Morning';
+    if (t === 'afternoon') return 'Afternoon';
+    return 'Evening';
+}
+
+interface StatCardProps {
+    label: string;
+    value: string | number;
+    hint: string;
+    bar: string;
+    tint: string;
+    Icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+const StatCard = ({ label, value, hint, bar, tint, Icon }: StatCardProps) => (
+    <div
+        className={`relative overflow-hidden rounded-xl border border-line border-l-4 bg-paper px-4 py-3.5 dark:border-paper/10 ${bar}`}
+    >
+        <Icon
+            size={72}
+            className={`pointer-events-none absolute -bottom-3 -right-3 opacity-[0.06] ${tint}`}
+        />
+        <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+            {label}
+        </p>
+        <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-ink">
+            {value}
+        </p>
+        <p className="relative mt-1 text-[11px] text-muted truncate">{hint}</p>
     </div>
 );
 
@@ -132,7 +170,8 @@ const PayrollDashboard = () => {
 
     const [briefing, setBriefing] = useState<string | null>(null);
     const [briefingLoading, setBriefingLoading] = useState(false);
-    const briefingLoadedRef = useRef(false);
+    const [briefingError, setBriefingError] = useState<string | null>(null);
+    const [briefingRetry, setBriefingRetry] = useState(0);
 
     const { fetchData: fetchSummary } = useApi(
         '/payroll-benefits-dashboard/api/payroll/summary'
@@ -145,6 +184,12 @@ const PayrollDashboard = () => {
     );
     const { fetchData: fetchBudget } = useApi(
         '/payroll-benefits-dashboard/api/compensation/labor-budget'
+    );
+    const { fetchData: fetchClaims } = useApi(
+        '/payroll-benefits-dashboard/api/claims/summary'
+    );
+    const { fetchData: fetchEmployees } = useApi(
+        '/payroll-benefits-dashboard/api/payroll/employee-info'
     );
 
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -195,42 +240,6 @@ const PayrollDashboard = () => {
         }
     }, [fetchBankStatus]);
 
-    const loadBriefing = useCallback(async () => {
-        if (briefingLoadedRef.current) return;
-        setBriefingLoading(true);
-        try {
-            const [runsRes, budgetRes] = await Promise.all([
-                fetchRuns().catch(() => []),
-                fetchBudget(`?fiscal_year=${new Date().getFullYear()}`).catch(() => ({ rows: [] })),
-            ]);
-            const runs: any[] = Array.isArray(runsRes) ? runsRes : [];
-            const rows: any[] = (budgetRes as any)?.rows || [];
-            const thisMonth = new Date().getMonth() + 1;
-            const monthRow = rows.find((r: any) => r.month === thisMonth);
-
-            const text = await airyBriefing(
-                {
-                    pending_approvals: runs.filter((r) => r.approval_status === 'pending_approval').length,
-                    approved_not_distributed: runs.filter((r) => r.approval_status === 'approved').length,
-                    rejected_runs: runs.filter((r) => r.approval_status === 'rejected').length,
-                    missing_bank: bankStatus?.total_affected ?? 0,
-                    missing_birthdate: 0,
-                    open_draft_runs: runs.filter((r) => r.status === 'draft').length,
-                    this_month_planned: Number(monthRow?.planned_amount || 0),
-                    this_month_actual: Number(monthRow?.actual_amount || 0),
-                },
-                adminUserId
-            );
-            setBriefing(text);
-            briefingLoadedRef.current = true;
-        } catch (err) {
-            console.error('Briefing error:', err);
-            setBriefing(null);
-        } finally {
-            setBriefingLoading(false);
-        }
-    }, [fetchRuns, fetchBudget, bankStatus, adminUserId]);
-
     useEffect(() => {
         loadSummary();
         loadBankStatus();
@@ -245,10 +254,155 @@ const PayrollDashboard = () => {
     }, [loadSummary, loadBankStatus]);
 
     useEffect(() => {
-        if (summary && bankStatus && adminUserId && !briefingLoadedRef.current) {
-            void loadBriefing();
-        }
-    }, [summary, bankStatus, adminUserId, loadBriefing]);
+        let cancelled = false;
+
+        const loadBriefing = async () => {
+            if (!adminUserId) return;
+
+            setBriefingLoading(true);
+            setBriefingError(null);
+
+            try {
+                const year = new Date().getFullYear();
+                const [runsRes, budgetRes, bankRes, claimsRes, empRes] = await Promise.all([
+                    fetchRuns().catch(() => []),
+                    fetchBudget(`?fiscal_year=${year}`).catch(() => ({ rows: [] })),
+                    fetchBankStatus().catch(() => null),
+                    fetchClaims().catch(() => null),
+                    fetchEmployees().catch(() => []),
+                ]);
+
+                if (cancelled) return;
+
+                const runs: any[] = Array.isArray(runsRes) ? runsRes : [];
+                const rows: any[] = (budgetRes as any)?.rows || [];
+                const employees: any[] = Array.isArray(empRes) ? empRes : (empRes as any)?.rows ?? [];
+
+                const thisMonth = new Date().getMonth() + 1;
+                const monthRow = rows.find((r: any) => r.month === thisMonth);
+
+                const pendingApprovals = runs.filter((r) => r.approval_status === 'pending_approval').length;
+                const approvedNotDistributed = runs.filter((r) => r.approval_status === 'approved').length;
+                const rejectedRuns = runs.filter((r) => r.approval_status === 'rejected').length;
+                const openDraftRuns = runs.filter((r) => r.status === 'draft').length;
+
+                const activeEmployees = pickNum(
+                    summary,
+                    'active_employees',
+                    'activeEmployees',
+                    'headcount'
+                ) || employees.length;
+                const totalPositions = pickNum(summary, 'total_jobs', 'totalJobs', 'total_positions');
+                const openForHiring = pickNum(summary, 'open_for_hiring', 'openForHiring');
+                const todayAttendance = pickNum(summary, 'today_attendance', 'todayAttendance');
+                const attendanceRate = pickNum(summary, 'attendance_rate', 'attendanceRate');
+                const ytdNetPay = pickNum(summary, 'ytd_net_pay', 'ytdNetPay');
+                const ytdGrossPay = pickNum(summary, 'ytd_gross_pay', 'ytdGrossPay');
+                const lastRunNetPay = pickNum(summary, 'last_run_net_pay', 'lastRunNetPay');
+
+                const missingBank = pickNum(bankRes, 'total_affected', 'totalAffected');
+                const withBank = pickNum(bankRes, 'with_bank', 'withBank');
+
+                const pendingClaims = pickNum(
+                    claimsRes,
+                    'pending',
+                    'pending_count',
+                    'pendingCount',
+                    'total_pending',
+                    'totalPending'
+                );
+                const approvedClaims = pickNum(
+                    claimsRes,
+                    'approved',
+                    'approved_count',
+                    'approvedCount'
+                );
+                const claimsTotalAmount = pickNum(
+                    claimsRes,
+                    'pending_total',
+                    'pendingTotal',
+                    'total_pending_amount',
+                    'totalPendingAmount'
+                );
+
+                const uniqueDepartments = new Set(
+                    employees
+                        .map((e) => e.department)
+                        .filter((d): d is string => typeof d === 'string' && d.length > 0)
+                ).size;
+
+                const snapshot = {
+                    pending_approvals: pendingApprovals,
+                    approved_not_distributed: approvedNotDistributed,
+                    rejected_runs: rejectedRuns,
+                    missing_bank: missingBank,
+                    missing_birthdate: 0,
+                    open_draft_runs: openDraftRuns,
+                    this_month_planned: pickNum(monthRow, 'planned_amount', 'plannedAmount'),
+                    this_month_actual: pickNum(monthRow, 'actual_amount', 'actualAmount'),
+
+                    active_employees: activeEmployees,
+                    total_positions: totalPositions,
+                    open_for_hiring: openForHiring,
+                    unique_departments: uniqueDepartments,
+                    today_attendance: todayAttendance,
+                    attendance_rate: attendanceRate,
+                    ytd_net_pay: ytdNetPay,
+                    ytd_gross_pay: ytdGrossPay,
+                    last_run_net_pay: lastRunNetPay,
+                    with_bank: withBank,
+                    pending_claims: pendingClaims,
+                    approved_claims: approvedClaims,
+                    claims_pending_amount: claimsTotalAmount,
+                    current_month: thisMonth,
+                    current_year: year,
+                    time_of_day: timeOfDay(),
+                };
+
+                const text = await withTimeout(
+                    airyBriefing(snapshot as any, adminUserId),
+                    BRIEFING_TIMEOUT_MS
+                );
+
+                if (cancelled) return;
+
+                const cleaned = (text ?? '').toString().trim();
+                if (!cleaned) {
+                    setBriefingError('Airy returned an empty briefing.');
+                    setBriefing(null);
+                } else {
+                    setBriefing(cleaned);
+                    setBriefingError(null);
+                }
+            } catch (err: any) {
+                if (cancelled) return;
+                console.error('[PayrollDashboard] briefing error:', err);
+                const msg =
+                    err?.message === 'Timeout'
+                        ? 'Airy took too long to respond. Click refresh to try again.'
+                        : err?.message?.slice?.(0, 160) ||
+                        'Airy could not generate a briefing right now.';
+                setBriefingError(msg);
+                setBriefing(null);
+            } finally {
+                if (!cancelled) setBriefingLoading(false);
+            }
+        };
+
+        void loadBriefing();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        adminUserId,
+        summary,
+        briefingRetry,
+        fetchRuns,
+        fetchBudget,
+        fetchBankStatus,
+        fetchClaims,
+        fetchEmployees,
+    ]);
 
     const positionData = useMemo(() => {
         const raw = summary?.position_distribution || {};
@@ -290,6 +444,7 @@ const PayrollDashboard = () => {
                 responsive: true,
                 maintainAspectRatio: false,
                 cutout: '65%',
+                animation: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -340,6 +495,7 @@ const PayrollDashboard = () => {
                 responsive: true,
                 maintainAspectRatio: false,
                 cutout: '68%',
+                animation: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -394,20 +550,24 @@ const PayrollDashboard = () => {
     }, [bankStatus, bankSearch, bankFilter]);
 
     const refreshBriefing = () => {
-        briefingLoadedRef.current = false;
         setBriefing(null);
-        void loadBriefing();
+        setBriefingError(null);
+        setBriefingRetry((n) => n + 1);
     };
 
     return (
         <div className="space-y-5">
             {!bankStatusLoading && affectedCount > 0 && !alertDismissed && (
-                <div className="relative flex items-start gap-4 rounded-xl border-l-4 border-amber-400 bg-amber-50/70 px-5 py-4 dark:bg-amber-950/30 dark:border-amber-500">
+                <div className="relative flex items-start gap-4 overflow-hidden rounded-xl border border-line border-l-4 border-l-amber-500 bg-amber-50/70 px-5 py-4 dark:border-paper/10 dark:bg-amber-950/30">
+                    <AlertTriangle
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-amber-500 opacity-[0.06]"
+                    />
                     <button
                         type="button"
                         onClick={openBankStatusModal}
                         title="View employees with incomplete bank details"
-                        className="flex flex-1 items-start gap-4 text-left min-w-0"
+                        className="relative flex flex-1 items-start gap-4 text-left min-w-0"
                     >
                         <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
                         <div className="min-w-0 flex-1">
@@ -424,7 +584,7 @@ const PayrollDashboard = () => {
                         onClick={() => setAlertDismissed(true)}
                         title="Dismiss this alert"
                         aria-label="Dismiss alert"
-                        className="shrink-0 rounded-md p-1 text-amber-700/70 hover:text-amber-900 hover:bg-amber-100/50 transition-colors dark:text-amber-400/70 dark:hover:text-amber-200 dark:hover:bg-amber-900/30"
+                        className="relative shrink-0 rounded-md p-1 text-amber-700/70 hover:text-amber-900 hover:bg-amber-100/50 transition-colors dark:text-amber-400/70 dark:hover:text-amber-200 dark:hover:bg-amber-900/30"
                     >
                         <X className="h-4 w-4" />
                     </button>
@@ -432,8 +592,8 @@ const PayrollDashboard = () => {
             )}
 
             <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 border border-line dark:bg-ink/10 dark:border-line/30">
-                    <Wallet className="h-4.5 w-4.5 text-ink/60" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line border-l-4 border-l-accent bg-paper dark:border-paper/10">
+                    <Wallet className="h-4.5 w-4.5 text-accent" />
                 </div>
                 <div>
                     <h1 className="text-xl font-semibold font-bricolage text-ink">
@@ -445,8 +605,12 @@ const PayrollDashboard = () => {
                 </div>
             </div>
 
-            <div className="rounded-xl border border-accent/20 bg-gradient-to-r from-pink-50/60 to-white p-4 dark:from-pink-950/20 dark:to-transparent">
-                <div className="flex items-start gap-3">
+            <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-accent bg-gradient-to-r from-pink-50/60 to-white p-4 dark:border-paper/10 dark:from-pink-950/20 dark:to-transparent">
+                <RefreshCw
+                    size={72}
+                    className="pointer-events-none absolute -bottom-3 -right-3 text-accent opacity-[0.06]"
+                />
+                <div className="relative flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white border border-accent/20 overflow-hidden">
                         <img
                             src="/images/airy-ai/hi-full.png"
@@ -457,7 +621,7 @@ const PayrollDashboard = () => {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                             <p className="text-xs font-semibold text-ink font-bricolage">
-                                Airy — Morning Briefing
+                                Airy — {timeOfDayLabel()} Briefing
                             </p>
                             <button
                                 type="button"
@@ -471,6 +635,7 @@ const PayrollDashboard = () => {
                                 />
                             </button>
                         </div>
+
                         {briefingLoading ? (
                             <div className="flex items-center gap-2 py-1">
                                 <video
@@ -485,13 +650,29 @@ const PayrollDashboard = () => {
                                     Airy is reviewing your payroll…
                                 </span>
                             </div>
+                        ) : briefingError ? (
+                            <div className="flex items-start gap-2 py-0.5">
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                                <div className="min-w-0">
+                                    <p className="text-xs text-amber-700 dark:text-amber-400 font-rethink leading-relaxed">
+                                        {briefingError}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={refreshBriefing}
+                                        className="mt-1 text-[11px] font-medium text-accent hover:underline"
+                                    >
+                                        Try again →
+                                    </button>
+                                </div>
+                            </div>
                         ) : briefing ? (
                             <p className="text-xs text-ink font-rethink leading-relaxed whitespace-pre-wrap">
                                 {briefing}
                             </p>
                         ) : (
                             <p className="text-xs text-muted font-rethink">
-                                Briefing unavailable. Click refresh to try again.
+                                No briefing available yet.
                             </p>
                         )}
                     </div>
@@ -500,78 +681,102 @@ const PayrollDashboard = () => {
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
-                    icon={<Users className="h-4 w-4" />}
+                    Icon={Users}
                     label="Active Employees"
                     value={isLoading ? '...' : (summary?.active_employees ?? 0)}
-                    tint="blue"
+                    hint="On payroll"
+                    bar="border-l-accent"
+                    tint="text-accent"
                 />
                 <StatCard
-                    icon={<ClipboardList className="h-4 w-4" />}
+                    Icon={ClipboardList}
                     label="Open Payroll Runs"
                     value={isLoading ? '...' : (summary?.open_runs ?? 0)}
-                    tint="amber"
+                    hint="Draft or in progress"
+                    bar="border-l-indigo-500"
+                    tint="text-indigo-500"
                 />
                 <StatCard
-                    icon={<Wallet className="h-4 w-4" />}
+                    Icon={Wallet}
                     label="Last Run Net Pay"
                     value={isLoading ? '...' : peso(summary?.last_run_net_pay ?? 0)}
-                    tint="emerald"
+                    hint="Most recent cycle"
+                    bar="border-l-emerald-500"
+                    tint="text-emerald-500"
                 />
                 <StatCard
-                    icon={<Briefcase className="h-4 w-4" />}
+                    Icon={Briefcase}
                     label="Total Jobs"
                     value={isLoading ? '...' : (summary?.total_jobs ?? 0)}
-                    tint="gray"
+                    hint="Job positions on record"
+                    bar="border-l-blue-500"
+                    tint="text-blue-500"
                 />
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
-                    icon={<TrendingUp className="h-4 w-4" />}
+                    Icon={TrendingUp}
                     label="YTD Gross Pay"
                     value={isLoading ? '...' : peso(summary?.ytd_gross_pay ?? 0)}
-                    tint="purple"
+                    hint="Year-to-date gross"
+                    bar="border-l-purple-500"
+                    tint="text-purple-500"
                 />
                 <StatCard
-                    icon={<Wallet className="h-4 w-4" />}
+                    Icon={Wallet}
                     label="YTD Net Pay"
                     value={isLoading ? '...' : peso(summary?.ytd_net_pay ?? 0)}
-                    tint="emerald"
+                    hint="Year-to-date disbursed"
+                    bar="border-l-pink-500"
+                    tint="text-pink-500"
                 />
                 <StatCard
-                    icon={<CircleCheck className="h-4 w-4" />}
+                    Icon={CircleCheck}
                     label="Open for Hiring"
                     value={isLoading ? '...' : (summary?.open_for_hiring ?? 0)}
-                    tint="emerald"
+                    hint="Open positions"
+                    bar="border-l-emerald-500"
+                    tint="text-emerald-500"
                 />
                 <StatCard
-                    icon={<CircleX className="h-4 w-4" />}
+                    Icon={CircleX}
                     label="Closed for Hiring"
                     value={isLoading ? '...' : (summary?.closed_for_hiring ?? 0)}
-                    tint="red"
+                    hint="Closed positions"
+                    bar="border-l-red-500"
+                    tint="text-red-500"
                 />
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
-                    icon={<UserCheck className="h-4 w-4" />}
+                    Icon={UserCheck}
                     label="Today's Attendance"
                     value={isLoading ? '...' : (summary?.today_attendance ?? 0)}
-                    tint="emerald"
+                    hint="Clocked in today"
+                    bar="border-l-emerald-500"
+                    tint="text-emerald-500"
                 />
                 <StatCard
-                    icon={<TrendingUp className="h-4 w-4" />}
+                    Icon={TrendingUp}
                     label="Attendance Rate"
                     value={isLoading ? '...' : `${summary?.attendance_rate ?? 0}%`}
-                    tint="purple"
+                    hint="On-time today"
+                    bar="border-l-purple-500"
+                    tint="text-purple-500"
                 />
             </div>
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                <div className="rounded-xl border border-line bg-paper p-4 dark:border-line/30">
-                    <div className="flex items-center justify-between mb-3">
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-pink-500 bg-paper p-4 dark:border-paper/10">
+                    <UserPlus
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-pink-500 opacity-[0.06]"
+                    />
+                    <div className="relative flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            <UserPlus className="h-4 w-4 text-accent" />
+                            <UserPlus className="h-4 w-4 text-pink-500" />
                             <p className="text-sm font-semibold text-ink font-rethink">
                                 Recent Hires
                             </p>
@@ -585,15 +790,15 @@ const PayrollDashboard = () => {
                     </div>
 
                     {isLoading ? (
-                        <div className="flex items-center justify-center py-10 text-sm text-muted font-rethink">
+                        <div className="relative flex items-center justify-center py-10 text-sm text-muted font-rethink">
                             <Loader2 className="h-4 w-4 animate-spin" />
                         </div>
                     ) : (summary?.recent_hires?.length ?? 0) === 0 ? (
-                        <p className="py-8 text-center text-xs text-muted font-rethink">
+                        <p className="relative py-8 text-center text-xs text-muted font-rethink">
                             No recent hires.
                         </p>
                     ) : (
-                        <div className="space-y-2">
+                        <div className="relative space-y-2">
                             {summary.recent_hires.map((hire: any) => (
                                 <div
                                     key={hire.id}
@@ -634,10 +839,14 @@ const PayrollDashboard = () => {
                     )}
                 </div>
 
-                <div className="rounded-xl border border-line bg-paper p-4 dark:border-line/30">
-                    <div className="flex items-center justify-between mb-3">
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-purple-500 bg-paper p-4 dark:border-paper/10">
+                    <PieChart
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-purple-500 opacity-[0.06]"
+                    />
+                    <div className="relative flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            <PieChart className="h-4 w-4 text-accent" />
+                            <PieChart className="h-4 w-4 text-purple-500" />
                             <p className="text-sm font-semibold text-ink font-rethink">
                                 Job Positions Distribution
                             </p>
@@ -648,11 +857,11 @@ const PayrollDashboard = () => {
                     </div>
 
                     {isLoading || positionData.labels.length === 0 ? (
-                        <div className="flex items-center justify-center py-10 text-sm text-muted font-rethink">
+                        <div className="relative flex items-center justify-center py-10 text-sm text-muted font-rethink">
                             <Loader2 className="h-4 w-4 animate-spin" />
                         </div>
                     ) : (
-                        <div className="h-56">
+                        <div className="relative h-56">
                             <canvas ref={positionChartRef} />
                         </div>
                     )}
@@ -723,9 +932,13 @@ const PayrollDashboard = () => {
                     }
                 >
                     <div className="space-y-5">
-                        <div className="flex items-start gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/30">
-                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
-                            <div className="min-w-0">
+                        <div className="relative flex items-start gap-3 overflow-hidden rounded-xl border border-line border-l-4 border-l-amber-500 bg-amber-50/70 px-4 py-3 dark:border-paper/10 dark:bg-amber-950/30">
+                            <AlertTriangle
+                                size={72}
+                                className="pointer-events-none absolute -bottom-3 -right-3 text-amber-500 opacity-[0.06]"
+                            />
+                            <AlertTriangle className="relative h-4 w-4 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
+                            <div className="relative min-w-0">
                                 <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 font-rethink">
                                     Payroll blocked
                                 </p>

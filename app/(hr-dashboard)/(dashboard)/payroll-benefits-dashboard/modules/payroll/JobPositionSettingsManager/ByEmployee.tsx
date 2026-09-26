@@ -19,12 +19,11 @@ import {
     Clock3,
     Gift,
     Plus,
-    X,
 } from 'lucide-react';
 import Chart from 'chart.js/auto';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
+import { CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Input } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Input';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
@@ -365,6 +364,7 @@ const ByEmployee = () => {
             },
             options: {
                 responsive: false,
+                animation: false,
                 cutout: '70%',
                 plugins: { legend: { display: false }, tooltip: { enabled: true } },
             },
@@ -396,6 +396,7 @@ const ByEmployee = () => {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false,
                 plugins: { legend: { display: false }, tooltip: { enabled: true } },
                 scales: {
                     x: {
@@ -449,6 +450,7 @@ const ByEmployee = () => {
             },
             options: {
                 responsive: false,
+                animation: false,
                 plugins: { legend: { display: false } },
                 scales: {
                     y: {
@@ -531,14 +533,14 @@ const ByEmployee = () => {
                 <StatCard icon={Wallet} label="Active Incentives" value={formatCurrency(totalIncentives)} tint="emerald" />
             </div>
 
-            <div className="flex items-center gap-2.5 bg-ink/[0.03] border border-line rounded-full pl-2 pr-3 py-1 w-fit transition-colors duration-300 dark:bg-ink/[0.06]">
+            <div className="flex items-center gap-2.5 bg-ink/[0.03] border border-line rounded-full pl-2 pr-3 py-1 w-fit dark:bg-ink/[0.06]">
                 <canvas ref={donutCanvasRef} width={28} height={28} />
                 <span className="text-[11px] font-rethink text-muted">
                     <span className="font-semibold text-ink">{customCount}</span> of {rows.length} on custom rates
                 </span>
             </div>
 
-            <div className="flex items-center gap-2 border border-line rounded-lg bg-paper px-3 shadow-sm transition-colors duration-300">
+            <div className="flex items-center gap-2 border border-line rounded-lg bg-paper px-3 shadow-sm">
                 <Search className="h-4 w-4 text-muted" />
                 <input
                     type="text"
@@ -550,93 +552,101 @@ const ByEmployee = () => {
             </div>
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
-                <Card variant="default" padding="none" className="lg:col-span-2 bg-paper border-line overflow-hidden transition-colors duration-300">
-                    <CardBody className="p-4">
-                        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ink font-rethink">
-                            <TrendingUp className="h-3.5 w-3.5 text-philhealth" />
-                            Top Incentives by Employee
-                        </p>
-                        {loading ? (
-                            <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted font-rethink">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Loading…
-                            </div>
-                        ) : topIncentiveRows.length === 0 ? (
-                            <p className="py-10 text-center text-xs text-muted font-rethink">
-                                No active incentives are currently recorded.
-                            </p>
-                        ) : (
-                            <div className="h-56">
-                                <canvas ref={incentivesChartCanvasRef} />
-                            </div>
-                        )}
-                    </CardBody>
-                </Card>
-
-                <Card variant="default" padding="none" className="lg:col-span-3 bg-paper border-line overflow-hidden transition-colors duration-300">
-                    <CardBody className="p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                            <p className="flex items-center gap-1.5 text-xs font-semibold text-ink font-rethink">
-                                <Coins className="h-3.5 w-3.5 text-philhealth" />
-                                Employees with Active Incentives
-                            </p>
-                            <span className="text-[11px] text-muted font-rethink">
-                                {incentiveEntries.length} active
-                            </span>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-emerald-500 bg-paper p-4 lg:col-span-2 dark:border-paper/10">
+                    <TrendingUp
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-emerald-500 opacity-[0.06]"
+                    />
+                    <p className="relative mb-3 flex items-center gap-1.5 text-xs font-semibold text-ink font-rethink">
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                        Top Incentives by Employee
+                    </p>
+                    {loading ? (
+                        <div className="relative flex items-center justify-center gap-2 py-10 text-xs text-muted font-rethink">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading…
                         </div>
-                        {incentivesLoading ? (
-                            <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted font-rethink">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Loading…
-                            </div>
-                        ) : incentiveEntries.length === 0 ? (
-                            <p className="py-10 text-center text-xs text-muted font-rethink">
-                                No employees currently have an active incentive.
-                            </p>
-                        ) : (
-                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                                {incentiveEntries.map((entry) => (
-                                    <button
-                                        key={entry.id}
-                                        type="button"
-                                        onClick={() => {
-                                            const match = rows.find(
-                                                (r) => r.employee_id === entry.employee_id
-                                            );
-                                            if (match) setIncentivesRow(match);
-                                        }}
-                                        className="w-full flex items-start justify-between gap-3 rounded-lg border border-line bg-ink/[0.02] px-3 py-2 text-left transition-colors hover:bg-ink/[0.05] dark:bg-ink/[0.05]"
-                                    >
-                                        <div className="min-w-0">
-                                            <p className="text-[12.5px] font-medium text-ink font-rethink truncate">
-                                                {entry.employee_name}
-                                            </p>
-                                            <p className="text-[11px] text-muted font-rethink truncate">
-                                                {entry.description || 'No reason provided'}
-                                            </p>
-                                            <p className="mt-0.5 text-[10px] text-muted/80 font-rethink">
-                                                Granted {formatDate(entry.created_at)}
-                                            </p>
-                                        </div>
-                                        <span className="shrink-0 font-mono font-semibold text-[13px] text-philhealth">
-                                            {formatCurrency(entry.amount)}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </CardBody>
-                </Card>
+                    ) : topIncentiveRows.length === 0 ? (
+                        <p className="relative py-10 text-center text-xs text-muted font-rethink">
+                            No active incentives are currently recorded.
+                        </p>
+                    ) : (
+                        <div className="relative h-56">
+                            <canvas ref={incentivesChartCanvasRef} />
+                        </div>
+                    )}
+                </div>
+
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-purple-500 bg-paper p-4 lg:col-span-3 dark:border-paper/10">
+                    <Coins
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-purple-500 opacity-[0.06]"
+                    />
+                    <div className="relative mb-3 flex items-center justify-between">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-ink font-rethink">
+                            <Coins className="h-3.5 w-3.5 text-purple-500" />
+                            Employees with Active Incentives
+                        </p>
+                        <span className="text-[11px] text-muted font-rethink">
+                            {incentiveEntries.length} active
+                        </span>
+                    </div>
+                    {incentivesLoading ? (
+                        <div className="relative flex items-center justify-center gap-2 py-10 text-xs text-muted font-rethink">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading…
+                        </div>
+                    ) : incentiveEntries.length === 0 ? (
+                        <p className="relative py-10 text-center text-xs text-muted font-rethink">
+                            No employees currently have an active incentive.
+                        </p>
+                    ) : (
+                        <div className="relative space-y-2 max-h-56 overflow-y-auto pr-1">
+                            {incentiveEntries.map((entry) => (
+                                <button
+                                    key={entry.id}
+                                    type="button"
+                                    onClick={() => {
+                                        const match = rows.find(
+                                            (r) => r.employee_id === entry.employee_id
+                                        );
+                                        if (match) setIncentivesRow(match);
+                                    }}
+                                    className="w-full flex items-start justify-between gap-3 rounded-lg border border-line bg-ink/[0.02] px-3 py-2 text-left transition-colors hover:bg-ink/[0.05] dark:bg-ink/[0.05]"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="text-[12.5px] font-medium text-ink font-rethink truncate">
+                                            {entry.employee_name}
+                                        </p>
+                                        <p className="text-[11px] text-muted font-rethink truncate">
+                                            {entry.description || 'No reason provided'}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] text-muted/80 font-rethink">
+                                            Granted {formatDate(entry.created_at)}
+                                        </p>
+                                    </div>
+                                    <span className="shrink-0 font-mono font-semibold text-[13px] text-emerald-600 dark:text-emerald-400">
+                                        {formatCurrency(entry.amount)}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <Card variant="default" padding="none" className="bg-paper border-line overflow-hidden transition-colors duration-300">
+            <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper dark:border-paper/10">
+                <Users
+                    size={96}
+                    className="pointer-events-none absolute -bottom-4 -right-4 text-blue-500 opacity-[0.04]"
+                />
                 {loading ? (
-                    <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted font-rethink">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+                    <div className="relative flex items-center justify-center gap-3 py-12 text-sm text-muted font-rethink">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
                         Loading employees…
                     </div>
                 ) : filteredRows.length === 0 ? (
-                    <CardBody className="p-6 sm:p-8">
+                    <CardBody className="relative p-6 sm:p-8">
                         <Alert
                             variant="info"
                             message={
@@ -648,10 +658,10 @@ const ByEmployee = () => {
                     </CardBody>
                 ) : (
                     <>
-                        <div className="overflow-x-auto">
+                        <div className="relative overflow-x-auto">
                             <table className="w-full border-collapse text-sm">
                                 <thead>
-                                    <tr className="border-b border-line bg-ink/[0.02] transition-colors duration-300">
+                                    <tr className="border-b border-line bg-ink/[0.02]">
                                         <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Employee</th>
                                         <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink hidden md:table-cell">Position</th>
                                         <th className="text-right px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Rate</th>
@@ -673,7 +683,7 @@ const ByEmployee = () => {
                                                 animate={{ opacity: 1 }}
                                                 exit={{ opacity: 0 }}
                                                 transition={{ duration: 0.15 }}
-                                                className="border-b border-line last:border-b-0 transition-colors hover:bg-ink/[0.02]"
+                                                className="border-b border-line last:border-b-0 transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/10"
                                             >
                                                 <td className="px-3 py-2.5 whitespace-nowrap max-w-[150px]">
                                                     <p className="text-[13px] font-medium text-ink font-rethink truncate">
@@ -691,7 +701,7 @@ const ByEmployee = () => {
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right whitespace-nowrap">
                                                     {row.has_custom_rate ? (
-                                                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-[13px] text-pagibig">
+                                                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-[13px] text-amber-600 dark:text-amber-400">
                                                             <Wallet2 className="h-3 w-3" />
                                                             {formatCurrency(row.custom_daily_rate)}
                                                         </span>
@@ -709,7 +719,7 @@ const ByEmployee = () => {
                                                 <td className="px-3 py-2.5 text-right whitespace-nowrap hidden lg:table-cell">
                                                     <button
                                                         onClick={() => openAllowances(row)}
-                                                        className="text-[12px] font-mono tabular-nums text-blue-600 hover:underline flex items-center justify-end gap-1"
+                                                        className="text-[12px] font-mono tabular-nums text-blue-600 hover:underline flex items-center justify-end gap-1 dark:text-blue-400"
                                                     >
                                                         <Gift className="h-3 w-3" />
                                                         {row.incentives > 0 ? formatCurrency(row.incentives) : '—'}
@@ -718,7 +728,7 @@ const ByEmployee = () => {
                                                 <td className="px-3 py-2.5 text-right whitespace-nowrap hidden lg:table-cell">
                                                     <button
                                                         onClick={() => setIncentivesRow(row)}
-                                                        className="text-[12px] font-mono tabular-nums text-philhealth hover:underline"
+                                                        className="text-[12px] font-mono tabular-nums text-emerald-600 hover:underline dark:text-emerald-400"
                                                     >
                                                         {row.incentives > 0 ? formatCurrency(row.incentives) : '—'}
                                                     </button>
@@ -770,7 +780,7 @@ const ByEmployee = () => {
                         </div>
 
                         {totalPages > 1 && (
-                            <div className="border-t border-line px-3 py-3 transition-colors duration-300">
+                            <div className="relative border-t border-line px-3 py-3">
                                 <Pagination
                                     currentPage={currentPage}
                                     totalPages={totalPages}
@@ -782,7 +792,7 @@ const ByEmployee = () => {
                         )}
                     </>
                 )}
-            </Card>
+            </div>
 
             {isModalOpen && editingRow && (
                 <Modal
@@ -894,13 +904,13 @@ const ByEmployee = () => {
                         <button
                             type="button"
                             onClick={() => setIncentivesRow(editingRow)}
-                            className="w-full flex items-center justify-between rounded-lg border border-philhealth/20 bg-philhealth-soft px-3.5 py-2.5 text-left transition-colors hover:brightness-95"
+                            className="w-full flex items-center justify-between rounded-lg border border-emerald-200/40 bg-emerald-50 px-3.5 py-2.5 text-left transition-colors hover:brightness-95 dark:border-emerald-800/30 dark:bg-emerald-950/30"
                         >
-                            <span className="flex items-center gap-2 text-sm font-medium text-philhealth font-rethink">
+                            <span className="flex items-center gap-2 text-sm font-medium text-emerald-700 font-rethink dark:text-emerald-400">
                                 <Coins className="h-4 w-4" />
                                 Manage Incentives
                             </span>
-                            <span className="text-sm font-mono font-semibold text-philhealth">
+                            <span className="text-sm font-mono font-semibold text-emerald-700 dark:text-emerald-400">
                                 {editingRow.incentives > 0
                                     ? formatCurrency(editingRow.incentives)
                                     : 'None active'}
@@ -1156,7 +1166,7 @@ const ByEmployee = () => {
                                                         </span>
                                                     </div>
                                                     <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted font-rethink">
-                                                        <span className="font-mono font-semibold text-blue-600">
+                                                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
                                                             {formatCurrency(allowance.amount)}
                                                         </span>
                                                         <span className="capitalize">{allowance.frequency}</span>

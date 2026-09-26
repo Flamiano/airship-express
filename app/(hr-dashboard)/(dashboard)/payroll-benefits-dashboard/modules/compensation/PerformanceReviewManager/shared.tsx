@@ -109,6 +109,26 @@ export const employeeHasBank = (employees: any[], employeeId: string) => {
     );
 };
 
+
+export function starsFromRating(rating: number | null | undefined): number {
+    if (rating == null) return 0;
+    const n = Number(rating);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(5, Math.round(n)));
+}
+
+export function ratingLabel(rating: number | null | undefined): string {
+    const n = starsFromRating(rating);
+    switch (n) {
+        case 5: return 'Outstanding';
+        case 4: return 'Exceeds Expectations';
+        case 3: return 'Meets Expectations';
+        case 2: return 'Needs Improvement';
+        case 1: return 'Unsatisfactory';
+        default: return 'No rating';
+    }
+}
+
 export type LatestPerformanceRating = {
     employee_id: string;
     appraisal_id: string;

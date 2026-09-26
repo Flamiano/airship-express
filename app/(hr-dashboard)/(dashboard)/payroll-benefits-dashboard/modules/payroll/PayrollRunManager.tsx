@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
     Plus, Eye, PlayCircle, Ban, Loader2, ClipboardList, AlertTriangle,
-    Trash2, Send, Mail, ShieldCheck, FileText, Bell, MessageSquareWarning, UserCircle2,
+    Trash2, Send, Mail, ShieldCheck, FileText, Bell, MessageSquareWarning,
 } from 'lucide-react';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
+import { CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
 import { useApi, ApiError } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
@@ -194,9 +194,13 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
     return (
         <div className="space-y-5">
             {pendingCount > 0 && (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 dark:border-amber-800/30 dark:bg-amber-950/20">
-                    <Bell className="h-4 w-4 shrink-0 text-amber-600 mt-0.5 animate-pulse" />
-                    <div className="text-[12px] text-amber-800 dark:text-amber-300 font-rethink leading-relaxed">
+                <div className="relative flex items-start gap-3 overflow-hidden rounded-xl border border-line border-l-4 border-l-amber-500 bg-amber-50/70 p-3.5 dark:border-paper/10 dark:bg-amber-950/20">
+                    <Bell
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-amber-500 opacity-[0.06]"
+                    />
+                    <Bell className="relative h-4 w-4 shrink-0 text-amber-600 mt-0.5 animate-pulse" />
+                    <div className="relative text-[12px] text-amber-800 dark:text-amber-300 font-rethink leading-relaxed">
                         <p className="font-semibold">{pendingCount} run(s) awaiting Financial approval</p>
                         <p className="mt-0.5">Financial will review and approve or reject each submitted run.</p>
                     </div>
@@ -204,9 +208,13 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
             )}
 
             {approvedCount > 0 && (
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-800/30 dark:bg-emerald-950/20">
-                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
-                    <div className="text-[12px] text-emerald-800 dark:text-emerald-300 font-rethink leading-relaxed">
+                <div className="relative flex items-start gap-3 overflow-hidden rounded-xl border border-line border-l-4 border-l-emerald-500 bg-emerald-50/70 p-3.5 dark:border-paper/10 dark:bg-emerald-950/20">
+                    <ShieldCheck
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-emerald-500 opacity-[0.06]"
+                    />
+                    <ShieldCheck className="relative h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                    <div className="relative text-[12px] text-emerald-800 dark:text-emerald-300 font-rethink leading-relaxed">
                         <p className="font-semibold">{approvedCount} approved run(s) ready to distribute</p>
                         <p className="mt-0.5">Click the mail icon on approved runs to email payslips.</p>
                     </div>
@@ -214,9 +222,13 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
             )}
 
             {rejectedCount > 0 && (
-                <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50/70 p-3.5 dark:border-red-800/30 dark:bg-red-950/20">
-                    <MessageSquareWarning className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
-                    <div className="text-[12px] text-red-800 dark:text-red-300 font-rethink leading-relaxed">
+                <div className="relative flex items-start gap-3 overflow-hidden rounded-xl border border-line border-l-4 border-l-red-500 bg-red-50/70 p-3.5 dark:border-paper/10 dark:bg-red-950/20">
+                    <MessageSquareWarning
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-red-500 opacity-[0.06]"
+                    />
+                    <MessageSquareWarning className="relative h-4 w-4 shrink-0 text-red-600 mt-0.5" />
+                    <div className="relative text-[12px] text-red-800 dark:text-red-300 font-rethink leading-relaxed">
                         <p className="font-semibold">{rejectedCount} run(s) rejected by Financial</p>
                         <p className="mt-0.5">Open the detail modal to see the reason, revise, and resubmit.</p>
                     </div>
@@ -225,7 +237,7 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 border border-accent/20">
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line border-l-4 border-l-accent bg-paper dark:border-paper/10">
                         <ClipboardList className="h-4.5 w-4.5 text-accent" />
                     </div>
                     <div className="min-w-0">
@@ -240,18 +252,22 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
                 </Button>
             </div>
 
-            <Card variant="default" padding="none" className="bg-paper border-line overflow-hidden dark:border-line/30">
+            <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-accent bg-paper dark:border-paper/10">
+                <ClipboardList
+                    size={96}
+                    className="pointer-events-none absolute -bottom-4 -right-4 text-accent opacity-[0.04]"
+                />
                 {loading ? (
-                    <div className="flex items-center justify-center gap-3 py-14 text-sm text-muted font-rethink">
+                    <div className="relative flex items-center justify-center gap-3 py-14 text-sm text-muted font-rethink">
                         <Loader2 className="h-5 w-5 animate-spin text-accent" /> Loading payroll runs…
                     </div>
                 ) : runs.length === 0 ? (
-                    <CardBody className="p-6 sm:p-8">
+                    <CardBody className="relative p-6 sm:p-8">
                         <Alert variant="info" message="No payroll runs yet. Create one to begin." />
                     </CardBody>
                 ) : (
                     <>
-                        <div className="hidden md:block overflow-x-auto">
+                        <div className="relative hidden md:block overflow-x-auto">
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="border-b-2 border-line">
@@ -275,7 +291,7 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
                                                     layout
                                                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                                     transition={{ duration: 0.15 }}
-                                                    className="group border-b border-line last:border-b-0 transition-colors hover:bg-ink/[0.015]"
+                                                    className="group border-b border-line last:border-b-0 transition-colors hover:bg-accent/[0.03]"
                                                 >
                                                     <td className="px-4 py-3.5 whitespace-nowrap">
                                                         <p className="text-sm font-medium text-ink font-rethink">
@@ -340,7 +356,7 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
                             </table>
                         </div>
 
-                        <div className="md:hidden space-y-2.5 p-3">
+                        <div className="relative md:hidden space-y-2.5 p-3">
                             <AnimatePresence initial={false}>
                                 {paginatedRuns.map((run: any) => (
                                     <motion.div key={run.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
@@ -382,13 +398,13 @@ const PayrollRunManager = ({ onViewPayslips, bankStatus, onOpenBankModal }: Payr
                         </div>
 
                         {totalPages > 1 && (
-                            <div className="border-t border-line px-4 py-3">
+                            <div className="relative border-t border-line px-4 py-3 dark:border-line/30">
                                 <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                             </div>
                         )}
                     </>
                 )}
-            </Card>
+            </div>
 
             {isModalOpen && (
                 <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Payroll Run" className="max-w-lg" accent="blue" icon={ClipboardList}

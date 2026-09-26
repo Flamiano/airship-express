@@ -860,38 +860,202 @@ export async function airyBriefing(snapshot: any, adminUserId?: string) {
   const missingBank = snapshot?.missing_bank ?? 0;
   const drafts = snapshot?.open_draft_runs ?? 0;
 
-  const fallbackParts: string[] = [];
-  if (pending > 0)
-    fallbackParts.push(
-      `${pending} run${pending > 1 ? "s" : ""} waiting for Financial approval.`
-    );
-  if (approved > 0)
-    fallbackParts.push(
-      `${approved} approved run${approved > 1 ? "s" : ""} ready to distribute.`
-    );
-  if (rejected > 0)
-    fallbackParts.push(
-      `${rejected} rejected run${rejected > 1 ? "s" : ""} need revision.`
-    );
-  if (missingBank > 0)
-    fallbackParts.push(
-      `${missingBank} employee${
-        missingBank > 1 ? "s" : ""
-      } still missing bank details.`
-    );
-  if (drafts > 0)
-    fallbackParts.push(
-      `${drafts} draft run${drafts > 1 ? "s" : ""} not yet processed.`
-    );
+  const activeEmployees = snapshot?.active_employees ?? 0;
+  const totalPositions = snapshot?.total_positions ?? 0;
+  const openForHiring = snapshot?.open_for_hiring ?? 0;
+  const uniqueDepartments = snapshot?.unique_departments ?? 0;
+  const todayAttendance = snapshot?.today_attendance ?? 0;
+  const attendanceRate = snapshot?.attendance_rate ?? 0;
+  const ytdNet = snapshot?.ytd_net_pay ?? 0;
+  const ytdGross = snapshot?.ytd_gross_pay ?? 0;
+  const lastRunNet = snapshot?.last_run_net_pay ?? 0;
+  const withBank = snapshot?.with_bank ?? 0;
+  const pendingClaims = snapshot?.pending_claims ?? 0;
+  const approvedClaims = snapshot?.approved_claims ?? 0;
+  const claimsAmount = snapshot?.claims_pending_amount ?? 0;
+  const monthName = new Date(
+    new Date().getFullYear(),
+    (snapshot?.current_month ?? 1) - 1,
+    1
+  ).toLocaleDateString("en-US", { month: "long" });
 
-  const fallback =
-    fallbackParts.length > 0
-      ? `Good day, ${firstName}. ${fallbackParts.join(" ")}`
-      : `Good day, ${firstName}. Everything looks current. No pending approvals, no missing bank details, and no draft runs waiting to be processed.`;
+  const pesos = (n: number) =>
+    "P" +
+    Number(n || 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  type Mode =
+    | "urgent_blockers"
+    | "approvals_waiting"
+    | "claims_backlog"
+    | "all_clear"
+    | "operations_snapshot"
+    | "data_quality";
+
+  let mode: Mode = "operations_snapshot";
+  const scores: Record<Mode, number> = {
+    urgent_blockers: 0,
+    approvals_waiting: 0,
+    claims_backlog: 0,
+    all_clear: 0,
+    operations_snapshot: 0,
+    data_quality: 0,
+  };
+
+  if (rejected > 0) scores.urgent_blockers += 40;
+  if (missingBank > 0) scores.urgent_blockers += 30;
+  if (drafts > 0) scores.urgent_blockers += 20;
+
+  if (pending > 0) scores.approvals_waiting += 50;
+  if (approved > 0) scores.approvals_waiting += 30;
+
+  if (pendingClaims > 0) scores.claims_backlog += 40;
+  if (claimsAmount > 0) scores.claims_backlog += 20;
+
+  if (
+    pending === 0 &&
+    approved === 0 &&
+    rejected === 0 &&
+    missingBank === 0 &&
+    drafts === 0 &&
+    pendingClaims === 0
+  ) {
+    scores.all_clear += 100;
+  }
+
+  if (
+    activeEmployees > 0 ||
+    totalPositions > 0 ||
+    ytdNet > 0 ||
+    uniqueDepartments > 1
+  ) {
+    scores.operations_snapshot += 15;
+  }
+
+  if (openForHiring > 0) scores.operations_snapshot += 10;
+  if (attendanceRate > 0) scores.operations_snapshot += 5;
+
+  if (missingBank > 0 && missingBank <= 3) scores.data_quality += 15;
+
+  let bestScore = -1;
+  (Object.keys(scores) as Mode[]).forEach((m) => {
+    if (scores[m] > bestScore) {
+      bestScore = scores[m];
+      mode = m;
+    }
+  });
+
+  const buildFallback = (): string => {
+    switch (mode) {
+      case "urgent_blockers":
+        return `Good day, ${firstName}. ${
+          rejected > 0
+            ? `${rejected} payroll run${
+                rejected > 1 ? "s were" : " was"
+              } rejected and need revision. `
+            : ""
+        }${
+          missingBank > 0
+            ? `${missingBank} employee${
+                missingBank > 1 ? "s are" : " is"
+              } still missing bank details. `
+            : ""
+        }${
+          drafts > 0
+            ? `${drafts} draft run${
+                drafts > 1 ? "s are" : " is"
+              } not processed yet.`
+            : ""
+        }`.trim();
+
+      case "approvals_waiting":
+        return `Good day, ${firstName}. ${
+          pending > 0
+            ? `${pending} run${
+                pending > 1 ? "s are" : " is"
+              } waiting for financial approval. `
+            : ""
+        }${
+          approved > 0
+            ? `${approved} approved run${
+                approved > 1 ? "s are" : " is"
+              } ready to distribute.`
+            : ""
+        }`.trim();
+
+      case "claims_backlog":
+        return `Good day, ${firstName}. ${pendingClaims} claim${
+          pendingClaims > 1 ? "s are" : " is"
+        } pending review${
+          claimsAmount > 0 ? `, worth ${pesos(claimsAmount)}` : ""
+        }. Settle them before the next run.`;
+
+      case "all_clear":
+        return `Good day, ${firstName}. Everything is clear. No pending approvals, no missing bank details, no draft runs, and no pending claims. The payroll pipeline is healthy.`;
+
+      case "data_quality":
+        return `Good day, ${firstName}. ${withBank} of ${activeEmployees} employees have complete bank records. ${missingBank} still need attention before the next payout.`;
+
+      default:
+        return `Good day, ${firstName}. ${activeEmployees} active employee${
+          activeEmployees === 1 ? "" : "s"
+        } across ${uniqueDepartments} department${
+          uniqueDepartments === 1 ? "" : "s"
+        }. YTD net pay is ${pesos(
+          ytdNet
+        )}. ${attendanceRate}% attendance today.`;
+    }
+  };
+
+  const fallback = buildFallback();
+
+  const promptsByMode: Record<Mode, string> = {
+    urgent_blockers:
+      "Task: Write a short morning briefing for a payroll admin. Start with the most urgent blocker (rejected run or missing bank data). Name the count and the specific action. Plain sentences. No bullets, no markdown, no emojis. Under 70 words.",
+    approvals_waiting:
+      "Task: Write a short morning briefing. Focus on payroll runs awaiting financial approval and approved runs ready to distribute. State counts and next action. Plain sentences. No bullets, no markdown, no emojis. Under 70 words.",
+    claims_backlog:
+      "Task: Write a short morning briefing. Focus on pending reimbursement claims awaiting review. Mention the count and the total amount if available. Suggest settling before the next run. Plain sentences. No bullets, no markdown, no emojis. Under 70 words.",
+    all_clear:
+      "Task: Write a short, reassuring morning briefing. Everything is clear today. Mention the general health of the payroll pipeline without inventing numbers. Plain sentences. No bullets, no markdown, no emojis. Under 60 words.",
+    data_quality:
+      "Task: Write a short morning briefing about employee data completeness. Mention how many employees have complete bank records versus how many still need attention. Plain sentences. No bullets, no markdown, no emojis. Under 70 words.",
+    operations_snapshot:
+      "Task: Write a short operational snapshot for a payroll admin. Mention active employees, departments, YTD net pay, and today's attendance rate if relevant. Plain sentences. No bullets, no markdown, no emojis. Under 70 words.",
+  };
+
+  const headerContext = `Mode: ${mode}\nMonth: ${monthName}`;
+
+  const detailContext = [
+    `Active employees: ${activeEmployees}`,
+    `Total job positions: ${totalPositions}`,
+    `Open for hiring: ${openForHiring}`,
+    `Departments in use: ${uniqueDepartments}`,
+    `Today's attendance count: ${todayAttendance}`,
+    `Attendance rate: ${attendanceRate}%`,
+    `YTD gross pay: ${pesos(ytdGross)}`,
+    `YTD net pay: ${pesos(ytdNet)}`,
+    `Last run net pay: ${pesos(lastRunNet)}`,
+    `Employees with complete bank: ${withBank}`,
+    `Employees missing bank details: ${missingBank}`,
+    `Payroll runs pending approval: ${pending}`,
+    `Payroll runs approved but not distributed: ${approved}`,
+    `Payroll runs rejected: ${rejected}`,
+    `Payroll drafts not processed: ${drafts}`,
+    `Pending reimbursement claims: ${pendingClaims}`,
+    `Approved reimbursement claims: ${approvedClaims}`,
+    `Pending claims amount: ${pesos(claimsAmount)}`,
+  ].join("\n");
 
   try {
     const text = await ask(
-      "Task: Write a short morning briefing for the payroll admin. Plain sentences, no bullet markers. Cover what needs attention today: pending approvals, approved runs waiting for distribution, rejected runs, missing bank details, draft runs. If nothing needs attention, say so clearly. Keep it under 70 words. Never repeat a sentence.",
+      promptsByMode[mode] +
+        "\n\n" +
+        headerContext +
+        "\n\nSnapshot:\n" +
+        detailContext,
       snapshot,
       admin,
       [],
@@ -899,6 +1063,7 @@ export async function airyBriefing(snapshot: any, adminUserId?: string) {
     );
     const cleaned = sanitizeReply(text);
     if (!cleaned || cleaned.length < 10) return fallback;
+    if (/no response/i.test(cleaned)) return fallback;
     return cleaned;
   } catch {
     return fallback;

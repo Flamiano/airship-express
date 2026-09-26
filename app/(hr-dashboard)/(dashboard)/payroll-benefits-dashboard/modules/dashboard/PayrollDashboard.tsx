@@ -1,110 +1,157 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import {
-    Wallet,
-    TrendingUp,
-    Receipt,
-    HeartPulse,
     BarChart3,
-    Bot,
-    Activity,
     Check,
-    CircleDot,
     Circle,
+    CircleDot,
+    HeartPulse,
+    Receipt,
+    RefreshCw,
+    TrendingUp,
+    Wallet,
 } from 'lucide-react';
 
-import { useCurrentUser } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/useCurrentUser';
+import { useApi } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
+import { AiryButton } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/ui/AiryButton';
+import { AiryChatDrawer } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/ui/AiryChatDrawer';
+import { AiryBriefingCard } from './AiryBriefingCard';
+import { AiryInsightsCard } from './AiryInsightsCard';
+import { AiryQuickActions } from './AiryQuickActions';
+import { supabase } from '@/app/(hr-dashboard)/supabase/client';
+
+import { HeroCarousel } from './HeroCarousel';
 import { StatsCards } from './StatsCards';
+import { BenefitsStatsCard } from './BenefitsStatsCard';
 import { PayrollCalendar } from './PayrollCalendar';
 import { RecentPayrollRuns } from './RecentPayrollRuns';
+import { BudgetStatusCard } from './BudgetStatusCard';
+import { NotificationsCard } from './NotificationsCard';
+import { ChartsRow } from './ChartsRow';
+import { EmployeesTable } from './EmployeesTable';
+import AiryAnomaliesCard from './AiryAnomaliesCard';
+import AiryPayslipExplainerCard from './AiryPayslipExplainerCard';
 
-const PAY_CYCLE_STEPS = [
-    { label: 'Timesheets locked', date: 'Aug 05' },
-    { label: 'Payroll draft', date: 'Aug 06' },
-    { label: 'HR review & approval', date: 'Aug 07' },
-    { label: 'Disbursement', date: 'Aug 08' },
-    { label: 'Payslips released', date: 'Aug 08' },
-];
-const currentStep = 1;
+const CYCLE_STEPS = [
+    { key: 'timesheets_locked', label: 'Timesheets locked' },
+    { key: 'payroll_draft', label: 'Payroll draft' },
+    { key: 'hr_review', label: 'HR review & approval' },
+    { key: 'disbursement', label: 'Disbursement' },
+    { key: 'payslips_released', label: 'Payslips released' },
+] as const;
 
-const BANNER_PILLS = [
-    { label: 'Employees', value: 312 },
-    { label: 'Pending claims', value: 18 },
-    { label: 'Active contracts', value: 6 },
-];
+interface CycleData {
+    [key: string]: any;
+}
 
-const MODULES = [
-    { icon: Wallet, label: 'Payroll Management', href: '/payroll-benefits-dashboard/payroll-management' },
-    { icon: TrendingUp, label: 'Compensation Planning', href: '/payroll-benefits-dashboard/compensation-planning' },
-    { icon: Receipt, label: 'Claims and Reimbursement', href: '/payroll-benefits-dashboard/claims-and-reimbursement' },
-    { icon: HeartPulse, label: 'HMO & Benefits Administration', href: '/payroll-benefits-dashboard/hmo-benefits-administration' },
-    { icon: BarChart3, label: 'HR Analytics Dashboard', href: '/payroll-benefits-dashboard/hr-analytics-dashboard' },
-    { icon: Bot, label: 'Payroll Assistant (AI)', href: '/payroll-benefits-dashboard/chatbot' },
-];
+function pickNum(obj: any, ...keys: string[]): number {
+    if (!obj) return 0;
+    for (const k of keys) {
+        const v = obj[k];
+        if (typeof v === 'number' && !Number.isNaN(v)) return v;
+        if (typeof v === 'string') {
+            const n = Number(v);
+            if (!Number.isNaN(n)) return n;
+        }
+    }
+    return 0;
+}
 
 export function PayrollDashboard() {
-    const { user } = useCurrentUser();
-    const firstName = user?.fullName?.split(' ')[0] ?? 'there';
-    const roleLabel = user?.role ? `${user.role.replace('_', ' ')} session active` : 'Session active';
+    const [cycle, setCycle] = useState<CycleData | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [airyOpen, setAiryOpen] = useState(false);
+    const [adminUserId, setAdminUserId] = useState<string | undefined>(undefined);
+
+    const { fetchData: fetchSummary } = useApi(
+        '/payroll-benefits-dashboard/api/payroll/summary'
+    );
+
+    useEffect(() => {
+        let mounted = true;
+        supabase.auth.getUser().then(({ data }) => {
+            if (!mounted) return;
+            if (data.user?.id) setAdminUserId(data.user.id);
+        });
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    const loadSummary = async () => {
+        try {
+            const d = await fetchSummary().catch(() => null);
+            if (d) setCycle(d as CycleData);
+        } catch { }
+    };
+
+    useEffect(() => {
+        void loadSummary();
+    }, [fetchSummary]);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await loadSummary();
+        setRefreshing(false);
+    };
+
+    const currentStep = pickNum(cycle, 'current_step', 'currentStep');
 
     return (
         <div className="space-y-6">
-            <div>
-                <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
-                    AirshipExpress · Payroll &amp; Benefits
-                </p>
-                <h1 className="mt-2 font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
-                    Here&rsquo;s where this cycle stands.
-                </h1>
+            <div className="flex items-end justify-between gap-3">
+                <div>
+                    <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
+                        AirshipExpress · Payroll &amp; Benefits
+                    </p>
+                    <h1 className="mt-2 font-bricolage text-[24px] font-medium leading-tight tracking-tight sm:text-[32px] xl:text-[36px]">
+                        Here&rsquo;s where this cycle stands.
+                    </h1>
+                </div>
+                <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    title="Refresh dashboard data"
+                    className="flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] font-medium text-muted transition-colors hover:bg-accent/[0.06] hover:text-ink disabled:opacity-50 dark:border-paper/10"
+                >
+                    <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                    Refresh
+                </button>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-5 xl:grid-cols-[1fr_340px]">
-                <div className="flex min-w-0 flex-col gap-5">
-                    <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.45, delay: 0.05, ease: 'easeOut' }}
-                        className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-br from-accent to-accent-dark px-6 py-7 text-paper sm:px-8 sm:py-9"
-                    >
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-paper/15 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.1em]">
-                            <Activity size={12} strokeWidth={2} />
-                            {roleLabel}
-                        </span>
-                        <p className="mt-4 text-[15px] text-paper/70">Welcome back,</p>
-                        <h2 className="font-bricolage text-[28px] font-semibold tracking-tight sm:text-[40px]">
-                            {firstName}
-                        </h2>
-
-                        <div className="mt-6 flex flex-wrap gap-2 sm:gap-3">
-                            {BANNER_PILLS.map((p) => (
-                                <div
-                                    key={p.label}
-                                    className="rounded-xl bg-paper/10 px-4 py-2.5 backdrop-blur-sm"
-                                >
-                                    <p className="font-bricolage text-[20px] font-semibold leading-none">
-                                        {p.value}
-                                    </p>
-                                    <p className="mt-1 text-[11px] text-paper/70">{p.label}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </motion.div>
-
+            <div className="grid w-full grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="flex min-w-0 flex-col gap-5 self-start">
+                    <HeroCarousel />
                     <StatsCards />
+                    <BenefitsStatsCard />
+                    <ChartsRow />
+                    <EmployeesTable />
 
-                    <div className="w-full rounded-2xl border border-line px-5 py-6 sm:px-8 sm:py-7 dark:border-paper/10">
-                        <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
+                    <div className="relative w-full overflow-hidden rounded-2xl border border-line px-5 py-6 sm:px-8 sm:py-7 dark:border-paper/10">
+                        <CircleDot
+                            size={96}
+                            className="pointer-events-none absolute -bottom-4 -right-4 text-accent opacity-[0.05]"
+                        />
+                        <p className="relative text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
                             Current pay cycle
                         </p>
-                        <ol className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-0">
-                            {PAY_CYCLE_STEPS.map((step, i) => {
+                        <ol className="relative mt-5 flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-0">
+                            {CYCLE_STEPS.map((step, i) => {
                                 const done = i < currentStep;
                                 const active = i === currentStep;
+                                const dateStr = cycle?.step_dates?.[step.key] ?? null;
+                                const dateLabel = dateStr
+                                    ? new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: '2-digit',
+                                    })
+                                    : '—';
                                 return (
                                     <li
-                                        key={step.label}
+                                        key={step.key}
                                         className="flex flex-1 items-start gap-3 sm:flex-col sm:items-start sm:gap-2 sm:border-l sm:border-line sm:pl-4 sm:first:border-l-0 sm:first:pl-0 dark:sm:border-paper/10"
                                     >
                                         <span className="mt-0.5 shrink-0 sm:mt-0">
@@ -123,56 +170,42 @@ export function PayrollDashboard() {
                                             >
                                                 {step.label}
                                             </span>
-                                            <span className="block text-[12px] text-muted">{step.date}</span>
+                                            <span className="block text-[12px] text-muted">{dateLabel}</span>
                                         </span>
                                     </li>
                                 );
                             })}
                         </ol>
                     </div>
-
-                    <div className="w-full rounded-2xl border border-line px-5 py-6 sm:px-8 sm:py-7 dark:border-paper/10">
-                        <p className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted">
-                            Modules
-                        </p>
-                        <div className="mt-4 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 xl:grid-cols-3 dark:border-paper/10 dark:bg-paper/10">
-                            {MODULES.map(({ icon: Icon, label, href }) => (
-                                <Link
-                                    key={href}
-                                    href={href}
-                                    className="group flex items-center gap-3 bg-paper px-4 py-4 transition-colors hover:bg-accent/[0.06]"
-                                >
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors group-hover:border-accent group-hover:text-accent dark:border-paper/15">
-                                        <Icon size={16} strokeWidth={1.75} />
-                                    </span>
-                                    <span className="text-[13px] font-medium text-ink">{label}</span>
-                                </Link>
-                            ))}
-                        </div>
-                    </div>
                 </div>
 
-                <div className="flex min-w-0 flex-col gap-5">
+                <div className="flex min-w-0 flex-col gap-5 self-start">
+                    <AiryBriefingCard adminUserId={adminUserId} />
                     <PayrollCalendar />
+                    <BudgetStatusCard />
+                    <AiryInsightsCard />
+                    <AiryAnomaliesCard />
+                    <AiryPayslipExplainerCard />
+                    <AiryQuickActions onOpen={() => setAiryOpen(true)} />
                     <RecentPayrollRuns />
-
-                    <Link
-                        href="/payroll-benefits-dashboard/chatbot"
-                        className="group flex w-full flex-col gap-3 rounded-2xl border border-line px-5 py-5 transition-colors hover:bg-accent/[0.06] dark:border-paper/10"
-                    >
-                        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-accent dark:border-paper/15">
-                            <Bot size={16} strokeWidth={1.75} />
-                        </span>
-                        <div>
-                            <p className="text-[13px] font-medium text-ink">Payroll Assistant</p>
-                            <p className="mt-1 text-[12px] text-muted">
-                                Ask for payroll computations, claim checks, or benefit summaries.
-                            </p>
-                        </div>
-                        <span className="text-[12px] font-medium text-accent">Open assistant →</span>
-                    </Link>
+                    <NotificationsCard />
                 </div>
             </div>
+
+            <AiryButton onClick={() => setAiryOpen(true)} />
+            <AiryChatDrawer
+                isOpen={airyOpen}
+                onClose={() => setAiryOpen(false)}
+                adminUserId={adminUserId}
+                context={{
+                    active_employees: cycle?.active_employees,
+                    pending_claims_count: cycle?.pending_claims_count,
+                    next_pay_run_date: cycle?.next_pay_run_date,
+                    page: 'payroll-dashboard',
+                }}
+            />
         </div>
     );
 }
+
+export default PayrollDashboard;

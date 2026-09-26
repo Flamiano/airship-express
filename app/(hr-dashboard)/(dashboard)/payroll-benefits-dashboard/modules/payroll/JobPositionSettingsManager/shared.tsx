@@ -57,15 +57,10 @@ export const calculateTenure = (dateHired: string | null | undefined) => {
     const days = Math.floor((diffDays % 365) % 30);
 
     const parts = [];
-    if (years > 0) {
-      parts.push(`${years} yr${years > 1 ? "s" : ""}`);
-    }
-    if (months > 0) {
-      parts.push(`${months} mo${months > 1 ? "s" : ""}`);
-    }
-    if (days > 0 && years === 0) {
+    if (years > 0) parts.push(`${years} yr${years > 1 ? "s" : ""}`);
+    if (months > 0) parts.push(`${months} mo${months > 1 ? "s" : ""}`);
+    if (days > 0 && years === 0)
       parts.push(`${days} day${days > 1 ? "s" : ""}`);
-    }
 
     return parts.length > 0 ? parts.join(", ") : "Less than a month";
   } catch {
@@ -73,15 +68,26 @@ export const calculateTenure = (dateHired: string | null | undefined) => {
   }
 };
 
-export type StatTint = "blue" | "amber" | "emerald" | "purple" | "red" | "gray";
+export type StatTint = "blue" | "amber" | "emerald" | "purple" | "red" | "gray" | "pink";
 
-const TINT_CLASSES: Record<StatTint, string> = {
-  blue: "bg-accent/10 text-accent",
-  amber: "bg-pagibig-soft text-pagibig",
-  emerald: "bg-philhealth-soft text-philhealth",
-  purple: "bg-sss/10 text-sss",
-  red: "bg-ink/5 text-muted",
-  gray: "bg-ink/5 text-muted",
+const TINT_BORDER: Record<StatTint, string> = {
+  blue: "border-l-blue-500",
+  amber: "border-l-amber-500",
+  emerald: "border-l-emerald-500",
+  purple: "border-l-purple-500",
+  red: "border-l-red-500",
+  gray: "border-l-gray-400",
+  pink: "border-l-pink-500",
+};
+
+const TINT_ICON: Record<StatTint, string> = {
+  blue: "text-blue-500",
+  amber: "text-amber-500",
+  emerald: "text-emerald-500",
+  purple: "text-purple-500",
+  red: "text-red-500",
+  gray: "text-gray-400",
+  pink: "text-pink-500",
 };
 
 export function StatCard({
@@ -96,18 +102,17 @@ export function StatCard({
   tint: StatTint;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-paper p-3.5 dark:border-line/30 transition-colors duration-300">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-medium text-muted font-rethink">
-          {label}
-        </p>
-        <span
-          className={`flex h-6 w-6 items-center justify-center rounded-md ${TINT_CLASSES[tint]}`}
-        >
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-      </div>
-      <p className="mt-1 text-lg font-mono font-semibold text-ink truncate">
+    <div
+      className={`relative overflow-hidden rounded-xl border border-line border-l-4 bg-paper px-4 py-3.5 dark:border-paper/10 ${TINT_BORDER[tint]}`}
+    >
+      <Icon
+        size={72}
+        className={`pointer-events-none absolute -bottom-3 -right-3 opacity-[0.06] ${TINT_ICON[tint]}`}
+      />
+      <p className="relative text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">
+        {label}
+      </p>
+      <p className="relative mt-1.5 font-bricolage text-[20px] font-semibold leading-none tracking-tight text-ink truncate">
         {value}
       </p>
     </div>
@@ -219,7 +224,7 @@ export function ConfirmModal({
     >
       <div className="space-y-4">
         <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pagibig-soft text-pagibig">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-500 dark:bg-amber-950/30 dark:text-amber-400">
             <AlertCircle className="h-4.5 w-4.5" />
           </span>
           <p className="text-sm text-ink font-rethink pt-1.5">{message}</p>

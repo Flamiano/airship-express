@@ -22,8 +22,9 @@ import { printTable, exportExcel, printFormatters, PrintColumn } from '../../../
 import {
     StatCard, peso, avatarClass, initialsOf, cssVar, todayISO,
     MERIT_POLICY, RATING_LABEL, STATUS_STYLES,
-    employeeHasBank,
-    LatestPerformanceRating, LatestPerformanceRatingMap,
+    employeeHasBank, starsFromRating,
+    type LatestPerformanceRating,
+    type LatestPerformanceRatingMap,
 } from './shared';
 
 const COVERAGE_PAGE_SIZE = 8;
@@ -355,7 +356,8 @@ const MeritTab = () => {
     const ratingDistribution = useMemo(() => {
         const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
         ratedEmployeesList.forEach((r) => {
-            if (r.performance_rating) dist[r.performance_rating] = (dist[r.performance_rating] || 0) + 1;
+            const stars = starsFromRating(r.performance_rating);
+            if (stars > 0) dist[stars] = (dist[stars] || 0) + 1;
         });
         return dist;
     }, [ratedEmployeesList]);
@@ -431,7 +433,7 @@ const MeritTab = () => {
         ratingDistChartInstanceRef.current = new Chart(ratingDistChartRef.current, {
             type: 'bar',
             data: {
-                labels: ['1 ⭐', '2 ⭐', '3 ⭐', '4 ⭐', '5 ⭐'],
+                labels: ['1 ★', '2 ★', '3 ★', '4 ★', '5 ★'],
                 datasets: [{
                     label: 'Employees',
                     data: [
@@ -444,7 +446,7 @@ const MeritTab = () => {
                 }],
             },
             options: {
-                responsive: true, maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: (ctx) => `${ctx.raw} employee(s)` } },
@@ -482,7 +484,7 @@ const MeritTab = () => {
             },
             options: {
                 indexAxis: 'y',
-                responsive: true, maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: (ctx) => `${ctx.raw} / 5` } },
@@ -518,7 +520,7 @@ const MeritTab = () => {
                 }],
             },
             options: {
-                responsive: true, maintainAspectRatio: false, cutout: '68%',
+                responsive: true, maintainAspectRatio: false, cutout: '68%', animation: false,
                 plugins: {
                     legend: {
                         position: 'right',
@@ -638,7 +640,7 @@ const MeritTab = () => {
                 <Card variant="default" padding="none" className="lg:col-span-2 bg-paper border-line overflow-hidden dark:border-line/30">
                     <CardBody className="p-4">
                         <div className="flex items-center gap-1.5 mb-3">
-                            <PieChart className="h-3.5 w-3.5 text-philhealth" />
+                            <PieChart className="h-3.5 w-3.5 text-emerald-500" />
                             <p className="text-xs font-semibold text-ink font-rethink">HR3 Coverage</p>
                         </div>
                         <div className="h-56"><canvas ref={coverageChartRef} /></div>
@@ -729,8 +731,15 @@ const MeritTab = () => {
                                                     </td>
                                                     <td className="px-3 py-2.5 text-center">
                                                         {row.has_rating ? (
-                                                            <div className="inline-flex items-center gap-1">
-                                                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                                            <div className="inline-flex items-center gap-1.5">
+                                                                <div className="flex">
+                                                                    {Array.from({ length: 5 }).map((_, i) => (
+                                                                        <Star
+                                                                            key={i}
+                                                                            className={`h-3.5 w-3.5 ${i < starsFromRating(row.performance_rating) ? 'text-amber-500 fill-amber-500' : 'text-ink/15'}`}
+                                                                        />
+                                                                    ))}
+                                                                </div>
                                                                 <span className="text-xs font-semibold text-ink">{row.performance_rating}</span>
                                                                 {row.letter_grade && (
                                                                     <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
@@ -889,8 +898,15 @@ const MeritTab = () => {
                                                 <td className="px-3 py-3 text-right text-[12px] font-mono font-semibold text-emerald-600 whitespace-nowrap">{plan.recommended_increase_percent}%</td>
                                                 <td className="px-3 py-3 text-right text-[13px] font-mono font-semibold tabular-nums text-ink whitespace-nowrap">{peso(plan.recommended_new_salary)}</td>
                                                 <td className="px-3 py-3 text-center">
-                                                    <div className="inline-flex items-center gap-1">
-                                                        <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                                    <div className="inline-flex items-center gap-1.5">
+                                                        <div className="flex">
+                                                            {Array.from({ length: 5 }).map((_, i) => (
+                                                                <Star
+                                                                    key={i}
+                                                                    className={`h-3.5 w-3.5 ${i < starsFromRating(plan.performance_rating) ? 'text-amber-500 fill-amber-500' : 'text-ink/15'}`}
+                                                                />
+                                                            ))}
+                                                        </div>
                                                         <span className="text-xs font-medium text-ink">{plan.performance_rating}</span>
                                                         {matchesHr3 && (
                                                             <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
@@ -909,12 +925,14 @@ const MeritTab = () => {
                                                         <button
                                                             onClick={() => openEdit(plan)}
                                                             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-amber-600 transition-all hover:bg-amber-100 hover:scale-105 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400"
+                                                            aria-label="Edit merit plan"
                                                         >
                                                             <Pencil className="h-3.5 w-3.5" />
                                                         </button>
                                                         <button
                                                             onClick={() => handleDeleteClick(plan)}
                                                             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-600 transition-all hover:bg-red-100 hover:scale-105 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-400"
+                                                            aria-label="Delete merit plan"
                                                         >
                                                             <Trash2 className="h-3.5 w-3.5" />
                                                         </button>
@@ -959,11 +977,13 @@ const MeritTab = () => {
                                 {employees.map((emp: any) => {
                                     const hr3 = ratingsForYear[emp.employee_id];
                                     const hasBank = employeeHasBank(employees, emp.employee_id);
+                                    const stars = starsFromRating(hr3?.performance_rating ?? null);
+                                    const starsText = stars > 0 ? ` · ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}` : ' · no rating';
                                     return (
                                         <option key={emp.employee_id} value={emp.employee_id}>
                                             {emp.employee_name}
                                             {emp.employee_id_number ? ` (${emp.employee_id_number})` : ''}
-                                            {hr3?.performance_rating != null ? ` · ⭐ ${hr3.performance_rating}` : ' · no rating'}
+                                            {starsText}
                                             {!hasBank ? ' · ⚠ no bank' : ''}
                                         </option>
                                     );
@@ -976,10 +996,25 @@ const MeritTab = () => {
                                 <div className="flex items-start gap-2.5">
                                     <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
                                     <div className="text-[11px] text-blue-800 dark:text-blue-300 font-rethink leading-relaxed">
-                                        <p className="font-semibold">
-                                            HR3 rating: {activeRatingSource(form.employee_id)?.performance_rating ?? '—'} / 5
-                                            {activeRatingSource(form.employee_id)?.letter_grade ? ` (${activeRatingSource(form.employee_id)?.letter_grade})` : ''}
-                                        </p>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-semibold">HR3 rating:</span>
+                                            <div className="flex">
+                                                {Array.from({ length: 5 }).map((_, i) => (
+                                                    <Star
+                                                        key={i}
+                                                        className={`h-3.5 w-3.5 ${i < starsFromRating(activeRatingSource(form.employee_id)?.performance_rating) ? 'text-amber-500 fill-amber-500' : 'text-ink/15'}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                            <span className="font-semibold">
+                                                {activeRatingSource(form.employee_id)?.performance_rating ?? '—'} / 5
+                                            </span>
+                                            {activeRatingSource(form.employee_id)?.letter_grade && (
+                                                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+                                                    {activeRatingSource(form.employee_id)?.letter_grade}
+                                                </span>
+                                            )}
+                                        </div>
                                         {activeRatingSource(form.employee_id)?.cycle_name && (
                                             <p className="text-blue-700/80 dark:text-blue-300/80">
                                                 Cycle: {activeRatingSource(form.employee_id)?.cycle_name}
@@ -1093,7 +1128,7 @@ const MeritTab = () => {
                                 />
                                 {form.performance_rating && (
                                     <p className="mt-1 text-[10px] text-muted font-rethink">
-                                        Policy for {form.performance_rating}⭐: {MERIT_POLICY[Number(form.performance_rating)] ?? 0}% recommended
+                                        Policy for {form.performance_rating}★: {MERIT_POLICY[Number(form.performance_rating)] ?? 0}% recommended
                                     </p>
                                 )}
                             </div>

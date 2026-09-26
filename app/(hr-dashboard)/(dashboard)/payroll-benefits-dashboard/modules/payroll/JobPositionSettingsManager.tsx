@@ -5,14 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
     Plus, Pencil, Trash2, Loader2, Search, X,
-    Clock, Coffee, Zap, DollarSign
+    Clock, Coffee, Zap, DollarSign, AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Input } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Input';
-import { Badge } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Badge';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
 import { useApi } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
 
@@ -183,7 +181,7 @@ const JobPositionSettingsManager = () => {
         <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 border border-accent/20">
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line border-l-4 border-l-accent bg-paper dark:border-paper/10">
                         <DollarSign className="h-4.5 w-4.5 text-accent" />
                     </div>
                     <div className="min-w-0">
@@ -239,9 +237,13 @@ const JobPositionSettingsManager = () => {
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -10 }}
                                 transition={{ duration: 0.15 }}
-                                className="rounded-lg border border-line p-4 dark:border-line/30 hover:border-accent/30 transition-colors"
+                                className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-accent bg-paper p-4 dark:border-paper/10"
                             >
-                                <div className="flex items-start justify-between">
+                                <DollarSign
+                                    size={72}
+                                    className="pointer-events-none absolute -bottom-3 -right-3 text-accent opacity-[0.06]"
+                                />
+                                <div className="relative flex items-start justify-between">
                                     <div className="min-w-0">
                                         <h5 className="text-sm font-semibold text-ink font-rethink">
                                             {setting.hr1_job_positions?.title || 'Unknown Position'}
@@ -265,7 +267,7 @@ const JobPositionSettingsManager = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                <div className="relative mt-3 grid grid-cols-2 gap-2">
                                     <div className="rounded-md bg-ink/[0.03] px-3 py-2 dark:bg-ink/[0.05]">
                                         <p className="text-[10px] font-medium uppercase tracking-wider text-muted font-rethink">Daily Rate</p>
                                         <p className="text-sm font-mono font-semibold text-ink">{formatCurrency(setting.daily_rate)}</p>
@@ -304,7 +306,6 @@ const JobPositionSettingsManager = () => {
                 </div>
             )}
 
-            {/* Modal for Add/Edit */}
             {isModalOpen && (
                 <Modal
                     isOpen={isModalOpen}
@@ -400,7 +401,6 @@ const JobPositionSettingsManager = () => {
                 </Modal>
             )}
 
-            {/* Delete Modal */}
             {deleteTarget && (
                 <Modal
                     isOpen={!!deleteTarget}

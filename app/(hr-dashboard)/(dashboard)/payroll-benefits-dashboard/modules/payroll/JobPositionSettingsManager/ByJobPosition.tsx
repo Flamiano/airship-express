@@ -14,13 +14,12 @@ import {
     TrendingUp,
     History,
     UserCircle2,
-    Plus,
     Trash2,
 } from 'lucide-react';
 import Chart from 'chart.js/auto';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
+import { CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Alert } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Alert';
 import { Input } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Input';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
@@ -225,6 +224,7 @@ const ByJobPosition = () => {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -278,6 +278,7 @@ const ByJobPosition = () => {
             },
             options: {
                 responsive: false,
+                animation: false,
                 plugins: { legend: { display: false } },
                 scales: {
                     y: {
@@ -304,29 +305,31 @@ const ByJobPosition = () => {
             </div>
 
             {rated.length > 0 && (
-                <Card variant="default" padding="none" className="bg-paper border-line overflow-hidden transition-colors duration-300">
-                    <CardBody className="p-4 sm:p-5">
-                        <div className="flex items-center justify-between mb-3">
-                            <p className="text-xs font-semibold text-ink font-rethink">Top Daily Rates by Position</p>
-                            <span className="text-[10px] text-muted font-rethink">
-                                Top {Math.min(rated.length, 6)} of {rated.length}
-                            </span>
-                        </div>
-                        <div style={{ height: Math.min(rated.length, 6) * 38 + 20 }}>
-                            <canvas ref={rankChartRef} />
-                        </div>
-                    </CardBody>
-                </Card>
+                <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-accent bg-paper p-4 sm:p-5 dark:border-paper/10">
+                    <TrendingUp
+                        size={72}
+                        className="pointer-events-none absolute -bottom-3 -right-3 text-accent opacity-[0.06]"
+                    />
+                    <div className="relative flex items-center justify-between mb-3">
+                        <p className="text-xs font-semibold text-ink font-rethink">Top Daily Rates by Position</p>
+                        <span className="text-[10px] text-muted font-rethink">
+                            Top {Math.min(rated.length, 6)} of {rated.length}
+                        </span>
+                    </div>
+                    <div className="relative" style={{ height: Math.min(rated.length, 6) * 38 + 20 }}>
+                        <canvas ref={rankChartRef} />
+                    </div>
+                </div>
             )}
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-[10px] text-muted font-rethink bg-ink/[0.03] px-2.5 py-1 rounded-full border border-line w-fit transition-colors duration-300">
+                <div className="flex items-center gap-1.5 text-[10px] text-muted font-rethink bg-ink/[0.03] px-2.5 py-1 rounded-full border border-line w-fit dark:bg-ink/[0.06]">
                     <Clock3 className="h-3 w-3 text-accent" />
                     <span>Basic salary is calculated as Daily Rate × 24</span>
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 border border-line rounded-lg bg-paper px-3 shadow-sm transition-colors duration-300">
+            <div className="flex items-center gap-2 border border-line rounded-lg bg-paper px-3 shadow-sm">
                 <Search className="h-4 w-4 text-muted" />
                 <input
                     type="text"
@@ -337,14 +340,18 @@ const ByJobPosition = () => {
                 />
             </div>
 
-            <Card variant="default" padding="none" className="bg-paper border-line overflow-hidden transition-colors duration-300">
+            <div className="relative overflow-hidden rounded-xl border border-line border-l-4 border-l-blue-500 bg-paper dark:border-paper/10">
+                <Briefcase
+                    size={96}
+                    className="pointer-events-none absolute -bottom-4 -right-4 text-blue-500 opacity-[0.04]"
+                />
                 {loading ? (
-                    <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted font-rethink">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+                    <div className="relative flex items-center justify-center gap-3 py-12 text-sm text-muted font-rethink">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
                         Loading job positions…
                     </div>
                 ) : filteredPositions.length === 0 ? (
-                    <CardBody className="p-6 sm:p-8">
+                    <CardBody className="relative p-6 sm:p-8">
                         <Alert
                             variant="info"
                             message={
@@ -356,10 +363,10 @@ const ByJobPosition = () => {
                     </CardBody>
                 ) : (
                     <>
-                        <div className="overflow-x-auto">
+                        <div className="relative overflow-x-auto">
                             <table className="w-full border-collapse text-sm">
                                 <thead>
-                                    <tr className="border-b border-line bg-ink/[0.02] transition-colors duration-300">
+                                    <tr className="border-b border-line bg-ink/[0.02]">
                                         <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Position</th>
                                         <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink hidden md:table-cell">Department</th>
                                         <th className="text-right px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Daily Rate</th>
@@ -380,7 +387,7 @@ const ByJobPosition = () => {
                                                 animate={{ opacity: 1 }}
                                                 exit={{ opacity: 0 }}
                                                 transition={{ duration: 0.15 }}
-                                                className="border-b border-line last:border-b-0 transition-colors hover:bg-ink/[0.02]"
+                                                className="border-b border-line last:border-b-0 transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/10"
                                             >
                                                 <td className="px-3 py-2.5 text-[13px] font-medium text-ink font-rethink whitespace-nowrap max-w-[140px] truncate">
                                                     {position.title}
@@ -411,7 +418,7 @@ const ByJobPosition = () => {
                                                 </td>
                                                 <td className="px-3 py-2.5 whitespace-nowrap hidden lg:table-cell">
                                                     {position.is_active ? (
-                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-philhealth">
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
                                                             <CheckCircle2 className="h-3 w-3" />
                                                             Open
                                                         </span>
@@ -467,7 +474,7 @@ const ByJobPosition = () => {
                         </div>
 
                         {totalPages > 1 && (
-                            <div className="border-t border-line px-3 py-3 transition-colors duration-300">
+                            <div className="relative border-t border-line px-3 py-3">
                                 <Pagination
                                     currentPage={currentPage}
                                     totalPages={totalPages}
@@ -479,7 +486,7 @@ const ByJobPosition = () => {
                         )}
                     </>
                 )}
-            </Card>
+            </div>
 
             {isModalOpen && editingPosition && (
                 <Modal
@@ -514,7 +521,7 @@ const ByJobPosition = () => {
                     <div className="space-y-4">
                         <div>
                             <p className="mb-1.5 text-xs font-medium text-ink font-rethink">Position</p>
-                            <p className="rounded-lg border border-line bg-ink/[0.02] px-3 py-2 text-sm text-ink font-rethink transition-colors duration-300 dark:bg-ink/[0.05]">
+                            <p className="rounded-lg border border-line bg-ink/[0.02] px-3 py-2 text-sm text-ink font-rethink dark:bg-ink/[0.05]">
                                 {editingPosition.title}
                             </p>
                             <p className="mt-1 text-[10px] text-muted font-rethink">{editingPosition.department}</p>
@@ -531,7 +538,7 @@ const ByJobPosition = () => {
                             />
                         </div>
                         {Number(form.daily_rate) > 0 && (
-                            <div className="rounded-lg bg-accent/5 border border-accent/20 dark:bg-accent/10 dark:border-accent/30 p-3 flex items-center justify-between transition-colors duration-300">
+                            <div className="rounded-lg bg-accent/5 border border-accent/20 dark:bg-accent/10 dark:border-accent/30 p-3 flex items-center justify-between">
                                 <p className="text-xs font-medium text-accent font-rethink">Calculated Basic Salary (Monthly)</p>
                                 <p className="text-sm font-mono font-semibold text-accent">
                                     {formatCurrency(Number(form.daily_rate) * 24)}
@@ -540,7 +547,7 @@ const ByJobPosition = () => {
                         )}
 
                         {editingPosition.daily_rate > 0 && (
-                            <div className="flex flex-col items-center rounded-lg border border-line bg-ink/[0.02] p-3 transition-colors duration-300 dark:bg-ink/[0.05]">
+                            <div className="flex flex-col items-center rounded-lg border border-line bg-ink/[0.02] p-3 dark:bg-ink/[0.05]">
                                 <canvas ref={modalChartRef} width={260} height={140} />
                             </div>
                         )}

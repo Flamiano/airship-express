@@ -52,8 +52,8 @@ const JobPositionSettingsManager = () => {
     return (
         <div className="space-y-5">
             <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ink/5 border border-line transition-colors duration-300 dark:bg-ink/10">
-                    <Briefcase className="h-4.5 w-4.5 text-muted" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line border-l-4 border-l-accent bg-paper dark:border-paper/10">
+                    <Briefcase className="h-4.5 w-4.5 text-accent" />
                 </div>
                 <div>
                     <h1 className="text-xl font-semibold font-bricolage text-ink">Salary Settings</h1>
@@ -63,13 +63,13 @@ const JobPositionSettingsManager = () => {
                 </div>
             </div>
 
-            <div className="flex items-center gap-1 border-b border-line">
+            <div className="flex items-center gap-1 border-b border-line dark:border-paper/10">
                 <button
                     type="button"
                     onClick={() => handleTabChange('position')}
                     className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-medium font-rethink transition-colors ${tab === 'position'
-                            ? 'border-accent text-ink'
-                            : 'border-transparent text-muted hover:text-ink'
+                        ? 'border-accent text-ink'
+                        : 'border-transparent text-muted hover:text-ink'
                         }`}
                 >
                     <Briefcase className="h-3.5 w-3.5" />
@@ -79,8 +79,8 @@ const JobPositionSettingsManager = () => {
                     type="button"
                     onClick={() => handleTabChange('employee')}
                     className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-medium font-rethink transition-colors ${tab === 'employee'
-                            ? 'border-accent text-ink'
-                            : 'border-transparent text-muted hover:text-ink'
+                        ? 'border-accent text-ink'
+                        : 'border-transparent text-muted hover:text-ink'
                         }`}
                 >
                     <Users className="h-3.5 w-3.5" />

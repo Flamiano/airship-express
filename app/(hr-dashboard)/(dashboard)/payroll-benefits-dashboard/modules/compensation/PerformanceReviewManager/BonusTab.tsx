@@ -6,6 +6,7 @@ import { useToast } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dash
 import {
     Plus, Pencil, Trash2, Loader2, Gift, Users, TrendingUp,
     Clock, Printer, FileSpreadsheet, AlertTriangle, CalendarDays, Bell,
+    Star, Info,
 } from 'lucide-react';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
@@ -18,7 +19,9 @@ import { useOtpSessionContext } from '@/app/(hr-dashboard)/(dashboard)/payroll-b
 import { printTable, exportExcel, printFormatters, PrintColumn } from '../../../modules/compensation/print-utils';
 import {
     StatCard, peso, avatarClass, initialsOf, STATUS_STYLES, BONUS_TYPES,
-    employeeHasBank,
+    employeeHasBank, starsFromRating, ratingLabel,
+    type LatestPerformanceRating,
+    type LatestPerformanceRatingMap,
 } from './shared';
 
 const EMPTY_BONUS_FORM = {
@@ -43,6 +46,7 @@ const BonusTab = () => {
     const [bonuses, setBonuses] = useState<any[]>([]);
     const [employees, setEmployees] = useState<any[]>([]);
     const [payrollRuns, setPayrollRuns] = useState<any[]>([]);
+    const [latestRatings, setLatestRatings] = useState<LatestPerformanceRatingMap>({});
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -61,20 +65,33 @@ const BonusTab = () => {
     const { fetchData, postData, putData, deleteData } = useApi('/payroll-benefits-dashboard/api/compensation/bonus-allocation');
     const { fetchData: fetchEmployees } = useApi('/payroll-benefits-dashboard/api/payroll/employee-info');
     const { fetchData: fetchRuns } = useApi('/payroll-benefits-dashboard/api/payroll/runs');
+    const { fetchData: fetchLatestRatings } = useApi('/payroll-benefits-dashboard/api/compensation/latest-ratings');
 
-    useEffect(() => { loadData(); }, [selectedYear]);
+    useEffect(() => {
+        loadData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedYear]);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const [bonusData, employeeData, runData] = await Promise.all([
+            const [bonusData, employeeData, runData, ratingData] = await Promise.all([
                 fetchData(`?fiscal_year=${selectedYear}`).catch(() => []),
                 fetchEmployees().catch(() => []),
                 fetchRuns().catch(() => []),
+                fetchLatestRatings().catch(() => []),
             ]);
             setBonuses(Array.isArray(bonusData) ? bonusData : []);
             setEmployees(Array.isArray(employeeData) ? employeeData : []);
             setPayrollRuns(Array.isArray(runData) ? runData : []);
+
+            const map: LatestPerformanceRatingMap = {};
+            if (Array.isArray(ratingData)) {
+                ratingData.forEach((r: LatestPerformanceRating) => {
+                    if (r?.employee_id) map[r.employee_id] = r;
+                });
+            }
+            setLatestRatings(map);
         } catch (error: any) {
             toast.showError(error?.message || 'Failed to load bonuses');
         } finally {
@@ -270,6 +287,8 @@ const BonusTab = () => {
     };
 
     const formHasBank = form.employee_id ? employeeHasBank(employees, form.employee_id) : false;
+    const formRating = form.employee_id ? latestRatings[form.employee_id] : null;
+    const formStars = starsFromRating(formRating?.performance_rating ?? null);
 
     const isSaveDisabled =
         isSaving ||
@@ -351,6 +370,7 @@ const BonusTab = () => {
                             <thead>
                                 <tr className="border-b border-line bg-ink/[0.02] dark:bg-ink/[0.04]">
                                     <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Employee</th>
+                                    <th className="text-center px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">HR3 Rating</th>
                                     <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Type</th>
                                     <th className="text-right px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Amount</th>
                                     <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted font-rethink">Payroll Run</th>
@@ -366,6 +386,8 @@ const BonusTab = () => {
                                         const empNo = getEmployeeNumber(bonus.employee_id);
                                         const run = getRun(bonus.payroll_run_id);
                                         const hasBank = employeeHasBank(employees, bonus.employee_id);
+                                        const rating = latestRatings[bonus.employee_id];
+                                        const stars = starsFromRating(rating?.performance_rating ?? null);
                                         return (
                                             <motion.tr
                                                 key={bonus.id}
@@ -391,6 +413,27 @@ const BonusTab = () => {
                                                             <p className="text-[10px] text-muted font-rethink">{empNo || '—'}</p>
                                                         </div>
                                                     </div>
+                                                </td>
+                                                <td className="px-3 py-3 text-center">
+                                                    {stars > 0 ? (
+                                                        <div className="inline-flex items-center gap-1.5">
+                                                            <div className="flex">
+                                                                {Array.from({ length: 5 }).map((_, i) => (
+                                                                    <Star
+                                                                        key={i}
+                                                                        className={`h-3.5 w-3.5 ${i < stars ? 'text-amber-500 fill-amber-500' : 'text-ink/15'}`}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                            {rating?.letter_grade && (
+                                                                <span className="inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+                                                                    {rating.letter_grade}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[11px] text-muted italic">No rating</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-3 py-3">
                                                     <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-[10px] font-medium text-purple-700 ring-1 ring-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:ring-purple-800/40 capitalize">
@@ -421,12 +464,14 @@ const BonusTab = () => {
                                                         <button
                                                             onClick={() => openEdit(bonus)}
                                                             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-amber-600 transition-all hover:bg-amber-100 hover:scale-105 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400"
+                                                            aria-label="Edit bonus"
                                                         >
                                                             <Pencil className="h-3.5 w-3.5" />
                                                         </button>
                                                         <button
                                                             onClick={() => handleDeleteClick(bonus)}
                                                             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-600 transition-all hover:bg-red-100 hover:scale-105 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-400"
+                                                            aria-label="Delete bonus"
                                                         >
                                                             <Trash2 className="h-3.5 w-3.5" />
                                                         </button>
@@ -470,16 +515,61 @@ const BonusTab = () => {
                                 <option value="">Select employee…</option>
                                 {employees.map((emp: any) => {
                                     const hasBank = employeeHasBank(employees, emp.employee_id);
+                                    const rating = latestRatings[emp.employee_id];
+                                    const stars = starsFromRating(rating?.performance_rating ?? null);
+                                    const starsText = stars > 0 ? ` · ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}` : ' · no rating';
                                     return (
                                         <option key={emp.employee_id} value={emp.employee_id}>
                                             {emp.employee_name}
                                             {emp.employee_id_number ? ` (${emp.employee_id_number})` : ''}
+                                            {starsText}
                                             {!hasBank ? ' · ⚠ no bank' : ''}
                                         </option>
                                     );
                                 })}
                             </select>
                         </div>
+
+                        {form.employee_id && formStars > 0 && (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-800/30 dark:bg-blue-950/20">
+                                <div className="flex items-start gap-2.5">
+                                    <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+                                    <div className="text-[11px] text-blue-800 dark:text-blue-300 font-rethink leading-relaxed space-y-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-semibold">HR3 rating:</span>
+                                            <div className="flex">
+                                                {Array.from({ length: 5 }).map((_, i) => (
+                                                    <Star
+                                                        key={i}
+                                                        className={`h-3.5 w-3.5 ${i < formStars ? 'text-amber-500 fill-amber-500' : 'text-ink/15'}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                            <span className="font-semibold">{formStars} / 5</span>
+                                            {formRating?.letter_grade && (
+                                                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+                                                    {formRating.letter_grade}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-blue-700/80 dark:text-blue-300/80">
+                                            {ratingLabel(formRating?.performance_rating)}
+                                            {formRating?.cycle_name ? ` · ${formRating.cycle_name}` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {form.employee_id && formStars === 0 && (
+                            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-800/30 dark:bg-amber-950/20">
+                                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                                <div className="text-[11px] text-amber-800 dark:text-amber-300 font-rethink space-y-1">
+                                    <p className="font-semibold">No HR3 rating on file</p>
+                                    <p>This employee has no finalized performance appraisal. You can still grant a bonus, but it won&rsquo;t be tied to a performance score.</p>
+                                </div>
+                            </div>
+                        )}
 
                         {form.employee_id && !employeeHasBank(employees, form.employee_id) && (
                             <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-800/30 dark:bg-amber-950/20">
