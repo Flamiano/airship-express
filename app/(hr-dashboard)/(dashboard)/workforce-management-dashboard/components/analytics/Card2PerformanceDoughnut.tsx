@@ -3,11 +3,11 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Card, CardHeader } from '../ui/Card';
 import { PERFORMANCE_SEGMENTS } from '../../utils/constants';
 
+import type { PerformanceMetrics } from '../../types/workforce';
+
 interface Card2Props {
   evaluatedCount: number;
-  avgRating?: number;
-  onTimeRate?: number;
-  taskCompletion?: number;
+  performance?: PerformanceMetrics | null;
 }
 
 /**
@@ -17,13 +17,25 @@ interface Card2Props {
  */
 export function Card2PerformanceDoughnut({
   evaluatedCount,
-  avgRating,
-  onTimeRate,
-  taskCompletion,
+  performance,
 }: Card2Props) {
- const needsReview = PERFORMANCE_SEGMENTS.find((s) => s.name === 'Needs Review');
+  const segments = performance ? [
+    { name: 'Top Performers', value: performance.top_performers_pct ?? 0, color: '#e5167e' },
+    { name: 'Steady Workers', value: performance.steady_workers_pct ?? 0, color: '#b3115f' },
+    { name: 'Needs Review', value: performance.needs_review_pct ?? 0, color: '#f472b6' },
+  ] : [
+    { name: 'Top Performers', value: 0, color: '#e5167e' },
+    { name: 'Steady Workers', value: 0, color: '#b3115f' },
+    { name: 'Needs Review', value: 0, color: '#f472b6' },
+  ];
+
+ const needsReview = segments.find((s) => s.name === 'Needs Review');
  const needsReviewPct = needsReview?.value ?? 0;
  const needsReviewCount = Math.round((needsReviewPct / 100) * evaluatedCount);
+
+ const avgRating = performance?.avg_rating;
+ const onTimeRate = performance?.on_time_rate;
+ const taskCompletion = performance?.task_completion_rate;
 
   return (
     <Card className="p-5 space-y-4">
@@ -43,7 +55,7 @@ export function Card2PerformanceDoughnut({
           <ResponsiveContainer width="100%" height="100%" debounce={150}>
             <PieChart>
               <Pie
-                data={PERFORMANCE_SEGMENTS}
+                data={segments}
                 cx="50%"
                 cy="50%"
                 innerRadius={55}
@@ -52,7 +64,7 @@ export function Card2PerformanceDoughnut({
                 dataKey="value"
                 isAnimationActive={false}
               >
-                {PERFORMANCE_SEGMENTS.map((entry) => (
+                {segments.map((entry) => (
                   <Cell
                     key={entry.name}
                     fill={entry.color}
@@ -76,7 +88,7 @@ export function Card2PerformanceDoughnut({
         {/* Legend + metrics */}
         <div className="space-y-3">
           <div className="space-y-2">
-            {PERFORMANCE_SEGMENTS.map((seg) => (
+            {segments.map((seg) => (
               <div key={seg.name} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span
@@ -100,7 +112,7 @@ export function Card2PerformanceDoughnut({
 
       <div className="bg-accent/5 p-2.5 rounded-xl border border-accent/10 text-center">
         <p className="text-[11px] text-muted font-medium">
-          💡 {needsReviewCount} employees in &quot;Needs Review&quot; are scheduled for refresher
+          💡 {needsReviewCount} employee{needsReviewCount !== 1 ? 's' : ''} in &quot;Needs Review&quot; {needsReviewCount !== 1 ? 'are' : 'is'} scheduled for refresher
           safety compliance.
         </p>
       </div>

@@ -13,6 +13,7 @@ const formatTimesheet = (row: any) => {
         email: emp.email || '',
         full_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee',
         role: emp.job_position?.title || emp.department || 'Staff',
+        department: emp.department || 'Unassigned',
         avatar_initials: `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase() || 'E',
         terminal: emp.department || 'HQ',
         created_at: emp.date_hired || row.created_at,

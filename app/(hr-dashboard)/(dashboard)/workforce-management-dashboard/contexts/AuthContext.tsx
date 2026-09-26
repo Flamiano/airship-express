@@ -7,7 +7,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { supabase } from '@/app/(hr-dashboard)/supabase/client';
+import { supabase } from '../../../supabase/client';
 import type { Employee, UserRole } from '../types/workforce';
 
 interface AuthContextValue {
@@ -68,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: admin.email || authUser.email || '',
             full_name: admin.full_name || 'Admin',
             role: formatRole(admin.role),
+            department: 'Human Resources',
             avatar_initials: getInitials(admin.full_name),
             terminal: 'HQ — Operations Center',
             created_at: admin.created_at || new Date().toISOString(),
@@ -93,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: activeAdmin.email || 'admin@airshipexpress.com',
           full_name: activeAdmin.full_name || 'Admin',
           role: formatRole(activeAdmin.role),
+          department: 'Human Resources',
           avatar_initials: getInitials(activeAdmin.full_name),
           terminal: 'HQ — Operations Center',
           created_at: activeAdmin.created_at || new Date().toISOString(),
@@ -103,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: 'admin@airshipexpress.com',
           full_name: 'Workforce Admin',
           role: 'HR Admin',
+          department: 'Human Resources',
           avatar_initials: 'WA',
           terminal: 'HQ — Operations Center',
           created_at: new Date().toISOString(),

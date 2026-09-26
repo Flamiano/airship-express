@@ -4,7 +4,6 @@ import type {
   TimesheetStatus,
   LeaveStatus,
   PerformanceSegment,
-  LoadStatus,
 } from '../types/workforce';
 
 // ---- Status badges (harmonized with theme tokens) ----
@@ -36,26 +35,7 @@ export const LEAVE_BADGE: Record<LeaveStatus, string> = {
   Rejected: 'bg-ink/[0.06] dark:bg-paper/[0.08] text-muted border-line',
 };
 
-// ---- Freight load badges ----
-export const LOAD_STATUS_BADGE: Record<LoadStatus, string> = {
-  'Pending Driver': 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
-  Scheduled: 'bg-accent/10 text-accent border-accent/20',
-  'In Transit': 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-  Delivered: 'bg-ink/[0.06] dark:bg-paper/[0.08] text-muted border-line',
-  'On Hold': 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-  Cancelled: 'bg-ink/[0.06] dark:bg-paper/[0.08] text-muted border-line',
-};
 
-export const LOAD_STATUSES: LoadStatus[] = [
-  'Pending Driver',
-  'Scheduled',
-  'In Transit',
-  'Delivered',
-  'On Hold',
-  'Cancelled',
-];
-
-// ---- Performance doughnut segments (Card 2) ----
 export const PERFORMANCE_SEGMENTS: PerformanceSegment[] = [
   { name: 'Top Performers', value: 38, color: '#e5167e' },
   { name: 'Steady Workers', value: 48, color: '#b3115f' },

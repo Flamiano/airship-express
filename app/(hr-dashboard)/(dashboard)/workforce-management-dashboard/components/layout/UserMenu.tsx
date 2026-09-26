@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, LogOut, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '@/app/(hr-dashboard)/supabase/client';
+import { supabase } from '../../../../supabase/client';
 
 export default function UserMenu() {
   const { profile, role, loading, signOut } = useAuth();
