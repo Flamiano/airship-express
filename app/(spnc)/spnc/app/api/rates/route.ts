@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../lib/audit";
 import { getSupabaseClient } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,9 @@ export async function POST(req: NextRequest) {
       console.error("Create rate error:", error);
       return NextResponse.json({ message: "Could not save rate.", error: error.message }, { status: 500 });
     }
+
+    const actor = await getAuditActor(req);
+    if (actor) await logAuditEvent({ ...actor, eventType: "user_activity", action: `${actor.actorName} created rate "${data.rate_code}"`, entityType: "rate", entityId: data.id, request: req });
 
     return NextResponse.json({ rate: data });
   } catch (err) {

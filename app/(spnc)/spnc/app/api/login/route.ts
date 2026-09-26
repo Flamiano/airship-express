@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { logAuditEvent } from "../../../lib/audit";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { createSessionToken, SESSION_COOKIE_NAME } from "../../../lib/session";
 
@@ -25,9 +26,6 @@ export async function POST(req: NextRequest) {
       .eq("email", email)
       .single();
 
-    console.log("lookup error:", error);
-    console.log("user found:", user ? { id: user.id, email: user.email } : null);
-
     if (error || !user) {
       return NextResponse.json(
         { message: "Invalid email or password" },
@@ -48,6 +46,16 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       email: user.email,
       full_name: user.full_name,
+      role: user.role,
+    });
+
+    await logAuditEvent({
+      eventType: "login",
+      actorId: user.id,
+      actorName: user.full_name,
+      actorRole: user.role,
+      action: `${user.full_name} logged in`,
+      request: req,
     });
 
     const response = NextResponse.json({

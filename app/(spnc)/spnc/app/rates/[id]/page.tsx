@@ -39,7 +39,11 @@ export default function RateDetailPage() {
   useEffect(() => {
     async function fetchRate() {
       try {
-        const response = await fetch(`/api/rates/${params.id}`);
+        const response = await fetch(`/spnc/app/api/rates/${params.id}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Rate request failed (${response.status})`);
+        }
         const data = await response.json();
         setRate(response.ok ? data.rate || null : null);
       } catch (error) {
@@ -56,7 +60,7 @@ export default function RateDetailPage() {
   }
 
   if (!rate) {
-    return <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white"><p className="text-sm text-gray-500">Rate not found.</p><button onClick={() => router.push("/rates")} className="text-sm text-[#F2419B] hover:underline">Back to Rates</button></div>;
+    return <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white"><p className="text-sm text-gray-500">Rate not found.</p><button onClick={() => router.push("/spnc/app/rates")} className="text-sm text-[#F2419B] hover:underline">Back to Rates</button></div>;
   }
 
   const route = rate.routes;
@@ -65,7 +69,7 @@ export default function RateDetailPage() {
   return (
     <div className="min-h-screen bg-white px-8 py-10">
       <div className="print-hidden mb-8 flex items-center justify-between">
-        <button type="button" onClick={() => router.push("/rates")} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"><ArrowLeft size={16} />Back to Rates</button>
+        <button type="button" onClick={() => router.push("/spnc/app/rates")} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"><ArrowLeft size={16} />Back to Rates</button>
         <button type="button" onClick={() => window.print()} className="flex items-center gap-2 rounded-md bg-[#F2419B] px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#D9297E]"><Printer size={18} />Print</button>
       </div>
       <div className="mx-auto max-w-3xl">

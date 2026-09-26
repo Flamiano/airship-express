@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../lib/audit";
 import { getSupabaseClient } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +84,9 @@ export async function POST(req: NextRequest) {
       console.error("Create schedule error:", error);
       return NextResponse.json({ message: "Could not save schedule.", error: error.message }, { status: 500 });
     }
+
+    const actor = await getAuditActor(req);
+    if (actor) await logAuditEvent({ ...actor, eventType: "user_activity", action: `${actor.actorName} created schedule "${data.schedule_code}"`, entityType: "schedule", entityId: data.id, request: req });
 
     return NextResponse.json({ schedule: data });
   } catch (err) {

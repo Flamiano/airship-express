@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../../lib/audit";
 import { getSupabaseClient } from "../../../../lib/supabase";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
@@ -18,6 +19,8 @@ export async function GET(
     console.error("Fetch provider error:", error);
     return NextResponse.json({ message: "Couldn't load provider." }, { status: 500 });
   }
+
+  // Viewing is not a mutation — no audit log here.
 
   return NextResponse.json({ provider: data });
 }
@@ -38,8 +41,10 @@ export async function PUT(
     country,
     service_modes,
     rating,
+    status,
     contract_ref,
     notes,
+    attachments,
   } = body;
 
   if (!name || !type) {
@@ -63,8 +68,10 @@ export async function PUT(
       country: country || null,
       service_modes: Array.isArray(service_modes) ? service_modes : [],
       rating: rating ?? 3,
+      status: status || "active",
       contract_ref: contract_ref || null,
       notes: notes || null,
+      attachments: Array.isArray(attachments) ? attachments : [],
     })
     .eq("id", id)
     .select()
@@ -75,11 +82,23 @@ export async function PUT(
     return NextResponse.json({ message: "Couldn't update provider." }, { status: 500 });
   }
 
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "user_activity",
+      action: `${actor.actorName} updated service provider "${data.name}"`,
+      entityType: "service_provider",
+      entityId: data.id,
+      request: req,
+    });
+  }
+
   return NextResponse.json({ provider: data });
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
@@ -93,6 +112,18 @@ export async function DELETE(
   if (error) {
     console.error("Delete provider error:", error);
     return NextResponse.json({ message: "Couldn't delete provider." }, { status: 500 });
+  }
+
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "archive",
+      action: `${actor.actorName} deleted service provider ${id}`,
+      entityType: "service_provider",
+      entityId: id,
+      request: req,
+    });
   }
 
   return NextResponse.json({ success: true });

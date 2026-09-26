@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   DollarSign,
@@ -8,7 +8,7 @@ import {
   MapPin,
   Briefcase,
   Pencil,
-  Trash2,
+  Archive,
   X,
   Plus,
   Loader2,
@@ -16,6 +16,9 @@ import {
   ChevronRight,
   Search,
   Eye,
+  Check,
+  ChevronDown,
+  Clock,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
@@ -24,6 +27,8 @@ const CHARGE_TYPE_OPTIONS = ["per_kg", "per_container", "per_km", "flat", "per_p
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "JPY", "CNY"];
 const STATUS_OPTIONS = ["draft", "active", "expired"];
 const PAGE_SIZE = 5;
+const RECENT_SEARCHES_KEY = "rates_recent_searches";
+const MAX_RECENT_SEARCHES = 5;
 
 const CHARGE_TYPE_LABELS: Record<string, string> = {
   per_kg: "Per Kg",
@@ -100,6 +105,141 @@ function routeLabel(r: Rate["routes"]) {
   return r.route_name || null;
 }
 
+const ADDRESS_PREVIEW_CHARS = 45; // longer route text gets "See more"
+
+type DropdownOption = { value: string; label: string; hint?: string; badge?: string };
+
+// Reusable single-select dropdown matching the Routes page style.
+function Dropdown({
+  options,
+  value,
+  onChange,
+  placeholder,
+  isDark,
+  searchable = false,
+  error = false,
+  dropUp = false,
+}: {
+  options: DropdownOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  isDark: boolean;
+  searchable?: boolean;
+  error?: boolean;
+  dropUp?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = options.find((o) => o.value === value);
+  const q = query.trim().toLowerCase();
+  const filtered = options.filter((o) => `${o.label} ${o.hint || ""}`.toLowerCase().includes(q));
+
+  function pick(v: string) {
+    onChange(v);
+    setOpen(false);
+    setQuery("");
+  }
+
+  const label = (o: DropdownOption) =>
+    o.badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${o.badge}`}>{o.label}</span> : o.label;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          setQuery("");
+          setOpen((o) => !o);
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-left outline-none ${
+          error ? "border-[#E2685A]" : open ? "border-[#F2419B]" : isDark ? "border-[#2C4356]" : "border-gray-300"
+        } ${isDark ? "bg-[#0B1220] text-[#F2F1EC]" : "bg-white text-gray-900"}`}
+      >
+        <span className={`min-w-0 truncate ${selected ? "" : isDark ? "text-[#4B5A68]" : "text-gray-400"}`}>
+          {selected ? label(selected) : placeholder}
+        </span>
+        <ChevronDown
+          size={16}
+          className={`shrink-0 transition ${open ? "rotate-180" : ""} ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}
+        />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            className={`absolute z-20 w-full overflow-hidden rounded-md border shadow-lg ${dropUp ? "bottom-full mb-1" : "mt-1"} ${
+              isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
+            }`}
+          >
+            {searchable && (
+              <div className={`flex items-center gap-2 border-b px-3 py-2 ${isDark ? "border-[#2C4356]" : "border-gray-200"}`}>
+                <Search size={15} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Search…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && filtered[0]) {
+                      e.preventDefault();
+                      pick(filtered[0].value);
+                    } else if (e.key === "Escape") {
+                      setOpen(false);
+                    }
+                  }}
+                  className={`w-full bg-transparent text-sm outline-none ${
+                    isDark ? "text-[#F2F1EC] placeholder:text-[#4B5A68]" : "text-gray-900 placeholder:text-gray-400"
+                  }`}
+                />
+              </div>
+            )}
+            <div role="listbox" className="max-h-56 overflow-y-auto">
+              {filtered.length === 0 ? (
+                <p className={`px-3 py-3 text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>No matches.</p>
+              ) : (
+                filtered.map((o) => {
+                  const isSelected = o.value === value;
+                  return (
+                    <button
+                      key={o.value || "__none"}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => pick(o.value)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
+                        isSelected
+                          ? isDark
+                            ? "bg-[#1A2530] text-[#F2F1EC]"
+                            : "bg-gray-100 text-gray-900"
+                          : isDark
+                          ? "text-[#C7D1DA] hover:bg-[#1A2530]"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate">{label(o)}</span>
+                        {o.hint && (
+                          <span className={`block truncate text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>{o.hint}</span>
+                        )}
+                      </span>
+                      {isSelected && <Check size={14} className="shrink-0 text-[#F2419B]" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function RatesPage() {
   const { theme } = useShell();
   const isDark = theme === "dark";
@@ -112,6 +252,11 @@ export default function RatesPage() {
   const [page, setPage] = useState(1);
   const [pageLoading, setPageLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -122,6 +267,19 @@ export default function RatesPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [form, setForm] = useState(emptyForm);
+
+  // Rows whose route text is expanded ("See more"), and the same toggle for the form's route details.
+  const [expandedRates, setExpandedRates] = useState<Set<string>>(() => new Set());
+  const [showFullRouteInfo, setShowFullRouteInfo] = useState(false);
+
+  function toggleExpanded(id: string) {
+    setExpandedRates((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function statusColor(s: string) {
     switch (s) {
@@ -137,7 +295,7 @@ export default function RatesPage() {
   async function fetchRates() {
     setLoading(true);
     try {
-      const res = await fetch("/api/rates");
+      const res = await fetch("/spnc/app/api/rates", { cache: "no-store" });
       const data = await res.json();
       setRates(data.rates || []);
     } catch (err) {
@@ -149,7 +307,7 @@ export default function RatesPage() {
 
   async function fetchProviders() {
     try {
-      const res = await fetch("/api/service-providers");
+      const res = await fetch("/spnc/app/api/service-providers", { cache: "no-store" });
       const data = await res.json();
       setProviders(data.providers || []);
     } catch {
@@ -159,7 +317,7 @@ export default function RatesPage() {
 
   async function fetchRoutes() {
     try {
-      const res = await fetch("/api/routes");
+      const res = await fetch("/spnc/app/api/routes", { cache: "no-store" });
       const data = await res.json();
       setRoutesList(data.routes || []);
     } catch {
@@ -172,6 +330,49 @@ export default function RatesPage() {
     fetchProviders();
     fetchRoutes();
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {
+      // ignore unavailable/corrupt storage
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) setShowRecentSearches(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function persistRecentSearches(next: string[]) {
+    setRecentSearches(next);
+    try { window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  }
+
+  function addRecentSearch(term: string) {
+    const deduped = [term, ...recentSearches.filter((item) => item.toLowerCase() !== term.toLowerCase())];
+    persistRecentSearches(deduped.slice(0, MAX_RECENT_SEARCHES));
+  }
+
+  async function runSearch(term: string = searchInput) {
+    const trimmed = term.trim();
+    setSearchInput(term);
+    setShowRecentSearches(false);
+    setSearching(true);
+    try { await fetchRates(); } catch (error) { console.error("Search rates failed:", error); }
+    setSearchTerm(trimmed);
+    setSearching(false);
+    if (trimmed) addRecentSearch(trimmed);
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearchTerm("");
+  }
 
   const filteredRates = rates.filter((rate) => {
     const query = searchTerm.trim().toLowerCase();
@@ -215,6 +416,7 @@ export default function RatesPage() {
 
   function resetForm() {
     setForm(emptyForm);
+    setShowFullRouteInfo(false);
     setEditingId(null);
     setSaveError(null);
     setShowFieldErrors(false);
@@ -299,7 +501,7 @@ export default function RatesPage() {
     };
 
     try {
-      const url = editingId ? `/api/rates/${editingId}` : "/api/rates";
+      const url = editingId ? `/spnc/app/api/rates/${editingId}` : "/spnc/app/api/rates";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -324,20 +526,20 @@ export default function RatesPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this rate?")) return;
+  async function handleArchive(id: string) {
+    if (!confirm("Archive this rate?")) return;
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/rates/${id}`, { method: "DELETE" });
+      const res = await fetch(`/spnc/app/api/rates/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setDeleteError(data.message || "Could not delete rate.");
+        setDeleteError(data.message || "Could not archive rate.");
         return;
       }
       fetchRates();
     } catch (err) {
-      console.error("Delete rate failed:", err);
+      console.error("Archive rate failed:", err);
       setDeleteError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setDeletingId(null);
@@ -375,28 +577,34 @@ export default function RatesPage() {
           <>
             <div className="space-y-4">
               <div className="flex justify-end">
-                <div className="relative w-full max-w-md">
-                  <Search
-                    size={16}
-                    className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${
-                      isDark ? "text-[#8FA0AF]" : "text-gray-400"
-                    }`}
-                  />
+                <div className="relative w-full max-w-md" ref={searchWrapperRef}>
                   <input
                     type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => { setSearchInput(e.target.value); if (!e.target.value.trim()) setSearchTerm(""); }}
+                    onFocus={() => setShowRecentSearches(true)}
+                    onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); runSearch(); } else if (event.key === "Escape") setShowRecentSearches(false); }}
                     placeholder="Search rate code, route, provider..."
-                    className={`w-full rounded-md border py-2.5 pl-10 pr-3 text-sm outline-none ${
+                    className={`w-full rounded-md border py-2.5 pl-3 pr-20 text-sm outline-none ${
                       isDark
                         ? "border-[#2C4356] bg-[#121B26] text-[#F2F1EC] placeholder:text-[#4B5A68] focus:border-[#F2419B]"
                         : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#F2419B]"
                     }`}
                   />
+                  <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                    {searchInput && <button type="button" onClick={clearSearch} aria-label="Clear search" title="Clear" className={`flex h-7 w-7 items-center justify-center rounded-md transition ${isDark ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}><X size={15} /></button>}
+                    <button type="button" onClick={() => runSearch()} disabled={searching} aria-label="Search" title="Search" className="flex h-8 w-8 items-center justify-center rounded-md bg-[#F2419B] text-white transition hover:bg-[#F55CAB] disabled:opacity-70">{searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}</button>
+                  </div>
+                  {showRecentSearches && recentSearches.length > 0 && <div className={`absolute left-0 right-0 top-full z-20 mt-1.5 overflow-hidden rounded-md border shadow-lg ${isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
+                    <div className={`flex items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wide ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}><span>Recent searches</span><button type="button" onMouseDown={(event) => { event.preventDefault(); persistRecentSearches([]); }} className={`normal-case ${isDark ? "text-[#8FA0AF] hover:text-[#F2F1EC]" : "text-gray-400 hover:text-gray-700"}`}>Clear</button></div>
+                    <ul>{recentSearches.map((term) => <li key={term}><div className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${isDark ? "text-[#C7D1DA] hover:bg-[#182230]" : "text-gray-700 hover:bg-gray-50"}`} onMouseDown={(event) => { event.preventDefault(); runSearch(term); }}><span className="flex min-w-0 items-center gap-2"><Clock size={13} className={`shrink-0 ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`} /><span className="truncate">{term}</span></span><button type="button" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); persistRecentSearches(recentSearches.filter((item) => item !== term)); }} aria-label={`Remove "${term}" from recent searches`} className={`opacity-0 transition group-hover:opacity-100 ${isDark ? "text-[#4B5A68] hover:text-[#F2F1EC]" : "text-gray-300 hover:text-gray-600"}`}><X size={13} /></button></div></li>)}</ul>
+                  </div>}
                 </div>
               </div>
 
-              {filteredRates.length === 0 ? (
+              {searching ? (
+                <div className="flex flex-col items-center gap-3 py-16"><Loader2 size={32} className="animate-spin text-[#F2419B]" /><p className="text-sm font-semibold text-[#F2419B]">Searching…</p></div>
+              ) : filteredRates.length === 0 ? (
                 <div
                   className={`rounded-lg border border-dashed px-4 py-10 text-center text-sm ${
                     isDark ? "border-[#2C4356] text-[#8FA0AF]" : "border-gray-300 text-gray-500"
@@ -435,9 +643,33 @@ export default function RatesPage() {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-4 align-top">{rLabel || "—"}</td>
-                              <td className="px-4 py-4 align-top">{r.service_providers?.name || "—"}</td>
-                              <td className="px-4 py-4 align-top">{CHARGE_TYPE_LABELS[r.charge_type] || r.charge_type}</td>
+                              <td className="px-4 py-4 align-top">
+                                {rLabel ? (
+                                  <div className="max-w-md">
+                                    <div
+                                      className={`${
+                                        rLabel.length > ADDRESS_PREVIEW_CHARS && !expandedRates.has(r.id) ? "line-clamp-1" : ""
+                                      }`}
+                                      title={rLabel}
+                                    >
+                                      {rLabel}
+                                    </div>
+                                    {rLabel.length > ADDRESS_PREVIEW_CHARS && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleExpanded(r.id)}
+                                        className="mt-0.5 text-xs font-medium text-[#F2419B] hover:underline"
+                                      >
+                                        {expandedRates.has(r.id) ? "See less" : "See more"}
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-4 align-top">{r.service_providers?.name || "—"}</td>
+                              <td className="whitespace-nowrap px-4 py-4 align-top">{CHARGE_TYPE_LABELS[r.charge_type] || r.charge_type}</td>
                               <td className="px-4 py-4 align-top">
                                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${sc.bg} ${sc.text}`}>
                                   {r.status}
@@ -452,7 +684,7 @@ export default function RatesPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => router.push(`/rates/${r.id}`)}
+                                    onClick={() => router.push(`/spnc/app/rates/${r.id}`)}
                                     aria-label={`View ${r.rate_code}`}
                                     title="View rate details"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
@@ -476,11 +708,11 @@ export default function RatesPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDelete(r.id)}
+                                    onClick={() => handleArchive(r.id)}
                                     disabled={deletingId === r.id}
                                     className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
-                                    <Trash2 size={15} />
+                                    <Archive size={15} />
                                   </button>
                                 </div>
                               </td>
@@ -588,24 +820,13 @@ export default function RatesPage() {
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Charge Type
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {CHARGE_TYPE_OPTIONS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setForm({ ...form, charge_type: c })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.charge_type === c
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {CHARGE_TYPE_LABELS[c]}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  placeholder="Select a charge type"
+                  value={form.charge_type}
+                  onChange={(v) => setForm((f) => ({ ...f, charge_type: v }))}
+                  options={CHARGE_TYPE_OPTIONS.map((c) => ({ value: c, label: CHARGE_TYPE_LABELS[c] }))}
+                />
               </div>
 
               <div>
@@ -629,55 +850,55 @@ export default function RatesPage() {
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Route
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, route_id: null })}
-                    className={`rounded-full px-4 py-1.5 text-sm transition ${
-                      form.route_id === null
-                        ? "bg-[#F2419B] text-white"
-                        : isDark
-                        ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                        : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                    }`}
-                  >
-                    None
-                  </button>
-                  {routesList.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setForm({ ...form, route_id: r.id })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.route_id === r.id
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {r.route_code || r.route_name || "Unnamed route"}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  searchable
+                  placeholder="Select a route"
+                  value={form.route_id ?? ""}
+                  onChange={(v) => {
+                    setShowFullRouteInfo(false);
+                    setForm((f) => ({ ...f, route_id: v || null }));
+                  }}
+                  options={[
+                    { value: "", label: "None" },
+                    ...routesList.map((r) => ({
+                      value: r.id,
+                      label: r.route_code || r.route_name || "Unnamed route",
+                      hint: r.origin && r.destination ? `${r.origin} → ${r.destination}` : undefined,
+                    })),
+                  ]}
+                />
                 {form.route_id && (() => {
                   const selectedRoute = routesList.find((r) => r.id === form.route_id);
                   if (!selectedRoute) return null;
+                  const isLong =
+                    (selectedRoute.origin || "").length > ADDRESS_PREVIEW_CHARS ||
+                    (selectedRoute.destination || "").length > ADDRESS_PREVIEW_CHARS;
+                  const clamp = isLong && !showFullRouteInfo ? "line-clamp-1" : "";
 
                   return (
                     <div className={`mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 ${isDark ? "text-[#C7D1DA]" : "text-gray-600"}`}>
-                      <div>
+                      <div className="min-w-0">
                         <p className={`font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}>
                           Origin
                         </p>
-                        <p className="mt-0.5">{selectedRoute.origin || "—"}</p>
+                        <p className={`mt-0.5 ${clamp}`} title={selectedRoute.origin}>{selectedRoute.origin || "—"}</p>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className={`font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}>
                           Destination
                         </p>
-                        <p className="mt-0.5">{selectedRoute.destination || "—"}</p>
+                        <p className={`mt-0.5 ${clamp}`} title={selectedRoute.destination}>{selectedRoute.destination || "—"}</p>
                       </div>
+                      {isLong && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFullRouteInfo((s) => !s)}
+                          className="justify-self-start text-xs font-medium text-[#F2419B] hover:underline sm:col-span-2"
+                        >
+                          {showFullRouteInfo ? "See less" : "See more"}
+                        </button>
+                      )}
                       {selectedRoute.transit_points && selectedRoute.transit_points.length > 0 && (
                         <div className="sm:col-span-2">
                           <p className={`font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}>
@@ -695,61 +916,27 @@ export default function RatesPage() {
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Service Provider
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, service_provider_id: null })}
-                    className={`rounded-full px-4 py-1.5 text-sm transition ${
-                      form.service_provider_id === null
-                        ? "bg-[#F2419B] text-white"
-                        : isDark
-                        ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                        : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                    }`}
-                  >
-                    None
-                  </button>
-                  {providers.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setForm({ ...form, service_provider_id: p.id })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.service_provider_id === p.id
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  searchable
+                  placeholder="Select a service provider"
+                  value={form.service_provider_id ?? ""}
+                  onChange={(v) => setForm((f) => ({ ...f, service_provider_id: v || null }))}
+                  options={[{ value: "", label: "None" }, ...providers.map((p) => ({ value: p.id, label: p.name }))]}
+                />
               </div>
 
               <div>
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Currency
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {CURRENCY_OPTIONS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setForm({ ...form, currency: c })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.currency === c
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {CURRENCY_SYMBOLS[c]} {c}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  placeholder="Select a currency"
+                  value={form.currency}
+                  onChange={(v) => setForm((f) => ({ ...f, currency: v }))}
+                  options={CURRENCY_OPTIONS.map((c) => ({ value: c, label: `${CURRENCY_SYMBOLS[c]} ${c}` }))}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -837,24 +1024,17 @@ export default function RatesPage() {
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Status
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {STATUS_OPTIONS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm({ ...form, status: s })}
-                      className={`rounded-full px-4 py-1.5 text-sm capitalize transition ${
-                        form.status === s
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  dropUp
+                  placeholder="Select a status"
+                  value={form.status}
+                  onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                  options={STATUS_OPTIONS.map((s) => {
+                    const sc = statusColor(s);
+                    return { value: s, label: s, badge: `${sc.bg} ${sc.text}` };
+                  })}
+                />
               </div>
 
               <div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../../lib/audit";
 import { getSupabaseClient } from "../../../../lib/supabase";
 
 export async function GET(
@@ -18,6 +19,9 @@ export async function GET(
     console.error("Fetch shipment error:", error);
     return NextResponse.json({ message: "Couldn't load shipment." }, { status: 500 });
   }
+
+  const actor = await getAuditActor(req);
+  if (actor) await logAuditEvent({ ...actor, eventType: "user_activity", action: `${actor.actorName} updated shipment "${data.tracking_number}"`, entityType: "shipment", entityId: data.id, request: req });
 
   return NextResponse.json({ shipment: data });
 }
@@ -68,7 +72,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
@@ -80,6 +84,9 @@ export async function DELETE(
     console.error("Delete shipment error:", error);
     return NextResponse.json({ message: "Couldn't delete shipment." }, { status: 500 });
   }
+
+  const actor = await getAuditActor(req);
+  if (actor) await logAuditEvent({ ...actor, eventType: "archive", action: `${actor.actorName} deleted shipment ${id}`, entityType: "shipment", entityId: id, request: req });
 
   return NextResponse.json({ success: true });
 }

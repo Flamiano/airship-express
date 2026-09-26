@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import DocumentLogo from "../../../spnc/components/DocumentLogo";
+import DocumentLogo from "../../../components/DocumentLogo";
 
 type RouteDetail = {
   id: string;
@@ -29,7 +29,11 @@ export default function RouteDetailPage() {
   useEffect(() => {
     async function fetchRoute() {
       try {
-        const response = await fetch(`/api/routes/${params.id}`);
+        const response = await fetch(`/spnc/app/api/routes/${params.id}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Route request failed (${response.status})`);
+        }
         const data = await response.json();
         setRoute(response.ok ? data.route || null : null);
       } catch (error) {
@@ -54,7 +58,7 @@ export default function RouteDetailPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">
         <p className="text-sm text-gray-500">Route not found.</p>
-        <button onClick={() => router.push("/routes")} className="text-sm text-[#F2419B] hover:underline">
+        <button onClick={() => router.push("/spnc/app/routes")} className="text-sm text-[#F2419B] hover:underline">
           Back to Routes
         </button>
       </div>
@@ -66,7 +70,7 @@ export default function RouteDetailPage() {
       <div className="print-hidden mb-8 flex items-center justify-between">
         <button
           type="button"
-          onClick={() => router.push("/routes")}
+          onClick={() => router.push("/spnc/app/routes")}
           className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
         >
           <ArrowLeft size={16} />

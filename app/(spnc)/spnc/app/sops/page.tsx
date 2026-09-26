@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ClipboardList,
@@ -8,7 +8,7 @@ import {
   FileText,
   User,
   Pencil,
-  Trash2,
+  Archive,
   X,
   Plus,
   Loader2,
@@ -16,14 +16,20 @@ import {
   ChevronRight,
   Search,
   Eye,
+  Check,
+  ChevronDown,
+  Clock,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
 
 const CATEGORY_OPTIONS = ["handling", "documentation", "customs", "safety", "storage", "transport", "general"];
 const STATUS_OPTIONS = ["draft", "published", "under_review", "archived"];
-const FILTERS = ["All", ...CATEGORY_OPTIONS];
 const PAGE_SIZE = 5;
+const RECENT_SEARCHES_KEY = "sops_recent_searches";
+const MAX_RECENT_SEARCHES = 5;
+const SOP_PREVIEW_CHARS = 30; // longer titles get "See more"
+const OWNER_PREVIEW_CHARS = 22; // longer owner names get "See more"
 
 type SOP = {
   id: string;
@@ -65,6 +71,97 @@ function statusColor(s: string, isDark: boolean) {
   }
 }
 
+type DropdownOption = { value: string; label: string; badge?: string };
+
+// Single-select dropdown in the same style as the Routes and Rates pages.
+function Dropdown({
+  options,
+  value,
+  onChange,
+  placeholder,
+  isDark,
+  dropUp = false,
+}: {
+  options: DropdownOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  isDark: boolean;
+  dropUp?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value);
+
+  const label = (o: DropdownOption) =>
+    o.badge ? (
+      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${o.badge}`}>{o.label}</span>
+    ) : (
+      <span className="capitalize">{o.label}</span>
+    );
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-left outline-none ${
+          open ? "border-[#F2419B]" : isDark ? "border-[#2C4356]" : "border-gray-300"
+        } ${isDark ? "bg-[#0B1220] text-[#F2F1EC]" : "bg-white text-gray-900"}`}
+      >
+        <span className={`min-w-0 truncate ${selected ? "" : isDark ? "text-[#4B5A68]" : "text-gray-400"}`}>
+          {selected ? label(selected) : placeholder}
+        </span>
+        <ChevronDown
+          size={16}
+          className={`shrink-0 transition ${open ? "rotate-180" : ""} ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}
+        />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            role="listbox"
+            className={`absolute z-20 max-h-56 w-full overflow-y-auto rounded-md border shadow-lg ${dropUp ? "bottom-full mb-1" : "mt-1"} ${
+              isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
+            }`}
+          >
+            {options.map((o) => {
+              const isSelected = o.value === value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
+                    isSelected
+                      ? isDark
+                        ? "bg-[#1A2530] text-[#F2F1EC]"
+                        : "bg-gray-100 text-gray-900"
+                      : isDark
+                      ? "text-[#C7D1DA] hover:bg-[#1A2530]"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  {label(o)}
+                  {isSelected && <Check size={14} className="shrink-0 text-[#F2419B]" />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SOPsPage() {
   const { theme } = useShell();
   const isDark = theme === "dark";
@@ -72,10 +169,14 @@ export default function SOPsPage() {
 
   const [sops, setSops] = useState<SOP[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("All");
   const [page, setPage] = useState(1);
   const [pageLoading, setPageLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,10 +188,23 @@ export default function SOPsPage() {
 
   const [form, setForm] = useState(emptyForm);
 
+  // Rows showing their full details ("See more")
+  const [expandedSops, setExpandedSops] = useState<Set<string>>(() => new Set());
+
+  function toggleExpanded(id: string) {
+    setExpandedSops((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function fetchSops() {
     setLoading(true);
     try {
-      const res = await fetch("/api/sops");
+      const res = await fetch("/spnc/app/api/sops", { cache: "no-store" });
+      if (!res.ok) throw new Error(`SOP request failed (${res.status})`);
       const data = await res.json();
       setSops(data.sops || []);
     } catch (err) {
@@ -104,7 +218,50 @@ export default function SOPsPage() {
     fetchSops();
   }, []);
 
-  const filteredSops = (filter === "All" ? sops : sops.filter((s) => s.category === filter)).filter((sop) => {
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {
+      // ignore unavailable/corrupt storage
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) setShowRecentSearches(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function persistRecentSearches(next: string[]) {
+    setRecentSearches(next);
+    try { window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  }
+
+  function addRecentSearch(term: string) {
+    const deduped = [term, ...recentSearches.filter((item) => item.toLowerCase() !== term.toLowerCase())];
+    persistRecentSearches(deduped.slice(0, MAX_RECENT_SEARCHES));
+  }
+
+  async function runSearch(term: string = searchInput) {
+    const trimmed = term.trim();
+    setSearchInput(term);
+    setShowRecentSearches(false);
+    setSearching(true);
+    try { await fetchSops(); } catch (error) { console.error("Search SOPs failed:", error); }
+    setSearchTerm(trimmed);
+    setSearching(false);
+    if (trimmed) addRecentSearch(trimmed);
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearchTerm("");
+  }
+
+  const filteredSops = sops.filter((sop) => {
     const query = searchTerm.trim().toLowerCase();
     if (!query) return true;
 
@@ -128,7 +285,7 @@ export default function SOPsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, searchTerm]);
+  }, [searchTerm]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -225,7 +382,7 @@ export default function SOPsPage() {
     };
 
     try {
-      const url = editingId ? `/api/sops/${editingId}` : "/api/sops";
+      const url = editingId ? `/spnc/app/api/sops/${editingId}` : "/spnc/app/api/sops";
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -250,20 +407,20 @@ export default function SOPsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this SOP?")) return;
+  async function handleArchive(id: string) {
+    if (!confirm("Archive this SOP?")) return;
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/sops/${id}`, { method: "DELETE" });
+      const res = await fetch(`/spnc/app/api/sops/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setDeleteError(data.message || "Could not delete SOP.");
+        setDeleteError(data.message || "Could not archive SOP.");
         return;
       }
       fetchSops();
     } catch (err) {
-      console.error("Delete SOP failed:", err);
+      console.error("Archive SOP failed:", err);
       setDeleteError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setDeletingId(null);
@@ -279,26 +436,6 @@ export default function SOPsPage() {
       />
 
       <div className="px-8">
-        {/* Category filter chips */}
-        <div className="mb-6 flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              className={`rounded-full px-4 py-1.5 text-sm capitalize transition ${
-                filter === f
-                  ? "bg-[#F2419B] text-white"
-                  : isDark
-                  ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                  : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-
         {deleteError && (
           <div className="mb-4 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
             {deleteError}
@@ -310,7 +447,7 @@ export default function SOPsPage() {
             <Loader2 size={32} className="animate-spin text-[#F2419B]" />
             <p className="text-sm font-semibold text-[#F2419B]">Loading</p>
           </div>
-        ) : filteredSops.length === 0 ? (
+        ) : sops.length === 0 ? (
           <p className={`text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
             No SOPs found. Click + New SOP to create one.
           </p>
@@ -323,28 +460,34 @@ export default function SOPsPage() {
           <>
             <div className="space-y-4">
               <div className="flex justify-end">
-                <div className="relative w-full max-w-md">
-                  <Search
-                    size={16}
-                    className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${
-                      isDark ? "text-[#8FA0AF]" : "text-gray-400"
-                    }`}
-                  />
+                <div className="relative w-full max-w-md" ref={searchWrapperRef}>
                   <input
                     type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => { setSearchInput(e.target.value); if (!e.target.value.trim()) setSearchTerm(""); }}
+                    onFocus={() => setShowRecentSearches(true)}
+                    onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); runSearch(); } else if (event.key === "Escape") setShowRecentSearches(false); }}
                     placeholder="Search SOP title, code, owner..."
-                    className={`w-full rounded-md border py-2.5 pl-10 pr-3 text-sm outline-none ${
+                    className={`w-full rounded-md border py-2.5 pl-3 pr-20 text-sm outline-none ${
                       isDark
                         ? "border-[#2C4356] bg-[#121B26] text-[#F2F1EC] placeholder:text-[#4B5A68] focus:border-[#F2419B]"
                         : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#F2419B]"
                     }`}
                   />
+                  <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                    {searchInput && <button type="button" onClick={clearSearch} aria-label="Clear search" title="Clear" className={`flex h-7 w-7 items-center justify-center rounded-md transition ${isDark ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}><X size={15} /></button>}
+                    <button type="button" onClick={() => runSearch()} disabled={searching} aria-label="Search" title="Search" className="flex h-8 w-8 items-center justify-center rounded-md bg-[#F2419B] text-white transition hover:bg-[#F55CAB] disabled:opacity-70">{searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}</button>
+                  </div>
+                  {showRecentSearches && recentSearches.length > 0 && <div className={`absolute left-0 right-0 top-full z-20 mt-1.5 overflow-hidden rounded-md border shadow-lg ${isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
+                    <div className={`flex items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wide ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}><span>Recent searches</span><button type="button" onMouseDown={(event) => { event.preventDefault(); persistRecentSearches([]); }} className={`normal-case ${isDark ? "text-[#8FA0AF] hover:text-[#F2F1EC]" : "text-gray-400 hover:text-gray-700"}`}>Clear</button></div>
+                    <ul>{recentSearches.map((term) => <li key={term}><div className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${isDark ? "text-[#C7D1DA] hover:bg-[#182230]" : "text-gray-700 hover:bg-gray-50"}`} onMouseDown={(event) => { event.preventDefault(); runSearch(term); }}><span className="flex min-w-0 items-center gap-2"><Clock size={13} className={`shrink-0 ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`} /><span className="truncate">{term}</span></span><button type="button" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); persistRecentSearches(recentSearches.filter((item) => item !== term)); }} aria-label={`Remove "${term}" from recent searches`} className={`opacity-0 transition group-hover:opacity-100 ${isDark ? "text-[#4B5A68] hover:text-[#F2F1EC]" : "text-gray-300 hover:text-gray-600"}`}><X size={13} /></button></div></li>)}</ul>
+                  </div>}
                 </div>
               </div>
 
-              {filteredSops.length === 0 ? (
+              {searching ? (
+                <div className="flex flex-col items-center gap-3 py-16"><Loader2 size={32} className="animate-spin text-[#F2419B]" /><p className="text-sm font-semibold text-[#F2419B]">Searching…</p></div>
+              ) : filteredSops.length === 0 ? (
                 <div
                   className={`rounded-lg border border-dashed px-4 py-10 text-center text-sm ${
                     isDark ? "border-[#2C4356] text-[#8FA0AF]" : "border-gray-300 text-gray-500"
@@ -358,7 +501,8 @@ export default function SOPsPage() {
                     isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"
                   }`}
                 >
-                  <div className="overflow-x-auto">
+                  {/* Scrollbar hidden; the table can still be swiped sideways on very small screens */}
+                  <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <table className="min-w-full divide-y divide-[#23303D] text-left">
                       <thead className={isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}>
                         <tr>
@@ -375,23 +519,51 @@ export default function SOPsPage() {
                           return (
                             <tr key={s.id} className={isDark ? "bg-[#121B26] hover:bg-[#182230]" : "bg-white hover:bg-gray-50"}>
                               <td className="px-4 py-4 align-top">
-                                <div className="space-y-1">
-                                  <div className="font-semibold text-[#F2419B]">{s.title}</div>
-                                  <div className={`text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                                    {s.sop_code} · v{s.version}
-                                  </div>
-                                </div>
+                                {(() => {
+                                  const isExpanded = expandedSops.has(s.id);
+                                  const hasMore =
+                                    s.title.length > SOP_PREVIEW_CHARS || (s.owner || "").length > OWNER_PREVIEW_CHARS;
+                                  return (
+                                    <div className="max-w-[15rem]">
+                                      <div
+                                        className={`font-semibold text-[#F2419B] ${isExpanded ? "" : "truncate whitespace-nowrap"}`}
+                                        title={s.title}
+                                      >
+                                        {s.title}
+                                      </div>
+                                      <div className={`mt-0.5 whitespace-nowrap text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                                        {s.sop_code} · v{s.version}
+                                      </div>
+                                      {hasMore && (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleExpanded(s.id)}
+                                          className="mt-0.5 text-xs font-medium text-[#F2419B] hover:underline"
+                                        >
+                                          {isExpanded ? "See less" : "See more"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </td>
-                              <td className="px-4 py-4 align-top">
+                              <td className="whitespace-nowrap px-4 py-4 align-top">
                                 <span className={`rounded-full border px-3 py-1 text-xs capitalize tracking-wide ${isDark ? "border-[#2C4356] text-[#C7D1DA]" : "border-gray-300 text-gray-600"}`}>
                                   {s.category}
                                 </span>
                               </td>
-                              <td className="px-4 py-4 align-top">{s.owner || "—"}</td>
-                              <td className="px-4 py-4 align-top">{s.effective_date || "—"}</td>
-                              <td className="px-4 py-4 align-top">{s.review_date || "—"}</td>
                               <td className="px-4 py-4 align-top">
-                                <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${sc.bg} ${sc.text}`}>
+                                <div
+                                  className={`max-w-[11rem] ${expandedSops.has(s.id) ? "" : "truncate whitespace-nowrap"}`}
+                                  title={s.owner || undefined}
+                                >
+                                  {s.owner || "—"}
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-4 align-top">{s.effective_date || "—"}</td>
+                              <td className="whitespace-nowrap px-4 py-4 align-top">{s.review_date || "—"}</td>
+                              <td className="whitespace-nowrap px-4 py-4 align-top">
+                                <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium capitalize ${sc.bg} ${sc.text}`}>
                                   {s.status.replace("_", " ")}
                                 </span>
                               </td>
@@ -399,7 +571,7 @@ export default function SOPsPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => router.push(`/sops/${s.id}`)}
+                                    onClick={() => router.push(`/spnc/app/sops/${s.id}`)}
                                     aria-label={`View ${s.title}`}
                                     title="View SOP details"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
@@ -423,11 +595,11 @@ export default function SOPsPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDelete(s.id)}
+                                    onClick={() => handleArchive(s.id)}
                                     disabled={deletingId === s.id}
                                     className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
-                                    <Trash2 size={15} />
+                                    <Archive size={15} />
                                   </button>
                                 </div>
                               </td>
@@ -572,24 +744,13 @@ export default function SOPsPage() {
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Category
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setForm({ ...form, category: c })}
-                      className={`rounded-full px-4 py-1.5 text-sm capitalize transition ${
-                        form.category === c
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  placeholder="Select a category"
+                  value={form.category}
+                  onChange={(v) => setForm((f) => ({ ...f, category: v }))}
+                  options={CATEGORY_OPTIONS.map((c) => ({ value: c, label: c }))}
+                />
               </div>
 
               <div>
@@ -675,24 +836,17 @@ export default function SOPsPage() {
                 <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                   Status
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {STATUS_OPTIONS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm({ ...form, status: s })}
-                      className={`rounded-full px-4 py-1.5 text-sm capitalize transition ${
-                        form.status === s
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {s.replace("_", " ")}
-                    </button>
-                  ))}
-                </div>
+                <Dropdown
+                  isDark={isDark}
+                  dropUp
+                  placeholder="Select a status"
+                  value={form.status}
+                  onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                  options={STATUS_OPTIONS.map((s) => {
+                    const sc = statusColor(s, isDark);
+                    return { value: s, label: s.replace("_", " "), badge: `${sc.bg} ${sc.text}` };
+                  })}
+                />
               </div>
 
               {saveError && (

@@ -18,7 +18,7 @@ export default function RegisterForm() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/register", {
+      const response = await fetch("/spnc/app/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, full_name: fullName }),
@@ -31,7 +31,7 @@ export default function RegisterForm() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/spnc/app/dashboard");
       router.refresh();
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");

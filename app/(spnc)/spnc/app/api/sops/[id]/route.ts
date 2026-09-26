@@ -1,24 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../../lib/audit";
 import { getSupabaseClient } from "../../../../lib/supabase";
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase
-    .from("sops")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const { data, error } = await getSupabaseClient().from("sops").select("*").eq("id", id).single();
 
   if (error) {
-    if (error.code === "PGRST116") {
-      return NextResponse.json({ message: "SOP not found." }, { status: 404 });
-    }
-
+    if (error.code === "PGRST116") return NextResponse.json({ message: "SOP not found." }, { status: 404 });
     console.error("Fetch SOP error:", error);
     return NextResponse.json({ message: "Could not load SOP." }, { status: 500 });
   }
@@ -38,9 +30,7 @@ export async function PUT(
     return NextResponse.json({ message: "Title and SOP code are required." }, { status: 400 });
   }
 
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("sops")
     .update({
       title,
@@ -63,6 +53,18 @@ export async function PUT(
     return NextResponse.json({ message: "Could not update SOP." }, { status: 500 });
   }
 
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "user_activity",
+      action: `${actor.actorName} updated SOP "${data.title}"`,
+      entityType: "sop",
+      entityId: data.id,
+      request: req,
+    });
+  }
+
   return NextResponse.json({ sop: data });
 }
 
@@ -71,13 +73,23 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const supabase = getSupabaseClient();
-
-  const { error } = await supabase.from("sops").delete().eq("id", id);
+  const { error } = await getSupabaseClient().from("sops").delete().eq("id", id);
 
   if (error) {
     console.error("Delete SOP error:", error);
     return NextResponse.json({ message: "Could not delete SOP." }, { status: 500 });
+  }
+
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "archive",
+      action: `${actor.actorName} deleted SOP ${id}`,
+      entityType: "sop",
+      entityId: id,
+      request: req,
+    });
   }
 
   return NextResponse.json({ success: true });

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import DocumentLogo from "../../../spnc/components/DocumentLogo";
+import DocumentLogo from "../../../components/DocumentLogo";
 
 type Schedule = {
   id: string;
@@ -48,7 +48,11 @@ export default function ScheduleDetailPage() {
   useEffect(() => {
     async function fetchSchedule() {
       try {
-        const response = await fetch(`/api/schedules/${params.id}`);
+        const response = await fetch(`/spnc/app/api/schedules/${params.id}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Schedule request failed (${response.status})`);
+        }
         const data = await response.json();
         setSchedule(response.ok ? data.schedule || null : null);
       } catch (error) {
@@ -74,7 +78,7 @@ export default function ScheduleDetailPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white">
         <p className="text-sm text-gray-500">Schedule not found.</p>
-        <button onClick={() => router.push("/schedules")} className="text-sm text-[#F2419B] hover:underline">
+        <button onClick={() => router.push("/spnc/app/schedules")} className="text-sm text-[#F2419B] hover:underline">
           Back to Schedules
         </button>
       </div>
@@ -87,7 +91,7 @@ export default function ScheduleDetailPage() {
   return (
     <div className="min-h-screen bg-white px-8 py-10">
       <div className="print-hidden mb-8 flex items-center justify-between">
-        <button type="button" onClick={() => router.push("/schedules")} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
+        <button type="button" onClick={() => router.push("/spnc/app/schedules")} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
           <ArrowLeft size={16} />
           Back to Schedules
         </button>
@@ -128,4 +132,4 @@ export default function ScheduleDetailPage() {
       </div>
     </div>
   );
-}
+} 
