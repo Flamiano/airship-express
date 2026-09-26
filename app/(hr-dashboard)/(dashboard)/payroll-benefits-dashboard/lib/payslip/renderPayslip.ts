@@ -452,7 +452,7 @@ export async function renderPayslipPng(
       height: 1123,
       deviceScaleFactor: 2,
     });
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "networkidle0" as any });
 
     const outDir = path.join(process.cwd(), "public", "generated-payslips");
     await fs.mkdir(outDir, { recursive: true });

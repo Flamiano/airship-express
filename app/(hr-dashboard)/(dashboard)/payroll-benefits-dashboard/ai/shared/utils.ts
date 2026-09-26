@@ -70,3 +70,18 @@ export function formatPayrollContext(context: PayrollContext): string {
 
   return lines.join("\n");
 }
+
+export function formatCurrency(value: number | null | undefined, currency = "PHP"): string {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return currency === "PHP" ? "₱0.00" : "0.00";
+  }
+  const symbol = currency === "PHP" ? "₱" : "";
+  return `${symbol}${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
+}
