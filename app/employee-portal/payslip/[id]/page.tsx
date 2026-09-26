@@ -46,7 +46,7 @@ export default function EmployeePayslipPortal() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/payroll-benefits-dashboard/api/employee-portal/payslip/${payslipId}`, {
+            const res = await fetch(`/api/employee-portal/payslip/${payslipId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password }),

@@ -74,8 +74,7 @@ export async function POST(
       );
     }
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL || "https://airship-express.vercel.app";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL_HR!;
 
     let sent = 0;
     let failed = 0;
