@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useEffect, useMemo, useState, useTransition } from "react";
+import type { ComponentType } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -46,13 +47,18 @@ const requiredMark = <span className="text-accent">*</span>;
 const peso = (n: number) =>
   `₱${n.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
 
+type IconProps = {
+  size?: number | string;
+  className?: string;
+};
+
 function SectionCard({
   icon: Icon,
   title,
   subtitle,
   children,
 }: {
-  icon: React.ElementType;
+  icon: ComponentType<IconProps>;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -124,10 +130,10 @@ export default function RequestShipmentForm({ customer }: { customer: Customer }
       actualWeightKg: actualWeight,
       dimensionsCm: hasDims
         ? {
-            length: parseFloat(dimLength),
-            width: parseFloat(dimWidth),
-            height: parseFloat(dimHeight),
-          }
+          length: parseFloat(dimLength),
+          width: parseFloat(dimWidth),
+          height: parseFloat(dimHeight),
+        }
         : undefined,
       declaredValue: declaredValue ? parseFloat(declaredValue) : undefined,
       packagingProvided: packagingService === "provided",
@@ -184,10 +190,10 @@ export default function RequestShipmentForm({ customer }: { customer: Customer }
           dimensions:
             dimLength && dimWidth && dimHeight
               ? {
-                  length_cm: parseFloat(dimLength),
-                  width_cm: parseFloat(dimWidth),
-                  height_cm: parseFloat(dimHeight),
-                }
+                length_cm: parseFloat(dimLength),
+                width_cm: parseFloat(dimWidth),
+                height_cm: parseFloat(dimHeight),
+              }
               : undefined,
           declared_value: declaredValue ? parseFloat(declaredValue) : undefined,
           packaging_service: packagingService,
@@ -596,11 +602,10 @@ export default function RequestShipmentForm({ customer }: { customer: Customer }
                 ).map((opt) => (
                   <label
                     key={opt.value}
-                    className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                      packagingService === opt.value
+                    className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${packagingService === opt.value
                         ? "border-accent bg-accent/5 text-foreground"
                         : "border-line bg-background text-muted hover:border-muted/50 hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
