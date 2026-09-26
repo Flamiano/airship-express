@@ -1,103 +1,107 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "../supabase/client";
-import { loginRouteForAccountType } from "@/performance-development-dashboard/lib/auth/redirect";
+import {
+  SESSION_START_KEY,
+  SESSION_ABSOLUTE_MS,
+  SESSION_INACTIVITY_MINUTES,
+  SESSION_WARNING_SECONDS,
+} from "../constants/session";
 
 interface UseInactivityTimerOptions {
   timeoutMinutes?: number;
-  warningMinutes?: number;
+  warningSeconds?: number;
   onWarning?: () => void;
-  onLogout?: () => void;
+  onLogout?: (reason: "inactivity" | "absolute" | "manual") => void;
   enabled?: boolean;
 }
 
 export function useInactivityTimer({
-  timeoutMinutes = 5,
-  warningMinutes = 0.5,
+  timeoutMinutes = SESSION_INACTIVITY_MINUTES,
+  warningSeconds = SESSION_WARNING_SECONDS,
   onWarning,
   onLogout,
   enabled = true,
 }: UseInactivityTimerOptions = {}) {
   const router = useRouter();
-  const pathname = usePathname();
   const supabase = createClient();
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const inactivityRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
-  const lastActivityRef = useRef<number>(Date.now());
+  const absoluteRef = useRef<NodeJS.Timeout | null>(null);
+
   const isMounted = useRef(true);
   const isPaused = useRef(false);
+  const loggingOut = useRef(false);
+  const hasWarned = useRef(false);
 
-  const logout = useCallback(async () => {
-    if (!isMounted.current) return;
+  const onWarningRef = useRef(onWarning);
+  const onLogoutRef = useRef(onLogout);
 
-    try {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
+  useEffect(() => {
+    onWarningRef.current = onWarning;
+  }, [onWarning]);
+
+  useEffect(() => {
+    onLogoutRef.current = onLogout;
+  }, [onLogout]);
+
+  const performLogout = useCallback(
+    async (reason: "inactivity" | "absolute" | "manual") => {
+      if (!isMounted.current || loggingOut.current) return;
+      loggingOut.current = true;
+
+      try {
+        if (inactivityRef.current) clearTimeout(inactivityRef.current);
+        if (warningRef.current) clearTimeout(warningRef.current);
+        if (absoluteRef.current) clearTimeout(absoluteRef.current);
+
+        await supabase.auth.signOut();
+        localStorage.removeItem(SESSION_START_KEY);
+
+        onLogoutRef.current?.(reason);
+        router.push("/hrAuth");
+        router.refresh();
+      } catch (err) {
+        console.error("Logout error:", err);
       }
-      if (warningRef.current) {
-        clearTimeout(warningRef.current);
-        warningRef.current = null;
-      }
-
-      await supabase.auth.signOut();
-
-      if (onLogout) {
-        onLogout();
-      }
-
-      // Account-aware: Manager/Employee sessions in PerDev return to
-      // /employeeAuth; HR Admin contexts keep returning to /hrAuth.
-      router.push(loginRouteForAccountType());
-      router.refresh();
-    } catch (error) {
-      console.error("Error during auto-logout:", error);
-    }
-  }, [router, supabase, onLogout]);
+    },
+    [router, supabase]
+  );
 
   const resetTimer = useCallback(() => {
     if (!enabled || !isMounted.current || isPaused.current) return;
 
-    lastActivityRef.current = Date.now();
+    if (inactivityRef.current) clearTimeout(inactivityRef.current);
+    if (warningRef.current) clearTimeout(warningRef.current);
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (warningRef.current) {
-      clearTimeout(warningRef.current);
-      warningRef.current = null;
-    }
+    hasWarned.current = false;
 
-    const warningDelay = (timeoutMinutes - warningMinutes) * 60 * 1000;
-    if (warningDelay > 0 && onWarning) {
+    const warningDelay = (timeoutMinutes * 60 - warningSeconds) * 1000;
+    const logoutDelay = timeoutMinutes * 60 * 1000;
+
+    if (warningDelay > 0 && onWarningRef.current) {
       warningRef.current = setTimeout(() => {
-        if (isMounted.current && !isPaused.current) {
-          onWarning();
+        if (isMounted.current && !isPaused.current && !hasWarned.current) {
+          hasWarned.current = true;
+          onWarningRef.current?.();
         }
       }, warningDelay);
     }
 
-    const timeoutDelay = timeoutMinutes * 60 * 1000;
-    timeoutRef.current = setTimeout(() => {
+    inactivityRef.current = setTimeout(() => {
       if (isMounted.current && !isPaused.current) {
-        logout();
+        performLogout("inactivity");
       }
-    }, timeoutDelay);
-  }, [enabled, timeoutMinutes, warningMinutes, onWarning, logout]);
+    }, logoutDelay);
+  }, [enabled, timeoutMinutes, warningSeconds, performLogout]);
 
   const pauseTimer = useCallback(() => {
     isPaused.current = true;
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (warningRef.current) {
-      clearTimeout(warningRef.current);
-      warningRef.current = null;
-    }
+    if (inactivityRef.current) clearTimeout(inactivityRef.current);
+    if (warningRef.current) clearTimeout(warningRef.current);
   }, []);
 
   const resumeTimer = useCallback(() => {
@@ -105,17 +109,39 @@ export function useInactivityTimer({
     resetTimer();
   }, [resetTimer]);
 
-  const reset = useCallback(() => {
-    resetTimer();
-  }, [resetTimer]);
+  const reset = useCallback(() => resetTimer(), [resetTimer]);
 
-  // Reset timer on user activity
+  useEffect(() => {
+    if (!enabled) return;
+
+    let start = Number(localStorage.getItem(SESSION_START_KEY));
+    if (!start || Number.isNaN(start)) {
+      start = Date.now();
+      localStorage.setItem(SESSION_START_KEY, start.toString());
+    }
+
+    const elapsed = Date.now() - start;
+    const remaining = SESSION_ABSOLUTE_MS - elapsed;
+
+    if (remaining <= 0) {
+      performLogout("absolute");
+      return;
+    }
+
+    absoluteRef.current = setTimeout(() => {
+      performLogout("absolute");
+    }, remaining);
+
+    return () => {
+      if (absoluteRef.current) clearTimeout(absoluteRef.current);
+    };
+  }, [enabled, performLogout]);
+
   useEffect(() => {
     if (!enabled) return;
 
     const events = [
       "mousedown",
-      "mousemove",
       "keydown",
       "scroll",
       "touchstart",
@@ -127,52 +153,33 @@ export function useInactivityTimer({
     ];
 
     const handleActivity = () => {
-      if (!isPaused.current) {
-        resetTimer();
-      }
+      if (!isPaused.current) resetTimer();
     };
 
-    events.forEach((event) => {
-      window.addEventListener(event, handleActivity, {
+    events.forEach((e) =>
+      window.addEventListener(e, handleActivity, {
         capture: true,
         passive: true,
-      });
-    });
-
-    const handleRouteChange = () => {
-      resetTimer();
-    };
-
-    window.addEventListener("popstate", handleRouteChange);
+      })
+    );
 
     resetTimer();
 
     return () => {
       isMounted.current = false;
-      events.forEach((event) => {
-        window.removeEventListener(event, handleActivity, { capture: true });
-      });
-      window.removeEventListener("popstate", handleRouteChange);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      if (warningRef.current) {
-        clearTimeout(warningRef.current);
-        warningRef.current = null;
-      }
+      events.forEach((e) =>
+        window.removeEventListener(e, handleActivity, { capture: true })
+      );
+      if (inactivityRef.current) clearTimeout(inactivityRef.current);
+      if (warningRef.current) clearTimeout(warningRef.current);
     };
   }, [enabled, resetTimer]);
-
-  useEffect(() => {
-    if (!enabled || !pathname) return;
-    resetTimer();
-  }, [pathname, enabled, resetTimer]);
 
   return {
     resetTimer: reset,
     pauseTimer,
     resumeTimer,
-    logout,
+    logout: () => performLogout("manual"),
+    performForcedLogout: performLogout,
   };
 }

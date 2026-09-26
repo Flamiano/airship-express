@@ -1,4 +1,12 @@
-import type { LiveSystemSummary, LiveEmployeeProfile } from "./types";
+import type {
+  LiveSystemSummary,
+  LiveEmployeeProfile,
+  SafeEmployeeRow,
+  SafeEmployeeCounts,
+  TopRatedEmployee,
+  OpenRunRow,
+  RejectedRunRow,
+} from "./types";
 import type { SSSBracket, PhilHealthRate, PagibigTier } from "../../types";
 
 function peso(n: number | null | undefined) {
@@ -110,4 +118,64 @@ export function describeEmployeeContext(p: LiveEmployeeProfile): string {
   }
 
   return lines.join("\n");
+}
+
+export function describeEmployeeList(rows: SafeEmployeeRow[]): string {
+  if (!rows.length) return "No active employees on record.";
+  return rows
+    .map(
+      (e, i) =>
+        `${i + 1}. ${e.first_name} ${e.last_name} (${e.employee_id_number}) - ${
+          e.job_title || "no position"
+        }${e.has_bank ? "" : " - missing bank details"}${
+          e.has_birthdate ? "" : " - missing birthdate"
+        }`
+    )
+    .join("\n");
+}
+
+export function describeSafeEmployeeCounts(counts: SafeEmployeeCounts): string {
+  return [
+    `Active: ${counts.active}`,
+    `On leave: ${counts.on_leave}`,
+    `Inactive: ${counts.inactive}`,
+  ].join("\n");
+}
+
+export function describeTopRatedEmployees(rows: TopRatedEmployee[]): string {
+  if (!rows.length) return "No finalized performance ratings on record.";
+  return rows
+    .map(
+      (e, i) =>
+        `${i + 1}. ${e.employee_name} (${
+          e.employee_id_number
+        }) - rating ${e.performance_rating.toFixed(2)}${
+          e.letter_grade ? ` (${e.letter_grade})` : ""
+        }`
+    )
+    .join("\n");
+}
+
+export function describeOpenRuns(rows: OpenRunRow[]): string {
+  if (!rows.length) return "No open payroll runs.";
+  return rows
+    .map(
+      (r, i) =>
+        `${i + 1}. ${r.period_start} to ${r.period_end} - approval ${
+          r.approval_status
+        }`
+    )
+    .join("\n");
+}
+
+export function describeRejectedRuns(rows: RejectedRunRow[]): string {
+  if (!rows.length) return "No rejected payroll runs.";
+  return rows
+    .map(
+      (r, i) =>
+        `${i + 1}. ${r.period_start} to ${r.period_end} - rejected by ${
+          r.rejected_by_name || "unknown"
+        }: ${r.rejection_reason || "no reason recorded"}`
+    )
+    .join("\n");
 }

@@ -23,6 +23,11 @@ import type {
   LiveClaimTypes,
   LiveJobSettings,
   LiveCompensation,
+  SafeEmployeeRow,
+  SafeEmployeeCounts,
+  TopRatedEmployee,
+  OpenRunRow,
+  RejectedRunRow,
 } from "./types";
 
 export async function fetchPayrollRules(): Promise<LivePayrollRules> {
@@ -135,23 +140,30 @@ export async function fetchEmployeeProfile(
   let mappedBank: LiveEmployeeBankAccount | null = null;
 
   if (bankAccount.data) {
-    const row = bankAccount.data as {
-      account_number: string;
-      account_name: string;
-      is_primary: boolean;
-      is_active: boolean;
-      verified_at: string | null;
-      hr4_bank_types: { bank_name: string; bank_type: string } | null;
-    };
+    const raw = bankAccount.data as Record<string, unknown>;
+
+    const bankTypesRaw = raw.hr4_bank_types;
+    const bankTypeObj: {
+      bank_name?: string | null;
+      bank_type?: string | null;
+    } | null = Array.isArray(bankTypesRaw)
+      ? (bankTypesRaw[0] as {
+          bank_name?: string | null;
+          bank_type?: string | null;
+        }) ?? null
+      : (bankTypesRaw as {
+          bank_name?: string | null;
+          bank_type?: string | null;
+        } | null);
 
     mappedBank = {
-      account_number: row.account_number,
-      account_name: row.account_name,
-      bank_name: row.hr4_bank_types?.bank_name ?? null,
-      bank_type: row.hr4_bank_types?.bank_type ?? null,
-      is_primary: row.is_primary,
-      is_active: row.is_active,
-      verified_at: row.verified_at,
+      account_number: String(raw.account_number ?? ""),
+      account_name: String(raw.account_name ?? ""),
+      bank_name: bankTypeObj?.bank_name ?? null,
+      bank_type: bankTypeObj?.bank_type ?? null,
+      is_primary: Boolean(raw.is_primary),
+      is_active: Boolean(raw.is_active),
+      verified_at: (raw.verified_at as string | null) ?? null,
     };
   }
 
@@ -229,4 +241,226 @@ export async function fetchCompensation(): Promise<LiveCompensation> {
     pay_steps: (steps.data ?? []) as HR4CompenPayStep[],
     fetched_at: new Date().toISOString(),
   };
+}
+
+export async function fetchActiveEmployeeNames(): Promise<SafeEmployeeRow[]> {
+  const { data: employees } = await supabaseAdmin
+    .from("hr1_employees")
+    .select(
+      `id, employee_id_number, first_name, last_name, department, status, date_hired, birthdate,
+       hr1_job_positions ( title ),
+       hr4_bank_accounts ( account_number, bank_type_id, is_active )`
+    )
+    .eq("status", "active")
+    .order("first_name", { ascending: true });
+
+  if (!employees) return [];
+
+  return employees.map((e: Record<string, unknown>) => {
+    const jobsRaw = e.hr1_job_positions;
+    const job: { title?: string | null } | null = Array.isArray(jobsRaw)
+      ? (jobsRaw[0] as { title?: string | null }) ?? null
+      : (jobsRaw as { title?: string | null } | null);
+
+    const banksRaw = e.hr4_bank_accounts;
+    const bank: {
+      account_number?: string | null;
+      bank_type_id?: number | null;
+      is_active?: boolean | null;
+    } | null = Array.isArray(banksRaw)
+      ? (banksRaw[0] as {
+          account_number?: string | null;
+          bank_type_id?: number | null;
+          is_active?: boolean | null;
+        }) ?? null
+      : (banksRaw as {
+          account_number?: string | null;
+          bank_type_id?: number | null;
+          is_active?: boolean | null;
+        } | null);
+
+    const hasBank = Boolean(
+      bank &&
+        bank.is_active !== false &&
+        bank.account_number &&
+        bank.bank_type_id
+    );
+
+    return {
+      id: String(e.id),
+      employee_id_number: String(e.employee_id_number ?? ""),
+      first_name: String(e.first_name ?? ""),
+      last_name: String(e.last_name ?? ""),
+      department: (e.department as string | null) ?? null,
+      job_title: job?.title ?? null,
+      status: String(e.status ?? "active"),
+      date_hired: (e.date_hired as string | null) ?? null,
+      has_bank: hasBank,
+      has_birthdate: Boolean(e.birthdate),
+    };
+  });
+}
+
+export async function fetchEmployeeCounts(): Promise<SafeEmployeeCounts> {
+  const [activeRes, onLeaveRes, inactiveRes] = await Promise.all([
+    supabaseAdmin
+      .from("hr1_employees")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "active"),
+    supabaseAdmin
+      .from("hr1_employees")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "on_leave"),
+    supabaseAdmin
+      .from("hr1_employees")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "inactive"),
+  ]);
+
+  return {
+    active: activeRes.count ?? 0,
+    on_leave: onLeaveRes.count ?? 0,
+    inactive: inactiveRes.count ?? 0,
+  };
+}
+
+export async function fetchEmployeesWithoutBank(): Promise<SafeEmployeeRow[]> {
+  const rows = await fetchActiveEmployeeNames();
+  return rows.filter((r) => !r.has_bank);
+}
+
+export async function fetchEmployeesWithoutBirthdate(): Promise<
+  SafeEmployeeRow[]
+> {
+  const rows = await fetchActiveEmployeeNames();
+  return rows.filter((r) => !r.has_birthdate);
+}
+
+export async function fetchTopRatedEmployees(
+  limit = 5
+): Promise<TopRatedEmployee[]> {
+  const { data } = await supabaseAdmin
+    .from("hr3_performance_appraisals")
+    .select(
+      `id, employee_id, performance_rating, final_score, letter_grade, status,
+       hr1_employees ( first_name, last_name, employee_id_number, department )`
+    )
+    .eq("status", "finalized")
+    .not("performance_rating", "is", null)
+    .order("performance_rating", { ascending: false })
+    .limit(limit * 2);
+
+  if (!data) return [];
+
+  const seen = new Set<string>();
+  const result: TopRatedEmployee[] = [];
+
+  for (const row of data as Array<Record<string, unknown>>) {
+    const employeeId = String(row.employee_id);
+    if (seen.has(employeeId)) continue;
+    seen.add(employeeId);
+
+    const empsRaw = row.hr1_employees;
+    const emp: {
+      first_name?: string | null;
+      last_name?: string | null;
+      employee_id_number?: string | null;
+      department?: string | null;
+    } | null = Array.isArray(empsRaw)
+      ? (empsRaw[0] as {
+          first_name?: string | null;
+          last_name?: string | null;
+          employee_id_number?: string | null;
+          department?: string | null;
+        }) ?? null
+      : (empsRaw as {
+          first_name?: string | null;
+          last_name?: string | null;
+          employee_id_number?: string | null;
+          department?: string | null;
+        } | null);
+
+    if (!emp) continue;
+
+    result.push({
+      employee_name: `${emp.first_name ?? ""} ${emp.last_name ?? ""}`.trim(),
+      employee_id_number: emp.employee_id_number ?? "",
+      department: emp.department ?? null,
+      performance_rating: Number(row.performance_rating ?? 0),
+      letter_grade: (row.letter_grade as string | null) ?? null,
+    });
+
+    if (result.length >= limit) break;
+  }
+
+  return result;
+}
+
+export async function fetchOpenRuns(): Promise<OpenRunRow[]> {
+  const { data } = await supabaseAdmin
+    .from("hr4_payroll_runs")
+    .select(
+      "id, period_start, period_end, status, approval_status, distributed_at"
+    )
+    .in("approval_status", [
+      "draft",
+      "pending_approval",
+      "approved",
+      "rejected",
+    ])
+    .order("period_end", { ascending: false })
+    .limit(10);
+
+  return (data || []) as OpenRunRow[];
+}
+
+export async function fetchPendingApprovals(): Promise<OpenRunRow[]> {
+  const { data } = await supabaseAdmin
+    .from("hr4_payroll_runs")
+    .select(
+      "id, period_start, period_end, status, approval_status, distributed_at"
+    )
+    .eq("approval_status", "pending_approval")
+    .order("period_end", { ascending: false });
+
+  return (data || []) as OpenRunRow[];
+}
+
+export async function fetchRejectedRuns(): Promise<RejectedRunRow[]> {
+  const { data } = await supabaseAdmin
+    .from("hr4_payroll_runs")
+    .select(
+      "id, period_start, period_end, approval_status, rejection_reason, rejected_by_name, rejected_at"
+    )
+    .eq("approval_status", "rejected")
+    .order("rejected_at", { ascending: false })
+    .limit(5);
+
+  return (data || []) as RejectedRunRow[];
+}
+
+export async function findEmployeeByNameSafe(query: string) {
+  const cleaned = query.trim();
+  if (!cleaned) return null;
+
+  const parts = cleaned.split(/\s+/);
+  const first = parts[0];
+  const last = parts.slice(1).join(" ");
+
+  let q = supabaseAdmin
+    .from("hr1_employees")
+    .select("id, first_name, last_name, employee_id_number, status")
+    .eq("status", "active");
+
+  if (last) {
+    q = q.or(
+      `and(first_name.ilike.%${first}%,last_name.ilike.%${last}%),` +
+        `and(first_name.ilike.%${last}%,last_name.ilike.%${first}%)`
+    );
+  } else {
+    q = q.or(`first_name.ilike.%${first}%,last_name.ilike.%${first}%`);
+  }
+
+  const { data } = await q.limit(1).maybeSingle();
+  return data || null;
 }

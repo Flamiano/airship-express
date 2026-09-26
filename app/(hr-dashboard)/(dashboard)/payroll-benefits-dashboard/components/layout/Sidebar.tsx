@@ -14,7 +14,7 @@ import {
     HeartPulse,
     Building2,
     BarChart3,
-    Bot,
+    Settings,
     X,
 } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
@@ -87,7 +87,7 @@ const itemVariants: Variants = {
 export default function Sidebar() {
     const pathname = usePathname();
     const { isOpen, close, isCollapsed } = useSidebar();
-    const { user, loading } = useCurrentUser();
+    const { user } = useCurrentUser();
     const [ready, setReady] = useState(false);
 
     useEffect(() => {
@@ -254,33 +254,21 @@ export default function Sidebar() {
                                 animate={ready ? 'show' : 'hidden'}
                             >
                                 <Link
-                                    href="/payroll-benefits-dashboard/chatbot"
-                                    title="Payroll Assistant"
+                                    href="/payroll-benefits-dashboard/settings"
+                                    title="Settings"
                                     onClick={close}
                                     className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium transition-all ${isCollapsed ? 'justify-center' : ''
-                                        } ${pathname === '/payroll-benefits-dashboard/chatbot'
+                                        } ${pathname === '/payroll-benefits-dashboard/settings'
                                             ? 'bg-accent text-paper shadow-sm shadow-accent/25'
                                             : 'text-muted hover:bg-ink/[0.04] hover:text-ink dark:hover:bg-paper/[0.06]'
                                         }`}
                                 >
-                                    <Bot
+                                    <Settings
                                         size={17}
                                         strokeWidth={1.9}
-                                        className={pathname === '/payroll-benefits-dashboard/chatbot' ? '' : 'text-muted group-hover:text-ink'}
+                                        className={pathname === '/payroll-benefits-dashboard/settings' ? '' : 'text-muted group-hover:text-ink'}
                                     />
-                                    {!isCollapsed && (
-                                        <>
-                                            Assistant
-                                            <span
-                                                className={`ml-auto rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide ${pathname === '/payroll-benefits-dashboard/chatbot'
-                                                    ? 'bg-paper/20 text-paper'
-                                                    : 'bg-accent/10 text-accent'
-                                                    }`}
-                                            >
-                                                AI
-                                            </span>
-                                        </>
-                                    )}
+                                    {!isCollapsed && 'Settings'}
                                 </Link>
                             </motion.div>
                         </div>

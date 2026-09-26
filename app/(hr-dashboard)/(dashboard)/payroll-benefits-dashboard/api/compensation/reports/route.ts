@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+const MISSING_TABLE_RE =
+  /schema cache|could not find the table|does not exist|relation .* does not exist/i;
+
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireAdmin(request);
@@ -60,6 +63,19 @@ async function getSalaryDistribution(year: number) {
     .eq("employee_status", "active");
 
   if (error) {
+    if (MISSING_TABLE_RE.test(error.message)) {
+      console.warn(
+        "[compensation/reports:s salary_distribution] summary table missing — returning empty."
+      );
+      return {
+        total_employees: 0,
+        average_salary: 0,
+        min_salary: 0,
+        max_salary: 0,
+        distribution: [],
+        record_count: 0,
+      };
+    }
     console.error("Error getting salary distribution:", error);
     return { error: error.message };
   }
@@ -123,26 +139,48 @@ async function getSalaryDistribution(year: number) {
   return result;
 }
 
+async function getPayrollForecast(year: number) {
+  return {
+    year,
+    total_employees: 0,
+    projected_payroll: 0,
+    monthly_breakdown: [],
+    record_count: 0,
+    note: "Payroll forecast requires historical payroll data which is not available yet.",
+  };
+}
+
 async function getTotalRewards(year: number) {
   const { data: employees, error } = await supabaseAdmin
     .from("hr4_compen_employee_summary")
     .select("effective_daily_rate, monthly_allowances, other_benefits")
     .eq("employee_status", "active");
 
+  let employeeRows: any[] = [];
+
   if (error) {
-    console.error("Error getting total rewards:", error);
-    return { error: error.message };
+    if (MISSING_TABLE_RE.test(error.message)) {
+      console.warn(
+        "[compensation/reports:s total_rewards] summary table missing — using empty employee set."
+      );
+      employeeRows = [];
+    } else {
+      console.error("Error getting total rewards:", error);
+      return { error: error.message };
+    }
+  } else {
+    employeeRows = employees ?? [];
   }
 
-  const totalBaseSalary = (employees || []).reduce(
+  const totalBaseSalary = employeeRows.reduce(
     (sum: number, e: any) => sum + (e.effective_daily_rate || 0) * 24,
     0
   );
-  const totalAllowances = (employees || []).reduce(
+  const totalAllowances = employeeRows.reduce(
     (sum: number, e: any) => sum + (e.monthly_allowances || 0),
     0
   );
-  const totalOtherBenefits = (employees || []).reduce(
+  const totalOtherBenefits = employeeRows.reduce(
     (sum: number, e: any) => sum + (e.other_benefits || 0),
     0
   );
@@ -171,7 +209,7 @@ async function getTotalRewards(year: number) {
       totalAllowances * 12 +
       totalBonuses +
       totalOtherBenefits,
-    employee_count: employees?.length || 0,
+    employee_count: employeeRows.length,
     record_count: 1,
   };
 }
@@ -261,9 +299,20 @@ async function getCompensationRatio(year: number) {
     )
     .eq("employee_status", "active");
 
+  let employeeRows: any[] = [];
+
   if (error) {
-    console.error("Error getting compensation ratio:", error);
-    return { error: error.message };
+    if (MISSING_TABLE_RE.test(error.message)) {
+      console.warn(
+        "[compensation/reports:s compensation_ratio] summary table missing — returning empty."
+      );
+      employeeRows = [];
+    } else {
+      console.error("Error getting compensation ratio:", error);
+      return { error: error.message };
+    }
+  } else {
+    employeeRows = employees ?? [];
   }
 
   const { data: grades, error: gradeError } = await supabaseAdmin
@@ -275,7 +324,7 @@ async function getCompensationRatio(year: number) {
     console.error("Error getting grade ranges:", gradeError);
   }
 
-  const employeesWithRatio = (employees || []).map((emp: any) => {
+  const employeesWithRatio = employeeRows.map((emp: any) => {
     const grade = (grades || []).find(
       (g: any) => g.grade_code === emp.grade_code
     );

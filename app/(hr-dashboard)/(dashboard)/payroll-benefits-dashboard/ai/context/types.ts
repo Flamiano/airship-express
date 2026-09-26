@@ -67,3 +67,49 @@ export interface LiveCompensation {
   pay_steps: HR4CompenPayStep[];
   fetched_at: string;
 }
+
+export interface SafeEmployeeRow {
+  id: string;
+  employee_id_number: string;
+  first_name: string;
+  last_name: string;
+  department: string | null;
+  job_title: string | null;
+  status: string;
+  date_hired: string | null;
+  has_bank: boolean;
+  has_birthdate: boolean;
+}
+
+export interface SafeEmployeeCounts {
+  active: number;
+  on_leave: number;
+  inactive: number;
+}
+
+export interface TopRatedEmployee {
+  employee_name: string;
+  employee_id_number: string;
+  department: string | null;
+  performance_rating: number;
+  letter_grade: string | null;
+}
+
+export interface OpenRunRow {
+  id: number;
+  period_start: string;
+  period_end: string;
+  status: string;
+  approval_status: string;
+  distributed_at: string | null;
+}
+
+export interface RejectedRunRow {
+  id: number;
+  period_start: string;
+  period_end: string;
+  approval_status: string;
+  rejection_reason: string | null;
+  rejected_by_name: string | null;
+  rejected_at: string | null;
+}

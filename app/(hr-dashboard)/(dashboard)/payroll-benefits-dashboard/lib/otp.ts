@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 
 const TTL_MINUTES = 5;
+const LOGIN_TTL_MINUTES = 2;
 const MAX_ATTEMPTS = 3;
 const LOCK_MINUTES = 5;
 const CODE_LENGTH = 6;
@@ -16,7 +17,8 @@ export type OtpPurpose =
   | "benefit"
   | "benefit_delete"
   | "claim"
-  | "claim_delete";
+  | "claim_delete"
+  | "login";
 
 export type OtpScope = "all";
 
@@ -78,10 +80,12 @@ export async function createOtp({
   adminId,
   email,
   purpose,
+  ttlMinutes,
 }: {
   adminId: string;
   email: string;
   purpose: OtpPurpose;
+  ttlMinutes?: number;
 }): Promise<{ code: string; expiresAt: Date }> {
   await supabaseAdmin
     .from("hr_admin_otp")
@@ -92,7 +96,8 @@ export async function createOtp({
 
   const code = generateCode();
   const codeHash = hashCode(code);
-  const expiresAt = new Date(Date.now() + TTL_MINUTES * 60 * 1000);
+  const effectiveTtl = ttlMinutes ?? TTL_MINUTES;
+  const expiresAt = new Date(Date.now() + effectiveTtl * 60 * 1000);
 
   const { error } = await supabaseAdmin.from("hr_admin_otp").insert({
     admin_id: adminId,
@@ -312,6 +317,7 @@ export async function validateSession(
 }
 
 export const OTP_TTL_MINUTES = TTL_MINUTES;
+export const LOGIN_OTP_TTL_MINUTES = LOGIN_TTL_MINUTES;
 export const OTP_MAX_ATTEMPTS = MAX_ATTEMPTS;
 export const OTP_LOCK_MINUTES = LOCK_MINUTES;
 export const OTP_SESSION_MINUTES = SESSION_MINUTES;

@@ -11,9 +11,22 @@ const UUID_RE =
 
 function normalizeId(raw: any): string {
   if (raw === null || raw === undefined) return "";
-  const s = String(raw).trim();
-  if (!s) return "";
-  if (s === "undefined" || s === "null" || s === "NaN") return "";
+  let s = String(raw).trim();
+
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    // ignore
+  }
+
+  s = s.replace(/^["']+|["']+$/g, "");
+  s = s.split("?")[0];
+  s = s.split("#")[0];
+  s = s.replace(/\/+$/g, "");
+  s = s.replace(/^\/+/g, "");
+  s = s.trim().toLowerCase();
+
+  if (s === "undefined" || s === "null" || s === "nan") return "";
   return s;
 }
 
@@ -23,17 +36,24 @@ function isValidUuid(id: string): boolean {
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
-    const rawId = params?.id;
+    const rawParams = await Promise.resolve(context.params as any);
+    const rawId = rawParams?.id;
     const id = normalizeId(rawId);
 
+    console.log(
+      "[claims PUT] rawId =",
+      JSON.stringify(rawId),
+      "normalized =",
+      id
+    );
+
     if (!isValidUuid(id)) {
-      console.error("[claims PUT] invalid id received:", JSON.stringify(rawId));
       return NextResponse.json(
         {
           error:
@@ -121,20 +141,24 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
-    const rawId = params?.id;
+    const rawParams = await Promise.resolve(context.params as any);
+    const rawId = rawParams?.id;
     const id = normalizeId(rawId);
 
+    console.log(
+      "[claims DELETE] rawId =",
+      JSON.stringify(rawId),
+      "normalized =",
+      id
+    );
+
     if (!isValidUuid(id)) {
-      console.error(
-        "[claims DELETE] invalid id received:",
-        JSON.stringify(rawId)
-      );
       return NextResponse.json(
         {
           error:

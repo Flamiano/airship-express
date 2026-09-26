@@ -23,14 +23,20 @@ import {
     UserPlus,
     PieChart,
     Search,
+    Sparkles,
+    RefreshCw,
 } from 'lucide-react';
 import Chart from 'chart.js/auto';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
 import { useApi, ApiError } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/hooks/api/useApi';
+import { supabase } from '@/app/(hr-dashboard)/supabase/client';
 import EmployeePayrollInfoManager from './EmployeePayrollInfoManager';
 import PayrollRunManager from './PayrollRunManager';
 import PayslipManager from './PayslipManager';
+import { AiryButton } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/ui/AiryButton';
+import { AiryChatDrawer } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/ui/AiryChatDrawer';
+import { airyBriefing } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/actions/payrollActions';
 
 const TABS = [
     { label: 'Payroll Runs', value: 'runs' },
@@ -120,15 +126,42 @@ const PayrollDashboard = () => {
     const bankChartRef = useRef<HTMLCanvasElement | null>(null);
     const bankChartInstanceRef = useRef<Chart | null>(null);
 
+    const [airyOpen, setAiryOpen] = useState(false);
+    const [adminUserId, setAdminUserId] = useState<string | undefined>(undefined);
+    const [adminName, setAdminName] = useState<string | null>(null);
+
+    const [briefing, setBriefing] = useState<string | null>(null);
+    const [briefingLoading, setBriefingLoading] = useState(false);
+    const briefingLoadedRef = useRef(false);
+
     const { fetchData: fetchSummary } = useApi(
         '/payroll-benefits-dashboard/api/payroll/summary'
     );
     const { fetchData: fetchBankStatus } = useApi(
         '/payroll-benefits-dashboard/api/payroll/bank-status'
     );
+    const { fetchData: fetchRuns } = useApi(
+        '/payroll-benefits-dashboard/api/payroll/runs'
+    );
+    const { fetchData: fetchBudget } = useApi(
+        '/payroll-benefits-dashboard/api/compensation/labor-budget'
+    );
 
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const authFailedRef = useRef(false);
+
+    useEffect(() => {
+        let mounted = true;
+        supabase.auth.getUser().then(({ data }) => {
+            if (!mounted) return;
+            if (data.user?.id) {
+                setAdminUserId(data.user.id);
+            }
+        });
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
     const loadSummary = useCallback(async () => {
         if (authFailedRef.current) return;
@@ -162,6 +195,42 @@ const PayrollDashboard = () => {
         }
     }, [fetchBankStatus]);
 
+    const loadBriefing = useCallback(async () => {
+        if (briefingLoadedRef.current) return;
+        setBriefingLoading(true);
+        try {
+            const [runsRes, budgetRes] = await Promise.all([
+                fetchRuns().catch(() => []),
+                fetchBudget(`?fiscal_year=${new Date().getFullYear()}`).catch(() => ({ rows: [] })),
+            ]);
+            const runs: any[] = Array.isArray(runsRes) ? runsRes : [];
+            const rows: any[] = (budgetRes as any)?.rows || [];
+            const thisMonth = new Date().getMonth() + 1;
+            const monthRow = rows.find((r: any) => r.month === thisMonth);
+
+            const text = await airyBriefing(
+                {
+                    pending_approvals: runs.filter((r) => r.approval_status === 'pending_approval').length,
+                    approved_not_distributed: runs.filter((r) => r.approval_status === 'approved').length,
+                    rejected_runs: runs.filter((r) => r.approval_status === 'rejected').length,
+                    missing_bank: bankStatus?.total_affected ?? 0,
+                    missing_birthdate: 0,
+                    open_draft_runs: runs.filter((r) => r.status === 'draft').length,
+                    this_month_planned: Number(monthRow?.planned_amount || 0),
+                    this_month_actual: Number(monthRow?.actual_amount || 0),
+                },
+                adminUserId
+            );
+            setBriefing(text);
+            briefingLoadedRef.current = true;
+        } catch (err) {
+            console.error('Briefing error:', err);
+            setBriefing(null);
+        } finally {
+            setBriefingLoading(false);
+        }
+    }, [fetchRuns, fetchBudget, bankStatus, adminUserId]);
+
     useEffect(() => {
         loadSummary();
         loadBankStatus();
@@ -174,6 +243,12 @@ const PayrollDashboard = () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
     }, [loadSummary, loadBankStatus]);
+
+    useEffect(() => {
+        if (summary && bankStatus && adminUserId && !briefingLoadedRef.current) {
+            void loadBriefing();
+        }
+    }, [summary, bankStatus, adminUserId, loadBriefing]);
 
     const positionData = useMemo(() => {
         const raw = summary?.position_distribution || {};
@@ -318,6 +393,12 @@ const PayrollDashboard = () => {
         });
     }, [bankStatus, bankSearch, bankFilter]);
 
+    const refreshBriefing = () => {
+        briefingLoadedRef.current = false;
+        setBriefing(null);
+        void loadBriefing();
+    };
+
     return (
         <div className="space-y-5">
             {!bankStatusLoading && affectedCount > 0 && !alertDismissed && (
@@ -325,6 +406,7 @@ const PayrollDashboard = () => {
                     <button
                         type="button"
                         onClick={openBankStatusModal}
+                        title="View employees with incomplete bank details"
                         className="flex flex-1 items-start gap-4 text-left min-w-0"
                     >
                         <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5 dark:text-amber-400" />
@@ -340,6 +422,7 @@ const PayrollDashboard = () => {
                     <button
                         type="button"
                         onClick={() => setAlertDismissed(true)}
+                        title="Dismiss this alert"
                         aria-label="Dismiss alert"
                         className="shrink-0 rounded-md p-1 text-amber-700/70 hover:text-amber-900 hover:bg-amber-100/50 transition-colors dark:text-amber-400/70 dark:hover:text-amber-200 dark:hover:bg-amber-900/30"
                     >
@@ -359,6 +442,59 @@ const PayrollDashboard = () => {
                     <p className="mt-0.5 text-sm text-muted font-rethink">
                         Manage employee payroll info, run payroll, and review payslips.
                     </p>
+                </div>
+            </div>
+
+            <div className="rounded-xl border border-accent/20 bg-gradient-to-r from-pink-50/60 to-white p-4 dark:from-pink-950/20 dark:to-transparent">
+                <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white border border-accent/20 overflow-hidden">
+                        <img
+                            src="/images/airy-ai/hi-full.png"
+                            alt="Airy"
+                            className="h-9 w-9 object-contain"
+                        />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <p className="text-xs font-semibold text-ink font-bricolage">
+                                Airy — Morning Briefing
+                            </p>
+                            <button
+                                type="button"
+                                onClick={refreshBriefing}
+                                disabled={briefingLoading}
+                                title="Refresh briefing"
+                                className="flex h-5 w-5 items-center justify-center rounded-md text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+                            >
+                                <RefreshCw
+                                    className={`h-3 w-3 ${briefingLoading ? 'animate-spin' : ''}`}
+                                />
+                            </button>
+                        </div>
+                        {briefingLoading ? (
+                            <div className="flex items-center gap-2 py-1">
+                                <video
+                                    src="/images/airy-ai/run.mp4"
+                                    autoPlay
+                                    loop
+                                    muted
+                                    playsInline
+                                    className="h-6 w-6 object-contain"
+                                />
+                                <span className="text-xs text-muted font-rethink">
+                                    Airy is reviewing your payroll…
+                                </span>
+                            </div>
+                        ) : briefing ? (
+                            <p className="text-xs text-ink font-rethink leading-relaxed whitespace-pre-wrap">
+                                {briefing}
+                            </p>
+                        ) : (
+                            <p className="text-xs text-muted font-rethink">
+                                Briefing unavailable. Click refresh to try again.
+                            </p>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -532,9 +668,10 @@ const PayrollDashboard = () => {
                             <button
                                 key={tab.value}
                                 onClick={() => setActiveTab(tab.value as 'runs' | 'employees')}
+                                title={`Switch to ${tab.label}`}
                                 className={`border-b-2 px-3.5 py-2.5 text-sm font-medium font-rethink transition-colors ${activeTab === tab.value
-                                        ? 'border-accent text-ink'
-                                        : 'border-transparent text-muted hover:text-ink/70'
+                                    ? 'border-accent text-ink'
+                                    : 'border-transparent text-muted hover:text-ink/70'
                                     }`}
                             >
                                 {tab.label}
@@ -567,6 +704,7 @@ const PayrollDashboard = () => {
                                 type="button"
                                 variant="outline"
                                 onClick={() => setShowBankModal(false)}
+                                title="Close the modal"
                                 className="w-full sm:w-auto font-rethink"
                             >
                                 Close
@@ -576,6 +714,7 @@ const PayrollDashboard = () => {
                                 variant="primary"
                                 onClick={goToBankDetails}
                                 leftIcon={<Briefcase className="h-4 w-4" />}
+                                title="Go to Bank Accounts to fix missing details"
                                 className="w-full sm:w-auto font-rethink"
                             >
                                 Bank Details
@@ -659,6 +798,7 @@ const PayrollDashboard = () => {
                                                 value={bankSearch}
                                                 onChange={(e) => setBankSearch(e.target.value)}
                                                 placeholder="Search by name or ID…"
+                                                title="Search affected employees"
                                                 className="w-full rounded-lg border border-line bg-paper pl-9 pr-3 py-2 text-sm font-rethink text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 dark:border-line/30"
                                             />
                                         </div>
@@ -669,6 +809,7 @@ const PayrollDashboard = () => {
                                                     e.target.value as 'all' | 'no_account' | 'inactive' | 'incomplete'
                                                 )
                                             }
+                                            title="Filter affected employees by issue type"
                                             className="rounded-lg border border-line bg-paper px-3 py-2 text-sm font-rethink text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 dark:border-line/30"
                                         >
                                             <option value="all">All Issues</option>
@@ -723,6 +864,20 @@ const PayrollDashboard = () => {
                     </div>
                 </Modal>
             )}
+
+            <AiryButton onClick={() => setAiryOpen(true)} thinking={briefingLoading} />
+            <AiryChatDrawer
+                isOpen={airyOpen}
+                onClose={() => setAiryOpen(false)}
+                adminUserId={adminUserId}
+                context={{
+                    active_employees: summary?.active_employees,
+                    open_runs: summary?.open_runs,
+                    last_run_net_pay: summary?.last_run_net_pay,
+                    missing_bank: affectedCount,
+                    admin_name: adminName,
+                }}
+            />
         </div>
     );
 };

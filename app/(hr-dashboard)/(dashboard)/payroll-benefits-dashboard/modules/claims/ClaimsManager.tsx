@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Button';
 import { Modal } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Modal';
-import { Card, CardBody } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
+import { Card } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Card';
 import { Pagination } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Pagination';
 import { Search } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Search';
 import { Input } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Input';
@@ -20,6 +20,8 @@ import { ImageViewer } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-d
 import OtpModal from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/OtpModal';
 import OtpUnlockBanner from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/OtpUnlockBanner';
 import { useOtpSessionContext } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/providers/OtpSessionProvider';
+import { AiryReceiptScanner, type ScanVerdict } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/ui/AiryReceiptScanner';
+import { fileToResizedBase64, estimateSharpness } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/ai/shared/receiptImage';
 
 const PAGE_SIZE = 8;
 const STORAGE_BUCKET = 'hr4';
@@ -148,6 +150,11 @@ const ClaimsManager = () => {
     const [isOtpOpen, setIsOtpOpen] = useState(false);
     const [pendingCreate, setPendingCreate] = useState(false);
 
+    const [scanning, setScanning] = useState(false);
+    const [scanVerdict, setScanVerdict] = useState<ScanVerdict | null>(null);
+    const [scanError, setScanError] = useState<string | null>(null);
+    const [overrideReject, setOverrideReject] = useState(false);
+
     const [selected, setSelected] = useState<any | null>(null);
     const [editTarget, setEditTarget] = useState<any | null>(null);
     const [editAction, setEditAction] = useState<'approve' | 'reject' | 'reimburse' | null>(null);
@@ -168,6 +175,7 @@ const ClaimsManager = () => {
     const { fetchData, postData, putData, deleteData } = useApi('/payroll-benefits-dashboard/api/claims');
     const { fetchData: fetchTypes } = useApi('/payroll-benefits-dashboard/api/claims/types');
     const { fetchData: fetchEmployees } = useApi('/payroll-benefits-dashboard/api/payroll/employee-info');
+    const { postData: verifyReceipt } = useApi('/payroll-benefits-dashboard/api/claims/verify-receipt');
 
     const autoRefreshInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -191,8 +199,12 @@ const ClaimsManager = () => {
             ]);
 
             const cleaned = (Array.isArray(claimsData) ? claimsData : [])
+                .map((c: any) => ({
+                    ...c,
+                    id: typeof c?.id === 'string' ? c.id.trim() : c?.id,
+                }))
                 .filter((c: any) => isValidId(c?.id));
-                
+
             setClaims(cleaned);
             setClaimTypes((typesData || []).filter((t: any) => t.is_active));
             setEmployees(employeesData || []);
@@ -241,29 +253,211 @@ const ClaimsManager = () => {
         return publicUrl;
     };
 
-    const handleFileSelect = (file: File) => {
+    const runReceiptScanWithFile = async (file: File) => {
+        const f = formRef.current;
+
+        if (!isValidId(f.employee_id)) {
+            setScanError('Pick an employee before scanning.');
+            return;
+        }
+        if (!f.amount || Number(f.amount) <= 0) {
+            setScanError('Enter the claimed amount before scanning.');
+            return;
+        }
+        if (!f.claim_type_id) {
+            setScanError('Pick a claim type before scanning.');
+            return;
+        }
+
+        setScanning(true);
+        setScanVerdict(null);
+        setScanError(null);
+        setOverrideReject(false);
+
+        try {
+            const { base64, mimeType } = await fileToResizedBase64(file);
+
+            const data = await verifyReceipt('', {
+                employeeId: f.employee_id,
+                imageBase64: base64,
+                mimeType,
+                claimedAmount: Number(f.amount),
+                claimedDescription: f.description,
+                claimedClaimType:
+                    validClaimTypes.find((t) => String(t.id) === String(f.claim_type_id))?.name || '',
+            });
+
+            setScanVerdict(data as ScanVerdict);
+
+            if (data.receipt_readable === false) {
+                const issue = data.readability_issue ? ` ${data.readability_issue}` : '';
+                toast.showError(`Receipt is not clear.${issue} Please upload a sharper photo.`);
+                return;
+            }
+
+            if (data.verdict === 'approve') {
+                toast.showSuccess('Airy verified the receipt. Safe to submit.');
+            } else if (data.verdict === 'review') {
+                toast.showError('Airy flagged minor differences. Review before submitting.');
+            } else {
+                toast.showError('Airy rejected this receipt. Do not submit without fixing.');
+            }
+        } catch (err: any) {
+            setScanError(err?.message || 'Could not verify receipt.');
+            toast.showError(err?.message || 'Receipt verification failed');
+        } finally {
+            setScanning(false);
+        }
+    };
+
+    const runReceiptScan = async () => {
+        const file = selectedFileRef.current;
+        if (!file) {
+            toast.showError('Select a receipt image first.');
+            return;
+        }
+        await runReceiptScanWithFile(file);
+    };
+
+    const handleFileSelect = async (file: File) => {
         if (!file) return;
+        if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
         const previewUrl = URL.createObjectURL(file);
         setImagePreviewUrl(previewUrl);
         setSelectedFile(file);
         setUploadedFileName(file.name);
-        toast.showSuccess('Image selected. Preview available below.');
+        setScanVerdict(null);
+        setScanError(null);
+        setOverrideReject(false);
+
+        try {
+            const { sharp } = await estimateSharpness(file);
+            if (!sharp) {
+                toast.showError(
+                    'This photo looks blurry. Please retake it flat on a table, good lighting, no glare, all four corners visible.'
+                );
+            }
+        } catch {
+            // best-effort
+        }
+
+        const f = formRef.current;
+        if (isValidId(f.employee_id) && f.amount && Number(f.amount) > 0 && f.claim_type_id) {
+            queueMicrotask(() => {
+                runReceiptScanWithFile(file);
+            });
+        }
     };
+
+    useEffect(() => {
+        if (!isCreateOpen) return;
+        if (!selectedFile) return;
+        if (scanning || scanVerdict || scanError) return;
+        if (!isValidId(form.employee_id)) return;
+        if (!form.claim_type_id) return;
+        if (!form.amount || Number(form.amount) <= 0) return;
+
+        const handle = setTimeout(() => {
+            runReceiptScanWithFile(selectedFile);
+        }, 800);
+
+        return () => clearTimeout(handle);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        isCreateOpen,
+        selectedFile,
+        form.employee_id,
+        form.claim_type_id,
+        form.amount,
+        scanning,
+        scanVerdict,
+        scanError,
+    ]);
 
     const handleRemoveImage = () => {
         if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
         setImagePreviewUrl(null);
         setSelectedFile(null);
         setUploadedFileName(null);
+        setScanVerdict(null);
+        setScanError(null);
+        setOverrideReject(false);
         setForm((f) => ({ ...f, receipt_url: '' }));
     };
+
+    const missingRequired =
+        !isValidId(form.employee_id) ||
+        !form.claim_type_id ||
+        !form.amount ||
+        Number(form.amount) <= 0 ||
+        !selectedFile;
+
+    const scanNotReady = !scanVerdict || scanning || !!scanError;
+
+    const scanRejected = scanVerdict?.verdict === 'reject' && !overrideReject;
+
+    const submitDisabled =
+        isSaving ||
+        isOtpOpen ||
+        pendingCreate ||
+        missingRequired ||
+        scanNotReady ||
+        scanRejected;
+
+    const submitLabel = (() => {
+        if (isSaving) return 'Submitting…';
+        if (isOtpOpen) return 'Awaiting verification…';
+        if (scanning) return 'Airy is scanning…';
+        if (!selectedFile) return 'Upload a receipt first';
+        if (missingRequired) return 'Fill all required fields';
+        if (scanError) return 'Fix receipt scan error';
+        if (!scanVerdict) return 'Waiting for AI scan…';
+        if (scanVerdict.verdict === 'reject' && !overrideReject) return 'AI rejected receipt';
+        return 'Submit Claim';
+    })();
 
     const handleCreate = async () => {
         if (isOtpOpen || pendingCreate) return;
         const f = formRef.current;
-        if (!isValidId(f.employee_id)) { toast.showError('Please select a valid employee'); return; }
-        if (!f.claim_type_id || f.claim_type_id === 'undefined' || Number.isNaN(Number(f.claim_type_id))) { toast.showError('Please select a claim type'); return; }
-        if (!f.amount || Number(f.amount) <= 0) { toast.showError('Amount must be greater than zero'); return; }
+
+        if (!isValidId(f.employee_id)) {
+            toast.showError('Please select a valid employee');
+            return;
+        }
+        if (
+            !f.claim_type_id ||
+            f.claim_type_id === 'undefined' ||
+            Number.isNaN(Number(f.claim_type_id))
+        ) {
+            toast.showError('Please select a claim type');
+            return;
+        }
+        if (!f.amount || Number(f.amount) <= 0) {
+            toast.showError('Amount must be greater than zero');
+            return;
+        }
+        if (!selectedFileRef.current) {
+            toast.showError('Upload a receipt image before submitting.');
+            return;
+        }
+        if (!scanVerdict) {
+            toast.showError('Wait for Airy to finish scanning the receipt.');
+            return;
+        }
+        if (scanning) {
+            toast.showError('Airy is still scanning. Please wait.');
+            return;
+        }
+        if (scanError) {
+            toast.showError('Fix the receipt scan error before submitting.');
+            return;
+        }
+        if (scanVerdict.verdict === 'reject' && !overrideReject) {
+            toast.showError(
+                'Airy rejected this receipt. Fix the issue or check the override box.'
+            );
+            return;
+        }
 
         if (!otpActive) {
             setPendingCreate(true);
@@ -281,22 +475,26 @@ const ClaimsManager = () => {
         if (!isValidId(f.employee_id)) { toast.showError('Please select a valid employee'); return; }
         if (!f.claim_type_id || f.claim_type_id === 'undefined' || Number.isNaN(Number(f.claim_type_id))) { toast.showError('Please select a claim type'); return; }
         if (!f.amount || Number(f.amount) <= 0) { toast.showError('Amount must be greater than zero'); return; }
+        if (!file) { toast.showError('Upload a receipt image before submitting.'); return; }
+        if (!scanVerdict) { toast.showError('Wait for Airy to finish scanning the receipt.'); return; }
+        if (scanVerdict.verdict === 'reject' && !overrideReject) {
+            toast.showError('Airy rejected this receipt. Fix the issue or check the override box.');
+            return;
+        }
 
         setIsSaving(true);
         try {
             let receiptUrl = f.receipt_url || null;
-            if (file) {
-                setUploadingImage(true);
-                try {
-                    receiptUrl = await uploadImageToStorage(file);
-                    setForm((prev) => ({ ...prev, receipt_url: receiptUrl }));
-                } catch {
-                    setUploadingImage(false);
-                    setIsSaving(false);
-                    return;
-                }
+            setUploadingImage(true);
+            try {
+                receiptUrl = await uploadImageToStorage(file);
+                setForm((prev) => ({ ...prev, receipt_url: receiptUrl }));
+            } catch {
                 setUploadingImage(false);
+                setIsSaving(false);
+                return;
             }
+            setUploadingImage(false);
 
             await postData('', {
                 employee_id: f.employee_id,
@@ -304,6 +502,11 @@ const ClaimsManager = () => {
                 amount: Number(f.amount),
                 description: f.description.trim() || null,
                 receipt_url: receiptUrl,
+                ai_verdict: scanVerdict.verdict,
+                ai_confidence: scanVerdict.confidence,
+                ai_notes: scanVerdict.notes,
+                ai_override:
+                    scanVerdict.verdict === 'reject' && overrideReject ? true : false,
             });
 
             toast.showSuccess('Claim submitted');
@@ -311,6 +514,9 @@ const ClaimsManager = () => {
             setForm(EMPTY_FORM);
             setSelectedFile(null);
             setUploadedFileName(null);
+            setScanVerdict(null);
+            setScanError(null);
+            setOverrideReject(false);
             if (imagePreviewUrl) {
                 URL.revokeObjectURL(imagePreviewUrl);
                 setImagePreviewUrl(null);
@@ -387,6 +593,8 @@ const ClaimsManager = () => {
             setDeleteTarget(null);
             return;
         }
+        console.log('[delete] sending id =', JSON.stringify(deleteTarget.id));
+        console.log('[delete] is UUID?', UUID_RE.test(deleteTarget.id));
         setIsDeleting(true);
         try {
             await deleteData(`/${deleteTarget.id}`);
@@ -731,6 +939,9 @@ const ClaimsManager = () => {
                         setForm(EMPTY_FORM);
                         setSelectedFile(null);
                         setUploadedFileName(null);
+                        setScanVerdict(null);
+                        setScanError(null);
+                        setOverrideReject(false);
                         if (imagePreviewUrl) {
                             URL.revokeObjectURL(imagePreviewUrl);
                             setImagePreviewUrl(null);
@@ -745,6 +956,9 @@ const ClaimsManager = () => {
                                 setForm(EMPTY_FORM);
                                 setSelectedFile(null);
                                 setUploadedFileName(null);
+                                setScanVerdict(null);
+                                setScanError(null);
+                                setOverrideReject(false);
                                 if (imagePreviewUrl) {
                                     URL.revokeObjectURL(imagePreviewUrl);
                                     setImagePreviewUrl(null);
@@ -755,10 +969,10 @@ const ClaimsManager = () => {
                             <Button
                                 type="button"
                                 onClick={handleCreate}
-                                disabled={isSaving || isOtpOpen || pendingCreate}
+                                disabled={submitDisabled}
                                 className="w-full sm:w-auto font-rethink"
                             >
-                                {isSaving ? 'Submitting…' : isOtpOpen ? 'Awaiting verification…' : 'Submit Claim'}
+                                {submitLabel}
                             </Button>
                         </div>
                     }
@@ -798,10 +1012,9 @@ const ClaimsManager = () => {
                                 type="number" min="0" step="0.01"
                                 value={form.amount}
                                 onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                                placeholder="0.00"
+                                placeholder="0000"
                                 leftIcon={
                                     <span className="flex items-center gap-1">
-                                        <Banknote className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                                         <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">₱</span>
                                     </span>
                                 }
@@ -846,8 +1059,9 @@ const ClaimsManager = () => {
                                     </button>
                                 )}
                             </div>
+
                             {imagePreviewUrl && (
-                                <div className="mt-3 space-y-2">
+                                <div className="mt-3 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <ImageIcon className="h-4 w-4 text-emerald-500" />
@@ -858,16 +1072,34 @@ const ClaimsManager = () => {
                                         </div>
                                         <span className="text-[10px] text-amber-500 font-rethink">Will be uploaded on submit</span>
                                     </div>
-                                    <div className="relative rounded-lg border border-line overflow-hidden dark:border-line/30 bg-paper/50">
-                                        <img
-                                            src={imagePreviewUrl}
-                                            alt="Receipt preview"
-                                            className="max-h-48 w-full object-contain"
-                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                        />
-                                    </div>
+
+                                    <AiryReceiptScanner
+                                        imagePreviewUrl={imagePreviewUrl}
+                                        scanning={scanning}
+                                        verdict={scanVerdict}
+                                        onRescan={runReceiptScan}
+                                    />
+
+                                    {scanError && (
+                                        <p className="text-[11px] text-red-600 font-rethink">{scanError}</p>
+                                    )}
+
+                                    {scanVerdict?.verdict === 'reject' && (
+                                        <label className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/60 p-2.5 dark:border-red-800/40 dark:bg-red-950/30">
+                                            <input
+                                                type="checkbox"
+                                                checked={overrideReject}
+                                                onChange={(e) => setOverrideReject(e.target.checked)}
+                                                className="mt-0.5 h-3.5 w-3.5 accent-red-600"
+                                            />
+                                            <span className="text-[11px] text-red-800 dark:text-red-300 font-rethink leading-relaxed">
+                                                Airy rejected this receipt. I confirm I have manually verified the receipt and want to override.
+                                            </span>
+                                        </label>
+                                    )}
                                 </div>
                             )}
+
                             {uploadingImage && (
                                 <div className="mt-2 flex items-center gap-2 text-xs text-muted font-rethink">
                                     <Loader2 className="h-3 w-3 animate-spin" />

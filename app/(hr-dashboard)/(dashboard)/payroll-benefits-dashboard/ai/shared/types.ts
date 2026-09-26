@@ -7,6 +7,15 @@ export interface ChatMessage {
   createdAt: string;
   provider?: ProviderName;
   error?: boolean;
+  attachments?: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+  type: "image";
+  url: string;
+  label?: string;
+  downloadUrl?: string;
+  printUrl?: string;
 }
 
 export interface LLMRequest {
@@ -14,6 +23,14 @@ export interface LLMRequest {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  context?: PayrollContext;
+  employeeId?: string;
+  adminContext?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
 }
 
 export interface LLMResponse {
@@ -25,11 +42,13 @@ export interface LLMResponse {
     completionTokens: number;
     totalTokens: number;
   };
+  attachment?: MessageAttachment;
 }
 
 export interface StreamChunk {
   delta: string;
   done: boolean;
+  attachment?: MessageAttachment;
 }
 
 export interface PayrollContext {
@@ -62,45 +81,67 @@ export interface PayrollContext {
   }>;
 }
 
-export interface AIInsight {
-  id: string;
-  type: "info" | "warning" | "success" | "error";
-  title: string;
-  message: string;
-  action?: {
-    label: string;
-    href?: string;
-    onClick?: () => void;
-  };
-}
+export type AiryBlock =
+  | {
+      kind: "heading";
+      text: string;
+    }
+  | {
+      kind: "summary";
+      items: Array<{
+        label: string;
+        value: string;
+        tint?: "default" | "warning" | "danger" | "success";
+      }>;
+    }
+  | {
+      kind: "employee_table";
+      items: Array<{
+        name: string;
+        employee_id_number: string;
+        position: string | null;
+        department: string | null;
+        warnings: Array<"missing_bank" | "missing_birthdate">;
+      }>;
+    }
+  | {
+      kind: "run_table";
+      items: Array<{
+        id: number;
+        period_start: string;
+        period_end: string;
+        approval_status: string;
+        note?: string | null;
+      }>;
+    }
+  | {
+      kind: "top_rated_table";
+      items: Array<{
+        name: string;
+        employee_id_number: string;
+        department: string | null;
+        rating: number;
+        letter_grade: string | null;
+      }>;
+    }
+  | {
+      kind: "link";
+      label: string;
+      full: string;
+      href: string;
+      allowed: boolean;
+      reason?: string;
+    }
+  | {
+      kind: "text";
+      text: string;
+    };
 
-export interface MessageAttachment {
-  type: "image";
-  url: string;
-  label?: string;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  createdAt: string;
-  provider?: ProviderName;
-  error?: boolean;
-  attachments?: MessageAttachment[];
-}
-
-export interface StreamChunk {
-  delta: string;
-  done: boolean;
+export interface AiryStructuredReply {
+  text: string;
+  blocks?: AiryBlock[];
   attachment?: MessageAttachment;
-}
-
-export interface LLMRequest {
-  messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
-  temperature?: number;
-  maxTokens?: number;
-  stream?: boolean;
-  context?: PayrollContext;
-  employeeId?: string;
+  forceLogout?: boolean;
+  accessDenied?: boolean;
+  redirectTo?: string;
 }

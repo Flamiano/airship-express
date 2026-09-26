@@ -8,6 +8,7 @@ import {
   ROLE_DASHBOARD_MAP,
   EMPLOYEE_ACCESS_ROUTES,
 } from "../utils/roleValidation";
+import { SESSION_START_KEY, SESSION_ABSOLUTE_MS } from "../constants/session";
 
 export function useHRAccess() {
   const [isLoading, setIsLoading] = useState(true);
@@ -31,6 +32,21 @@ export function useHRAccess() {
       if (!session) {
         router.push("/hrAuth");
         return;
+      }
+
+      // --- Absolute session expiry check (from your commit) ---
+      const start = Number(localStorage.getItem(SESSION_START_KEY));
+      if (start && !Number.isNaN(start)) {
+        const elapsed = Date.now() - start;
+        if (elapsed >= SESSION_ABSOLUTE_MS) {
+          await supabase.auth.signOut();
+          localStorage.removeItem(SESSION_START_KEY);
+          router.push("/hrAuth");
+          router.refresh();
+          return;
+        }
+      } else {
+        localStorage.setItem(SESSION_START_KEY, Date.now().toString());
       }
 
       // --- HR Admin lookup ---
@@ -66,7 +82,9 @@ export function useHRAccess() {
         .maybeSingle();
 
       if (!employee || employee.status !== "active") {
-        console.error("useHRAccess: no linked active employee found for session");
+        console.error(
+          "useHRAccess: no linked active employee found for session"
+        );
         router.push("/hrAuth");
         return;
       }
@@ -87,7 +105,9 @@ export function useHRAccess() {
         [employee.first_name, employee.last_name]
           .filter(Boolean)
           .join(" ")
-          .trim() || employee.email || "Employee";
+          .trim() ||
+        employee.email ||
+        "Employee";
 
       setUserRole("employee");
       setUserData({

@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+const MISSING_TABLE_RE =
+  /schema cache|could not find the table|does not exist|relation .* does not exist/i;
+
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireAdmin(request);
@@ -35,22 +38,41 @@ export async function GET(request: NextRequest) {
       .from("hr4_compen_employee_summary")
       .select("*");
 
+    let employeeRows: any[] = [];
+
     if (viewError) {
-      console.error("Error fetching employee summary:", viewError);
-      return NextResponse.json({ error: viewError.message }, { status: 500 });
+      if (MISSING_TABLE_RE.test(viewError.message)) {
+        console.warn(
+          "[compensation/summary] hr4_compen_employee_summary missing — using hr1_employees fallback."
+        );
+        const { data: fallback, error: fallbackErr } = await supabaseAdmin
+          .from("hr1_employees")
+          .select("id, first_name, last_name, status")
+          .eq("status", "active");
+        if (fallbackErr) {
+          console.error("[compensation/summary] fallback failed:", fallbackErr);
+        }
+        employeeRows = (fallback ?? []).map((e: any) => ({
+          employee_id: e.id,
+          employee_status: e.status,
+          effective_daily_rate: 0,
+          is_custom_rate: false,
+        }));
+      } else {
+        console.error("Error fetching employee summary:", viewError);
+        return NextResponse.json({ error: viewError.message }, { status: 500 });
+      }
+    } else {
+      employeeRows = employees ?? [];
     }
 
-    const totalMonthlyPayroll = (employees || []).reduce(
+    const totalMonthlyPayroll = employeeRows.reduce(
       (sum, e) => sum + (e.effective_daily_rate || 0) * 24,
       0
     );
     const averageSalary =
-      employees && employees.length > 0
-        ? totalMonthlyPayroll / employees.length
-        : 0;
-    const customRateCount = (employees || []).filter(
-      (e) => e.is_custom_rate
-    ).length;
+      employeeRows.length > 0 ? totalMonthlyPayroll / employeeRows.length : 0;
+    const customRateCount = employeeRows.filter((e) => e.is_custom_rate).length;
 
     const { data: allowances, error: allowError } = await supabaseAdmin
       .from("hr4_compen_employee_benefits")

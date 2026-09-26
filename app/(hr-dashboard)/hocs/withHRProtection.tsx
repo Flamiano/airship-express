@@ -3,6 +3,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '../supabase/client';
 import Loader from '@/app/components/Loader';
 import { validateHRRole } from '../utils/roleValidation';
+import {
+    SESSION_START_KEY,
+    SESSION_ABSOLUTE_MS,
+} from '../constants/session';
 
 export function withHRProtection<P extends object>(
     WrappedComponent: React.ComponentType<P>
@@ -20,11 +24,27 @@ export function withHRProtection<P extends object>(
 
         const checkAccess = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
 
                 if (!session) {
                     router.push('/hrAuth');
                     return;
+                }
+
+                const start = Number(localStorage.getItem(SESSION_START_KEY));
+                if (start && !Number.isNaN(start)) {
+                    const elapsed = Date.now() - start;
+                    if (elapsed >= SESSION_ABSOLUTE_MS) {
+                        await supabase.auth.signOut();
+                        localStorage.removeItem(SESSION_START_KEY);
+                        router.push('/hrAuth');
+                        router.refresh();
+                        return;
+                    }
+                } else {
+                    localStorage.setItem(SESSION_START_KEY, Date.now().toString());
                 }
 
                 const { data: userRole, error } = await supabase
@@ -39,7 +59,6 @@ export function withHRProtection<P extends object>(
                     return;
                 }
 
-                // Validate role for this path
                 const validation = await validateHRRole(userRole.role, pathname);
 
                 if (!validation.isValid) {

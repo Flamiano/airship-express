@@ -612,3 +612,35 @@ export interface HR4ClaimFormatted extends HR4Claim {
   claim_type_name: string | null;
   reviewed_by_name: string | null;
 }
+
+export interface HR4CompenSalaryGrade {
+  id: number;
+  grade_code: string;
+  grade_name: string;
+  grade_level: number;
+  min_salary: number;
+  mid_salary: number;
+  max_salary: number;
+  step_increment: number | null;
+  market_reference: string | null;
+  description: string | null;
+  is_active: boolean | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_modified_by: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+}
+
+export interface HR4CompenPayStep {
+  id: number;
+  grade_id: number;
+  step_number: number;
+  step_amount: number;
+  effective_date: string;
+  expiry_date: string | null;
+  is_active: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+}

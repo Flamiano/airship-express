@@ -130,6 +130,12 @@ export async function POST(request: NextRequest) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
+    const admin = authResult as {
+      id?: string;
+      email?: string;
+      fullName?: string;
+      role?: string;
+    };
 
     let body: any = {};
     try {
@@ -144,28 +150,18 @@ export async function POST(request: NextRequest) {
     const employeeId = normalizeId(body?.employee_id);
     const claimTypeIdRaw = body?.claim_type_id;
     const amountRaw = body?.amount;
+    const receiptUrlRaw = body?.receipt_url;
+    const descriptionRaw = body?.description;
 
     if (!employeeId || !UUID_RE.test(employeeId)) {
-      console.error(
-        "[claims POST] invalid employee_id:",
-        JSON.stringify(body?.employee_id)
-      );
       return NextResponse.json(
-        {
-          error:
-            "Invalid employee. Please select a valid employee from the list and try again.",
-          received_employee_id: body?.employee_id ?? null,
-        },
+        { error: "Invalid employee. Please select a valid employee." },
         { status: 400 }
       );
     }
 
     const claimTypeId = Number(claimTypeIdRaw);
     if (!Number.isFinite(claimTypeId) || claimTypeId <= 0) {
-      console.error(
-        "[claims POST] invalid claim_type_id:",
-        JSON.stringify(claimTypeIdRaw)
-      );
       return NextResponse.json(
         { error: "Invalid claim type. Please select a valid claim type." },
         { status: 400 }
@@ -174,23 +170,71 @@ export async function POST(request: NextRequest) {
 
     const amount = Number(amountRaw);
     if (!Number.isFinite(amount) || amount <= 0) {
-      console.error("[claims POST] invalid amount:", JSON.stringify(amountRaw));
       return NextResponse.json(
         { error: "Amount must be a number greater than zero." },
         { status: 400 }
       );
     }
 
+    if (!receiptUrlRaw || typeof receiptUrlRaw !== "string") {
+      return NextResponse.json(
+        {
+          error:
+            "Receipt is required. Upload a receipt image before submitting.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const aiVerdict = body?.ai_verdict;
+    const aiConfidence = body?.ai_confidence;
+    const aiNotes = body?.ai_notes;
+    const aiOverride = body?.ai_override === true;
+
+    if (
+      aiVerdict !== "approve" &&
+      aiVerdict !== "review" &&
+      aiVerdict !== "reject"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Receipt has not been verified yet. Run the AI scan before submitting.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (aiVerdict === "reject" && !aiOverride) {
+      return NextResponse.json(
+        {
+          error:
+            "AI rejected this receipt. Fix the issue or check the override box before submitting.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const insertPayload: Record<string, any> = {
+      employee_id: employeeId,
+      claim_type_id: claimTypeId,
+      amount,
+      description: descriptionRaw ?? null,
+      receipt_url: receiptUrlRaw,
+      status: "pending",
+    };
+
+    if (hasClaimAiColumns) {
+      insertPayload.ai_verdict = aiVerdict;
+      insertPayload.ai_confidence =
+        typeof aiConfidence === "number" ? aiConfidence : null;
+      insertPayload.ai_notes = aiNotes ?? null;
+      insertPayload.ai_override = aiOverride;
+    }
+
     const { data, error } = await supabaseAdmin
       .from("hr4_claims")
-      .insert({
-        employee_id: employeeId,
-        claim_type_id: claimTypeId,
-        amount,
-        description: body.description ?? null,
-        receipt_url: body.receipt_url ?? null,
-        status: "pending",
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -198,6 +242,21 @@ export async function POST(request: NextRequest) {
       console.error("[claims POST] insert error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    await supabaseAdmin.from("hr4_claim_receipt_verifications").insert({
+      claim_id: data.id,
+      employee_id: employeeId,
+      receipt_url: receiptUrlRaw,
+      claimed_amount: amount,
+      claimed_description: descriptionRaw ?? null,
+      claimed_claim_type: String(claimTypeId),
+      verdict: aiVerdict,
+      confidence: typeof aiConfidence === "number" ? aiConfidence : 0,
+      notes: aiNotes ?? null,
+      provider: body?.ai_provider ?? "unknown",
+      model: body?.ai_model ?? "unknown",
+      verified_by: admin.id ?? null,
+    });
 
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
@@ -208,3 +267,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+const hasClaimAiColumns = true;
