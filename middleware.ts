@@ -107,7 +107,7 @@ function getConfiguredBaseHost(): {
   baseHost: string;
   baseWithoutPort: string;
 } {
-  const rawEnv = process.env.APP_BASE_DOMAIN || "localhost:3000";
+  const rawEnv = process.env.APP_BASE_DOMAIN || "airship-express.com";
 
   try {
     if (rawEnv.startsWith("http://") || rawEnv.startsWith("https://")) {
