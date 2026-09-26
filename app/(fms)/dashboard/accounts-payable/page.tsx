@@ -15,7 +15,7 @@ import { LoadingState } from "../../fmscomponents/ui/LoadingState";
 
 import { BillForm } from "../../fmscomponents/financial/ap/BillForm";
 import { BillDetails } from "../../fmscomponents/financial/ap/BillDetails";
-import { AccountPayable, BillFormData } from "../../fmscomponents/financial/ap/types";
+import { AccountPayable, BillFormData, APStatus } from "../../fmscomponents/financial/ap/types";
 
 import { 
   CreditCard, 
@@ -92,14 +92,13 @@ export default function AccountsPayablePage() {
 
       if (error) {
         toast.error("Failed to fetch bills", { description: error.message });
-        console.error("Error fetching bills:", error.message, error.code, error.details, error.hint);
+        console.error("Error fetching bills:", error.message);
       } else if (data) {
         setBills(data as AccountPayable[]);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load accounts payable.";
       toast.error("Failed to fetch bills", { description: message });
-      console.error("Error fetching bills:", message);
     } finally {
       setLoading(false);
     }
@@ -109,7 +108,7 @@ export default function AccountsPayablePage() {
     queueMicrotask(() => { void fetchBills(); });
   }, [fetchBills]);
 
-  const handleStatusUpdate = async (bill: AccountPayable, newStatus: "pending" | "approved" | "paid") => {
+  const handleStatusUpdate = async (bill: AccountPayable, newStatus: APStatus) => {
     const { data, error } = await supabase.rpc("update_ap_bill_status", {
       p_bill_id: bill.id,
       p_new_status: newStatus,
@@ -123,18 +122,16 @@ export default function AccountsPayablePage() {
     const result = data as { success?: boolean; error?: string } | null;
     if (result?.success === false || !result?.success) {
       toast.error("Integrated update failed", {
-        description: result?.error || "The database did not persist this status change.",
+        description: result?.error || "The database rejected this status change.",
       });
       await fetchBills();
       return;
     }
 
     toast.success(`Bill status updated to ${newStatus}`, {
-      description: newStatus === "paid" 
-        ? "Cross-posted to Disbursements and General Ledger."
-        : newStatus === "approved" 
-        ? "Queued to Disbursements ledger." 
-        : "Status synchronized across modules."
+      description: newStatus === "approved" 
+        ? "Approved and queued for disbursement payout." 
+        : "Status updated successfully."
     });
 
     await fetchBills();
@@ -143,21 +140,30 @@ export default function AccountsPayablePage() {
   // Handle Bill Submission
   const handleAddBill = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.vendor_name || !formData.bill_number || !formData.amount_due || !formData.due_date) {
+    
+    const vendorTrimmed = formData.vendor_name.trim();
+    const billTrimmed = formData.bill_number.trim();
+    const amountVal = parseFloat(formData.amount_due);
+
+    if (!vendorTrimmed || !billTrimmed || !formData.amount_due || !formData.due_date) {
       toast.error("Please fill in all required fields.");
       return;
     }
 
+    if (!Number.isFinite(amountVal) || amountVal <= 0) {
+      toast.error("Amount must be a valid positive number.");
+      return;
+    }
+
     setIsSubmitting(true);
-    const amountVal = parseFloat(formData.amount_due);
 
     try {
       const { data, error } = await supabase.rpc("create_ap_bill", {
-        p_vendor_name: formData.vendor_name.trim(),
-        p_bill_number: formData.bill_number.trim(),
+        p_vendor_name: vendorTrimmed,
+        p_bill_number: billTrimmed,
         p_amount_due: amountVal,
         p_due_date: formData.due_date,
-        p_initial_status: formData.status,
+        p_initial_status: formData.status, 
       });
 
       if (error) throw error;
@@ -167,21 +173,17 @@ export default function AccountsPayablePage() {
         throw new Error(result.error || "Create bill RPC reported failure.");
       }
 
-      if (!result || result.success !== true) {
-        throw new Error("Create bill RPC returned an unexpected response.");
-      }
-
       await fetchBills();
 
-      toast.success("Vendor bill added successfully!", {
-        description: `Billed ${formatPeso(amountVal)} from ${formData.vendor_name}. Integrated into GL.`,
+      toast.success("Vendor bill registered successfully!", {
+        description: `Billed ${formatPeso(amountVal)} from ${vendorTrimmed}. Queued for approval.`,
       });
 
       setIsModalOpen(false);
       setFormData({ vendor_name: "", bill_number: "", amount_due: "", due_date: "", status: "pending" });
     } catch (error) {
       toast.error("Failed to create bill", {
-        description: error instanceof Error ? error.message : "Unable to create the vendor bill.",
+        description: error instanceof Error ? error.message : "Unable to register the vendor bill.",
       });
     } finally {
       setIsSubmitting(false);
@@ -190,20 +192,26 @@ export default function AccountsPayablePage() {
 
   // Metrics Calculations
   const totalOutstanding = bills
-    .filter(b => b.status?.toLowerCase() !== "paid")
-    .reduce((sum, b) => sum + (Number(b.amount_due) || 0), 0);
+    .filter(b => {
+      const s = b.status?.toLowerCase();
+      return s !== "paid" && s !== "cancelled" && s !== "rejected";
+    })
+    .reduce((sum, b) => {
+      const originalAmt = Number(b.total_amount) || Number(b.amount_due) || 0;
+      const paidAmt = Number(b.amount_paid) || 0;
+      return sum + Math.max(0, originalAmt - paidAmt);
+    }, 0);
 
-  const totalPaidMonth = bills
+  const totalSettledAllTime = bills
     .filter(b => b.status?.toLowerCase() === "paid")
-    .reduce((sum, b) => sum + (Number(b.amount_due) || 0), 0);
+    .reduce((sum, b) => sum + (Number(b.total_amount) || Number(b.amount_due) || 0), 0);
 
   const pendingApprovalCount = bills.filter(b => b.status?.toLowerCase() === "pending").length;
 
-  // AP-specific analysis derived from existing bills data
   const payableStatusDistribution = useMemo(() => {
-    const grandTotal = bills.reduce((sum, b) => sum + (Number(b.amount_due) || 0), 0) || 1;
+    const grandTotal = bills.reduce((sum, b) => sum + (Number(b.total_amount) || Number(b.amount_due) || 0), 0) || 1;
     const byStatus = (s: string) => bills.filter((b) => b.status?.toLowerCase() === s);
-    const sumAmt = (arr: AccountPayable[]) => arr.reduce((sum, b) => sum + (Number(b.amount_due) || 0), 0);
+    const sumAmt = (arr: AccountPayable[]) => arr.reduce((sum, b) => sum + (Number(b.total_amount) || Number(b.amount_due) || 0), 0);
 
     const pending = byStatus("pending");
     const approved = byStatus("approved");
@@ -230,19 +238,26 @@ export default function AccountsPayablePage() {
     const later = { count: 0, amount: 0 };
 
     bills.forEach((b) => {
-      if (b.status?.toLowerCase() === "paid") return;
-      const amt = Number(b.amount_due) || 0;
+      const s = b.status?.toLowerCase();
+      if (s === "paid" || s === "cancelled" || s === "rejected") return;
+      
+      const originalAmt = Number(b.total_amount) || Number(b.amount_due) || 0;
+      const paidAmt = Number(b.amount_paid) || 0;
+      const remainingAmt = Math.max(0, originalAmt - paidAmt);
+      
+      if (remainingAmt <= 0) return;
+
       const due = new Date(b.due_date);
       due.setHours(0, 0, 0, 0);
       if (due < today) {
         overdue.count += 1;
-        overdue.amount += amt;
+        overdue.amount += remainingAmt;
       } else if (due <= sevenDaysOut) {
         dueSoon.count += 1;
-        dueSoon.amount += amt;
+        dueSoon.amount += remainingAmt;
       } else {
         later.count += 1;
-        later.amount += amt;
+        later.amount += remainingAmt;
       }
     });
 
@@ -267,11 +282,12 @@ export default function AccountsPayablePage() {
   // CSV Export
   const handleExportCSV = () => {
     if (filteredBills.length === 0) return;
-    const headers = ["Bill Number", "Vendor", "Amount Due (PHP)", "Due Date", "Status"];
+    const headers = ["Bill Number", "Vendor", "Original Amount", "Amount Paid", "Due Date", "Status"];
     const rows = filteredBills.map((bill) => [
       `"${bill.bill_number}"`,
       `"${(bill.vendor_name || "").replace(/"/g, '""')}"`,
-      bill.amount_due,
+      Number(bill.total_amount) || Number(bill.amount_due) || 0,
+      Number(bill.amount_paid) || 0,
       bill.due_date,
       bill.status,
     ]);
@@ -307,12 +323,17 @@ export default function AccountsPayablePage() {
       )
     },
     {
-      header: "Amount Due",
-      accessor: (bill) => (
-        <span className="font-black text-foreground tracking-tight font-mono text-sm">
-          {formatPeso(Number(bill.amount_due))}
-        </span>
-      )
+      header: "Outstanding Balance",
+      accessor: (bill) => {
+        const originalAmt = Number(bill.total_amount) || Number(bill.amount_due) || 0;
+        const paidAmt = Number(bill.amount_paid) || 0;
+        const remaining = Math.max(0, originalAmt - paidAmt);
+        return (
+          <span className="font-black text-foreground tracking-tight font-mono text-sm">
+            {formatPeso(remaining)}
+          </span>
+        );
+      }
     },
     {
       header: "Due Date",
@@ -331,28 +352,36 @@ export default function AccountsPayablePage() {
     {
       header: "Actions / Status",
       className: "text-right",
-      accessor: (bill) => (
-        <div className="flex items-center justify-end gap-2">
-          <button 
-            onClick={() => setSelectedBill(bill)}
-            className="p-1.5 text-muted-foreground hover:text-[#e5167e] hover:bg-[#e5167e]/10 rounded-lg transition-all duration-150 border border-transparent hover:border-[#e5167e]/20"
-            title="View Details"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <select
-            value={bill.status}
-            onChange={(e) => handleStatusUpdate(bill, e.target.value as "pending" | "approved" | "paid")}
-            className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl border border-border bg-card text-foreground outline-none focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/20 transition cursor-pointer shadow-sm hover:border-[#e5167e]/50"
-          >
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="paid">Paid</option>
-          </select>
-        </div>
-      )
+      accessor: (bill) => {
+        const s = bill.status?.toLowerCase();
+        const isPaid = s === "paid" || s === "partially_paid";
+        const isTerminal = isPaid || s === "cancelled";
+        const isApproved = s === "approved";
+        
+        return (
+          <div className="flex items-center justify-end gap-2">
+            <button 
+              onClick={() => setSelectedBill(bill)}
+              className="p-1.5 text-muted-foreground hover:text-[#e5167e] hover:bg-[#e5167e]/10 rounded-lg transition-all duration-150 border border-transparent hover:border-[#e5167e]/20"
+              title="View Details"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            <select
+              value={bill.status}
+              onChange={(e) => handleStatusUpdate(bill, e.target.value as APStatus)}
+              disabled={isTerminal || isApproved}
+              className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl border border-border bg-card text-foreground outline-none focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/20 transition cursor-pointer shadow-sm hover:border-[#e5167e]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {s === "pending" && <option value="pending">Pending</option>}
+              {(s === "pending" || s === "approved") && <option value="approved">Approved</option>}
+              {isTerminal && <option value={bill.status}>{bill.status}</option>}
+            </select>
+          </div>
+        );
+      }
     }
-  ], [handleStatusUpdate]);
+  ], []);
 
   return (
     <div className="p-6 md:p-8 space-y-7 bg-background min-h-screen text-foreground transition-colors duration-200">
@@ -404,9 +433,9 @@ export default function AccountsPayablePage() {
       {/* METRIC SUMMARY CARDS */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5 items-stretch">
         <SummaryCard
-          title="Total Outstanding AP"
+          title="Total Outstanding Liability"
           value={formatPeso(totalOutstanding)}
-          subtitle={`Across ${bills.filter(b => b.status?.toLowerCase() !== 'paid').length} active bills`}
+          subtitle={`Across ${bills.filter(b => b.status?.toLowerCase() !== 'paid' && b.status?.toLowerCase() !== 'cancelled' && b.status?.toLowerCase() !== 'rejected').length} active bills`}
           trend="Live Exposure"
           isPositive={false}
           icon={<CreditCard size={20} />}
@@ -431,8 +460,8 @@ export default function AccountsPayablePage() {
         />
         <SummaryCard
           title="Paid & Settled"
-          value={formatPeso(totalPaidMonth)}
-          subtitle="Reconciled payouts"
+          value={formatPeso(totalSettledAllTime)}
+          subtitle="All-time reconciled payouts"
           trend="Settled"
           isPositive={true}
           icon={<CheckCircle2 size={20} />}
@@ -558,7 +587,7 @@ export default function AccountsPayablePage() {
                 <h3 className="text-base font-bold text-foreground">Upcoming Obligations</h3>
               </div>
               <span className="text-xs font-bold text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-full border border-border/50">
-                Due Date Proximity
+                Remaining Liability
               </span>
             </div>
 
@@ -668,7 +697,9 @@ export default function AccountsPayablePage() {
                 <option value="all">All Statuses</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
+                <option value="partially_paid">Partially Paid</option>
                 <option value="paid">Paid</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
           </SearchFilterBar>

@@ -20,6 +20,41 @@ import { Copy, Eye, Pencil } from "lucide-react";
 const formatPeso = (val: number) =>
   new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(val);
 
+export const calculateInvoiceStatus = (
+  total: number,
+  paid: number,
+  dueDateStr: string
+): "Unpaid" | "Partially Paid" | "Paid" | "Overdue" => {
+  const validTotal = Number(total) || 0;
+  const validPaid = Math.max(0, Math.min(Number(paid) || 0, validTotal));
+
+  if (validTotal > 0 && validPaid >= validTotal) {
+    return "Paid";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let due = new Date(dueDateStr);
+  if (dueDateStr && dueDateStr.includes("-")) {
+    const parts = dueDateStr.split("-").map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+      due = new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+  }
+  due.setHours(0, 0, 0, 0);
+
+  if (due < today) {
+    return "Overdue";
+  }
+
+  if (validPaid > 0) {
+    return "Partially Paid";
+  }
+
+  return "Unpaid";
+};
+
 export default function AccountsReceivablePage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [collections, setCollections] = useState<CollectionHistoryRecord[]>([]);
@@ -42,23 +77,6 @@ export default function AccountsReceivablePage() {
   const [externalClientId, setExternalClientId] = useState("");
   const [externalWaybillId, setExternalWaybillId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const calculateInvoiceStatus = (
-    total: number,
-    paid: number,
-    dueDateStr: string
-  ): "Unpaid" | "Partially Paid" | "Paid" | "Overdue" => {
-    const validPaid = Math.max(0, Math.min(paid, total));
-    if (validPaid >= total && total > 0) return "Paid";
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDateStr);
-
-    if (due < today) return "Overdue";
-    if (validPaid > 0) return "Partially Paid";
-    return "Unpaid";
-  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -129,20 +147,39 @@ export default function AccountsReceivablePage() {
 
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedClientName = clientName.trim();
     const parsedAmount = parseFloat(totalAmount);
 
-    if (!clientName || isNaN(parsedAmount) || parsedAmount <= 0 || !dueDate) {
-      toast.error("Please fill in all required fields with valid values.");
+    if (!trimmedClientName) {
+      toast.error("Please provide a valid client name.");
+      return;
+    }
+
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Please enter a valid total amount greater than zero.");
+      return;
+    }
+
+    if (!dueDate || isNaN(Date.parse(dueDate))) {
+      toast.error("Please select a valid due date.");
+      return;
+    }
+
+    if (!invoiceDate || isNaN(Date.parse(invoiceDate))) {
+      toast.error("Please select a valid invoice date.");
       return;
     }
 
     setIsSubmitting(true);
-    const invNum = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const initialStatus = calculateInvoiceStatus(parsedAmount, 0, dueDate);
+    const year = new Date().getFullYear();
+const timeSuffix = String(Date.now()).slice(-5);
+const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+const invNum = `INV-${year}${timeSuffix}-${randomSuffix}`;
+const initialStatus = calculateInvoiceStatus(parsedAmount, 0, dueDate);
 
     const newInvoice = {
       invoice_number: invNum,
-      client_name: clientName,
+      client_name: trimmedClientName,
       total_amount: parsedAmount,
       amount_paid: 0,
       due_date: dueDate,
@@ -161,7 +198,7 @@ export default function AccountsReceivablePage() {
       resetForm();
       setIsCreateModalOpen(false);
       toast.success(`Invoice ${invNum} created successfully!`, {
-        description: `Billed ${formatPeso(parsedAmount)} to ${clientName}.`,
+        description: `Billed ${formatPeso(parsedAmount)} to ${trimmedClientName}.`,
       });
     }
     setIsSubmitting(false);
@@ -182,9 +219,16 @@ export default function AccountsReceivablePage() {
     e.preventDefault();
     if (!editingInvoice?.id) return;
 
+    const trimmedClientName = clientName.trim();
     const parsedAmount = parseFloat(totalAmount);
-    if (!clientName || isNaN(parsedAmount) || parsedAmount <= 0 || !dueDate) {
-      toast.error("Please provide valid invoice details.");
+
+    if (!trimmedClientName) {
+      toast.error("Client name cannot be blank.");
+      return;
+    }
+
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Please enter a valid total amount greater than zero.");
       return;
     }
 
@@ -193,19 +237,29 @@ export default function AccountsReceivablePage() {
       return;
     }
 
+    if (!dueDate || isNaN(Date.parse(dueDate))) {
+      toast.error("Please select a valid due date.");
+      return;
+    }
+
+    if (!invoiceDate || isNaN(Date.parse(invoiceDate))) {
+      toast.error("Please select a valid invoice date.");
+      return;
+    }
+
     setIsSubmitting(true);
     const updatedStatus = calculateInvoiceStatus(parsedAmount, editingInvoice.amount_paid, dueDate);
 
     const updatedData = {
-      client_name: clientName,
-      total_amount: parsedAmount,
-      due_date: dueDate,
-      invoice_date: invoiceDate,
-      status: updatedStatus,
-      external_client_id: externalClientId.trim() || null,
-      external_waybill_id: externalWaybillId.trim() || null,
-    };
-
+  client_name: trimmedClientName,
+  total_amount: parsedAmount,
+  due_date: dueDate,
+  invoice_date: invoiceDate,
+  status: updatedStatus,
+  external_client_id: externalClientId.trim() || null,
+  external_waybill_id: externalWaybillId.trim() || null,
+  updated_at: new Date().toISOString(),
+};
     const { error } = await supabase.from("ar_invoices").update(updatedData).eq("id", editingInvoice.id);
 
     if (error) {
@@ -229,7 +283,7 @@ export default function AccountsReceivablePage() {
   const totalReceivables = useMemo(() => invoices.reduce((acc, inv) => acc + inv.total_amount, 0), [invoices]);
   const totalPaid = useMemo(() => invoices.reduce((acc, inv) => acc + inv.amount_paid, 0), [invoices]);
   const outstandingBalance = useMemo(() => Math.max(0, totalReceivables - totalPaid), [totalReceivables, totalPaid]);
-  
+
   const pendingInvoices = useMemo(
     () => invoices.filter((inv) => inv.status === "Unpaid" || inv.status === "Partially Paid"),
     [invoices]
@@ -262,8 +316,15 @@ export default function AccountsReceivablePage() {
       const remaining = inv.total_amount - inv.amount_paid;
       if (remaining <= 0) return;
 
-      const due = new Date(inv.due_date);
+      let due = new Date(inv.due_date);
+      if (inv.due_date && inv.due_date.includes("-")) {
+        const parts = inv.due_date.split("-").map(Number);
+        if (parts.length === 3 && !parts.some(isNaN)) {
+          due = new Date(parts[0], parts[1] - 1, parts[2]);
+        }
+      }
       due.setHours(0, 0, 0, 0);
+
       const diffTime = today.getTime() - due.getTime();
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
@@ -279,32 +340,40 @@ export default function AccountsReceivablePage() {
 
   const portfolioStatusDistribution = useMemo(() => {
     const grandTotal = totalReceivables || 1;
-    const paidVal = totalPaid;
-    const partiallyPaidVal = partiallyPaidInvoices.reduce(
-      (acc, inv) => acc + (inv.total_amount - inv.amount_paid),
-      0
-    );
+
+    const paidVal = paidInvoices.reduce((acc, inv) => acc + inv.total_amount, 0);
+    const partiallyPaidVal = partiallyPaidInvoices.reduce((acc, inv) => acc + inv.total_amount, 0);
     const unpaidVal = unpaidInvoices.reduce((acc, inv) => acc + inv.total_amount, 0);
-    const overdueVal = overdueTotal;
+    const overdueVal = overdueInvoices.reduce((acc, inv) => acc + inv.total_amount, 0);
 
     return {
-      paid: { count: paidInvoices.length, amount: paidVal, pct: Math.round((paidVal / grandTotal) * 100) },
+      paid: {
+        count: paidInvoices.length,
+        amount: paidVal,
+        pct: Math.round((paidVal / grandTotal) * 100),
+      },
       partiallyPaid: {
         count: partiallyPaidInvoices.length,
         amount: partiallyPaidVal,
         pct: Math.round((partiallyPaidVal / grandTotal) * 100),
       },
-      unpaid: { count: unpaidInvoices.length, amount: unpaidVal, pct: Math.round((unpaidVal / grandTotal) * 100) },
-      overdue: { count: overdueInvoices.length, amount: overdueVal, pct: Math.round((overdueVal / grandTotal) * 100) },
+      unpaid: {
+        count: unpaidInvoices.length,
+        amount: unpaidVal,
+        pct: Math.round((unpaidVal / grandTotal) * 100),
+      },
+      overdue: {
+        count: overdueInvoices.length,
+        amount: overdueVal,
+        pct: Math.round((overdueVal / grandTotal) * 100),
+      },
     };
   }, [
     totalReceivables,
-    totalPaid,
     paidInvoices,
     partiallyPaidInvoices,
     unpaidInvoices,
     overdueInvoices,
-    overdueTotal,
   ]);
 
   const filteredInvoices = useMemo(() => {
@@ -513,7 +582,7 @@ export default function AccountsReceivablePage() {
         totalReceivables={totalReceivables}
         totalPaid={totalPaid}
         overdueTotal={overdueTotal}
-        unpaidAmount={portfolioStatusDistribution.unpaid.amount}
+        unpaidAmount={unpaidInvoices.reduce((acc, inv) => acc + inv.total_amount, 0)}
         collectionRate={collectionRate}
         pendingCount={pendingInvoices.length}
         unpaidCount={unpaidInvoices.length}

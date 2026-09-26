@@ -263,19 +263,25 @@ export default function CollectionsPage() {
     }
 
     // Preserve existing validation: amount_received <= remaining invoice balance
-    if (formData.invoice_id) {
-      const selected = openInvoices.find((inv) => String(inv.id) === formData.invoice_id);
-      if (selected) {
-        const total = Number(selected.total_amount) || 0;
-        const paid = Number(selected.amount_paid) || 0;
-        const remaining = Math.max(0, total - paid);
-        if (amount > remaining + 0.01) { // 0.01 margin for float precision
-          toast.error(`Validation Error: Amount exceeds remaining invoice balance (${formatPeso(remaining)}).`);
-          return;
-        }
-      }
-    }
+    // Validate that a collection cannot exceed the invoice's remaining balance.
+if (formData.invoice_id) {
+  const selected = openInvoices.find(
+    (inv) => String(inv.id) === formData.invoice_id
+  );
 
+  if (selected) {
+    const total = Number(selected.total_amount) || 0;
+    const paid = Number(selected.amount_paid) || 0;
+    const remaining = Math.max(0, total - paid);
+
+    if (Math.round(amount * 100) > Math.round(remaining * 100)) {
+      toast.error(
+        `Validation Error: Amount exceeds remaining invoice balance (${formatPeso(remaining)}).`
+      );
+      return;
+    }
+  }
+}
     setSubmitting(true);
     try {
       const refNum = formData.reference_number.trim() || `OR-${Date.now().toString().slice(-6)}`;
