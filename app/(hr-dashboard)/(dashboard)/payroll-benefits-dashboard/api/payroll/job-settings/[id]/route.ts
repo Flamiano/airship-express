@@ -36,8 +36,6 @@ export async function PUT(
       );
     }
 
-    // Select the existing row's daily_rate too (not just id) so we can log
-    // what it changed from.
     const { data: existing, error: checkError } = await supabaseAdmin
       .from("hr4_job_position_settings")
       .select("id, daily_rate")
@@ -87,9 +85,6 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Log the change so the "Edit History" clock icon on the Position tab
-    // has something to show — this was previously missing entirely, which
-    // is why history always came back empty even after a successful save.
     await supabaseAdmin.from("hr4_rate_change_log").insert({
       scope: "position",
       job_position_id: id,

@@ -4,16 +4,18 @@ import { requireAdmin } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const { id } = await params;
+
     const { data: steps, error } = await supabaseAdmin
       .from("hr4_compen_pay_steps")
       .select("*")
-      .eq("grade_id", params.id)
+      .eq("grade_id", id)
       .order("step_number", { ascending: true });
 
     if (error) {

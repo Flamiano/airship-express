@@ -4,13 +4,12 @@ import { requireAdmin } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
-    // requireAdmin returns the admin object on success
     const admin = authResult as {
       id: string;
       email: string;
@@ -18,6 +17,7 @@ export async function PUT(
       role: string;
     };
 
+    const { id } = await params;
     const body = await request.json();
 
     const updateData: any = {
@@ -41,7 +41,7 @@ export async function PUT(
     const { data: meritPlan, error } = await supabaseAdmin
       .from("hr4_compen_merit_planning")
       .update(updateData)
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -62,16 +62,18 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const { id } = await params;
+
     const { error } = await supabaseAdmin
       .from("hr4_compen_merit_planning")
       .delete()
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (error) {
       console.error("Error deleting merit plan:", error);

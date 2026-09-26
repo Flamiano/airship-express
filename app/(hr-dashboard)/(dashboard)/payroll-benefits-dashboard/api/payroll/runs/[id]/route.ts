@@ -2,12 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 import { requireAdmin } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/auth/requireAdmin";
 
-function extractIdFromUrl(url: string): string | null {
-  const parts = url.split("/");
-  const idIndex = parts.indexOf("runs") + 1;
-  return parts[idIndex] || null;
-}
-
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";

@@ -4,16 +4,18 @@ import { requireAdmin } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const { id } = await params;
+
     const { data: grade, error } = await supabaseAdmin
       .from("hr4_compen_salary_grades")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) {
@@ -24,7 +26,7 @@ export async function GET(
     const { data: steps, error: stepError } = await supabaseAdmin
       .from("hr4_compen_pay_steps")
       .select("*")
-      .eq("grade_id", params.id)
+      .eq("grade_id", id)
       .order("step_number", { ascending: true });
 
     if (stepError) {
@@ -44,12 +46,13 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const { id } = await params;
     const body = await request.json();
     const user = (request as any).user;
     const { steps, ...gradeData } = body;
@@ -73,7 +76,7 @@ export async function PUT(
         last_modified_by_name: user?.fullName || null,
         last_modified_by_email: user?.email || null,
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -86,11 +89,11 @@ export async function PUT(
       await supabaseAdmin
         .from("hr4_compen_pay_steps")
         .delete()
-        .eq("grade_id", params.id);
+        .eq("grade_id", id);
 
       if (steps.length > 0) {
         const stepsData = steps.map((step: any) => ({
-          grade_id: params.id,
+          grade_id: id,
           step_number: step.step_number,
           step_amount: step.step_amount,
           effective_date:
@@ -121,21 +124,23 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const { id } = await params;
+
     await supabaseAdmin
       .from("hr4_compen_pay_steps")
       .delete()
-      .eq("grade_id", params.id);
+      .eq("grade_id", id);
 
     const { error } = await supabaseAdmin
       .from("hr4_compen_salary_grades")
       .delete()
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (error) {
       console.error("Error deleting salary grade:", error);
