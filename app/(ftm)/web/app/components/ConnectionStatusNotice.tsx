@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFtmSettings } from "./FtmSettingsProvider";
 
 type NoticeState = "slow" | "offline" | null;
 
 export default function ConnectionStatusNotice() {
+  const { settings } = useFtmSettings();
   const [notice, setNotice] = useState<NoticeState>(null);
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export default function ConnectionStatusNotice() {
     };
   }, []);
 
-  if (!notice) return null;
+  if (!notice || !settings.system.networkNotices) return null;
 
   const isOffline = notice === "offline";
   return (

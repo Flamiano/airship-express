@@ -130,7 +130,7 @@ async function fetchOsrmRouteMetrics(waypoints: LatLng[]): Promise<{ distanceKm:
 }
 
 export default function VrdsMissionsPage() {
-  const [view, setView] = useState<"list" | "map">("list");
+  const [activeSection, setActiveSection] = useState<"summary" | "list" | "map">("summary");
   const [activeMarker, setActiveMarker] = useState<LeafletMarker | null>(null);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [showRouteLines, setShowRouteLines] = useState(true);
@@ -291,6 +291,14 @@ export default function VrdsMissionsPage() {
     return driver?.name || `Driver ${String(driverId)}`;
   };
 
+  const resolveDriverLocation = (driverId?: string | null) => {
+    if (!driverId) return null;
+    const driver = drivers.find((item) => String(item.id) === String(driverId)) as any;
+    const lat = Number(driver?.last_location_lat ?? driver?.latitude ?? driver?.location?.lat);
+    const lng = Number(driver?.last_location_lng ?? driver?.longitude ?? driver?.location?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0) ? { lat, lng } : null;
+  };
+
   const resolveDriverPhone = (driverId?: string | null) => {
     if (!driverId) return null;
     const driver = drivers.find((item) => String(item.id) === String(driverId)) as any;
@@ -386,6 +394,12 @@ export default function VrdsMissionsPage() {
             ? { lat: routePlan.pickupLatitude || 14.5995, lng: routePlan.pickupLongitude || 120.9745 }
             : null)
       );
+      const pickupStatus = String(trip.pickupStatus || trip.pickup_status || "pending").toLowerCase();
+      const pickupConfirmed = ["confirmed", "started", "complete", "completed"].includes(pickupStatus);
+      const deliveryDestinationName = destinationName;
+      const deliveryDestinationPosition = destinationPosition;
+      const activeDestinationName = pickupConfirmed ? deliveryDestinationName : "Airship Express Hub - Binondo, Manila";
+      const activeDestinationPosition = pickupConfirmed ? deliveryDestinationPosition : startPoint;
 
       const savedRouteMetrics = routePlanPolyline
         ? {
@@ -402,6 +416,7 @@ export default function VrdsMissionsPage() {
       const courierFromRoutePlan = routePlan?.courier;
       const courier = courierFromParcels || courierFromRoutePlan || `Route-${(trip.bookingId || trip.booking_id)?.substring(0, 6) || 'unknown'}`;
       const driverName = resolveDriverName(trip.driverId || trip.driver_id, trip.driverName || booking?.driverName);
+      const driverLocation = resolveDriverLocation(trip.driverId || trip.driver_id || booking?.driverId);
       const parcelDetails = bookingParcels.slice(0, 4).map((parcel) => {
         const parcelAny = parcel as any;
         const recipient = parcelAny.recipientName || parcelAny.recipient_name || "Recipient";
@@ -415,22 +430,22 @@ export default function VrdsMissionsPage() {
         name: driverName,
         driverName,
         driverPhone: resolveDriverPhone(trip.driverId || trip.driver_id || booking?.driverId),
-        vehiclePlate: trip.vehicleId || "Assigned vehicle",
-        parcelSummary: `${parcelCount} parcels — ${destinationName}${stopCountLabel}`,
+        vehiclePlate: trip.vehiclePlate || trip.vehicle_plate || trip.vehicleId || trip.vehicle_id || "Assigned vehicle",
+        parcelSummary: `${parcelCount} parcels — ${activeDestinationName}${stopCountLabel}`,
         parcelCount,
         parcelDetails,
         origin: fromLocation,
-        destination: destinationName,
+        destination: activeDestinationName,
         originPos: startPoint,
-        destPos: destinationPosition,
-        currentPos: trip.fromCoords || startPoint,
+        destPos: activeDestinationPosition,
+        currentPos: driverLocation || trip.fromCoords || startPoint,
         progress,
         etaMinutes,
         status: normalizeTripStatus(trip.status),
         bookingId: trip.bookingId || trip.booking_id,
         courier,
         stops,
-        routePlanPolyline,
+        routePlanPolyline: pickupConfirmed ? routePlanPolyline : null,
       } as Delivery;
     });
 
@@ -461,6 +476,7 @@ export default function VrdsMissionsPage() {
         const courierFromRoutePlan = routePlan?.courier;
         const courier = courierFromParcels || courierFromRoutePlan || `Route-${b.id?.substring(0, 6) || 'unknown'}`;
         const driverName = resolveDriverName(b.driverId, b.driverName);
+        const driverLocation = resolveDriverLocation(b.driverId);
         const parcelDetails = bookingParcels.slice(0, 4).map((parcel) => {
           const parcelAny = parcel as any;
           const recipient = parcelAny.recipientName || parcelAny.recipient_name || "Recipient";
@@ -484,7 +500,7 @@ export default function VrdsMissionsPage() {
         const originPos = routePlan?.pickupLatitude && routePlan?.pickupLongitude
           ? { lat: Number(routePlan.pickupLatitude), lng: Number(routePlan.pickupLongitude) }
           : HUB_POS;
-        const currentPos = b.dispatch?.currentPos || originPos;
+        const currentPos = driverLocation || b.dispatch?.currentPos || originPos;
 
         return {
           id: b.id,
@@ -532,6 +548,7 @@ export default function VrdsMissionsPage() {
       const destinationPosition = firstParcel.destLat || firstParcel.destLng
         ? { lat: Number(firstParcel.destLat), lng: Number(firstParcel.destLng) }
         : resolveDestination(destination);
+      const driverLocation = resolveDriverLocation(booking?.driverId);
       const { etaMinutes, progress } = calculateEtaAndProgress(firstParcel);
       const parcelBookingId = firstParcel.bookingId || `in-transit-${groupKey}`;
 
@@ -550,7 +567,7 @@ export default function VrdsMissionsPage() {
         destination,
         originPos: HUB_POS,
         destPos: destinationPosition,
-        currentPos: HUB_POS,
+        currentPos: driverLocation || HUB_POS,
         progress,
         etaMinutes,
         status: "in-transit",
@@ -598,7 +615,7 @@ export default function VrdsMissionsPage() {
     }
 
     return validDeliveries;
-  }, [bookings, parcels, routePlans, trips, timeUpdate, osrmMetrics]);
+  }, [bookings, parcels, routePlans, trips, drivers, timeUpdate, osrmMetrics]);
 
   const routeRequestKey = useMemo(
     () => DELIVERIES.map((delivery) => {
@@ -773,6 +790,7 @@ export default function VrdsMissionsPage() {
           id: m.id,
           position: vehiclePosition,
           color: m.status === "critical" ? "#e11d48" : "#be185d",
+          isVehicle: true,
           label: (
             <div className="space-y-1 text-sm leading-tight">
               <div className="font-semibold text-slate-900">{m.name}</div>
@@ -904,24 +922,28 @@ export default function VrdsMissionsPage() {
                 </p>
               </div>
 
-              <div className="inline-flex gap-2">
-                <button
-                  onClick={() => setView("list")}
-                  className={`px-4 py-1.5 text-sm font-semibold transition ${
-                    view === "list" ? "text-pink-600 underline underline-offset-8" : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  List View
-                </button>
-                <button
-                  onClick={() => setView("map")}
-                  className={`px-4 py-1.5 text-sm font-semibold transition ${
-                    view === "map" ? "text-pink-600 underline underline-offset-8" : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  Map View
-                </button>
-              </div>
+              <nav className="inline-flex w-full max-w-md items-center gap-1 rounded-2xl border border-pink-100 bg-white/70 p-1.5 shadow-[inset_1px_1px_0_rgba(255,255,255,0.9),0_8px_20px_rgba(190,24,93,0.06)]" aria-label="Mission sections">
+                {([
+                  ["summary", "Summary", "dashboard"],
+                  ["list", "Delivery list", "format_list_bulleted"],
+                  ["map", "Live map", "map"],
+                ] as const).map(([section, label, icon]) => (
+                  <button
+                    key={section}
+                    type="button"
+                    onClick={() => setActiveSection(section)}
+                    aria-current={activeSection === section ? "page" : undefined}
+                    className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${
+                      activeSection === section
+                        ? "bg-pink-600 text-white shadow-[0_5px_12px_rgba(190,24,93,0.24)]"
+                        : "text-slate-500 hover:bg-pink-50 hover:text-pink-700"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">{icon}</span>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </nav>
             </div>
 
             {/* Flat Stats Grid */}
@@ -933,9 +955,45 @@ export default function VrdsMissionsPage() {
             </div>
           </section>
 
-          {/* Main View Switching */}
-          {view === "list" ? (
-            <div className="grid gap-12 xl:grid-cols-[1.95fr_1fr]">
+          {/* Main mission workspace */}
+          {activeSection === "summary" ? (
+            <section className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+              <div className="rounded-[28px] border border-pink-100 bg-white/75 p-6 shadow-[0_18px_40px_rgba(190,24,93,0.07),inset_1px_1px_0_rgba(255,255,255,0.95)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-600">Mission pulse</p>
+                    <h2 className="mt-2 text-xl font-black text-slate-900">Dispatch at a glance</h2>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">Use the sections above to move from the operational summary into the delivery queue or a full live map without losing your current mission selection.</p>
+                  </div>
+                  <span className="hidden rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 sm:inline-flex">Live tracking</span>
+                </div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  <button type="button" onClick={() => setActiveSection("list")} className="rounded-2xl border border-pink-100 bg-pink-50/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-pink-300">
+                    <span className="material-symbols-outlined text-pink-600">format_list_bulleted</span>
+                    <p className="mt-2 text-sm font-black text-slate-900">Open delivery list</p>
+                    <p className="mt-1 text-xs text-slate-500">Review priority, ETA, and vehicle state.</p>
+                  </button>
+                  <button type="button" onClick={() => setActiveSection("map")} className="rounded-2xl border border-pink-100 bg-pink-50/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-pink-300">
+                    <span className="material-symbols-outlined text-pink-600">map</span>
+                    <p className="mt-2 text-sm font-black text-slate-900">Open live map</p>
+                    <p className="mt-1 text-xs text-slate-500">Inspect routes, markers, and driver positions.</p>
+                  </button>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                    <span className="material-symbols-outlined text-amber-500">priority_high</span>
+                    <p className="mt-2 text-sm font-black text-slate-900">Attention needed</p>
+                    <p className="mt-1 text-xs text-slate-500">{critical ? `${critical.driverName || critical.name || "A mission"} is the current priority.` : "No critical mission is active."}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[28px] border border-pink-100 bg-gradient-to-br from-pink-50/80 to-white/80 p-6 shadow-[0_18px_40px_rgba(190,24,93,0.07)]">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current focus</p>
+                <h2 className="mt-2 text-xl font-black text-slate-900">{critical ? "Critical mission" : "Fleet is steady"}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{critical ? critical.parcelSummary : "There are no rush deliveries requiring immediate intervention."}</p>
+                {critical && <button type="button" onClick={() => setSelectedDeliveryId(critical.id)} className="mt-5 rounded-xl bg-pink-600 px-4 py-2 text-xs font-black text-white shadow-[0_8px_18px_rgba(190,24,93,0.2)]">Inspect priority mission</button>}
+              </div>
+            </section>
+          ) : activeSection === "list" ? (
+            <div className="space-y-8">
               <section className="space-y-8">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -975,43 +1033,6 @@ export default function VrdsMissionsPage() {
                 )}
 
               </section>
-
-              <aside className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Fleet map</h3>
-                  <p className="text-sm text-slate-600">Track current delivery positions and fleet spread.</p>
-                </div>
-                <div className="h-[540px] w-full">
-                  <div className="relative h-full w-full">
-                    <LeafletMap
-                      center={HUB_POS}
-                      zoom={12}
-                      markers={markers}
-                      coloredPaths={showRouteLines || selectedDeliveryId ? coloredPaths : []}
-                      onlyColoredPaths
-                      routeColor="#ec4899"
-                      onMarkerClick={(marker) => {
-                        setActiveMarker(marker);
-                        const deliveryId = DELIVERIES.find((delivery) =>
-                          marker.id === delivery.id || marker.id.startsWith(`${delivery.id}-`)
-                        )?.id;
-                        setSelectedDeliveryId(deliveryId || marker.id);
-                      }}
-                    />
-                    {loadingRouteCount > 0 && (
-                      <div className="pointer-events-none absolute left-3 top-3 z-[400] inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/95 px-3 py-2 text-xs font-semibold text-pink-700 shadow-sm">
-                        <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
-                        Loading {loadingRouteCount} OSRM {loadingRouteCount === 1 ? "route" : "routes"}...
-                      </div>
-                    )}
-                    {selectedOsrmError && (
-                      <div className="pointer-events-none absolute bottom-3 left-3 z-[400] rounded-lg border border-amber-200 bg-white/95 px-3 py-2 text-xs font-semibold text-amber-800 shadow-sm">
-                        OSRM: {selectedOsrmError}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </aside>
             </div>
           ) : (
             <section className="space-y-4">

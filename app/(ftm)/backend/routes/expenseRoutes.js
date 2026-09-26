@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getServiceSupabase } = require('../config/db');
 const { scanReceipt } = require('../services/receiptOcr');
-const { attachCategoryCost } = require('../services/costCategoryService');
+const { attachCategoryCost, buildCategoryDetails } = require('../services/costCategoryService');
 
 const CATEGORY_MAP = {
   fuel: 'Fuel', maintenance: 'Maintenance', toll: 'Toll', parking: 'Parking', other: 'Other',
@@ -33,8 +33,27 @@ router.get('/', async (req, res) => {
   let query = supabase.from('cost_entries').select('*').order('entry_date', { ascending: false });
   if (vehicleId) query = query.eq('vehicle_id', vehicleId);
 
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: `Unable to load expenses: ${error.message}` });
+  let { data, error } = await query;
+  if (driverId && (!data || !Array.isArray(data) || data.length === 0) && !vehicleId) {
+    const driverQuery = supabase.from('cost_entries').select('*').order('entry_date', { ascending: false }).eq('driver_id', driverId);
+    const driverResult = await driverQuery;
+    data = driverResult.data;
+    error = driverResult.error;
+  }
+
+  if (error) {
+    if (driverId && /column .*driver_id|does not exist|not found/i.test(error.message || '')) {
+      // Legacy schema fallback: the database still stores driver assignment in related tables.
+      const fallbackQuery = supabase.from('cost_entries').select('*').order('entry_date', { ascending: false });
+      const fallbackResult = await fallbackQuery;
+      if (fallbackResult.error) {
+        return res.status(500).json({ error: `Unable to load expenses: ${fallbackResult.error.message}` });
+      }
+      data = fallbackResult.data || [];
+    } else {
+      return res.status(500).json({ error: `Unable to load expenses: ${error.message}` });
+    }
+  }
 
   // cost_entries has no driver_id column; if the caller asked for a specific
   // driver, resolve it through that driver's currently assigned vehicle(s).
@@ -185,12 +204,25 @@ router.post('/', async (req, res) => {
   }
 
   const payload = {
+    driver_id: driverId || null,
     vehicle_id: finalVehicleId,
     category: finalCategory,
     amount: finalAmount,
     entry_date: new Date().toISOString().slice(0, 10),
     remarks: descriptionJson ? JSON.stringify(descriptionJson) : metadataParts.join(' • ') || null,
     receipt_image: photoBase64 ? `data:image/jpeg;base64,${photoBase64}` : null,
+    category_details: buildCategoryDetails(finalCategory, {
+      note: finalNote,
+      description: finalNote,
+      liters,
+      price_per_liter: pricePerLiter,
+      fuel_station: fuelStation,
+      fuel_type: fuelType,
+      payment_method: paymentMethod,
+      location,
+      reference_number: referenceNumber,
+      odometer_reading: req.body?.odometer_reading,
+    }),
   };
 
   const selectColumns = 'id,vehicle_id,trip_id,category,amount,entry_date,remarks,receipt_image,created_at';
@@ -198,6 +230,12 @@ router.post('/', async (req, res) => {
   if (result.error && /receipt_image/i.test(result.error.message)) {
     const fallbackPayload = { ...payload };
     delete fallbackPayload.receipt_image;
+    result = await supabase.from('cost_entries').insert(fallbackPayload).select(selectColumns).single();
+  }
+  if (result.error && /category_details|driver_id/i.test(result.error.message)) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.category_details;
+    delete fallbackPayload.driver_id;
     result = await supabase.from('cost_entries').insert(fallbackPayload).select(selectColumns).single();
   }
 

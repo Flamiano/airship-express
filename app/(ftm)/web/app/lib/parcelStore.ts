@@ -31,20 +31,11 @@ const DEFAULT_DRIVERS: Driver[] = [
   { id: "drv-006", name: "LBC Driver 1", status: "Available" },
 ];
 
-// Default mock vehicles for testing when backend is unavailable
-const DEFAULT_VEHICLES: Vehicle[] = [
-  { id: "veh-001", plate: "ABC-1234", plateNumber: "ABC-1234", capacityKg: 500, status: "Available" },
-  { id: "veh-002", plate: "DEF-5678", plateNumber: "DEF-5678", capacityKg: 1000, status: "Available" },
-  { id: "veh-003", plate: "GHI-9012", plateNumber: "GHI-9012", capacityKg: 1500, status: "Available" },
-  { id: "veh-004", plate: "JKL-3456", plateNumber: "JKL-3456", capacityKg: 2000, status: "Available" },
-  { id: "veh-005", plate: "MNO-7890", plateNumber: "MNO-7890", capacityKg: 2500, status: "Available" },
-];
-
 const DEFAULT_STATE: StoreState = {
   parcels: [],
   bookings: [],
   drivers: DEFAULT_DRIVERS,
-  vehicles: DEFAULT_VEHICLES,
+  vehicles: [],
 };
 
 let state: StoreState = DEFAULT_STATE;
@@ -379,6 +370,7 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
                 id: String(booking.id),
                 parcelIds: finalParcelIds,
                 courier: booking.courier || undefined,
+                courierId: booking.courier_id || booking.courierId || undefined,
                 routePlanId: booking.route_plan_id ?? booking.routePlanId ?? undefined,
                 routeLabel: booking.route_label || booking.routeLabel || [booking.pickup_location, booking.dropoff_location].filter(Boolean).join(" → ") || `Booking ${booking.id}`,
                 totalWeightKg: Number(booking.total_weight_kg ?? booking.totalWeightKg ?? booking.load_kg ?? booking.cargo_weight ?? 0),
@@ -421,6 +413,7 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
                 name: driver.full_name || driver.name || driver.email || `Driver ${driver.id}`,
                 vehicleId: driver.vehicle_id || driver.vehicleId || undefined,
                 courierId: driver.courier_id || driver.courierId || undefined,
+                courier: driver.courier || driver.courier_name || driver.courierName || undefined,
                 status: assignedDriverIds.has(id)
                   ? 'Assigned'
                   : normalizeStatusToAvailability(
@@ -515,7 +508,7 @@ export function useParcelStore(options: { status?: string; history?: boolean } =
         const nextState: StoreState = {
           bookings: Array.isArray(apiBookings) && apiBookings.length === 0 ? state.bookings : dedupeBookings(normalizedBookings),
           drivers: finalDrivers.length > 0 ? finalDrivers : DEFAULT_DRIVERS,
-          vehicles: finalVehicles.length > 0 ? finalVehicles : DEFAULT_VEHICLES,
+          vehicles: finalVehicles,
           parcels: Array.isArray(apiParcels) && apiParcels.length === 0 ? state.parcels : syncedParcels,
         };
 
@@ -727,7 +720,7 @@ export async function refreshStoreFromBackend(options: { status?: string; histor
     const nextState: StoreState = {
       bookings: dedupeBookings(normalizedBookings),
       drivers: finalDrivers.length > 0 ? finalDrivers : DEFAULT_DRIVERS,
-      vehicles: finalVehicles.length > 0 ? finalVehicles : DEFAULT_VEHICLES,
+      vehicles: finalVehicles,
       parcels: syncedParcels,
     };
 
@@ -896,11 +889,11 @@ export function confirmDispatch(bookingId: string): { ok: boolean; reason?: stri
   if (!booking.driverId || !booking.vehicleId) return { ok: false, reason: "Assign a driver and vehicle first." };
   const nextBooking: Booking = {
     ...booking,
-    status: "DISPATCHED",
-    dispatch: { status: "DELIVERING", progress: 10, etaMinutes: 35, currentPos: HUB_POS },
+    status: "DRIVER_VEHICLE_ASSIGNED",
+    dispatch: { status: "PICKUP_ASSIGNED", progress: 0, etaMinutes: 0, currentPos: HUB_POS },
   };
   const bookings = state.bookings.map((item) => item.id === bookingId ? nextBooking : item);
-  const parcels = state.parcels.map((parcel) => parcel.bookingId === bookingId ? { ...parcel, status: "IN_TRANSIT" as const } : parcel);
+  const parcels = state.parcels.map((parcel) => parcel.bookingId === bookingId ? { ...parcel, status: "BOOKED" as const } : parcel);
   writeState({ ...state, bookings, parcels });
   return { ok: true };
 }

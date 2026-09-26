@@ -66,7 +66,7 @@ export type Parcel = {
 export type BookingStatus = "PENDING" | "DRIVER_VEHICLE_ASSIGNED" | "DISPATCHED" | "CANCELLED";
 
 export type DispatchState = {
-  status: "READY" | "DELIVERING" | "COMPLETED";
+  status: "PICKUP_ASSIGNED" | "READY" | "DELIVERING" | "COMPLETED";
   progress: number;
   etaMinutes: number;
   currentPos: { lat: number; lng: number };
@@ -83,6 +83,7 @@ export type Booking = {
   parcelIds: string[];
   parcelCount?: number;
   courier?: CourierName | string;
+  courierId?: string;
   routeLabel: string;
   totalWeightKg: number;
   createdAt: string;
@@ -101,6 +102,7 @@ export type Driver = {
   name: string;
   vehicleId?: string;
   courierId?: string;
+  courier?: string;
   status: "Available" | "Assigned";
 };
 

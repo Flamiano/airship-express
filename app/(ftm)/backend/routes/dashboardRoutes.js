@@ -91,12 +91,21 @@ function attachDriverLocationSnapshot(enrichedDriver, locationRow) {
 
 async function fetchDrivers(serviceSupabase) {
   try {
-    const { data, error } = await serviceSupabase
+    let { data, error } = await serviceSupabase
       .from('users')
-      .select('id,email,full_name,role,phone,created_at,updated_at')
+      .select('id,email,full_name,avatar_url,role,phone,created_at,updated_at')
       .eq('role', 'driver')
       .order('full_name', { ascending: true })
       .limit(150);
+
+    if (error && /avatar_url.*does not exist|column.*avatar_url/i.test(error.message || '')) {
+      ({ data, error } = await serviceSupabase
+        .from('users')
+        .select('id,email,full_name,role,phone,created_at,updated_at')
+        .eq('role', 'driver')
+        .order('full_name', { ascending: true })
+        .limit(150));
+    }
 
     if (error || !Array.isArray(data) || data.length === 0) {
       return [];
@@ -279,11 +288,24 @@ router.get('/', async (req, res) => {
       }
     }
 
+    const driverRecords = (Array.isArray(drivers) ? drivers : []).filter(
+      (driver) =>
+        !SEED_DRIVER_IDS.has(driver.id) &&
+        !SEED_DRIVER_EMAILS.has(driver.email) &&
+        !(typeof driver.full_name === 'string' && DEMO_DRIVER_NAME_PATTERN.test(driver.full_name))
+    );
+    const driverSnapshotMap = new Map(
+      driverRecords
+        .filter((driver) => driver?.last_location_lat != null && driver?.last_location_lng != null)
+        .map((driver) => [String(driver.id), driver])
+    );
+
     const vehicles = (vehiclesResult.data || []).map((vehicle) => {
       const normalized = normalizeVehicle(vehicle);
       const vehicleKey = normalized.id ?? normalized.vehicle_id ?? vehicle?.id ?? vehicle?.vehicle_id;
       const assignedDriverId = vehicleDriverMap.get(vehicleKey) ?? null;
       const assignedDriver = assignedDriverId ? driverLookupMap.get(assignedDriverId) : null;
+      const driverSnapshot = assignedDriverId ? driverSnapshotMap.get(String(assignedDriverId)) : null;
       const driverName = assignedDriver?.full_name || assignedDriver?.name || normalized.driverName || normalized.driver || null;
 
       return {
@@ -291,18 +313,23 @@ router.get('/', async (req, res) => {
         driver_id: assignedDriverId,
         driver: driverName,
         driverName,
+        locationLat: driverSnapshot?.last_location_lat ?? normalized.locationLat ?? null,
+        locationLng: driverSnapshot?.last_location_lng ?? normalized.locationLng ?? null,
+        locationSource: driverSnapshot ? 'driver_app' : 'vehicle',
+        locationRecordedAt: driverSnapshot?.last_location_at ?? null,
       };
     });
 
     const trips = (tripsResult.data || [])
       .map((trip) => {
         const booking = Array.isArray(trip.bookings) ? trip.bookings[0] : trip.bookings;
+        const driverSnapshot = trip.driver_id ? driverSnapshotMap.get(String(trip.driver_id)) : null;
         return normalizeTrip({
           ...trip,
           from_location: trip.from_location || booking?.pickup_location || null,
           to_location: trip.to_location || booking?.dropoff_location || null,
-          from_latitude: trip.from_latitude ?? booking?.pickup_latitude ?? null,
-          from_longitude: trip.from_longitude ?? booking?.pickup_longitude ?? null,
+          from_latitude: driverSnapshot?.last_location_lat ?? trip.from_latitude ?? booking?.pickup_latitude ?? null,
+          from_longitude: driverSnapshot?.last_location_lng ?? trip.from_longitude ?? booking?.pickup_longitude ?? null,
           to_latitude: trip.to_latitude ?? booking?.dropoff_latitude ?? null,
           to_longitude: trip.to_longitude ?? booking?.dropoff_longitude ?? null,
           load_kg: trip.load_kg ?? booking?.cargo_weight ?? null,
@@ -311,12 +338,6 @@ router.get('/', async (req, res) => {
       .filter((trip) => !isSeedTrip(trip));
     const bookings = bookingsResult.data || [];
     const parcels = parcelRows;
-    const driverRecords = (Array.isArray(drivers) ? drivers : []).filter(
-      (driver) =>
-        !SEED_DRIVER_IDS.has(driver.id) &&
-        !SEED_DRIVER_EMAILS.has(driver.email) &&
-        !(typeof driver.full_name === 'string' && DEMO_DRIVER_NAME_PATTERN.test(driver.full_name))
-    );
 
     const routePlans = Array.isArray(routePlansResult.data) ? routePlansResult.data : [];
     const routePlanBookings = Array.isArray(routePlanBookingsResult.data) ? routePlanBookingsResult.data : [];

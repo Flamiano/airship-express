@@ -4,12 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "../lib/supabaseClient";
-import { persistAuthUser, signOut } from "../lib/auth";
+import { hasPasskeyVerified, persistAuthUser, signOut } from "../lib/auth";
 import { getCurrentRole, hasPathAccess, normalizeRole } from "../lib/roleAccess";
 
-const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000;
 const INACTIVITY_WARNING_MS = 30 * 1000;
-const PUBLIC_PATHS = new Set(["/", "/ftmAuth"]);
+const SECURITY_SETTINGS_STORAGE_KEY = "ftm-security-settings";
+const DEFAULT_SESSION_TIMEOUT_MINUTES = 5;
+const PUBLIC_PATHS = new Set(["/", "/ftmAuth", "/passkey-enroll"]);
+
+function getSessionTimeoutMs() {
+  if (typeof window === "undefined") return DEFAULT_SESSION_TIMEOUT_MINUTES * 60 * 1000;
+  try {
+    const settings = JSON.parse(window.localStorage.getItem(SECURITY_SETTINGS_STORAGE_KEY) || "{}");
+    const minutes = Number(settings.sessionTimeoutMinutes);
+    return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_SESSION_TIMEOUT_MINUTES) * 60 * 1000;
+  } catch {
+    return DEFAULT_SESSION_TIMEOUT_MINUTES * 60 * 1000;
+  }
+}
 export default function FtmSecurityProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -17,7 +29,6 @@ export default function FtmSecurityProvider({ children }: { children: React.Reac
   const signingOut = useRef(false);
   const [warningOpen, setWarningOpen] = useState(false);
   const [countdown, setCountdown] = useState(Math.ceil(INACTIVITY_WARNING_MS / 1000));
-  const [authResolved, setAuthResolved] = useState(PUBLIC_PATHS.has(pathname));
 
   const handleSessionExpired = async () => {
     if (signingOut.current) return;
@@ -35,7 +46,6 @@ export default function FtmSecurityProvider({ children }: { children: React.Reac
 
   useEffect(() => {
     signingOut.current = false;
-    setAuthResolved(PUBLIC_PATHS.has(pathname));
     lastActivity.current = Date.now();
     setWarningOpen(false);
     setCountdown(Math.ceil(INACTIVITY_WARNING_MS / 1000));
@@ -50,22 +60,24 @@ export default function FtmSecurityProvider({ children }: { children: React.Reac
       if (!active || signingOut.current) return;
 
       if (error) {
-        await supabase.auth.signOut({ scope: "local" });
-        persistAuthUser(null);
-        setAuthResolved(false);
+        await signOut();
         router.replace(`/ftmAuth?next=${encodeURIComponent(pathname)}`);
         return;
       }
 
       const user = data.session?.user;
       if (!user) {
-        setAuthResolved(false);
+        router.replace(`/ftmAuth?next=${encodeURIComponent(pathname)}`);
+        return;
+      }
+
+      if (!hasPasskeyVerified(user.id)) {
+        await signOut();
         router.replace(`/ftmAuth?next=${encodeURIComponent(pathname)}`);
         return;
       }
 
       const role = getCurrentRole() ?? normalizeRole(user.app_metadata?.role ?? user.user_metadata?.role ?? user.role);
-      setAuthResolved(true);
       if (!role || !hasPathAccess(role, pathname)) {
         router.replace(`/unauthorized?from=${encodeURIComponent(pathname)}`);
       }
@@ -120,15 +132,16 @@ export default function FtmSecurityProvider({ children }: { children: React.Reac
 
       const inactiveMs = Date.now() - lastActivity.current;
 
-      if (inactiveMs >= INACTIVITY_TIMEOUT_MS) {
+      const inactivityTimeoutMs = getSessionTimeoutMs();
+      if (inactiveMs >= inactivityTimeoutMs) {
         void handleSessionExpired();
         return;
       }
 
-      const shouldWarn = inactiveMs >= INACTIVITY_TIMEOUT_MS - INACTIVITY_WARNING_MS;
+      const shouldWarn = inactiveMs >= inactivityTimeoutMs - INACTIVITY_WARNING_MS;
       if (shouldWarn) {
         setWarningOpen(true);
-        const remainingSeconds = Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - inactiveMs) / 1000));
+        const remainingSeconds = Math.max(0, Math.ceil((inactivityTimeoutMs - inactiveMs) / 1000));
         setCountdown(remainingSeconds);
       }
     }, 1000);
@@ -144,25 +157,17 @@ export default function FtmSecurityProvider({ children }: { children: React.Reac
 
     const interval = window.setInterval(() => {
       const inactiveMs = Date.now() - lastActivity.current;
-      if (inactiveMs >= INACTIVITY_TIMEOUT_MS) {
+      if (inactiveMs >= getSessionTimeoutMs()) {
         window.clearInterval(interval);
         void handleSessionExpired();
         return;
       }
 
-      setCountdown(Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - inactiveMs) / 1000)));
+      setCountdown(Math.max(0, Math.ceil((getSessionTimeoutMs() - inactiveMs) / 1000)));
     }, 1000);
 
     return () => window.clearInterval(interval);
   }, [warningOpen]);
-
-  if (!PUBLIC_PATHS.has(pathname) && !authResolved) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#fff7fc] text-sm font-semibold text-[#b80049]" role="status" aria-live="polite">
-        Loading authentication...
-      </main>
-    );
-  }
 
   return (
     <>

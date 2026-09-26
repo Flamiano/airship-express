@@ -1,119 +1,32 @@
-// @ts-nocheck
 "use client";
 
-import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { signInWithPassword } from "../lib/auth";
+import { motion } from "framer-motion";
+import { OtpVerificationModal, PasskeyVerificationModal } from "../components/AuthVerificationModals";
+import { canRegisterPasskeyForDevice, getPasskeyDeviceLimitMessage, getUserFriendlyAuthError, markPasskeyVerified, recordPasskeyUserOnDevice, requestEmailMfaCode, signInWithPassword, signOut, verifyEmailMfaCode } from "../lib/auth";
 import { getDashboardRouteForRole, normalizeRole } from "../lib/roleAccess";
+import { supabase } from "../lib/supabaseClient";
+
+type SecurityStep = "otp" | "passkey" | null;
 
 export default function AuthPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [step, setStep] = useState<SecurityStep>(null); const [pendingRole, setPendingRole] = useState<any>(null);
+  const [otpCode, setOtpCode] = useState(""); const [otpBusy, setOtpBusy] = useState(false); const [otpExpiresAt, setOtpExpiresAt] = useState(0); const [resendAvailableAt, setResendAvailableAt] = useState(0); const [now, setNow] = useState(Date.now()); const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+  const [passkeyMode, setPasskeyMode] = useState<"verify" | "register">("verify"); const [passkeyBusy, setPasskeyBusy] = useState(false); const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const passkeyInFlight = useRef(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
-    setLoading(true);
-    window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { mode: "start" } }));
+  useEffect(() => { if (step !== "otp") return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [step]);
+  const finishLogin = (role: any) => { setPasskeyBusy(false); setStep(null); window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination: getDashboardRouteForRole(role) } })); };
+  const cancelSecurityStep = async () => { setStep(null); setOtpCode(""); setError(""); setPendingRole(null); await signOut(); };
+  const sendOtp = async () => { setOtpBusy(true); setError(""); try { const result = await requestEmailMfaCode(email.trim()); setOtpCode(""); setAttemptsRemaining(5); setOtpExpiresAt(result.expiresAt); setResendAvailableAt(result.resendAvailableAt); setNow(Date.now()); setStep("otp"); } catch (err) { setError(getUserFriendlyAuthError(err, "otp")); } finally { setOtpBusy(false); } };
+  const openPasskey = async () => { if (typeof window === "undefined" || !window.isSecureContext || !("PublicKeyCredential" in window) || !navigator.credentials) { setError("Passkeys require HTTPS or localhost and a browser with WebAuthn support."); return; } const { data: passkeys, error: passkeyListError } = await supabase.auth.passkey.list(); if (passkeyListError) { await cancelSecurityStep(); setError("We couldn’t load this account’s passkeys. Please sign in again."); return; } setPasskeyMode(Array.isArray(passkeys) && passkeys.length > 0 ? "verify" : "register"); setStep("passkey"); };
+  const verifyOtp = async () => { if (otpCode.length !== 6 || !pendingRole || Date.now() >= otpExpiresAt) return; setOtpBusy(true); setError(""); try { const { verified } = await verifyEmailMfaCode(email.trim(), otpCode); if (!verified) throw new Error("The verification code is invalid or expired."); await openPasskey(); } catch (err: any) { const remaining = Number(err?.attemptsRemaining); if (Number.isFinite(remaining)) setAttemptsRemaining(remaining); setError(getUserFriendlyAuthError(err, "otp")); } finally { setOtpBusy(false); } };
+  const verifyPasskey = async () => { if (passkeyInFlight.current || !pendingUserId) return; passkeyInFlight.current = true; setPasskeyBusy(true); setError(""); try { const { error: passkeyError } = await supabase.auth.signInWithPasskey(); if (passkeyError) { setError(getUserFriendlyAuthError(passkeyError, "passkey")); return; } const { data } = await supabase.auth.getUser(); if (!data.user || data.user.id !== pendingUserId) { setError("The passkey authenticated a different account. Cancel and sign in with the intended account."); return; } markPasskeyVerified(data.user.id); finishLogin(pendingRole); } finally { passkeyInFlight.current = false; setPasskeyBusy(false); } };
+  const registerPasskey = async () => { if (passkeyInFlight.current || !pendingUserId) return; if (!canRegisterPasskeyForDevice(pendingUserId)) { setError(getPasskeyDeviceLimitMessage()); return; } passkeyInFlight.current = true; setPasskeyBusy(true); setError(""); try { const { error: registrationError } = await supabase.auth.registerPasskey(); if (registrationError) { setError(getUserFriendlyAuthError(registrationError, "passkey")); return; } const { data } = await supabase.auth.getUser(); if (!data.user || data.user.id !== pendingUserId) { setError("The passkey was registered for a different account. Cancel and sign in with the intended account."); return; } recordPasskeyUserOnDevice(data.user.id); markPasskeyVerified(data.user.id); finishLogin(pendingRole); } finally { passkeyInFlight.current = false; setPasskeyBusy(false); } };
+  const useExistingPasskey = () => { setError(""); setPasskeyMode("verify"); };
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); setLoading(true); setError(""); const { user, error: authError } = await signInWithPassword(email.trim(), password); if (authError || !user) { setLoading(false); setError(getUserFriendlyAuthError(authError || "No user returned", "signin")); return; } setPendingUserId(user.id); const role = normalizeRole(user.role); if (!role) { setLoading(false); setError("This account does not have an approved FTM role."); await signOut(); return; } setPendingRole(role); setLoading(false); await sendOtp(); };
 
-    const { user, error: authError } = await signInWithPassword(email.trim(), password);
-    if (authError) {
-      setLoading(false);
-      window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { mode: "stop" } }));
-      setError(authError.message || "Unable to sign in. Please check your credentials.");
-      return;
-    }
-
-    if (!user) {
-      setLoading(false);
-      window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { mode: "stop" } }));
-      setError("No user was returned. Try again or register a new account.");
-      return;
-    }
-
-    const role = normalizeRole(user.role);
-    if (!role) {
-      setLoading(false);
-      window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { mode: "stop" } }));
-      setError("This account does not have an approved FTM role.");
-      return;
-    }
-
-    window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination: getDashboardRouteForRole(role) } }));
-  };
-
-  return (
-    <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="relative min-h-screen overflow-hidden bg-[#090b12] pt-9 text-white">
-      <div className="absolute inset-x-0 top-0 z-40 flex h-9 items-center justify-between border-b border-white/10 bg-[#17151a] px-4 text-[11px] text-white/70 sm:px-7">
-        <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-          <a href="tel:+639454418789" className="whitespace-nowrap hover:text-white">☎ 0945 441 8789</a>
-          <a href="mailto:airshipexpress.s@gmail.com" className="hidden truncate hover:text-white sm:inline">✉ airshipexpress.s@gmail.com</a>
-        </div>
-        <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#e2165f]" />
-          Live network · Manila
-        </span>
-      </div>
-      <div className="relative min-h-screen w-full">
-        <section className="absolute inset-0 z-0 block min-h-screen overflow-hidden">
-          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/vehicle.png.jpg')" }} />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#080a10]/75 via-[#080a10]/20 to-[#080a10]/55" />
-
-          <div className="relative z-10 flex items-center justify-between p-6 sm:p-10 xl:p-14">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-pink-600/30">
-                <Image src="/airship-logo.png" alt="Airship Express" width={48} height={48} className="h-full w-full object-contain p-1" priority />
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.28em] text-pink-300">Airship Express</p>
-                <h1 className="text-xl font-black tracking-tight">Fleet Command</h1>
-              </div>
-            </div>
-            <span className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-black/25 px-3.5 py-1.5 text-xs font-semibold text-white/80 backdrop-blur-md lg:inline-flex">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Fleet online
-            </span>
-          </div>
-
-          <div className="absolute bottom-8 left-6 z-10 max-w-lg sm:left-10 sm:bottom-12 xl:left-14">
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.32em] text-pink-300">Airship Express / Fleet Operations</p>
-            <h2 className="text-3xl font-black tracking-tight sm:text-4xl xl:text-6xl">Command every vehicle<br /><span className="text-pink-300">with clarity.</span></h2>
-            <p className="mt-4 max-w-md text-sm leading-6 text-white/70">Monitor vehicles, dispatch operations, and fleet performance from one command workspace.</p>
-          </div>
-        </section>
-
-        <section className="relative z-20 flex min-h-screen w-full items-center justify-end overflow-hidden px-5 py-10 sm:px-8 lg:px-16 xl:px-24">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/10 via-black/20 to-[#090b12]/70" />
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.7 }}
-            className="relative ml-auto w-full max-w-md space-y-8 rounded-[28px] border border-white/20 bg-transparent p-7 shadow-none backdrop-blur-sm sm:p-9"
-          >
-            <div className="space-y-2">
-              <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
-                  <Image src="/airship-logo.png" alt="Airship Express" width={40} height={40} className="h-full w-full object-contain p-1" priority />
-                </div>
-                <span className="text-xs font-bold uppercase tracking-[0.2em] text-pink-300">Airship Express</span>
-              </div>
-              <h2 className="text-3xl font-black tracking-tight text-white sm:text-4xl">Fleet and Transportation Management</h2>
-              <p className="text-sm text-white/55">Enter your corporate credentials to access the fleet operations workspace.</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-1.5"><label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider text-white/65">Email Address</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5 text-sm text-white outline-none transition-all placeholder:text-white/25 focus:border-pink-400 focus:bg-black/30 focus:ring-4 focus:ring-pink-500/10" placeholder="name@company.com" required /></div>
-              <div className="space-y-1.5"><label htmlFor="password" className="block text-xs font-bold uppercase tracking-wider text-white/65">Password</label><input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5 text-sm text-white outline-none transition-all placeholder:text-white/25 focus:border-pink-400 focus:bg-black/30 focus:ring-4 focus:ring-pink-500/10" placeholder="••••••••••••" required /></div>
-              <AnimatePresence>{error && <motion.div initial={{ height: 0, opacity: 1 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} className="overflow-hidden"><div className="rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-xs font-medium text-rose-200">{error}</div></motion.div>}</AnimatePresence>
-              <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading} aria-busy={loading} className="w-full rounded-2xl bg-[#d41471] px-5 py-4 text-sm font-bold text-white shadow-lg shadow-pink-600/25 transition-colors hover:bg-[#b80049] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Connecting to fleet..." : "Sign In"}</motion.button>
-            </form>
-            <div className="flex items-center justify-between text-[11px] text-white/35"><span>Secure enterprise workspace</span><span>Telemetry protected</span></div>
-          </motion.div>
-        </section>
-      </div>
-    </motion.main>
-  );
+  return <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative min-h-screen overflow-hidden bg-[#090b12] text-white"><div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/vehicle.png.jpg')" }} /><div className="absolute inset-0 bg-gradient-to-r from-[#080a10]/80 via-[#080a10]/35 to-[#090b12]/85" /><div className="relative flex min-h-screen items-center justify-end px-5 py-10 sm:px-10 lg:px-16"><div className="absolute left-6 top-7 flex items-center gap-3 sm:left-10"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white"><Image src="/airship-logo.png" alt="Airship Express" width={48} height={48} className="object-contain p-1" priority /></div><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-pink-300">Airship Express</p><h1 className="font-black">Fleet Command</h1></div></div><motion.section initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md rounded-[30px] border border-white/15 bg-[#11131d]/80 p-7 shadow-2xl backdrop-blur-xl sm:p-9"><div className="mb-8"><p className="text-xs font-bold uppercase tracking-[0.22em] text-pink-300">Secure workspace</p><h2 className="mt-3 text-3xl font-black tracking-tight">Sign in to Fleet Command</h2><p className="mt-2 text-sm leading-6 text-white/60">Use your corporate credentials. Verification continues in a secure dialog.</p></div><form onSubmit={submit} className="space-y-5"><label className="block text-xs font-bold uppercase tracking-wider text-white/65">Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} disabled={loading} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5 text-sm outline-none focus:border-pink-400 focus:ring-4 focus:ring-pink-500/10 disabled:opacity-60" placeholder="name@company.com" required /></label><label className="block text-xs font-bold uppercase tracking-wider text-white/65">Password<div className="relative mt-2"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} disabled={loading} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5 pr-12 text-sm outline-none focus:border-pink-400 focus:ring-4 focus:ring-pink-500/10 disabled:opacity-60" required /><button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white" aria-label={showPassword ? "Hide password" : "Show password"}><span className="material-symbols-outlined text-lg">{showPassword ? "visibility_off" : "visibility"}</span></button></div></label>{error && !step && <p role="alert" className="rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2.5 text-xs font-semibold text-rose-100">{error}</p>}<button type="submit" disabled={loading} className="w-full rounded-2xl bg-[#d41471] px-5 py-4 text-sm font-black transition hover:bg-[#b80049] disabled:cursor-not-allowed disabled:opacity-60" aria-busy={loading}>{loading ? "Checking credentials…" : "Sign in"}</button></form></motion.section></div><OtpVerificationModal open={step === "otp"} email={email} code={otpCode} busy={otpBusy} error={error} attemptsRemaining={attemptsRemaining} secondsRemaining={Math.max(0, Math.ceil((otpExpiresAt - now) / 1000))} resendSeconds={Math.max(0, Math.ceil((resendAvailableAt - now) / 1000))} onCodeChange={setOtpCode} onVerify={() => void verifyOtp()} onResend={() => void sendOtp()} onCancel={() => void cancelSecurityStep()} /><PasskeyVerificationModal open={step === "passkey"} mode={passkeyMode} busy={passkeyBusy} error={error} onVerify={() => void verifyPasskey()} onRegister={() => void registerPasskey()} onUseNew={() => { setError(""); setPasskeyMode("register"); }} onCancel={() => void cancelSecurityStep()} /></motion.main>;
 }

@@ -1,8 +1,9 @@
 const path = require('path');
 const express = require('express');
+const http = require('http');
 const dotenv = require('dotenv');
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config({ path: path.resolve(__dirname, '..', '.env'), override: true });
 
 const { initSupabase } = require('./config/db');
 const { requireFleetUser, requireRoles } = require('./middleware/authMiddleware');
@@ -47,10 +48,11 @@ app.get('/health', (req, res) => res.json({ ok: true, service: 'ftm-backend' }))
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/geocode', require('./routes/geocodeRoutes'));
-// All operational APIs require a verified Supabase session. Health remains public.
+// All operational APIs require a verified Supabase session. Health and auth routes remain public.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health' || req.path.startsWith('/health/')) return next();
   if (req.path.startsWith('/geocode/')) return next();
+  if (req.path.startsWith('/auth/')) return next();
   return requireFleetUser(req, res, next);
 });
 const fleetRead = requireRoles('admin', 'fleet_manager', 'dispatcher', 'driver');
@@ -67,7 +69,9 @@ app.use('/api/analytics', permissionForMethod('operations'), require('./routes/a
 app.use('/api/tracking', permissionForMethod('operations'), require('./routes/trackingRoutes'));
 app.use('/api/optimize', permissionForMethod('vrds'), require('./routes/optimizeRoutes'));
 app.use('/api/admin', requireRoles('admin'), adminRoutes);
+app.use('/api/system-backup', requireRoles('admin'), require('./routes/backupRoutes'));
 app.use('/api/health', require('./routes/healthRoutes'));
+app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/drivers', permissionForMethod('driverPerformance'), require('./routes/driverRoutes'));
 app.use('/api/hr', fleetRead, require('./routes/hrRoutes'));
 // Parcel management and route-plan endpoints
@@ -80,6 +84,6 @@ app.use('/api/fleet-ai', require('./routes/fleetAiRoutes'));
 app.use('/api/support', permissionForMethod('operations'), require('./routes/supportRoutes'));
 app.use('/api/alerts', require('./routes/alertRoutes'));
 
-app.listen(PORT, '0.0.0.0', () => {
+http.createServer({ maxHeaderSize: 2 * 1024 * 1024 }, app).listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT} on 0.0.0.0`);
 });

@@ -8,6 +8,7 @@ import { normalizeRole } from "../lib/roleAccess";
 import { supabase } from "../lib/supabaseClient";
 import { signOut } from "../lib/auth";
 import ThemeToggle from "./ThemeToggle";
+import FtmProfileAvatar from "./FtmProfileAvatar";
 
 type Child = { label: string; path: string; description: string };
 type Item = { label: string; path: string; children?: Child[] };
@@ -151,24 +152,20 @@ export default function GlobalNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileChild, setMobileChild] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [currentRole, setCurrentRole] = useState<AppRole | null>(() => getCurrentRole());
+  const [currentRole, setCurrentRole] = useState<AppRole | null>(null);
   const [profileName, setProfileName] = useState("Account");
   const [profileEmail, setProfileEmail] = useState("account@airship.com");
   const navRef = useRef<HTMLElement | null>(null);
   const profileRef = useRef<HTMLDivElement | null>(null);
   const homeDashboardPath = getDashboardRouteForRole(currentRole) || "/ftmAuth";
 
-  const profileInitials = profileName
-    .split(/[\s@.-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "A";
-
   useEffect(() => {
     let active = true;
     const hydrateProfile = async () => {
-      const { data } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const { data } = sessionData.session?.user
+        ? { data: { user: sessionData.session.user } }
+        : await supabase.auth.getUser();
       if (!active) return;
       const authUser = data.user;
       const role = normalizeRole(authUser?.app_metadata?.role ?? authUser?.user_metadata?.role) ?? getCurrentRole();
@@ -257,18 +254,18 @@ export default function GlobalNavbar() {
   const handleLogout = async () => {
     await signOut();
     setProfileOpen(false);
-    router.push("/auth");
+    router.replace("/ftmAuth");
   };
 
   return (
-    <header className="sticky top-0 z-[1101] w-full">
-      <div className="hidden border-b border-white/10 bg-[#17151a] text-xs text-white/70 lg:block">
+    <header className="ftm-global-nav relative z-[1101] w-full">
+      <div className="hidden border-b border-white/70 bg-slate-100/70 text-xs text-slate-500 lg:block">
         <div className="mx-auto flex h-9 max-w-[1700px] items-center justify-between px-7">
           <div className="flex gap-5"><a href="tel:+639454418789" className="hover:text-white">☎ 0945 441 8789</a><a href="mailto:airshipexpress.s@gmail.com" className="hover:text-white">✉ airshipexpress.s@gmail.com</a></div>
-          <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#e2165f]" />Live network · Manila</span>
+          <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-pink-500" />Live network · Manila</span>
         </div>
       </div>
-      <div className="border-b border-pink-200/70 bg-white/90 shadow-[0_8px_30px_rgba(184,0,73,0.08)] backdrop-blur-xl">
+      <div className="ftm-soft-nav-surface border-b border-white/80 bg-slate-100/80 shadow-[0_8px_30px_rgba(148,163,184,0.14)] backdrop-blur-xl">
         <div className="mx-auto flex h-[48px] max-w-[1700px] items-center gap-5 px-4 sm:px-7">
           <a href={homeDashboardPath} className="shrink-0 h-full flex items-center" aria-label="Go to your home dashboard">
             <img src="/airship-logo.png" alt="Airship Express logo" className="h-full w-auto object-contain" />
@@ -311,7 +308,7 @@ export default function GlobalNavbar() {
               aria-expanded={profileOpen}
             >
               <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white shadow-[inset_0_-3px_0_rgba(0,0,0,0.12)]">
-                {profileInitials}
+                <FtmProfileAvatar name={profileName} className="h-full w-full rounded-full object-cover" />
                 <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
               </span>
               <span className="hidden min-w-0 flex-1 xl:block">
@@ -326,7 +323,7 @@ export default function GlobalNavbar() {
                 <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5">
                   <div className="flex items-center gap-3">
                     <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white">
-                      {profileInitials}
+                      <FtmProfileAvatar name={profileName} className="h-full w-full rounded-full object-cover" />
                       <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
                     </span>
                     <div className="min-w-0">
@@ -349,7 +346,7 @@ export default function GlobalNavbar() {
                     <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">manage_accounts</span>
                     <span>User Management</span>
                   </a>}
-                  {profileActions.settings && <a href="/account/settings" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
+                  {profileActions.settings && <a href="/account/settings?tab=overview" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
                     <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">settings</span>
                     <span>Settings</span>
                   </a>}
@@ -366,7 +363,7 @@ export default function GlobalNavbar() {
           <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-[#141d23] hover:bg-pink-50 lg:hidden" aria-label="Toggle menu" aria-expanded={mobileOpen}><span className="material-symbols-outlined">{mobileOpen ? "close" : "menu"}</span></button>
         </div>
       </div>
-      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4">{profileActions.userManagement && <a href="/users" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>User management</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}{profileActions.settings && <a href="/account/settings" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}<button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div></div>}
+      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4">{profileActions.userManagement && <a href="/users" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>User management</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}{profileActions.settings && <a href="/account/settings?tab=overview" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}<button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div></div>}
 </header>
   );
 }

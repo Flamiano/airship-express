@@ -3,9 +3,10 @@
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import RoleRestricted from "../../components/RoleRestricted";
+import FtmProfileAvatar from "../../components/FtmProfileAvatar";
 
 import { useMemo, useState, useEffect } from "react";
-import { getDashboardSnapshot } from "../../lib/api";
+import { getDashboardSnapshot, getMaintenanceRecords } from "../../lib/api";
 import { usePathname } from "next/navigation";
 
 export default function FvmMaintenancePage() {
@@ -13,13 +14,20 @@ export default function FvmMaintenancePage() {
   const [wearItems, setWearItems] = useState<any[]>([]);
   const [repairs, setRepairs] = useState<any[]>([]);
   const [upcoming, setUpcoming] = useState<any[]>([]);
+  const [maintenanceRecords, setMaintenanceRecords] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [tripRecords, setTripRecords] = useState<any[]>([]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const dash = await getDashboardSnapshot();
+        const [dash, maintenanceRows] = await Promise.all([getDashboardSnapshot(), getMaintenanceRecords()]);
         const vehicles = dash.vehicles || [];
+        const trips = (dash as any).trips || [];
 
         const wear = vehicles.length
           ? [
@@ -38,6 +46,9 @@ export default function FvmMaintenancePage() {
           setWearItems(wear);
           setRepairs(repairsList);
           setUpcoming(upcomingList);
+          setVehicles(vehicles);
+          setMaintenanceRecords(maintenanceRows || []);
+          setTripRecords(trips);
         }
       } catch (e) {
         console.warn('Failed to load maintenance snapshot', e);
@@ -45,6 +56,36 @@ export default function FvmMaintenancePage() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  const vehicleName = (id: string) => vehicles.find((vehicle) => String(vehicle.id) === String(id))?.name || id || "Unassigned vehicle";
+  const automaticRecommendations = useMemo(() => vehicles.map((vehicle) => {
+    const vehicleId = String(vehicle.id);
+    const vehicleTrips = tripRecords.filter((trip) => String(trip.vehicle_id ?? trip.vehicleId ?? "") === vehicleId);
+    const odometer = Number(vehicle.odometer ?? vehicle.odometer_km ?? vehicle.mileage ?? vehicle.mileage_km ?? 0);
+    const lastService = maintenanceRecords
+      .filter((record) => String(record.vehicle_id ?? record.vehicleId ?? "") === vehicleId)
+      .sort((a, b) => new Date(b.performed_at ?? b.completed_at ?? b.created_at ?? 0).getTime() - new Date(a.performed_at ?? a.completed_at ?? a.created_at ?? 0).getTime())[0];
+    const serviceMileage = Number(lastService?.mileage ?? lastService?.odometer ?? 0);
+    const milesSinceService = Math.max(0, odometer - serviceMileage);
+    const tripsSinceService = lastService ? vehicleTrips.filter((trip) => new Date(trip.created_at ?? trip.createdAt ?? 0) > new Date(lastService.performed_at ?? lastService.completed_at ?? lastService.created_at ?? 0)).length : vehicleTrips.length;
+    const mileageDue = odometer > 0 && milesSinceService >= 5000;
+    const tripDue = tripsSinceService >= 50;
+    if (!mileageDue && !tripDue) return null;
+    return { id: `auto-${vehicleId}`, vehicle_id: vehicleId, vehicleLabel: vehicle.name || vehicleId, title: mileageDue ? "Preventive service by mileage" : "Preventive service by trip frequency", type: "Preventive", status: "due", dueDate: null, cost: 0, notes: `${milesSinceService.toLocaleString()} mileage units since service · ${tripsSinceService} trips since service`, automatic: true };
+  }).filter(Boolean), [maintenanceRecords, tripRecords, vehicles]);
+  const normalizedRecords = useMemo(() => [...automaticRecommendations, ...maintenanceRecords.map((record) => {
+    const dueDate = record.due_date || record.scheduled_date || record.next_service_date;
+    const status = String(record.status || (dueDate && new Date(dueDate) < new Date() ? "overdue" : record.completed_at ? "completed" : "scheduled")).toLowerCase();
+    return { ...record, vehicleLabel: vehicleName(record.vehicle_id), dueDate, status, type: record.maintenance_type || record.type || "Preventive", title: record.title || record.description || "Scheduled service", cost: Number(record.cost ?? record.estimated_cost ?? 0) };
+  })], [automaticRecommendations, maintenanceRecords, vehicles]);
+  const filteredRecords = useMemo(() => normalizedRecords.filter((record) => {
+    const haystack = `${record.vehicleLabel} ${record.title} ${record.type}`.toLowerCase();
+    return (!query || haystack.includes(query.toLowerCase())) && (statusFilter === "all" || record.status === statusFilter) && (typeFilter === "all" || record.type.toLowerCase() === typeFilter.toLowerCase());
+  }), [normalizedRecords, query, statusFilter, typeFilter]);
+  const overdueCount = normalizedRecords.filter((record) => record.status === "overdue" || record.status === "due").length;
+  const scheduledCount = normalizedRecords.filter((record) => record.status === "scheduled").length;
+  const completedCount = normalizedRecords.filter((record) => record.status === "completed").length;
+  const maintenanceCost = normalizedRecords.reduce((sum, record) => sum + record.cost, 0);
 
   const sortedRepairs = useMemo(() => {
     const direction = dateSortDirection === "asc" ? 1 : -1;
@@ -61,23 +102,42 @@ export default function FvmMaintenancePage() {
     <div>
       {/* @ts-ignore - RoleRestricted component type compatibility */}
       <RoleRestricted allowedRoles={["fleet_manager", "admin"]} hideWhenRestricted>
-        <div className="flex flex-col min-h-screen bg-background text-on-background">
+        <div className="flex min-h-screen flex-col bg-[#fff8fc] font-sans text-slate-800 selection:bg-pink-500 selection:text-white">
           <GlobalNavbar />
-          <main className="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg space-y-stack-lg">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-stack-md">
+          <main className="mx-auto flex w-full max-w-[1920px] flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:px-10">
+      <section className="relative overflow-hidden rounded-[28px] border border-white/90 bg-gradient-to-br from-white via-pink-50/55 to-pink-100/35 p-6 shadow-[14px_14px_32px_rgba(190,24,93,0.1),-8px_-8px_24px_rgba(255,255,255,0.95),inset_1px_1px_0_rgba(255,255,255,1)] backdrop-blur-md md:p-8">
+        <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+      <div className="max-w-2xl">
+        <div className="inline-flex items-center gap-2 rounded-[14px] border border-pink-200/70 bg-pink-100/80 px-3.5 py-1.5 text-xs font-semibold text-pink-700 shadow-[3px_3px_8px_rgba(190,24,93,0.08),inset_1px_1px_0_rgba(255,255,255,0.8)]"><span className="material-symbols-outlined text-[16px]">build</span>Fleet Maintenance Operations</div>
         <div>
-          <h1 className="font-headline-lg text-headline-lg text-on-background">Maintenance Control</h1>
-          <p className="font-body-md text-body-md text-secondary mt-2">
-            Monitor parcel handling systems, schedule service, and track sorter wear.
+          <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">Keep every vehicle ready for the road.</h1>
+          <p className="mt-3 text-base leading-relaxed text-slate-600">
+            Schedule preventive service, resolve corrective work, and track maintenance cost and vehicle availability from one workspace.
           </p>
         </div>
-        <button className="bg-primary-container text-on-primary-container px-6 py-3 rounded-full font-label-md text-label-md shadow-sm hover:shadow-md transition-all flex items-center gap-2">
-          <span className="material-symbols-outlined">build</span>
-          Schedule Service
-        </button>
+      </div>
+        </div>
+      </section>
+
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-black text-slate-900">Maintenance schedule</h2><p className="mt-1 text-sm text-slate-500">Upcoming services, overdue work, and completed service history.</p></div></div>
+
+      <div className="rounded-[20px] border border-white/90 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow-[5px_5px_12px_rgba(190,24,93,0.06),-4px_-4px_10px_rgba(255,255,255,0.9)]">Maintenance reminders update automatically from vehicle mileage, odometer readings, trip frequency, and the latest completed service.</div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {[["Overdue", overdueCount, "error"], ["Scheduled", scheduledCount, "primary"], ["Completed", completedCount, "success"], ["Fleet vehicles", vehicles.length, "neutral"], ["Tracked cost", `₱${maintenanceCost.toLocaleString()}`, "neutral"]].map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-secondary">{label}</p><p className="mt-2 text-2xl font-black text-on-surface">{value}</p></div>)}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+      <section className="hidden rounded-[24px] border border-white/90 bg-white/90 p-5 shadow-[10px_10px_24px_rgba(190,24,93,0.08),-6px_-6px_18px_rgba(255,255,255,0.95),inset_1px_1px_0_rgba(255,255,255,1)]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-title-md text-title-md text-on-surface">Maintenance schedule and service history</h2><p className="text-sm text-secondary">Search vehicles, filter service type and track due dates, costs, parts, and completion status.</p></div><div className="flex flex-wrap gap-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search vehicle or service" className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-sm" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-sm"><option value="all">All status</option><option value="scheduled">Scheduled</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-sm"><option value="all">All types</option><option>Preventive</option><option>Corrective</option><option>Inspection</option><option>Parts replacement</option></select></div></div>
+        <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead><tr className="border-b border-outline-variant text-xs uppercase tracking-wider text-secondary"><th className="px-3 py-3">Vehicle</th><th className="px-3 py-3">Service</th><th className="px-3 py-3">Type</th><th className="px-3 py-3">Due / completed</th><th className="px-3 py-3">Cost</th><th className="px-3 py-3">Status</th></tr></thead><tbody>{filteredRecords.map((record) => <tr key={record.id} className="border-b border-outline-variant/50"><td className="px-3 py-3 font-bold text-on-surface">{record.vehicleLabel}</td><td className="px-3 py-3 text-secondary">{record.title}<div className="text-xs text-secondary">{record.notes || record.parts || ""}</div></td><td className="px-3 py-3 text-secondary">{record.type}</td><td className="px-3 py-3 text-secondary">{record.dueDate || record.performed_at || "No date"}</td><td className="px-3 py-3 text-secondary">{record.cost ? `₱${record.cost.toLocaleString()}` : "—"}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${record.status === "overdue" ? "bg-error-container text-on-error-container" : record.status === "completed" ? "bg-tertiary-container text-on-tertiary-container" : "bg-primary-container text-on-primary-container"}`}>{record.status}</span></td></tr>)}{filteredRecords.length === 0 && <tr><td colSpan={6} className="px-3 py-10 text-center text-secondary">No maintenance records match your filters.</td></tr>}</tbody></table></div>
+      </section>
+
+      <section className="rounded-[26px] border border-white/90 bg-white/85 p-5 shadow-[10px_10px_24px_rgba(190,24,93,0.08),-6px_-6px_18px_rgba(255,255,255,0.95),inset_1px_1px_0_rgba(255,255,255,1)]">
+        <div className="flex items-center justify-between gap-4"><div><h2 className="text-xl font-black text-slate-900">Maintenance Schedule</h2><p className="text-sm text-slate-500">Automatically generated from vehicle trips, mileage, and odometer data.</p></div><span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Auto Schedule</span></div>
+        <div className="mt-5 space-y-4">{vehicles.map((vehicle) => { const recommendation = automaticRecommendations.find((item) => item?.vehicle_id === String(vehicle.id)); const mileage = Number(vehicle.odometer ?? vehicle.odometer_km ?? vehicle.mileage ?? vehicle.mileage_km ?? 0); const trips = tripRecords.filter((trip) => String(trip.vehicle_id ?? trip.vehicleId ?? "") === String(vehicle.id)).length; const mileageProgress = Math.min(100, Math.round((mileage % 10000) / 100)); const tripProgress = Math.min(100, Math.round((trips % 200) / 2)); return <article key={vehicle.id} className="rounded-[22px] border border-white/90 bg-white/75 p-4 shadow-[6px_6px_14px_rgba(190,24,93,0.06),-5px_-5px_12px_rgba(255,255,255,0.92)]"><div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-black text-slate-900">Vehicle {vehicle.name || `#${vehicle.id}`}</h3><p className="mt-1 text-xs font-semibold text-slate-500">{vehicle.type || "Fleet vehicle"} <span className="mx-2">|</span> Plate: {vehicle.plate_number || vehicle.plate || "Not recorded"} <span className="mx-2">|</span> Status: <span className="text-emerald-600">{vehicle.status || "In Service"}</span></p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${recommendation ? "bg-pink-100 text-pink-700" : "bg-emerald-50 text-emerald-700"}`}>{recommendation ? "Due" : "On Track"}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-[18px] border border-white bg-white/80 p-3"><p className="text-xs text-slate-500">Current mileage</p><p className="mt-2 text-xl font-black text-slate-900">{mileage ? `${mileage.toLocaleString()} km` : "No odometer"}</p><p className="mt-1 text-[11px] text-slate-400">Next service at 10,000 km</p><div className="mt-3 h-2 rounded-full bg-pink-50"><div className="h-full rounded-full bg-violet-500" style={{ width: `${mileageProgress}%` }} /></div></div><div className="rounded-[18px] border border-white bg-white/80 p-3"><p className="text-xs text-slate-500">Trips since last service</p><p className="mt-2 text-xl font-black text-slate-900">{trips} trips</p><p className="mt-1 text-[11px] text-slate-400">Next service at 200 trips</p><div className="mt-3 h-2 rounded-full bg-blue-50"><div className="h-full rounded-full bg-blue-500" style={{ width: `${tripProgress}%` }} /></div></div><div className="rounded-[18px] border border-white bg-white/80 p-3"><p className="text-xs text-slate-500">Maintenance status</p><p className="mt-2 text-xl font-black text-emerald-600">{recommendation ? "Service due" : "On Track"}</p><p className="mt-1 text-[11px] text-slate-400">{recommendation ? recommendation.title : "No immediate action required"}</p></div></div></article>; })}{vehicles.length === 0 && <p className="py-10 text-center text-sm text-slate-400">No vehicle data available.</p>}</div>
+      </section>
+
+      <div className="hidden grid grid-cols-1 lg:grid-cols-12 gap-gutter">
         <div className="lg:col-span-8 flex flex-col gap-gutter">
           {/* Diagnostic Health */}
           <section className="bg-surface-container-lowest rounded border border-outline-variant p-stack-md shadow-[0px_10px_30px_rgba(0,0,0,0.04)]">
@@ -287,7 +347,7 @@ function Navbar() {
             <span style={navStyles.statusDot} />
             Live
           </div>
-          <div style={navStyles.navAvatar} title="Fleet Manager">FM</div>
+          <FtmProfileAvatar name="Fleet Manager" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white" />
         </div>
       </div>
     </nav>

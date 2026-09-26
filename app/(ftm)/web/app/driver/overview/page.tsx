@@ -4,8 +4,7 @@ import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 
 import { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { getAlertsSnapshot, getDrivers, getTrips } from "../../lib/api";
+import { confirmTripPickup, getAlertsSnapshot, getDriverAssignments, getDrivers, getTrips, startTrip } from "../../lib/api";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -22,7 +21,19 @@ import {
   Cell,
 } from "recharts";
 
-type TripRecord = { id?: string; driver_id?: string; driverId?: string; status?: string; created_at?: string; createdAt?: string };
+type TripRecord = {
+  id?: string;
+  driver_id?: string;
+  driverId?: string;
+  status?: string;
+  pickup_status?: string;
+  pickupStatus?: string;
+  pickup_proof_url?: string | null;
+  pickupProofUrl?: string | null;
+  booking_id?: string;
+  created_at?: string;
+  createdAt?: string;
+};
 
 function isCompletedTrip(trip: TripRecord) {
   return /completed|delivered/i.test(trip.status ?? "");
@@ -138,10 +149,14 @@ export default function DriverOverviewPage() {
   const [driverRecords, setDriverRecords] = useState<any[]>([]);
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [trips, setTrips] = useState<TripRecord[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hiddenKpis, setHiddenKpis] = useState<Set<string>>(new Set(overviewKpiIds));
-  const router = useRouter();
+  const [pickupProof, setPickupProof] = useState("");
+  const [manifestVerified, setManifestVerified] = useState(false);
+  const [pickupBusy, setPickupBusy] = useState<string | null>(null);
+  const [pickupMessage, setPickupMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const handleVisibilityShortcut = (event: KeyboardEvent) => {
@@ -179,15 +194,16 @@ export default function DriverOverviewPage() {
 
         // Fetch the page-specific records used to compute its KPIs.
         try {
-          const [drivers, trips] = await Promise.all([getDrivers(), getTrips({ light: true })]);
+          const [drivers, trips, nextAssignments] = await Promise.all([getDrivers(), getTrips({ light: true }), getDriverAssignments()]);
           const overview = buildOverviewMetrics(drivers, trips, snap.incidents || []);
           if (mounted) {
             setTrips(trips);
+            setAssignments(nextAssignments);
             setDriverRecords(drivers);
             setOverviewMetrics(overview.metrics);
             setTopPerformer(overview.top);
             // determine if there's any real data to show
-            const has = Boolean(drivers.length + trips.length + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
+            const has = Boolean(drivers.length + trips.length + nextAssignments.length + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
             setHasData(has);
           }
         } catch (e) {
@@ -214,12 +230,13 @@ export default function DriverOverviewPage() {
     (async () => {
       try {
         const snap = await getAlertsSnapshot();
-        const [drivers, trips] = await Promise.all([getDrivers(), getTrips({ light: true })]);
+        const [drivers, trips, nextAssignments] = await Promise.all([getDrivers(), getTrips({ light: true }), getDriverAssignments()]);
         const overview = buildOverviewMetrics(drivers, trips, snap.incidents || []);
         setTrips(trips);
+        setAssignments(nextAssignments);
         setDriverRecords(drivers);
         setOverviewMetrics(overview.metrics);
-        const has = Boolean(drivers.length + trips.length + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
+        const has = Boolean(drivers.length + trips.length + nextAssignments.length + (snap.incidents || []).length + (snap.notifications || []).length + (snap.trackingEvents || []).length);
         setHasData(has);
         setTopPerformer(overview.top);
         const items: any[] = [];
@@ -258,6 +275,42 @@ export default function DriverOverviewPage() {
       else next.add(id);
       return next;
     });
+  };
+  const pickupTrips = trips.filter((trip) => {
+    const status = String(trip.pickupStatus ?? trip.pickup_status ?? "pending").toLowerCase();
+    return !["started", "complete", "completed"].includes(status) && Boolean(trip.id);
+  });
+  const confirmPickup = async (trip: TripRecord) => {
+    if (!trip.id || !pickupProof.trim() || !manifestVerified) return;
+    setPickupBusy(trip.id);
+    setPickupMessage(null);
+    try {
+      await confirmTripPickup(trip.id, {
+        driver_id: String(trip.driverId ?? trip.driver_id ?? ""),
+        proof_url: pickupProof.trim(),
+        manifest_verified: true,
+      });
+      setTrips((current) => current.map((item) => item.id === trip.id ? { ...item, pickup_status: "confirmed", pickupStatus: "confirmed", pickup_proof_url: pickupProof.trim() } : item));
+      setPickupMessage("Pickup proof accepted. You can start the delivery trip now.");
+    } catch (error) {
+      setPickupMessage(error instanceof Error ? error.message : "Unable to confirm pickup.");
+    } finally {
+      setPickupBusy(null);
+    }
+  };
+  const beginTrip = async (trip: TripRecord) => {
+    if (!trip.id) return;
+    setPickupBusy(trip.id);
+    setPickupMessage(null);
+    try {
+      await startTrip(trip.id);
+      setTrips((current) => current.map((item) => item.id === trip.id ? { ...item, status: "In Transit", pickup_status: "started", pickupStatus: "started" } : item));
+      setPickupMessage("Trip started. Live location sharing is active.");
+    } catch (error) {
+      setPickupMessage(error instanceof Error ? error.message : "Pickup confirmation is required before starting.");
+    } finally {
+      setPickupBusy(null);
+    }
   };
   const renderKpiValue = (id: string, value: string | number) => hiddenKpis.has(id) ? "***" : value;
   const kpiCards = [
@@ -391,6 +444,46 @@ export default function DriverOverviewPage() {
             </div>
           ))}
         </div>
+
+        {assignments.length > 0 && (
+          <section className="rounded-2xl border border-pink-100 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">My Booking Assignments</h2>
+                <p className="mt-0.5 text-xs text-slate-500">Bookings, parcels, route plans, and the exact vehicle assigned to your account.</p>
+              </div>
+              <span className="material-symbols-outlined text-[#b80049]">assignment_ind</span>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {assignments.map((assignment) => {
+                const booking = assignment.booking || {};
+                const vehicle = assignment.vehicle || {};
+                const routePlan = assignment.route_plan || {};
+                const destinations = routePlan.delivery_destinations || routePlan.deliveryDestinations || booking.delivery_destinations || [];
+                const parcels = Array.isArray(assignment.parcels) ? assignment.parcels : [];
+                return (
+                  <article key={assignment.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-[#b80049]">Booking {booking.id || assignment.booking_id}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{booking.pickup_location || "Pickup not specified"} to {booking.dropoff_location || "Destination not specified"}</p>
+                      </div>
+                      <span className="rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-black uppercase text-[#b80049]">{assignment.status}</span>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                      <div><dt className="font-semibold text-slate-400">Vehicle</dt><dd className="mt-0.5 font-bold text-slate-700">{vehicle.plate_number || vehicle.plate || vehicle.id || "Not assigned"}</dd></div>
+                      <div><dt className="font-semibold text-slate-400">Route plan</dt><dd className="mt-0.5 font-bold text-slate-700">{routePlan.id || assignment.route_plan_id || "Not linked"}</dd></div>
+                      <div><dt className="font-semibold text-slate-400">Parcels</dt><dd className="mt-0.5 font-bold text-slate-700">{parcels.length}</dd></div>
+                      <div><dt className="font-semibold text-slate-400">Assigned</dt><dd className="mt-0.5 font-bold text-slate-700">{assignment.assigned_at ? new Date(assignment.assigned_at).toLocaleString() : "Not available"}</dd></div>
+                    </dl>
+                    {destinations.length > 0 && <p className="mt-3 text-xs text-slate-600"><span className="font-bold text-slate-700">Stops:</span> {destinations.map((stop: any) => stop.name || stop.label || stop.address).filter(Boolean).join(" • ")}</p>}
+                    {parcels.length > 0 && <p className="mt-2 text-xs text-slate-600"><span className="font-bold text-slate-700">Parcel details:</span> {parcels.map((parcel: any) => parcel.tracking_number || parcel.trackingNumber || parcel.id).filter(Boolean).join(", ")}</p>}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Main Section: Chart + Secondary Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -533,7 +626,7 @@ export default function DriverOverviewPage() {
                   </h3>
                   <button
                     type="button"
-                    onClick={() => router.push("/alerts")}
+                    onClick={() => window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination: "/alerts" } }))}
                     className="text-[#b80049] hover:underline text-xs font-bold"
                   >
                     View All
@@ -576,7 +669,7 @@ export default function DriverOverviewPage() {
 
               <button
                 type="button"
-                onClick={() => router.push("/driver/safety")}
+                onClick={() => window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination: "/driver/safety" } }))}
                 className="mt-4 w-full py-2.5 rounded-xl bg-pink-50 text-[#b80049] border border-pink-200 hover:bg-pink-100 transition-all text-xs font-bold flex items-center justify-center gap-1"
               >
                 <span>Open Security Center</span>

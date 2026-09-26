@@ -13,6 +13,7 @@ import {
   Area,
 } from "recharts";
 import GlobalNavbar from "../../components/GlobalNavbar";
+import FtmProfileAvatar from "../../components/FtmProfileAvatar";
 import { createSupportTicket, fetchJson, getAlertsSnapshot } from "../../lib/api";
 
  
@@ -176,7 +177,7 @@ export default function DriverPerformancePage() {
           return {
             name: d.full_name ?? d.fullName ?? d.email ?? "Driver",
             id,
-            avatar: null,
+            avatar: d.avatar_url ?? d.avatar ?? d.photo ?? null,
             initials: String(d.full_name ?? d.fullName ?? "").split(" ").map((s: string) => s[0]).slice(0,2).join("").toUpperCase(),
             safety,
             efficiency: String(efficiency),
@@ -477,15 +478,7 @@ export default function DriverPerformancePage() {
                       <tr key={d.id} className="hover:bg-pink-50/30 transition-colors group">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            {d.avatar ? (
-                              <div className="w-10 h-10 rounded-full overflow-hidden border border-pink-200 shrink-0 shadow-2xs">
-                                <img alt={d.name} className="w-full h-full object-cover" src={d.avatar} />
-                              </div>
-                            ) : (
-                              <div className="w-10 h-10 rounded-full border border-pink-200 bg-pink-100 flex items-center justify-center text-pink-700 font-bold text-xs shrink-0 shadow-2xs">
-                                {d.initials}
-                              </div>
-                            )}
+                            <FtmProfileAvatar name={d.name} userId={d.id} src={d.avatar} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-pink-200 bg-pink-100 text-xs font-bold text-pink-700 shadow-2xs" />
                             <div>
                               <div className="font-bold text-slate-900 text-xs">{d.name}</div>
                               <div className="text-[11px] font-mono text-pink-600 font-semibold">{d.id}</div>
@@ -818,4 +811,3 @@ export default function DriverPerformancePage() {
 
 
 
- 

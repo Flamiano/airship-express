@@ -14,7 +14,7 @@ function normalizeTrip(record = {}) {
   return {
     ...record,
     // legacy keys
-    vehicle: record.vehicle_id,
+    vehicle: record.vehicle_plate || record.vehicle_id,
     driver: record.driver_name || record.driver_id,
     from: record.from_location,
     to: record.to_location,
@@ -28,8 +28,15 @@ function normalizeTrip(record = {}) {
     // camelCase aliases expected by frontend
     bookingId: record.booking_id || record.bookingId || null,
     routePlanId: record.route_plan_id || record.routePlanId || null,
+    courierId: record.courier_id || record.courierId || null,
+    courier: record.courier || null,
     vehicleId: record.vehicle_id || record.vehicleId || null,
+    vehiclePlate: record.vehicle_plate || record.vehiclePlate || null,
     driverId: record.driver_id || record.driverId || null,
+    driverName: record.driver_name || record.driverName || null,
+    pickupStatus: record.pickup_status || record.pickupStatus || 'pending',
+    pickupProofUrl: record.pickup_proof_url || record.pickupProofUrl || null,
+    pickupConfirmedAt: record.pickup_confirmed_at || record.pickupConfirmedAt || null,
     status: isOverdue ? 'Delayed' : (record.status || null),
     progress: record.progress != null ? Number(record.progress) : null,
     estimatedDeparture: record.estimated_departure || record.estimatedDeparture || null,
@@ -65,6 +72,7 @@ function buildTripPayload(trip = {}) {
     id: trip.id || trip.trip_id || null,
     booking_id: trip.booking_id || null,
     route_plan_id: trip.route_plan_id || trip.routePlanId || null,
+    courier_id: trip.courier_id || trip.courierId || null,
     vehicle_id: normalizeVehicleId(vehicleId),
     driver_id: isValidUuid(driverId) ? driverId : null,
     driver_name: trip.driver_name || trip.driver || null,
@@ -82,6 +90,9 @@ function buildTripPayload(trip = {}) {
     load_kg: trip.load_kg ?? trip.loadKg ?? null,
     scheduled_at: trip.scheduled_at ?? trip.scheduledAt ?? null,
     notes: trip.notes || null,
+    pickup_status: trip.pickup_status || trip.pickupStatus || 'pending',
+    pickup_proof_url: trip.pickup_proof_url || trip.pickupProofUrl || null,
+    pickup_confirmed_at: trip.pickup_confirmed_at || trip.pickupConfirmedAt || null,
   };
 }
 

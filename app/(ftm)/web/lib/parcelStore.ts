@@ -187,6 +187,7 @@ export function useParcelStore() {
                   : normalizeStatusToAvailability(
                       driver.status || driver.current_status || driver.state || (driver.vehicle_id ? 'Assigned' : 'Available')
                     ),
+                courier: driver.courier || driver.courier_name || driver.courierName || undefined,
               };
             })
           : [];
@@ -202,6 +203,7 @@ export function useParcelStore() {
                 status: assignedVehicleIds.has(id)
                   ? 'Assigned'
                   : normalizeStatusToAvailability(vehicle.status || vehicle.vehicle_status || vehicle.state || 'Available'),
+                courier: vehicle.courier || vehicle.courier_name || vehicle.courierName || undefined,
               };
             })
           : [];

@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import FtmProfileAvatar from "../components/FtmProfileAvatar";
 
 export const VRDS_TABS = [
   { label: "Dashboard", href: "/vrds/dashboard" },
@@ -104,7 +105,7 @@ export function Navbar() {
             <span style={navStyles.statusDot} />
             Live
           </div>
-          <div style={navStyles.navAvatar} title="Fleet Manager">FM</div>
+          <FtmProfileAvatar name="Fleet Manager" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white" />
         </div>
       </div>
     </nav>

@@ -3,9 +3,7 @@
 import { useEffect, useRef } from "react";
 import {
   Chart,
-  BarController,
   LineController,
-  BarElement,
   LineElement,
   PointElement,
   LinearScale,
@@ -14,16 +12,7 @@ import {
   type ChartConfiguration,
 } from "chart.js";
 
-Chart.register(
-  BarController,
-  LineController,
-  BarElement,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Tooltip
-);
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip);
 
 interface TrendData {
   labels: string[];
@@ -46,61 +35,67 @@ export default function TrendChart({ trendData }: TrendChartProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const config: ChartConfiguration = {
-      type: "bar",
+    const yMax = Math.max(...trendData.actual, ...trendData.planned, 60);
+
+    const config: ChartConfiguration<"line"> = {
+      type: "line",
       data: {
         labels: trendData.labels,
         datasets: [
           {
-            type: "line",
-            label: "Trend",
-            data: trendData.trendLine,
-            borderColor: "#b80049",
-            backgroundColor: "#b80049",
-            borderWidth: 2,
-            tension: 0.3,
-            pointRadius: 3,
-            order: 1,
-          },
-          {
-            type: "bar",
             label: "Planned",
             data: trendData.planned,
-            backgroundColor: "#2563eb",
-            barPercentage: 0.8,
-            categoryPercentage: 0.4,
-            order: 2,
+            borderColor: "#3b82f6",
+            backgroundColor: "rgba(59, 130, 246, 0.18)",
+            borderWidth: 2,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
           },
           {
-            type: "bar",
             label: "Actual",
             data: trendData.actual,
-            backgroundColor: "#fb923c",
-            barPercentage: 0.8,
-            categoryPercentage: 0.4,
-            order: 3,
+            borderColor: "#ef489d",
+            backgroundColor: "rgba(239, 72, 157, 0.18)",
+            borderWidth: 2,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: {
+          duration: 250,
+        },
         scales: {
           y: {
             beginAtZero: true,
-            max: Math.max(...trendData.actual, ...trendData.planned, 60),
+            max: yMax,
             ticks: {
               callback: (value) => `${value}k`,
-              stepSize: Math.max(10, Math.round(Math.max(...trendData.actual, ...trendData.planned) / 3)),
+              stepSize: Math.max(10, Math.round(yMax / 5)),
+              color: "#6b7280",
             },
-            grid: { color: "#e5e2e1" },
+            grid: {
+              color: "#dfe3e8",
+            },
           },
           x: {
             grid: { display: false },
+            ticks: { color: "#6b7280", maxTicksLimit: 10 },
           },
         },
         plugins: {
           legend: { display: false },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: (context) => `${context.dataset.label}: ${context.parsed.y}k`,
+            },
+          },
         },
         interaction: {
           mode: "index",
@@ -116,5 +111,5 @@ export default function TrendChart({ trendData }: TrendChartProps) {
     };
   }, [trendData]);
 
-  return <canvas ref={canvasRef} />;
+  return <canvas ref={canvasRef} className="h-full w-full" />;
 }

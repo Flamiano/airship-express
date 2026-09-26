@@ -6,11 +6,21 @@ const ROLE_ALIASES: Record<string, AppRole> = {
   fleet_manager: "fleet_manager",
   "fleet manager": "fleet_manager",
   "fleet-manager": "fleet_manager",
+  "operations manager": "fleet_manager",
+  "ops manager": "fleet_manager",
+  "dispatch manager": "fleet_manager",
+  "pickup manager": "fleet_manager",
   manager: "fleet_manager",
   administrator: "admin",
   admin: "admin",
   super_admin: "admin",
+  "super-admin": "admin",
   dispatcher: "dispatcher",
+  dispatch: "dispatcher",
+  "dispatch officer": "dispatcher",
+  operations: "dispatcher",
+  ops: "dispatcher",
+  "pickup coordinator": "dispatcher",
   driver: "driver",
   customer: "customer",
 };
@@ -20,8 +30,22 @@ export function normalizeRole(value?: string | null): AppRole | null {
 
   const normalized = String(value).trim().toLowerCase().replace(/[^a-z_\-\s]/g, "");
   const mapped = ROLE_ALIASES[normalized] ?? ROLE_ALIASES[normalized.replace(/\s+/g, "_")];
+  if (mapped) return mapped;
 
-  return mapped ?? null;
+  if (/(fleet|operations|dispatch|pickup|route).*(manager|supervisor|lead)/.test(normalized)) {
+    return "fleet_manager";
+  }
+  if (/(dispatch|operations|pickup|route)/.test(normalized)) {
+    return "dispatcher";
+  }
+  if (/(driver|delivery)/.test(normalized)) {
+    return "driver";
+  }
+  if (/(customer|client)/.test(normalized)) {
+    return "customer";
+  }
+
+  return null;
 }
 
 export function getCurrentRole(): AppRole | null {

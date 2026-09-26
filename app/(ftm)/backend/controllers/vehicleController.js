@@ -10,6 +10,10 @@ function isVehicleIdConflict(error) {
   return String(error?.code || '').trim() === '23505' && /vehicles_pkey|duplicate key/i.test(String(error?.message || error || ''));
 }
 
+function isMissingAssignmentStatusColumn(error) {
+  return /assignment_status|schema cache|column .* does not exist/i.test(String(error?.message || error || ''));
+}
+
 async function getNextVehicleId(supabase, courierId) {
   const { data, error } = await supabase.from('vehicles').select('id, courier_id');
   if (error) throw error;
@@ -61,7 +65,15 @@ async function getVehicles(req, res) {
     });
   }
 
-  return res.json((data || []).map(normalizeVehicle));
+  const courierIds = [...new Set((data || []).map((vehicle) => vehicle.courier_id).filter(Boolean))];
+  const { data: couriers } = courierIds.length > 0
+    ? await supabase.from('couriers').select('id, name, code').in('id', courierIds)
+    : { data: [] };
+  const courierById = new Map((couriers || []).map((courier) => [String(courier.id), courier]));
+  return res.json((data || []).map((vehicle) => normalizeVehicle({
+    ...vehicle,
+    courier: courierById.get(String(vehicle.courier_id))?.name || null,
+  })));
 }
 
 async function getNextVehicleIdRoute(req, res) {
@@ -117,10 +129,22 @@ async function createVehicle(req, res) {
   if (duplicate?.length) return res.status(409).json({ error: 'This plate number is already registered.' });
 
   let { data, error } = await supabase.from('vehicles').insert(payload).select('*').single();
+  if (error && isMissingAssignmentStatusColumn(error)) {
+    // Older deployments may not have applied the assignment-status migration yet.
+    // Keep vehicle creation compatible while the migration is applied.
+    const legacyPayload = { ...payload };
+    delete legacyPayload.assignment_status;
+    ({ data, error } = await supabase.from('vehicles').insert(legacyPayload).select('*').single());
+  }
   if (error && isVehicleIdConflict(error)) {
     try {
       payload.id = await getNextVehicleId(supabase, payload.courier_id);
       ({ data, error } = await supabase.from('vehicles').insert(payload).select('*').single());
+      if (error && isMissingAssignmentStatusColumn(error)) {
+        const legacyPayload = { ...payload };
+        delete legacyPayload.assignment_status;
+        ({ data, error } = await supabase.from('vehicles').insert(legacyPayload).select('*').single());
+      }
     } catch (retryError) {
       error = retryError;
     }
@@ -191,12 +215,18 @@ async function uploadVehicleDocument(req, res) {
   const supabase = getServiceSupabase();
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
 
-  const { error: bucketCreateError } = await supabase.storage.createBucket(bucketName, { public: false });
-  if (bucketCreateError && !/already exists|duplicate/i.test(bucketCreateError.message || '')) {
-    return res.status(503).json({
-      error: 'Unable to initialize document storage',
-      details: `${bucketCreateError.message}. Configure FTM_SUPABASE_SERVICE_ROLE_KEY and restart the backend.`,
-    });
+  let bucketExists = false;
+  const { data: buckets, error: bucketListError } = await supabase.storage.listBuckets();
+  if (!bucketListError) bucketExists = (buckets || []).some((bucket) => bucket.id === bucketName || bucket.name === bucketName);
+
+  if (!bucketExists) {
+    const { error: bucketCreateError } = await supabase.storage.createBucket(bucketName, { public: false });
+    if (bucketCreateError && !/already exists|duplicate/i.test(bucketCreateError.message || '')) {
+      return res.status(503).json({
+        error: 'Unable to initialize document storage',
+        details: `${bucketCreateError.message}. Configure FTM_SUPABASE_SERVICE_ROLE_KEY and restart the backend.`,
+      });
+    }
   }
 
   const { error } = await supabase.storage.from(bucketName).upload(String(document.path), file, {

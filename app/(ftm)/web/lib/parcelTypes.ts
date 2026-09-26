@@ -73,6 +73,7 @@ export type Driver = {
   id: string;
   name: string;
   status: "Available" | "Assigned";
+  courier?: string;
 };
 
 export type Vehicle = {
@@ -81,6 +82,7 @@ export type Vehicle = {
   type: string;
   capacityKg: number;
   status: "Available" | "Assigned";
+  courier?: string;
 };
 
 export const PARCEL_STATUS_LABEL: Record<ParcelStatus, string> = {

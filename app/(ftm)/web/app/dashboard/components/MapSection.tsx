@@ -338,6 +338,16 @@ export default function MapSection({
       const bookingId = (trip as any)?.bookingId || (trip as any)?.booking_id || "";
       const driverId = (trip as any)?.driverId || (trip as any)?.driver_id || "";
       const driverName = (trip as any)?.driverName || "";
+      const pickupStatus = String((trip as any)?.pickupStatus || (trip as any)?.pickup_status || "pending").toLowerCase();
+      const pickupConfirmed = ["confirmed", "started", "complete", "completed"].includes(pickupStatus);
+      const driverSnapshot = [...drivers, ...storeDrivers].find((driver: any) => {
+        const sameDriver = driverId && String(driver.id || driver.driver_id || driver.user_id) === String(driverId);
+        const sameVehicle = trip.vehicleId && String(driver.vehicle_id || driver.vehicleId) === String(trip.vehicleId);
+        return sameDriver || sameVehicle;
+      });
+      const driverLocation = driverSnapshot && Number.isFinite(Number(driverSnapshot.last_location_lat)) && Number.isFinite(Number(driverSnapshot.last_location_lng))
+        ? { lat: Number(driverSnapshot.last_location_lat), lng: Number(driverSnapshot.last_location_lng) }
+        : null;
       
       const booking = bookingId
         ? bookings.find((item) => String(item.id) === String(bookingId))
@@ -378,14 +388,15 @@ export default function MapSection({
         }));
       
       const destinationStop = stops[stops.length - 1];
-      const destination = destinationStop?.name || trip.toLocation || trip.destination_location || (trip as any)?.to || "Destination";
+      const deliveryDestination = destinationStop?.name || trip.toLocation || trip.destination_location || (trip as any)?.to || "Destination";
+      const destination = pickupConfirmed ? deliveryDestination : "Airship Express Hub - Binondo, Manila";
       const originPos = trip.fromCoords || (
         Number.isFinite(Number(trip.from_latitude)) && Number.isFinite(Number(trip.from_longitude))
           && !(Number(trip.from_latitude) === 0 && Number(trip.from_longitude) === 0)
           ? { lat: Number(trip.from_latitude), lng: Number(trip.from_longitude) }
           : HUB_POS
       );
-      const destPos = destinationStop
+      const deliveryDestPos = destinationStop
         ? { lat: destinationStop.lat, lng: destinationStop.lng }
         : trip.toCoords || resolveDestination(
           trip.toLocation || trip.destination_location || (trip as any)?.to || "",
@@ -394,6 +405,7 @@ export default function MapSection({
             ? { lat: Number(trip.to_latitude), lng: Number(trip.to_longitude) }
             : null,
         );
+          const destPos = pickupConfirmed ? deliveryDestPos : originPos;
       
       const { etaMinutes, progress } = calculateEtaAndProgress(trip, osrmMetrics[trip.id || ""]);
       
@@ -412,7 +424,7 @@ export default function MapSection({
         id: trip.id || "",
         name: resolvedDriverName,
         driverName: resolvedDriverName,
-        vehiclePlate: trip.vehicleId || "Assigned vehicle",
+        vehiclePlate: (trip as any).vehiclePlate || (trip as any).vehicle_plate || trip.vehicleId || "Assigned vehicle",
         parcelSummary: `${parcelCount} parcels — ${destination}${stops.length > 1 ? ` • ${stops.length} stops` : ""}`,
         parcelCount,
         parcelDetails,
@@ -420,17 +432,17 @@ export default function MapSection({
         destination,
         originPos,
         destPos,
-        currentPos: trip.fromCoords || originPos,
+        currentPos: driverLocation || trip.fromCoords || originPos,
         progress,
         etaMinutes,
         status: normalizeTripStatus(trip.status),
         bookingId,
         courier,
         stops,
-        routePlanPolyline,
+        routePlanPolyline: pickupConfirmed ? routePlanPolyline : null,
       } as Delivery;
     });
-  }, [visibleTrips, bookings, parcels, osrmMetrics, drivers, routePlans]);
+  }, [visibleTrips, bookings, parcels, osrmMetrics, drivers, storeDrivers, routePlans]);
 
   // Courier colors for visual distinction on map
   const courierColors = useMemo(() => {
@@ -599,6 +611,7 @@ export default function MapSection({
             id: delivery.id,
             position: vehiclePosition,
             color: delivery.status === "critical" ? "#e11d48" : "#be185d",
+            isVehicle: true,
             label: (
               <div className="space-y-1 text-sm leading-tight">
                 <div className="font-semibold text-slate-900">{delivery.name}</div>

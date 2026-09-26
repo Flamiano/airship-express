@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import FleetAIChatbot from "../../components/fleet-ai/FleetAIChatbot";
+import dynamic from "next/dynamic";
+
+const FleetAIChatbot = dynamic(() => import("../../components/fleet-ai/FleetAIChatbot"), { ssr: false });
 
 export default function FtmChatbotGate() {
   const pathname = usePathname();

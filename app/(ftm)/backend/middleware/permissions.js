@@ -14,8 +14,8 @@ const PERMISSIONS = {
     roleManagement: none, systemSettings: none,
   },
   fleet_manager: {
-    operations: view, alerts: ['view', 'update'], costAnalysis: admin, driverPerformance: view,
-    fuelManagement: admin, gallery: ['view', 'create', 'update'], fvm: admin, vrds: view, userManagement: none,
+    operations: ['view', 'create', 'update'], alerts: ['view', 'update'], costAnalysis: admin, driverPerformance: view,
+    fuelManagement: admin, gallery: ['view', 'create', 'update'], fvm: admin, vrds: ['view', 'create', 'update'], userManagement: none,
     roleManagement: none, systemSettings: none,
   },
   driver: {

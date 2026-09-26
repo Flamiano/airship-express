@@ -1,3 +1,5 @@
+import FtmProfileAvatar from "../../components/FtmProfileAvatar";
+
 const NAV_ITEMS = ["Hub", "Shipments", "Sorting", "Analytics", "Fleet"];
 
 export default function Header() {
@@ -32,14 +34,7 @@ export default function Header() {
         <button className="text-text-muted hover:text-brand transition-colors">
           <i className="fa-solid fa-cog text-lg" />
         </button>
-        <div className="w-8 h-8 rounded-full bg-surface-bright border border-border flex items-center justify-center overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="User Avatar"
-            className="w-full h-full object-cover"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpeaD1V5j44D-Ka_wd_sLT097SKm2tOizHvyZXUbCWE3cQq-BO66TXId-i6MUITxqHNlW--oYTiFWqe__wL6C2aGpEXIq3Jn0kZGCiIr9wvXI5gZObftl__Pfy73jmHx0Hb_P0wZyYdLJxjJE1x2dw5WsLcc_MxJhxYOgjcV6p45a17G5D_QQi9Q-jDp6Og_P8ZVHOz5FX8bvkYwTRxmM4MryKmVnehvzPHD9OyuDEp9eT1wT0oQgv1Q"
-          />
-        </div>
+        <FtmProfileAvatar name="Account" className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-bright text-xs font-bold" />
       </div>
     </header>
   );

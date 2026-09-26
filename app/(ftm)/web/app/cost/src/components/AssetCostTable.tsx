@@ -38,7 +38,7 @@ export default function AssetCostTable({ entries }: { entries: CostEntry[] }) {
   const { isItemVisible, toggleItem } = useMask();
 
   return (
-    <div className="bg-white rounded-md border border-pink-100 col-span-1 lg:col-span-3 overflow-hidden flex flex-col shadow-sm">
+    <div className="cost-table bg-white rounded-md border border-pink-100 col-span-1 lg:col-span-3 overflow-hidden flex flex-col shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead className="bg-pink-50 text-primary font-label-md text-label-sm uppercase border-b border-pink-100">

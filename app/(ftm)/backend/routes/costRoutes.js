@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getServiceSupabase } = require('../config/db');
-const { attachCategoryCost, loadCategoryCosts } = require('../services/costCategoryService');
+const { attachCategoryCost, loadCategoryCosts, buildCategoryDetails } = require('../services/costCategoryService');
 
 const COST_CATEGORIES = new Set([
   'Fuel', 'Maintenance', 'Toll', 'Salary', 'Insurance', 'Other', 'Driver', 'Parking', 'Revenue',
@@ -10,18 +10,20 @@ const COST_CATEGORIES = new Set([
 function normalizeCostEntry(entry) {
   if (!entry) return entry;
 
-  // Keep the API contract used by the fleet UI while persisting against the
-  // database's canonical `remarks` and `entry_date` columns.
+  const categoryCost = entry.categoryCost || buildCategoryDetails(entry.category, entry);
+
   return {
     ...entry,
     vehicleId: entry.vehicle_id || entry.vehicleId || null,
     tripId: entry.trip_id || entry.tripId || null,
+    driverId: entry.driver_id || entry.driverId || null,
     category: entry.category,
     amount: entry.amount != null ? Number(entry.amount) : null,
     entryDate: entry.entry_date || entry.entryDate || null,
-    remarks: entry.remarks ?? entry.remarks ?? entry.description ?? null,
+    remarks: entry.remarks ?? entry.description ?? null,
     description: entry.description ?? entry.remarks ?? '',
     recorded_at: entry.recorded_at ?? entry.entry_date ?? entry.created_at ?? null,
+    categoryCost,
   };
 }
 
@@ -53,8 +55,13 @@ router.get('/', async (_req, res) => {
   try {
     return res.json(await loadCategoryCosts(supabase, normalizedRows));
   } catch (categoryError) {
-    console.error('Supabase category cost query error:', categoryError.message);
-    return res.status(500).json({ error: `Unable to load category costs: ${categoryError.message}` });
+    const message = categoryError && categoryError.message ? categoryError.message : String(categoryError || 'Unknown category cost error');
+    if (/Could not find the table|fuel_costs|other_costs|maintenance_costs|toll_costs|parking_costs/i.test(message)) {
+      console.warn('Legacy category cost tables are unavailable; returning canonical cost_entries rows instead.', message);
+      return res.json(normalizedRows);
+    }
+    console.error('Supabase category cost query error:', message);
+    return res.status(500).json({ error: `Unable to load category costs: ${message}` });
   }
 });
 
@@ -76,6 +83,7 @@ router.post('/', async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database is not configured' });
 
   const payload = {
+    driver_id: record.driver_id || record.driverId || null,
     vehicle_id: record.vehicle_id || record.vehicle || null,
     trip_id: record.trip_id || record.trip || null,
     category: record.category,
@@ -83,12 +91,19 @@ router.post('/', async (req, res) => {
     entry_date: entryDate,
     remarks: record.remarks ?? record.description ?? null,
     receipt_image: record.receipt_image ?? null,
+    category_details: buildCategoryDetails(record.category, record),
   };
 
   let result = await supabase.from('cost_entries').insert(payload).select('*').single();
   if (result.error && /receipt_image/i.test(result.error.message)) {
     const fallbackPayload = { ...payload };
     delete fallbackPayload.receipt_image;
+    result = await supabase.from('cost_entries').insert(fallbackPayload).select('*').single();
+  }
+  if (result.error && /category_details|driver_id/i.test(result.error.message)) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.category_details;
+    delete fallbackPayload.driver_id;
     result = await supabase.from('cost_entries').insert(fallbackPayload).select('*').single();
   }
 
@@ -104,7 +119,7 @@ router.post('/', async (req, res) => {
     return res.status(500).json({ error: `Unable to create category cost: ${categoryError.message}` });
   }
 
-  return res.status(201).json(normalizeCostEntry(result.data));
+  return res.status(201).json(normalizeCostEntry({ ...result.data, categoryCost: buildCategoryDetails(record.category, record) }));
 });
 
 module.exports = router;

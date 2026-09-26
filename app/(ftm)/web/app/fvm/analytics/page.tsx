@@ -4,114 +4,28 @@
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import RoleRestricted from "../../components/RoleRestricted";
-
 import { useMemo, useState, useEffect } from "react";
 import { getBookings, getRoutePlan, getTrips, getVehicles } from "../../lib/api";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type VehicleStatus = "active" | "idle" | "maintenance";
-
 type Vehicle = {
-  id: string;
-  name: string;
-  type: string;
-  plate: string;
-  status: VehicleStatus;
-  driver: string | null;
-  route: string;
-  utilizationPct: number;
-  utilizationTrend: number[];
-  capacityKg: number | null;
-  loadUtilizationPct: number | null;
-  deliveriesToday: number | null;
-  onTimeRatePct: number | null;
-  costPerMile: number | null;
-  costPerDelivery: number | null;
-  depot: string | null;
-  idleDurationMinutes: number | null;
-  distanceTodayMi: number;
-  distanceSource: "telemetry" | "route-plan";
-  fuelPct: number | null;
-  lastUpdated: string;
+  id: string; name: string; type: string; plate: string; status: VehicleStatus; driver: string | null; route: string;
+  utilizationPct: number; utilizationTrend: number[]; capacityKg: number | null; loadUtilizationPct: number | null;
+  deliveriesToday: number | null; onTimeRatePct: number | null; costPerMile: number | null; costPerDelivery: number | null;
+  depot: string | null; idleDurationMinutes: number | null; distanceTodayMi: number; distanceSource: "telemetry" | "route-plan";
+  fuelPct: number | null; lastUpdated: string;
 };
-
+type AnalyticsRecord = Record<string, any>;
 const FLEET_CACHE_KEY = "airship-fleet-analytics-cache";
-
-function readFleetCache(): Vehicle[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const cached = JSON.parse(window.localStorage.getItem(FLEET_CACHE_KEY) || "[]");
-    return Array.isArray(cached) ? cached : [];
-  } catch {
-    return [];
-  }
-}
-
-// Fleet is loaded through the lightweight vehicles endpoint and normalized into `Vehicle[]`.
-
-const STATUS_LABEL: Record<VehicleStatus, string> = {
-  active: "On Route",
-  idle: "Idle",
-  maintenance: "Maintenance",
-};
-
-const STATUS_STYLE: Record<VehicleStatus, string> = {
-  active: "bg-pink-100 text-pink-700 border border-pink-200",
-  idle: "bg-slate-100 text-slate-600 border border-slate-200",
-  maintenance: "bg-rose-100 text-rose-700 border border-rose-200",
-};
-
-const METRIC_LABELS = [
-  "Total Fleet",
-  "On Route",
-  "Idle",
-  "Maintenance",
-  "Avg Utilization",
-  "Next-hour fleet load",
-  "Dispatch capacity risk",
-  "Utilization pressure",
-  "High utilization",
-  "Balanced utilization",
-  "Low utilization",
-  "Driver coverage",
-  "Telemetry coverage",
-  "Fleet readiness",
-  "Avg Load Utilization",
-  "Deliveries Today",
-  "On-Time Rate",
-  "Cost per Mile",
-  "Cost per Delivery",
-];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatMi(value: number) {
-  return `${value.toLocaleString()} mi`;
-}
-
-function normalizeUtilizationTrend(value: unknown, currentValue: number) {
-  const values = Array.isArray(value)
-    ? value.map((item) => Number(item)).filter((item) => Number.isFinite(item))
-    : [];
-  if (values.length === 0) return Array(7).fill(currentValue);
-  return values.slice(-7);
-}
-
-function recordDate(value: unknown) {
-  const date = new Date(String(value ?? ""));
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function isToday(value: unknown) {
-  const date = recordDate(value);
-  const now = new Date();
-  return Boolean(date && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate());
-}
+const STATUS_LABEL: Record<VehicleStatus, string> = { active: "On Route", idle: "Idle", maintenance: "Maintenance" };
+const STATUS_STYLE: Record<VehicleStatus, string> = { active: "bg-pink-100 text-pink-700 border border-pink-200", idle: "bg-slate-100 text-slate-600 border border-slate-200", maintenance: "bg-rose-100 text-rose-700 border border-rose-200" };
+const METRIC_LABELS = ["Avg Utilization", "Active Vehicles", "Idle Vehicles", "Distance Traveled", "Operating Hours", "Trip Frequency", "Load Utilization", "On-Time Rate", "Next-hour fleet load", "Dispatch capacity risk", "Utilization pressure"];
+function readFleetCache(): Vehicle[] { if (typeof window === "undefined") return []; try { const cached = JSON.parse(window.localStorage.getItem(FLEET_CACHE_KEY) || "[]"); return Array.isArray(cached) ? cached : []; } catch { return []; } }
+function formatMi(value: number) { return `${value.toLocaleString()} mi`; }
+function normalizeUtilizationTrend(value: unknown, currentValue: number) { const values = Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : []; return values.length ? values.slice(-7) : Array(7).fill(currentValue); }
+function recordDate(value: unknown) { const date = new Date(String(value ?? "")); return Number.isNaN(date.getTime()) ? null : date; }
+function isToday(value: unknown) { const date = recordDate(value); const now = new Date(); return Boolean(date && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()); }
 
 function firstNumber(...values: unknown[]) {
   for (const value of values) {
@@ -129,6 +43,24 @@ function isOnTimeRecord(record: any) {
   if (typeof record?.onTime === "boolean") return record.onTime;
   if (typeof record?.on_time === "boolean") return record.on_time;
   return !/late|delay|overdue/i.test(String(record?.status ?? record?.delivery_status ?? record?.delay_reason ?? ""));
+}
+
+function recordTimestamp(record: AnalyticsRecord) {
+  return recordDate(record.completedAt ?? record.completed_at ?? record.actualArrival ?? record.actual_arrival ?? record.updatedAt ?? record.updated_at ?? record.createdAt ?? record.created_at);
+}
+
+function tripDistanceMiles(trip: AnalyticsRecord) {
+  const distanceKm = firstNumber(trip.distanceKm, trip.distance_km, trip.routeDistanceKm, trip.route_distance_km);
+  const distanceMi = firstNumber(trip.distanceMi, trip.distance_mi, trip.mileage, trip.miles);
+  return distanceMi != null ? distanceMi : distanceKm != null ? distanceKm * 0.621371 : 0;
+}
+
+function tripDurationHours(trip: AnalyticsRecord) {
+  const reportedHours = firstNumber(trip.operatingHours, trip.operating_hours, trip.durationHours, trip.duration_hours);
+  if (reportedHours != null) return Math.max(0, reportedHours);
+  const started = recordDate(trip.startedAt ?? trip.started_at ?? trip.departedAt ?? trip.departed_at);
+  const ended = recordDate(trip.completedAt ?? trip.completed_at ?? trip.actualArrival ?? trip.actual_arrival);
+  return started && ended ? Math.max(0, (ended.getTime() - started.getTime()) / 3600000) : 0;
 }
 
 function hasConsecutiveUtilization(values: unknown, predicate: (value: number) => boolean, days = 3) {
@@ -195,6 +127,7 @@ export default function FvmAnalyticsPage() {
   const [dateRange, setDateRange] = useState<"all" | "today" | "7" | "30">("all");
   const [selectedId, setSelectedId] = useState<string>("");
   const [fleet, setFleet] = useState<Vehicle[]>([]);
+  const [tripRecords, setTripRecords] = useState<AnalyticsRecord[]>([]);
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [hiddenMetricValues, setHiddenMetricValues] = useState<Set<string>>(() => new Set(METRIC_LABELS));
 
@@ -237,6 +170,9 @@ export default function FvmAnalyticsPage() {
     (async () => {
       try {
         const [vehicleRows, trips, bookings] = await Promise.all([getVehicles(), getTrips({ light: true }), getBookings()]);
+        if (mounted) {
+          setTripRecords((trips || []) as AnalyticsRecord[]);
+        }
         const activeTrips = (trips || []).filter((trip: any) =>
           /in[ _-]?transit|active|dispatch|moving|approach|delayed|late|critical/i.test(String(trip.status ?? ""))
         );
@@ -399,6 +335,51 @@ export default function FvmAnalyticsPage() {
   const selectedVehicle = fleet.find((v) => v.id === selectedId) ?? fleet[0] ?? (null as Vehicle | null);
   const depotOptions = Array.from(new Set(fleet.map((vehicle) => vehicle.depot).filter(Boolean))) as string[];
 
+  const analyticsRecords = useMemo(() => {
+    const cutoff = dateRange === "all" ? null : new Date();
+    if (cutoff) cutoff.setDate(cutoff.getDate() - (dateRange === "today" ? 1 : Number(dateRange)));
+    return tripRecords.filter((trip) => {
+      const timestamp = recordTimestamp(trip);
+      return !cutoff || !timestamp || timestamp >= cutoff;
+    });
+  }, [dateRange, tripRecords]);
+
+  const analyticsSummary = useMemo(() => {
+    const totalTrips = analyticsRecords.length;
+    const completedTrips = analyticsRecords.filter(isCompletedRecord);
+    const activeTrips = analyticsRecords.filter((trip) => /active|transit|dispatch|moving|delayed|late/i.test(String(trip.status ?? "")));
+    const distanceMiles = analyticsRecords.reduce((sum, trip) => sum + tripDistanceMiles(trip), 0);
+    const operatingHours = analyticsRecords.reduce((sum, trip) => sum + tripDurationHours(trip), 0);
+    const loads = analyticsRecords.map((trip) => firstNumber(trip.loadKg, trip.load_kg, trip.cargoWeight, trip.cargo_weight, trip.weightKg, trip.weight_kg)).filter((value): value is number => value != null);
+    const capacity = analyticsRecords.map((trip) => firstNumber(trip.capacityKg, trip.capacity_kg, trip.vehicleCapacityKg, trip.vehicle_capacity_kg)).filter((value): value is number => value != null);
+    const loadUtilization = loads.length && capacity.length
+      ? Math.min(100, Math.round((loads.reduce((sum, value) => sum + value, 0) / loads.length) / (capacity.reduce((sum, value) => sum + value, 0) / capacity.length) * 100))
+      : null;
+    const trend = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date();
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - (6 - index));
+      const next = new Date(day);
+      next.setDate(next.getDate() + 1);
+      const dayTrips = tripRecords.filter((trip) => {
+        const timestamp = recordTimestamp(trip);
+        return timestamp && timestamp >= day && timestamp < next;
+      });
+      return { label: day.toLocaleDateString(undefined, { weekday: "short" }), trips: dayTrips.length, distance: Math.round(dayTrips.reduce((sum, trip) => sum + tripDistanceMiles(trip), 0)), hours: Math.round(dayTrips.reduce((sum, trip) => sum + tripDurationHours(trip), 0) * 10) / 10 };
+    });
+    return {
+      totalTrips,
+      completedTrips: completedTrips.length,
+      activeTrips: activeTrips.length,
+      distanceMiles: Math.round(distanceMiles),
+      operatingHours: Math.round(operatingHours * 10) / 10,
+      tripFrequency: fleet.length ? Math.round((totalTrips / fleet.length) * 10) / 10 : 0,
+      loadUtilization,
+      onTimeRate: completedTrips.length ? Math.round((completedTrips.filter(isOnTimeRecord).length / completedTrips.length) * 100) : null,
+      trend,
+    };
+  }, [analyticsRecords, fleet.length, tripRecords]);
+
   const totalVehicles = fleet.length;
   const activeCount = fleet.filter((v) => v.status === "active").length;
   const idleCount = fleet.filter((v) => v.status === "idle").length;
@@ -505,13 +486,15 @@ export default function FvmAnalyticsPage() {
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-8">
           {[
             { icon: "local_shipping", tag: "Fleet", label: "Total Fleet", value: totalVehicles, valueClass: "text-slate-900" },
-            { icon: "alt_route", tag: "Live", label: "On Route", value: activeCount, valueClass: "text-pink-600" },
-            { icon: "pause_circle", tag: "Ready", label: "Idle", value: idleCount, valueClass: "text-slate-900" },
+            { icon: "alt_route", tag: "Live", label: "Active Vehicles", value: activeCount, valueClass: "text-pink-600" },
+            { icon: "pause_circle", tag: "Ready", label: "Idle Vehicles", value: idleCount, valueClass: "text-slate-900" },
             { icon: "build", tag: "Service", label: "Maintenance", value: maintenanceCount, valueClass: "text-rose-500" },
-            { icon: "trending_up", tag: "Avg", label: "Avg Utilization", value: `${averageUtilization}%`, valueClass: "text-slate-900" },
-            { icon: "inventory_2", tag: "Load", label: "Avg Load Utilization", value: fleet.some((vehicle) => vehicle.loadUtilizationPct != null) ? `${Math.round(fleet.filter((vehicle) => vehicle.loadUtilizationPct != null).reduce((sum, vehicle) => sum + (vehicle.loadUtilizationPct ?? 0), 0) / fleet.filter((vehicle) => vehicle.loadUtilizationPct != null).length)}%` : "No data", valueClass: "text-slate-900" },
-            { icon: "package_2", tag: "Today", label: "Deliveries Today", value: fleet.some((vehicle) => vehicle.deliveriesToday != null) ? fleet.reduce((sum, vehicle) => sum + (vehicle.deliveriesToday ?? 0), 0) : "No data", valueClass: "text-slate-900" },
-            { icon: "verified", tag: "KPI", label: "On-Time Rate", value: fleet.some((vehicle) => vehicle.onTimeRatePct != null) ? `${Math.round(fleet.filter((vehicle) => vehicle.onTimeRatePct != null).reduce((sum, vehicle) => sum + (vehicle.onTimeRatePct ?? 0), 0) / fleet.filter((vehicle) => vehicle.onTimeRatePct != null).length)}%` : "No data", valueClass: "text-slate-900" },
+            { icon: "trending_up", tag: "Fleet", label: "Avg Utilization", value: `${averageUtilization}%`, valueClass: "text-slate-900" },
+            { icon: "route", tag: "Period", label: "Distance Traveled", value: `${analyticsSummary.distanceMiles.toLocaleString()} mi`, valueClass: "text-slate-900" },
+            { icon: "schedule", tag: "Period", label: "Operating Hours", value: `${analyticsSummary.operatingHours} h`, valueClass: "text-slate-900" },
+            { icon: "repeat", tag: "Period", label: "Trip Frequency", value: analyticsSummary.tripFrequency, valueClass: "text-slate-900" },
+            { icon: "inventory_2", tag: "Load", label: "Load Utilization", value: analyticsSummary.loadUtilization == null ? "No data" : `${analyticsSummary.loadUtilization}%`, valueClass: "text-slate-900" },
+            { icon: "verified", tag: "Quality", label: "On-Time Rate", value: analyticsSummary.onTimeRate == null ? "No data" : `${analyticsSummary.onTimeRate}%`, valueClass: "text-slate-900" },
           ].map((metric) => (
             <div
               key={metric.label}
@@ -562,18 +545,22 @@ export default function FvmAnalyticsPage() {
             <div className="mb-4 flex items-center justify-between border-b border-pink-100 pb-3 dark:border-pink-900/40">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-pink-600">Fleet performance</p>
-                <h2 className="mt-1 text-base font-bold text-slate-900 dark:text-slate-100">7-Day Utilization Trend</h2>
+                <h2 className="mt-1 text-base font-bold text-slate-900 dark:text-slate-100">Trips and distance trend</h2>
               </div>
               <span className="material-symbols-outlined text-pink-600">show_chart</span>
             </div>
-            <div className="flex h-28 items-end gap-2">
-              {fleetUtilizationTrend.map((value, index) => (
-                <div key={`${value}-${index}`} className="flex flex-1 flex-col items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{value}%</span>
-                  <div className="flex h-16 w-full items-end rounded bg-pink-50 dark:bg-pink-950/20"><div className="w-full rounded bg-pink-500 transition-all" style={{ height: `${Math.max(value ? 8 : 2, value)}%` }} /></div>
-                  <span className="text-[9px] font-medium text-slate-400">D-{6 - index}</span>
-                </div>
-              ))}
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={analyticsSummary.trend} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
+                  <defs><linearGradient id="utilizationPink" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ec4899" stopOpacity={0.28} /><stop offset="95%" stopColor="#ec4899" stopOpacity={0} /></linearGradient></defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ borderRadius: 12, borderColor: "#fbcfe8", fontSize: 12 }} />
+                  <Area type="monotone" dataKey="trips" name="Trips" stroke="#db2777" fill="url(#utilizationPink)" strokeWidth={2.5} />
+                  <Area type="monotone" dataKey="distance" name="Miles" stroke="#0ea5e9" fill="none" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </section>
 
@@ -684,8 +671,23 @@ export default function FvmAnalyticsPage() {
             </div>
           </section>
 
-          {/* Selected Vehicle Detail Sidebar */}
-          <aside className="w-full lg:w-1/3 rounded-2xl border border-pink-100 bg-white p-6 shadow-sm shadow-pink-100/50 transition duration-200 hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-md hover:shadow-pink-100/60 dark:border-pink-900/40 dark:bg-slate-900 dark:shadow-none dark:hover:border-pink-700">
+          {/* Selected Vehicle Utilization Card */}
+          <aside className="w-full lg:w-1/3 rounded-2xl border border-pink-100 bg-white p-5 shadow-sm shadow-pink-100/50 transition hover:border-pink-200 hover:shadow-md dark:border-pink-900/40 dark:bg-slate-900 dark:shadow-none">
+            <div className="flex items-start justify-between gap-3 border-b border-pink-100 pb-4 dark:border-pink-900/50">
+              <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-pink-600 dark:text-pink-400">Selected vehicle</p><h2 className="mt-1 truncate text-xl font-black text-slate-900 dark:text-slate-100">{selectedVehicle?.name ?? "Select a vehicle"}</h2><p className="mt-1 truncate text-xs font-semibold text-slate-400">{selectedVehicle ? `${selectedVehicle.id} · ${selectedVehicle.type}${selectedVehicle.plate ? ` · ${selectedVehicle.plate}` : ""}` : "Choose a row to inspect utilization"}</p></div>
+              {selectedVehicle && <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${STATUS_STYLE[selectedVehicle.status]}`}>{STATUS_LABEL[selectedVehicle.status]}</span>}
+            </div>
+            <div className="mt-4 rounded-2xl border border-pink-100 bg-rose-50/45 p-4 dark:border-pink-900/40 dark:bg-slate-800/70">
+              <div className="flex items-center justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Utilization score</p><p className="mt-1 text-4xl font-black text-slate-900 dark:text-slate-100">{selectedVehicle ? `${selectedVehicle.utilizationPct}%` : "—"}</p><p className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300"><span className={`h-2 w-2 rounded-full ${utilizationTone.dot}`} />{selectedVehicle ? selectedUtilizationBand : "Awaiting data"}</p></div><div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(${utilizationTone.ring} ${selectedVehicle?.utilizationPct ?? 0}%, #e2e8f0 0)` }}><div className="flex h-[62px] w-[62px] items-center justify-center rounded-full bg-white text-xs font-black text-slate-800 dark:bg-slate-900 dark:text-slate-100">{selectedVehicle ? `${selectedVehicle.utilizationPct}%` : "—"}</div></div></div>
+              <div className="mt-4 flex h-12 items-end gap-1.5 border-b border-pink-100 pb-1 dark:border-pink-900/40">{selectedTrend.map((value, index) => <span key={`${value}-${index}`} className="flex-1 rounded-t bg-pink-400/75" style={{ height: `${Math.max(8, Math.min(100, value))}%` }} />)}</div>
+              <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400"><span>7-day trend</span><span className={trendChange >= 0 ? "text-emerald-600" : "text-rose-600"}>{trendChange >= 0 ? "+" : ""}{trendChange}% change</span></div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2.5">{[["Distance", selectedVehicle ? formatMi(selectedVehicle.distanceTodayMi) : "No data"], ["Idle duration", selectedVehicle?.idleDurationMinutes != null ? `${selectedVehicle.idleDurationMinutes} min` : "No telemetry"], ["Driver coverage", selectedVehicle?.driver || "Unassigned"], ["Operational state", selectedVehicle?.status === "active" ? "On route" : selectedVehicle?.status === "maintenance" ? "Unavailable" : selectedVehicle ? "Available" : "No data"], ["Fuel telemetry", selectedVehicle?.fuelPct != null ? `${selectedVehicle.fuelPct}%` : "No telemetry"], ["Distance source", selectedVehicle ? (selectedVehicle.distanceSource === "telemetry" ? "Telemetry" : "Route plan") : "No data"]].map(([label, value]) => <div key={label} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/75 p-3 dark:border-slate-700 dark:bg-slate-800/70"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 truncate text-sm font-black text-slate-800 dark:text-slate-100">{value}</p></div>)}</div>
+            <div className="mt-4 rounded-xl border border-pink-100 bg-white p-3 dark:border-pink-900/40 dark:bg-slate-950/40"><p className="text-[10px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Assigned route</p><p className="mt-1 truncate text-sm font-black text-slate-800 dark:text-slate-100">{selectedVehicle?.route || "No route assigned"}</p><p className="mt-1 text-[11px] text-slate-400">Last update: {selectedVehicle?.lastUpdated || "No telemetry timestamp"}</p></div>
+            <div className="mt-4 grid grid-cols-2 gap-2.5 border-t border-pink-100 pt-4 dark:border-pink-900/50"><div><p className="text-lg font-black text-slate-900 dark:text-slate-100">{totalDistanceMi.toLocaleString()} mi</p><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet distance</p></div><div><p className="text-lg font-black text-slate-900 dark:text-slate-100">{averageUtilization}%</p><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet avg utilization</p></div></div>
+          </aside>
+
+          <aside className="hidden">
             <div className="border-b border-pink-100 pb-4 dark:border-pink-900/50">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-pink-500">Vehicle Profile</p>

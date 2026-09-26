@@ -122,7 +122,7 @@ const COURIER_ALIASES: Record<string, CourierName> = {
 /** Normalize imported courier labels to the warehouse registry key. */
 export function resolveCourierName(value: unknown): CourierName {
   const raw = String(value ?? "").trim();
-  if (!raw) return "Airship Express";
+  if (!raw) return "LBC";
   const normalized = raw.toLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ");
   const exact = COURIER_NAMES.find((name) => name.toLowerCase() === normalized);
   if (exact) return exact;
@@ -134,7 +134,7 @@ export function resolveCourierName(value: unknown): CourierName {
   if (normalized.includes("jnt") || normalized.includes("j&t")) return "JNT Express";
   if (normalized.includes("lazada")) return "Lazada Express";
   if (normalized.includes("flash")) return "Flash Express";
-  return "Airship Express";
+  return "LBC";
 }
 
 /** The one fixed warehouse a given courier operates in a given city, or undefined if the city/courier isn't covered. */

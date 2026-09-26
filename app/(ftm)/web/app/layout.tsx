@@ -3,9 +3,11 @@ import { Suspense } from "react";
 import "./globals.css";
 import CursorHost from "./components/CursorHost";
 import { ThemeProvider } from "./components/ThemeProvider";
+import FtmSettingsProvider from "./components/FtmSettingsProvider";
 import FtmLoadingProvider from "./components/FtmLoadingProvider";
 import FtmSecurityProvider from "./components/FtmSecurityProvider";
 import FtmChatbotGate from "./components/FtmChatbotGate";
+import { FtmProfileAvatarProvider } from "./components/FtmProfileAvatarProvider";
 
 export const metadata: Metadata = {
   title: "Airship Express - Fleet & Transport Suite",
@@ -27,18 +29,22 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-sans antialiased min-h-screen flex flex-col">
-        <ThemeProvider>
-          <Suspense fallback={null}>
-            <FtmLoadingProvider>
-              <FtmSecurityProvider>
-                <CursorHost />
-                {children}
-                <FtmChatbotGate />
-              </FtmSecurityProvider>
-            </FtmLoadingProvider>
-          </Suspense>
-        </ThemeProvider>
+      <body className="ftm-soft-app font-sans antialiased min-h-screen flex flex-col">
+        <FtmSettingsProvider>
+          <FtmProfileAvatarProvider>
+            <ThemeProvider>
+            <Suspense fallback={null}>
+              <FtmLoadingProvider>
+                <FtmSecurityProvider>
+                  <CursorHost />
+                  {children}
+                  <FtmChatbotGate />
+                </FtmSecurityProvider>
+              </FtmLoadingProvider>
+            </Suspense>
+            </ThemeProvider>
+          </FtmProfileAvatarProvider>
+        </FtmSettingsProvider>
       </body>
     </html>
   );

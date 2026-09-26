@@ -3,6 +3,7 @@ function normalizeRoutePlan(record = {}) {
     ...record,
     bulkQrCode: record.bulk_qr_code ?? null,
     tripId: record.trip_id ?? null,
+    courierId: record.courier_id ?? record.courierId ?? null,
     pickupLocation: record.pickup_location,
     pickupLatitude: record.pickup_latitude ?? null,
     pickupLongitude: record.pickup_longitude ?? null,
@@ -10,6 +11,10 @@ function normalizeRoutePlan(record = {}) {
     routeGeojson: record.route_geojson || null,
     distanceKm: record.distance_km ?? null,
     durationMinutes: record.estimated_duration_min ?? null,
+    fuelSavings: record.fuel_savings ?? null,
+    etaImpactMinutes: record.eta_impact_min ?? null,
+    optimizationResult: record.optimization_result || null,
+    routeDetails: record.route_details || null,
     plannedDeliveryDate: record.planned_delivery_date || null,
   };
 }
@@ -20,6 +25,7 @@ function buildRoutePlanPayload(record = {}) {
     trip_id: record.trip_id ?? record.tripId ?? null,
     bulk_qr_code: record.bulk_qr_code ?? record.bulkQrCode ?? null,
     courier: record.courier || null,
+    courier_id: record.courier_id ?? record.courierId ?? null,
     pickup_location: record.pickup_location || record.pickupLocation || null,
     pickup_latitude: record.pickup_latitude ?? record.pickupLatitude ?? null,
     pickup_longitude: record.pickup_longitude ?? record.pickupLongitude ?? null,
@@ -31,6 +37,10 @@ function buildRoutePlanPayload(record = {}) {
     route_geojson: record.route_geojson || record.routeGeojson || null,
     distance_km: record.distance_km ?? record.distanceKm ?? null,
     estimated_duration_min: record.estimated_duration_min ?? record.durationMinutes ?? null,
+    fuel_savings: record.fuel_savings ?? record.fuelSavings ?? null,
+    eta_impact_min: record.eta_impact_min ?? record.etaImpactMinutes ?? null,
+    optimization_result: record.optimization_result || record.optimizationResult || null,
+    route_details: record.route_details || record.routeDetails || null,
     planned_delivery_date: record.planned_delivery_date || record.plannedDeliveryDate || null,
     // Must be one of draft/assigned/in_progress/completed/cancelled — the
     // DB check constraint rejects anything else (e.g. the old 'Active').

@@ -7,6 +7,12 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'SimpleFleetAdmin/1.0 (contact: support@fleetapp.local)',
   Accept: 'application/json',
 };
+const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000;
+const SEARCH_RATE_LIMIT_MS = 1000;
+const PROVIDER_COOLDOWN_MS = 30 * 1000;
+const searchCache = new Map();
+let lastSearchAt = 0;
+let providerCooldownUntil = 0;
 
 async function fetchGeocode(url) {
   const response = await fetchFn(url, { headers: DEFAULT_HEADERS });
@@ -76,6 +82,15 @@ router.get('/search', async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: 'q is required' });
 
+  const cacheKey = String(q).trim().toLowerCase();
+  const cached = searchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.data);
+  if (cached) searchCache.delete(cacheKey);
+
+  const now = Date.now();
+  if (providerCooldownUntil > now || now - lastSearchAt < SEARCH_RATE_LIMIT_MS) return res.json([]);
+  lastSearchAt = now;
+
   // Add Philippines to query to bias results toward Philippines
   const biasedQuery = `${q}, Philippines`;
   const primaryUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(biasedQuery)}&addressdetails=1&limit=6`;
@@ -87,11 +102,19 @@ router.get('/search', async (req, res) => {
   try {
     let response = await fetchGeocode(primaryUrl);
     if (!response.ok) {
+      if (response.status === 429) {
+        providerCooldownUntil = Date.now() + PROVIDER_COOLDOWN_MS;
+        return res.json([]);
+      }
       const text = await response.text();
       console.error('Primary geocode search failed:', response.status, text);
       for (const fallback of fallbackUrls) {
         response = await fetchGeocode(fallback);
         if (response.ok) break;
+        if (response.status === 429) {
+          providerCooldownUntil = Date.now() + PROVIDER_COOLDOWN_MS;
+          return res.json([]);
+        }
         const fallbackText = await response.text();
         console.error('Fallback geocode search failed:', fallback, response.status, fallbackText);
       }
@@ -119,7 +142,9 @@ router.get('/search', async (req, res) => {
       }
     }
     
-    return res.json(data || []);
+    const results = data || [];
+    searchCache.set(cacheKey, { data: results, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
+    return res.json(results);
   } catch (error) {
     console.error('Geocode search proxy error:', error);
     // Return empty array instead of error - let frontend handle fallback

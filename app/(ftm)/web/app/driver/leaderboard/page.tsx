@@ -4,13 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { getDashboardSnapshot, getAlertsSnapshot } from "../../lib/api";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
-
-const SARAH =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuAwkJ0nddX74_5nG2LBVZGmtLg4mYflqHDi649RmNJCAVwhTSkYK3KaQOsBAoA9Zm3qDe1EmGty5mN3EuL4zt4hOQzgfpl6Z_fw-AQDlVmL8vM0RgnFgH9QyMfxoe2BKsogunMH0tLV39lGIcQPNAD_-hfB1d9KJQXShyqO9549lxxdCxXATw6kjy55nsYtcmT2aV2QqaVM66df8J9b-zJtb4d3s0rA2d_z8U5pe56XDrBBFB92RYOqSg";
-const MARCUS =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuBxJk3nqXLZE8pDDJE6TJj_Ko4opKTSQFqUKeQIKuzyeNf8MYyTszg641B3YlMK-liwih47vJI1GCalBSzJpOvKmlBDrnkcF5MM8hcLeYjtYhcjZH1RqDavhC35ocUoBggkcGhd8VgtAH9x3k13n7vgt-WgD5iOcz6dyTJfY0IC_APC2uOzwBckZ-MQiG8O4BSjUAt0ff-Q0VxyF4ejcTwHVDkiSFL6aPhiYPqn3ZmUvVkw6_bjHMxXPw";
-const DAVID =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuDQ6xzqPyt_2TmOLBL8ERJIgiJxNAqUTY0cZvnasRb1c3wYl9aQOsBtDZU03a5x9E0hIGiXy97td_xVGOCH6IYhCQ2oClKfKFzcAJv7bOpqj5vwsAZYl4k0jfXxryCzRQ1pFB502FimRbIbzbRpsxZNhnSmJl2_iWhhdGtM4Udr3LNtsIHiKjWH__F5_wTibZWFBp9XFt9LWGUxDuFTSYffmkEQMj_PuABNRx4wvs_3FIV-oMF2nnU0Ow";
+import FtmProfileAvatar from "../../components/FtmProfileAvatar";
 
 export default function DriverLeaderboardPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -442,11 +436,7 @@ export default function DriverLeaderboardPage() {
                         <span className="material-symbols-outlined text-[16px] text-slate-300">workspace_premium</span>
                         2nd Place
                       </div>
-                      <img
-                        alt={second?.name ?? 'Runner'}
-                        className="w-20 h-20 rounded-full object-cover mb-3 border-4 border-white shadow-md ring-2 ring-slate-300/50"
-                        src={second?.avatar || SARAH}
-                      />
+                      <FtmProfileAvatar name={second?.name ?? "Runner"} userId={second?.id} src={second?.avatar} className="mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-slate-300 text-sm font-black text-slate-700 shadow-md ring-2 ring-slate-300/50" />
                       <h3 className="text-base font-extrabold text-slate-900 mb-0.5">{second?.name ?? '—'}</h3>
                       <p className="text-xs font-semibold text-slate-500 mb-4">{second?.division ?? '-'}</p>
                       <div className="w-full bg-white rounded-xl p-3 border border-slate-200/70 flex justify-between items-center mt-auto shadow-2xs">
@@ -465,11 +455,7 @@ export default function DriverLeaderboardPage() {
                         1st Place Champion
                       </div>
                       <div className="relative mb-3 mt-1">
-                        <img
-                          alt={first?.name ?? 'Champion'}
-                          className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg ring-4 ring-pink-200"
-                          src={first?.avatar || MARCUS}
-                        />
+                        <FtmProfileAvatar name={first?.name ?? "Champion"} userId={first?.id} src={first?.avatar} className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white bg-pink-200 text-lg font-black text-pink-800 shadow-lg ring-4 ring-pink-200" />
                         <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-900 p-1.5 rounded-full shadow-md flex items-center justify-center">
                           <span className="material-symbols-outlined text-sm font-black">crown</span>
                         </div>
@@ -494,11 +480,7 @@ export default function DriverLeaderboardPage() {
                         <span className="material-symbols-outlined text-[16px] text-amber-300">military_tech</span>
                         3rd Place
                       </div>
-                      <img
-                        alt={third?.name ?? 'Runner'}
-                        className="w-18 h-18 rounded-full object-cover mb-3 border-4 border-white shadow-md ring-2 ring-amber-200/50"
-                        src={third?.avatar || DAVID}
-                      />
+                      <FtmProfileAvatar name={third?.name ?? "Runner"} userId={third?.id} src={third?.avatar} className="mb-3 flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full border-4 border-white bg-amber-200 text-sm font-black text-amber-900 shadow-md ring-2 ring-amber-200/50" />
                       <h3 className="text-base font-extrabold text-slate-900 mb-0.5">{third?.name ?? '—'}</h3>
                       <p className="text-xs font-semibold text-slate-500 mb-4">{third?.division ?? '-'}</p>
                       <div className="w-full bg-white rounded-xl p-3 border border-slate-200/70 flex justify-between items-center mt-auto shadow-2xs">

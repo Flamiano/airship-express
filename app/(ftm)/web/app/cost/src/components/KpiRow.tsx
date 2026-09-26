@@ -59,7 +59,7 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") toggleItem(kpi.label);
       }}
-      className="flex min-h-[130px] cursor-pointer flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100 transition-colors hover:border-pink-300"
+      className="cost-kpi flex min-h-[130px] cursor-pointer flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100 transition-colors hover:border-pink-300"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="material-symbols-outlined text-[19px] text-pink-600">

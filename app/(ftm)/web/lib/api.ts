@@ -65,18 +65,53 @@ function normalizeStatus(value: unknown) {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+function parseCostDetails(entry: any) {
+  if (!entry || typeof entry !== 'object') return {};
+  const values = [entry.category_details, entry.categoryDetails, entry.category_metadata, entry.categoryMetadata, entry.details, entry.metadata];
+  for (const value of values) {
+    if (!value) continue;
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch {
+        // Ignore invalid JSON, fall back to direct fields.
+      }
+    }
+    if (typeof value === 'object') return value;
+  }
+
+  return {
+    category: entry.category ?? 'Other',
+    note: entry.note ?? entry.remarks ?? entry.description ?? null,
+    description: entry.description ?? entry.remarks ?? entry.note ?? null,
+    liters: entry.liters ?? null,
+    odometer_reading: entry.odometer_reading ?? entry.odometerReading ?? null,
+    fuel_station: entry.fuel_station ?? entry.fuelStation ?? null,
+    toll_location: entry.toll_location ?? entry.tollLocation ?? null,
+    parking_location: entry.parking_location ?? entry.parkingLocation ?? null,
+    maintenance_type: entry.maintenance_type ?? entry.maintenanceType ?? null,
+  };
+}
+
 export async function getCostEntries() {
   const rows = await readSupabaseTable<any>("cost_entries", "*");
-  return rows.map((entry) => ({
-    id: entry.id ?? entry.entry_id ?? `cost-${Math.random().toString(36).slice(2, 8)}`,
-    vehicleId: entry.vehicle_id ?? entry.vehicleId,
-    tripId: entry.trip_id ?? entry.tripId,
-    category: entry.category ?? "Other",
-    amount: Number(entry.amount ?? 0),
-    entryDate: entry.entry_date ?? entry.entryDate ?? entry.created_at,
-    remarks: entry.remarks ?? entry.description ?? "",
-    receipt_image: entry.receipt_image ?? entry.receiptImage,
-  }));
+  return rows.map((entry) => {
+    const categoryCost = parseCostDetails(entry);
+    return {
+      id: entry.id ?? entry.entry_id ?? `cost-${Math.random().toString(36).slice(2, 8)}`,
+      vehicleId: entry.vehicle_id ?? entry.vehicleId,
+      tripId: entry.trip_id ?? entry.tripId,
+      driverId: entry.driver_id ?? entry.driverId,
+      category: entry.category ?? "Other",
+      amount: Number(entry.amount ?? 0),
+      entryDate: entry.entry_date ?? entry.entryDate ?? entry.created_at,
+      remarks: entry.remarks ?? entry.description ?? "",
+      receipt_image: entry.receipt_image ?? entry.receiptImage,
+      category_details: categoryCost,
+      categoryCost,
+    };
+  });
 }
 
 export async function getTrips() {

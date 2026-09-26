@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
 import { SkeletonTable } from "../../components/PageSkeleton";
@@ -151,7 +150,6 @@ const STATUS_OPTIONS = ["All", "PENDING", "DRIVER_VEHICLE_ASSIGNED"] as const;
 type BookingStatusFilter = (typeof STATUS_OPTIONS)[number];
 
 export default function VrdsBookingsPage() {
-  const router = useRouter();
   const { bookings, parcels, drivers, vehicles, ready } = useParcelStore();
 
   const availableDrivers = useMemo(
@@ -162,6 +160,73 @@ export default function VrdsBookingsPage() {
     () => vehicles.filter((vehicle) => vehicle.status === "Available"),
     [vehicles]
   );
+
+  const courierMatches = (assignedCourier: string | undefined, shipmentCourier: string) => {
+    if (!shipmentCourier) return true;
+    if (!assignedCourier) return false;
+
+    const normalize = (value: string) => value.toLowerCase().replace(/express|delivery|xpress|courier/g, "").replace(/[^a-z0-9]/g, "");
+    const left = normalize(assignedCourier);
+    const right = normalize(shipmentCourier);
+    return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+  };
+
+  const sameCourierToken = (value?: string) =>
+    String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const matchesBookingCourier = (
+    resource: { courier?: string; courierId?: string | null } | undefined,
+    bookingCourier?: string,
+    bookingCourierId?: string
+  ) => {
+    if (!resource) return false;
+    if (bookingCourierId && resource.courierId) {
+      return String(resource.courierId) === String(bookingCourierId);
+    }
+    if (!bookingCourier) return true;
+    const resourceCourier = resource.courier || "";
+    return courierMatches(resourceCourier, bookingCourier);
+  };
+
+  const sameCourierPair = (
+    driver: { courier?: string; courierId?: string | null } | undefined,
+    vehicle: { courier?: string; courierId?: string | null } | undefined,
+    bookingCourier?: string,
+    bookingCourierId?: string
+  ) => {
+    if (!driver || !vehicle) return false;
+    if (!bookingCourier && !bookingCourierId) return true;
+
+    const driverMatches = matchesBookingCourier(driver, bookingCourier, bookingCourierId);
+    const vehicleMatches = matchesBookingCourier(vehicle, bookingCourier, bookingCourierId);
+    if (driverMatches && vehicleMatches) return true;
+
+    const driverHasMetadata = Boolean(driver.courier || driver.courierId);
+    const vehicleHasMetadata = Boolean(vehicle.courier || vehicle.courierId);
+    const hasAnyCourierMetadata = driverHasMetadata || vehicleHasMetadata;
+
+    if (!hasAnyCourierMetadata) return true;
+    if (!driverHasMetadata || !vehicleHasMetadata) return true;
+
+    const sharedCourierId = Boolean(
+      driver.courierId && vehicle.courierId && String(driver.courierId) === String(vehicle.courierId)
+    );
+    const sharedCourierName = Boolean(
+      driver.courier && vehicle.courier && sameCourierToken(driver.courier) === sameCourierToken(vehicle.courier)
+    );
+
+    if (sharedCourierId || sharedCourierName) return true;
+
+    const bookingCourierToken = bookingCourier ? sameCourierToken(bookingCourier) : "";
+    const driverMatchesBookingName = Boolean(
+      driver.courier && bookingCourierToken && sameCourierToken(driver.courier) === bookingCourierToken
+    );
+    const vehicleMatchesBookingName = Boolean(
+      vehicle.courier && bookingCourierToken && sameCourierToken(vehicle.courier) === bookingCourierToken
+    );
+
+    return Boolean(driverMatchesBookingName && vehicleMatchesBookingName);
+  };
 
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -200,7 +265,7 @@ export default function VrdsBookingsPage() {
     [openBookings, parcels]
   );
 
-  const getBookingRouteLabel = (booking: Booking, parcelList: typeof parcels = parcels) => {
+  const getBookingRouteLabel = useCallback((booking: Booking, parcelList: typeof parcels = parcels) => {
     const genericLabelPattern = /selected delivery destinations|route preview|airship express hub.*binondo/i;
     const normalized = booking.routeLabel || "";
     if (!genericLabelPattern.test(normalized)) {
@@ -217,7 +282,7 @@ export default function VrdsBookingsPage() {
     }
 
     return "Airship Express Hub - Binondo, Manila → Route destinations";
-  };
+  }, [parcels]);
 
   const visibleBookings = routeOptimizedBookings.length > 0 ? routeOptimizedBookings : openBookings;
 
@@ -232,7 +297,7 @@ export default function VrdsBookingsPage() {
         );
       return matchesStatus && matchesSearch;
     });
-  }, [visibleBookings, parcels, searchText, statusFilter]);
+  }, [getBookingRouteLabel, visibleBookings, parcels, searchText, statusFilter]);
 
   const bookingsById = useMemo(
     () => Object.fromEntries(visibleBookings.map((booking) => [booking.id, booking])) as Record<string, Booking>,
@@ -275,13 +340,15 @@ export default function VrdsBookingsPage() {
     // Calculate actual weight from parcels if booking weight is 0
     const bookingParcels = parcels.filter((p) => p.bookingId === booking.id);
     const actualWeightKg = bookingParcels.length > 0
-      ? bookingParcels.reduce((sum, p) => sum + (p.weightKg || 0), 0)
-      : booking.totalWeightKg;
+      ? bookingParcels.reduce((sum, p) => sum + (Number(p.weightKg) || 0), 0)
+      : Number(booking.totalWeightKg) || 0;
+    const hasMeaningfulWeight = Number.isFinite(actualWeightKg) && actualWeightKg > 0;
 
     console.log("[DEBUG] Weight calculation:", {
       bookingTotalWeightKg: booking.totalWeightKg,
       bookingParcelsCount: bookingParcels.length,
       actualWeightKg,
+      hasMeaningfulWeight,
     });
 
     const bookingCourier =
@@ -294,37 +361,51 @@ export default function VrdsBookingsPage() {
 
     console.log("[DEBUG] Resolved booking courier:", bookingCourier);
 
-    const normalizedCourierToken = bookingCourier
-      .toLowerCase()
-      .replace(/express|delivery|xpress|courier/g, "")
-      .replace(/[^a-z]/g, "")
-      .trim();
+    const driverPool = booking.driverId
+      ? drivers.filter((item) => availableDrivers.includes(item) || item.id === booking.driverId)
+      : availableDrivers;
+    const vehiclePool = booking.vehicleId
+      ? vehicles.filter((item) => availableVehicles.includes(item) || item.id === booking.vehicleId)
+      : availableVehicles;
+    const matchedDrivers = bookingCourier ? driverPool.filter((item) => courierMatches(item.courier, bookingCourier)) : driverPool;
+    const matchedVehicles = bookingCourier ? vehiclePool.filter((item) => courierMatches(item.courier, bookingCourier)) : vehiclePool;
+    const sameCourierDrivers = booking.courierId
+      ? driverPool.filter((item) => matchesBookingCourier(item, bookingCourier, booking.courierId))
+      : matchedDrivers;
+    const sameCourierVehicles = booking.courierId
+      ? vehiclePool.filter((item) => matchesBookingCourier(item, bookingCourier, booking.courierId))
+      : matchedVehicles;
+    const driversHaveCourierMetadata = driverPool.some((item) => Boolean(item.courier));
+    const vehiclesHaveCourierMetadata = vehiclePool.some((item) => Boolean(item.courier));
+    const candidateDrivers = bookingCourier && driversHaveCourierMetadata
+      ? (sameCourierDrivers.length > 0 ? sameCourierDrivers : matchedDrivers.length > 0 ? matchedDrivers : driverPool)
+      : driverPool;
+    const candidateVehicles = bookingCourier && vehiclesHaveCourierMetadata
+      ? (sameCourierVehicles.length > 0 ? sameCourierVehicles : matchedVehicles.length > 0 ? matchedVehicles : vehiclePool)
+      : vehiclePool;
 
     const driver = booking.driverId
-      ? drivers.find((item) => item.id === booking.driverId && item.status === "Available") ??
-        (bookingCourier
-          ? availableDrivers.find((item) => {
-              const itemToken = item.name.toLowerCase().replace(/express|delivery|xpress|courier/g, "").replace(/[^a-z]/g, "");
-              return itemToken.includes(normalizedCourierToken) || normalizedCourierToken.includes(itemToken);
-            }) ?? availableDrivers[0]
-          : availableDrivers[0])
-      : bookingCourier
-        ? availableDrivers.find((item) => {
-            const itemToken = item.name.toLowerCase().replace(/express|delivery|xpress|courier/g, "").replace(/[^a-z]/g, "");
-            return itemToken.includes(normalizedCourierToken) || normalizedCourierToken.includes(itemToken);
-          }) ?? availableDrivers[0]
-        : availableDrivers[0];
+      ? candidateDrivers.find((item) => item.id === booking.driverId) ?? candidateDrivers[0]
+      : candidateDrivers[0];
 
-    const capacityReadyVehicles = availableVehicles.filter((item) => item.capacityKg >= actualWeightKg);
+    const effectiveVehiclePool = candidateVehicles.length > 0 ? candidateVehicles : availableVehicles;
+    const capacityReadyVehicles = hasMeaningfulWeight
+      ? effectiveVehiclePool.filter((item) => item.capacityKg >= actualWeightKg)
+      : [...effectiveVehiclePool];
+    const fallbackVehicle = [...capacityReadyVehicles].sort((a, b) => a.capacityKg - b.capacityKg)[0]
+      ?? effectiveVehiclePool[0]
+      ?? null;
     const vehicle = booking.vehicleId
-      ? vehicles.find(
-          (item) => item.id === booking.vehicleId && item.capacityKg >= actualWeightKg && item.status === "Available"
-        ) ?? capacityReadyVehicles.sort((a, b) => a.capacityKg - b.capacityKg)[0]
-      : capacityReadyVehicles.sort((a, b) => a.capacityKg - b.capacityKg)[0];
+      ? effectiveVehiclePool.find(
+          (item) => item.id === booking.vehicleId && (!hasMeaningfulWeight || item.capacityKg >= actualWeightKg) && item.status === "Available"
+        ) ?? fallbackVehicle
+      : fallbackVehicle;
 
     console.log("[DEBUG] Vehicle availability details:", {
       totalVehicles: vehicles.length,
       availableVehicles: availableVehicles.length,
+      candidateVehicles: candidateVehicles.length,
+      effectiveVehiclePool: effectiveVehiclePool.length,
       capacityReadyVehicles: capacityReadyVehicles.length,
       availableVehiclesDetails: availableVehicles.map((v) => ({
         id: v.id,
@@ -336,19 +417,33 @@ export default function VrdsBookingsPage() {
     });
 
     const driverUnavailable = !driver || (driver.status !== "Available" && driver.id !== booking.driverId);
-    const vehicleUnavailable = !vehicle || vehicle.capacityKg < actualWeightKg;
+    const vehicleUnavailable = hasMeaningfulWeight
+      ? !vehicle || vehicle.capacityKg < actualWeightKg
+      : effectiveVehiclePool.length === 0;
+    const pairMismatch = !sameCourierPair(driver, vehicle, bookingCourier, booking.courierId);
 
-    console.log("[DEBUG] Availability check:", { driverUnavailable, vehicleUnavailable, actualWeightKg });
+    console.log("[DEBUG] Availability check:", {
+      driverUnavailable,
+      vehicleUnavailable,
+      pairMismatch,
+      actualWeightKg,
+      bookingCourier,
+      bookingCourierId: booking.courierId,
+      driverCourier: driver?.courier,
+      vehicleCourier: vehicle?.courier,
+    });
 
-    if (driverUnavailable || vehicleUnavailable) {
+    if (driverUnavailable || vehicleUnavailable || pairMismatch) {
       let errorMsg = "";
-      if (vehicleUnavailable) {
+      if (pairMismatch) {
+        errorMsg = `No compatible ${bookingCourier || "same-courier"} driver and vehicle are available for this booking.`;
+      } else if (vehicleUnavailable) {
         if (availableVehicles.length === 0) {
           errorMsg = `No available vehicles in the system. All vehicles are currently assigned.`;
-        } else if (capacityReadyVehicles.length === 0) {
+        } else if (hasMeaningfulWeight && capacityReadyVehicles.length === 0) {
           errorMsg = `No vehicle can carry ${actualWeightKg} kg. Available vehicles: ${availableVehicles.map((v) => `${v.plate} (${v.capacityKg}kg)`).join(", ")}`;
         } else {
-          errorMsg = `Vehicle assignment failed for ${actualWeightKg} kg booking.`;
+          errorMsg = `No vehicle can carry 0 kg. Available vehicles: ${availableVehicles.map((v) => `${v.plate} (${v.capacityKg}kg)`).join(", ")}`;
         }
       } else if (driverUnavailable) {
         errorMsg = `No available driver can be assigned right now for ${bookingCourier || "this route"}.`;
@@ -397,6 +492,26 @@ export default function VrdsBookingsPage() {
     }
   };
 
+  type RoutePlanDestination = {
+    name?: string;
+    label?: string;
+    lat?: number | string | null;
+    lng?: number | string | null;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+  };
+
+  type RoutePlanResponse = {
+    deliveryDestinations?: RoutePlanDestination[];
+    pickupLocation?: string;
+    pickupLatitude?: number | string | null;
+    pickupLongitude?: number | string | null;
+    distanceKm?: number | null;
+    distance_km?: number | null;
+    durationMinutes?: number | null;
+    estimated_duration_min?: number | null;
+  };
+
   const handleConfirm = async (booking: Booking) => {
     const selectedBookingParcels = parcels.filter((parcel) => parcel.bookingId === booking.id);
     const destinationParcel = selectedBookingParcels[0];
@@ -411,22 +526,22 @@ export default function VrdsBookingsPage() {
     setErrorFor(null);
 
     try {
-      const routePlanId = booking.routePlanId || selectedBookingParcels.find((p: any) => p.routePlanId)?.routePlanId;
+      const routePlanId = booking.routePlanId || selectedBookingParcels.find((p) => p.routePlanId)?.routePlanId;
       let planStops: { name: string; lat: number; lng: number }[] = [];
       let planPickup: { label?: string; lat?: number; lng?: number } | null = null;
-      let activeRoutePlan: any = null;
+      let activeRoutePlan: RoutePlanResponse | null = null;
 
       if (routePlanId) {
         try {
           activeRoutePlan = await getRoutePlan(routePlanId);
           const dests = Array.isArray(activeRoutePlan?.deliveryDestinations) ? activeRoutePlan.deliveryDestinations : [];
           planStops = dests
-            .map((d: any) => ({
+            .map((d) => ({
               name: d.name || d.label || "Stop",
               lat: Number(d.lat ?? d.latitude),
               lng: Number(d.lng ?? d.longitude),
             }))
-            .filter((s: any) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+            .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
           if (activeRoutePlan?.pickupLocation) {
             planPickup = { label: activeRoutePlan.pickupLocation, lat: Number(activeRoutePlan.pickupLatitude), lng: Number(activeRoutePlan.pickupLongitude) };
           }
@@ -453,8 +568,8 @@ export default function VrdsBookingsPage() {
         from_longitude: fromLng,
         to_latitude: finalStop?.lat || destinationParcel?.destLat || 0,
         to_longitude: finalStop?.lng || destinationParcel?.destLng || 0,
-        status: "In Transit",
-        progress: 5,
+        status: "Pickup Assigned",
+        progress: 0,
         load_kg: booking.totalWeightKg,
         stops: planStops,
         distance_km: activeRoutePlan?.distanceKm ?? activeRoutePlan?.distance_km ?? null,
@@ -468,10 +583,10 @@ export default function VrdsBookingsPage() {
       }
 
       setErrorFor(null);
-      showToast(`Booking ${booking.id} successfully dispatched!`);
+      showToast(`Booking ${booking.id} assigned for hub pickup. Driver proof is required before the delivery trip starts.`);
 
       setTimeout(() => {
-        router.push(`/vrds/missions?dispatch=${booking.id}`);
+        window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination: `/vrds/missions?dispatch=${booking.id}` } }));
       }, 500);
     } catch (error) {
       setErrorFor({
@@ -512,7 +627,7 @@ export default function VrdsBookingsPage() {
           destLat: 0,
           destLng: 0,
           parcelType: "E-commerce Package" as const,
-          courier: undefined as any,
+          courier: undefined as string | undefined,
           weightKg: Math.round((selectedBooking!.totalWeightKg / syntheticCount) * 10) / 10,
           notes: undefined,
           status: "PICKED_UP" as const,
@@ -549,10 +664,10 @@ export default function VrdsBookingsPage() {
                 </div>
               </div>
 
-              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-rose-500">Dispatch in progress</p>
-              <h3 className="mt-2 text-xl font-extrabold text-slate-900">Authorizing & dispatching</h3>
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-rose-500">Pickup assignment in progress</p>
+              <h3 className="mt-2 text-xl font-extrabold text-slate-900">Assigning hub pickup</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Assigning driver, vehicle, and trip route for <span className="font-semibold text-slate-800">{dispatchingBookingId}</span>
+                Assigning driver and vehicle to collect parcels from the hub for <span className="font-semibold text-slate-800">{dispatchingBookingId}</span>
               </p>
 
               <div className="mt-5 flex w-full items-center gap-3">
@@ -1233,12 +1348,12 @@ export default function VrdsBookingsPage() {
                           {dispatchingBookingId === selectedBooking.id ? (
                             <>
                               <span className="material-symbols-outlined animate-spin text-base">progress_activity</span>
-                              Authorizing & Dispatching...
+                              Assigning Pickup...
                             </>
                           ) : (
                             <>
                               <IconSend className="w-4 h-4" />
-                              Authorize & Dispatch
+                              Assign for Pickup
                             </>
                           )}
                         </button>
