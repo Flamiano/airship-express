@@ -7,7 +7,7 @@ import {
   type AccountType,
   isValidHRRole,
 } from "@/app/(hr-dashboard)/utils/roleValidation";
-import { HR_ROUTES as HR_ROUTE_PATHS } from "@/app/(hr-dashboard)/constants/route";
+import { HR_ROUTES as HR_ROUTE_PATHS } from "@/app/(hr-dashboard)/constants";
 import type { AppRole } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/types";
 import { getAuthenticatedActor } from "@/performance-development-dashboard/lib/auth/actor";
 

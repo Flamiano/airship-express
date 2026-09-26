@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "./supabase/admin-client";
-import { PROTECTED_HR_ROUTES, AUTH_ROUTES } from "./constants/route";
+import { PROTECTED_HR_ROUTES, AUTH_ROUTES } from "./constants";
 import { validateHRRole, EMPLOYEE_ACCESS_ROUTES } from "./utils/roleValidation";
 
 export async function middleware(req: NextRequest) {
