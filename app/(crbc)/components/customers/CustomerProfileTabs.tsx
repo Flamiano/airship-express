@@ -7,6 +7,26 @@ import {
   CHANNEL_LABELS,
   REQUEST_STATUS_LABELS,
 } from "@/app/(crbc)/types/booking-request"
+import type {
+  BookingRequest,
+  BookingRequestStatus,
+  InteractionChannel,
+} from "@/app/(crbc)/types/booking-request"
+
+type ShipmentRow = {
+  shipmentId: string
+  origin: string
+  destination: string
+  bookingDate: string
+  status: string
+}
+
+type InteractionRow = {
+  id: string
+  interaction_date: string
+  interaction_type: InteractionChannel
+  notes?: string | null
+}
 
 const shipmentStatusStyle: Record<string, string> = {
   Completed: "bg-emerald-50 text-emerald-600",
@@ -37,9 +57,9 @@ export function CustomerProfileTabs({
   requests,
   interactions,
 }: {
-  shipments: any[]
-  requests: any[]
-  interactions: any[]
+  shipments: ShipmentRow[]
+  requests: BookingRequest[]
+  interactions: InteractionRow[]
 }) {
   const [active, setActive] = useState<Tab>("shipments")
 
@@ -51,11 +71,10 @@ export function CustomerProfileTabs({
           <button
             key={tab.id}
             onClick={() => setActive(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-              active === tab.id
+            className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${active === tab.id
                 ? "border-accent text-accent"
                 : "border-transparent text-muted hover:text-foreground"
-            }`}
+              }`}
           >
             {tab.icon}
             {tab.label}
@@ -83,7 +102,7 @@ export function CustomerProfileTabs({
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-zinc-300 text-xs hidden sm:block">{s.bookingDate}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${shipmentStatusStyle[s.status]}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${shipmentStatusStyle[s.status] ?? "bg-zinc-100 text-zinc-600"}`}>
                       {s.status}
                     </span>
                   </div>
@@ -118,8 +137,8 @@ export function CustomerProfileTabs({
                     <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(r.created_at)}</td>
                     <td className="px-5 py-3 text-xs truncate max-w-xs">{r.receiver_name}</td>
                     <td className="px-5 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${requestStatusStyle[r.status] ?? "bg-zinc-100 text-zinc-600"}`}>
-                        {REQUEST_STATUS_LABELS[r.status] ?? r.status}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${requestStatusStyle[r.status as BookingRequestStatus] ?? "bg-zinc-100 text-zinc-600"}`}>
+                        {REQUEST_STATUS_LABELS[r.status as BookingRequestStatus] ?? r.status}
                       </span>
                     </td>
                   </tr>
