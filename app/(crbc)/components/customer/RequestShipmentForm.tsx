@@ -354,7 +354,7 @@ export default function RequestShipmentForm({ customer }: { customer: Customer }
               <dd className="text-foreground">{customer.phone}</dd>
             </div>
           )}
-          {!addressMissing && (
+          {customer.address && customer.address.trim() !== "" && (
             <div className="space-y-0.5 sm:col-span-2">
               <dt className={labelCls}>Address</dt>
               <dd className="text-foreground">{customer.address.trim()}</dd>
