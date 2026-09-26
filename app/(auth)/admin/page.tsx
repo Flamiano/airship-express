@@ -17,7 +17,7 @@ export default function HRAdminLogin() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
-    function handleSubmit(e) {
+    function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setError("");
 
