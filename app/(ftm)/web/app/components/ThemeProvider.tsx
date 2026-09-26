@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { persistFtmSettings, readFtmSettings } from "./FtmSettingsProvider";
 
 type Theme = "light" | "dark";
 
@@ -16,7 +17,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setThemeState] = useState<Theme>("light");
 
     useEffect(() => {
-        const storedTheme = window.localStorage.getItem("airship-theme") as Theme | null;
+        const storedTheme = readFtmSettings().appearance.theme;
         const nextTheme = storedTheme === "dark" || storedTheme === "light"
             ? storedTheme
             : window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -30,7 +31,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const setTheme = (next: Theme) => {
         setThemeState(next);
         document.documentElement.classList.toggle("dark", next === "dark");
-        window.localStorage.setItem("airship-theme", next);
+        const settings = readFtmSettings();
+        persistFtmSettings({ ...settings, appearance: { ...settings.appearance, theme: next } });
     };
 
     const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");

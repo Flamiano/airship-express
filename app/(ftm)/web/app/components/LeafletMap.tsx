@@ -19,6 +19,7 @@ export type LeafletMarker = {
   label?: React.ReactNode;
   radius?: number;
   isHub?: boolean;
+  isVehicle?: boolean;
   meta?: {
     title?: string;
     subtitle?: string;
@@ -44,7 +45,7 @@ interface LeafletMapProps {
 /**
  * Creates custom HTML divIcon with glowing aura and blinking beacon ring
  */
-function createGlowingIcon(color: string = "#3b82f6", label?: React.ReactNode) {
+function createGlowingIcon(color: string = "#3b82f6", label?: React.ReactNode, isVehicle = false) {
   const safeLabel = typeof label === "string" || typeof label === "number" ? String(label) : "";
   const lowerLabel = safeLabel.toLowerCase();
   const isOrigin = lowerLabel.includes("origin");
@@ -57,7 +58,9 @@ function createGlowingIcon(color: string = "#3b82f6", label?: React.ReactNode) {
   const html = `
     <div class="leaflet-glow-marker" style="color: ${color}; pointer-events: auto;">
       <div class="marker-ping-ring"></div>
-      <div class="marker-pin-dot" style="background-color: ${color}; color: ${color};"></div>
+      ${isVehicle
+        ? `<div class="marker-vehicle-icon flex items-center justify-center rounded-full border-2 border-white shadow-lg" style="background-color: ${color}; color: white; width: 30px; height: 30px; transform: translate(-3px, -3px);"><span class="material-symbols-outlined" style="font-size: 17px; line-height: 1;">local_shipping</span></div>`
+        : `<div class="marker-pin-dot" style="background-color: ${color}; color: ${color};"></div>`}
       <div class="marker-badge-pulse flex items-center justify-center absolute -top-5 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg border border-white/80 whitespace-nowrap"
            style="background-color: ${color};">
         ${stopNum}
@@ -171,7 +174,7 @@ export default function LeafletMap({
       bounds.extend(latLng);
 
       const color = m.color || "#3b82f6";
-      const icon = createGlowingIcon(color, m.label);
+      const icon = createGlowingIcon(color, m.label, m.isVehicle);
 
       const marker = L.marker(latLng, { icon });
 

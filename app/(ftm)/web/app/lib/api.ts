@@ -44,6 +44,59 @@ export async function fetchJson(path: string, opts: RequestInit = {}) {
   }
 }
 
+export async function exportSystemBackup() {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+  const current = await supabase.auth.getSession();
+  const session = current.data.session || (await supabase.auth.refreshSession()).data.session;
+  if (!session?.access_token) throw new Error("Your session has expired. Please sign in again.");
+
+  const response = await fetch(`${base}/api/system-backup/export`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Request failed ${response.status}: ${text}`);
+  }
+  return response.blob();
+}
+
+export async function getCurrentProfile() {
+  return fetchJson("/api/profile") as Promise<{ id: string; email: string | null; full_name: string | null; avatar_url: string | null }>;
+}
+
+export async function uploadProfileAvatar(content: string, onProgress?: (progress: number) => void) {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token || (await supabase.auth.refreshSession()).data.session?.access_token;
+  if (!accessToken) throw new Error("Your session has expired. Please sign in again.");
+
+  return new Promise<{ avatar_url: string }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${base}/api/profile/avatar`);
+    request.setRequestHeader("Content-Type", "application/json");
+    request.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.max(15, Math.min(75, Math.round((event.loaded / event.total) * 75))));
+    };
+    request.onerror = () => reject(new Error("Unable to reach the avatar service. Please try again."));
+    request.onload = () => {
+      let response: { avatar_url?: string; error?: string } = {};
+      try { response = JSON.parse(request.responseText || "{}"); } catch { /* handled below */ }
+      if (request.status < 200 || request.status >= 300 || !response.avatar_url) {
+        reject(new Error(response.error || "The photo could not be uploaded."));
+        return;
+      }
+      onProgress?.(80);
+      resolve({ avatar_url: response.avatar_url });
+    };
+    request.send(JSON.stringify({ content }));
+  });
+}
+
+export async function removeProfileAvatar() {
+  return fetchJson("/api/profile/avatar", { method: "DELETE" }) as Promise<{ avatar_url: null }>;
+}
+
 function isIgnorableBackendError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
   return /Failed to fetch|fetch failed|JWT issued at future|invalid JWT|permission denied|not authorized|RLS|rls|Unauthorized/i.test(message);
@@ -145,6 +198,22 @@ export async function getVehicles() {
   }
 }
 
+export async function getMaintenanceRecords() {
+  try {
+    return await fetchJson('/api/maintenance');
+  } catch (error) {
+    reportBackendLoadFailure("maintenance records", error);
+    return [] as any[];
+  }
+}
+
+export async function createMaintenanceRecord(payload: Record<string, unknown>) {
+  return fetchJson('/api/maintenance', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getCouriers() {
   try {
     return await fetchJson('/api/vehicles/couriers');
@@ -202,6 +271,15 @@ export async function getDrivers() {
     return await fetchJson('/api/drivers');
   } catch (error) {
     reportBackendLoadFailure("drivers", error);
+    return [] as any[];
+  }
+}
+
+export async function getDriverAssignments() {
+  try {
+    return await fetchJson('/api/drivers/assignments');
+  } catch (error) {
+    reportBackendLoadFailure("driver assignments", error);
     return [] as any[];
   }
 }
@@ -455,6 +533,24 @@ export async function createTrip(payload: Record<string, unknown>) {
   return fetchJson("/api/trips", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function confirmTripPickup(tripId: string, payload: {
+  driver_id: string;
+  proof_url: string;
+  manifest_verified: boolean;
+  picked_up_parcel_ids?: string[];
+}) {
+  return fetchJson(`/api/trips/${encodeURIComponent(tripId)}/pickup-confirmation`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function startTrip(tripId: string) {
+  return fetchJson(`/api/trips/${encodeURIComponent(tripId)}/start`, {
+    method: "POST",
   });
 }
 

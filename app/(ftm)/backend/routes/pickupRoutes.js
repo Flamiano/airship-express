@@ -20,6 +20,7 @@
 const express = require('express');
 const router = express.Router();
 const { getSupabase, getServiceSupabase } = require('../config/db');
+const { validateAssignment, validateVehicleForCourier } = require('../services/courierAssignmentService');
 
 // Helper to get Supabase client
 function getClient() {
@@ -247,6 +248,17 @@ router.post('/route-plans/:id/assign-vehicle', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Vehicle not found' });
     }
 
+    try {
+      await validateVehicleForCourier(supabase, {
+        vehicleId,
+        routePlanId: id,
+        courierId: routePlan.courier_id,
+        courier: routePlan.courier,
+      });
+    } catch (error) {
+      return res.status(409).json({ success: false, error: error.message || 'Vehicle is not eligible for this route.' });
+    }
+
     // Check vehicle capacity
     const { data: parcels } = await supabase
       .from('route_plan_parcels')
@@ -291,7 +303,7 @@ router.post('/route-plans/:id/assign-vehicle', async (req, res) => {
       route_plan_id: id,
       event_type: 'vehicle_assigned',
       timestamp: new Date().toISOString(),
-      notes: `Vehicle ${vehicle.plate} assigned`
+      notes: `Vehicle ${vehicle.plate_number || vehicle.plate} assigned`
     });
 
     res.json({
@@ -300,7 +312,7 @@ router.post('/route-plans/:id/assign-vehicle', async (req, res) => {
         id: updated.id,
         status: updated.status,
         assignedVehicleId: updated.assigned_vehicle_id,
-        assignedVehiclePlate: vehicle.plate
+        assignedVehiclePlate: vehicle.plate_number || vehicle.plate
       }
     });
   } catch (error) {
@@ -334,22 +346,14 @@ router.post('/route-plans/:id/assign-driver', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Route plan not found' });
     }
 
-    // Get driver (handle missing drivers table gracefully)
-    let driver = { id: driverId, name: 'Driver' };
-    const { data: driverData, error: driverError } = await supabase
-      .from('drivers')
-      .select('*')
-      .eq('id', driverId)
-      .single();
-
-    // If drivers table exists and driver found, use it; otherwise use placeholder
-    if (driverData && !driverError) {
-      driver = driverData;
-    } else if (driverError && !driverError.message.includes('schema cache')) {
-      // Only fail if it's a real "not found" error, not a table-doesn't-exist error
-      return res.status(404).json({ success: false, error: 'Driver not found' });
-    }
-    // If table doesn't exist (schema cache error), continue with placeholder driver
+    const assignment = await validateAssignment(supabase, {
+      driverId,
+      vehicleId: routePlan.assigned_vehicle_id,
+      routePlanId: id,
+      courierId: routePlan.courier_id,
+      courier: routePlan.courier,
+    });
+    const driver = assignment.driver;
 
     // Check if driver is already assigned to another active route (skip if table doesn't exist)
     try {
@@ -391,7 +395,7 @@ router.post('/route-plans/:id/assign-driver', async (req, res) => {
       driver_id: driverId,
       event_type: 'driver_assigned',
       timestamp: new Date().toISOString(),
-      notes: `Driver ${driver.name} assigned`
+      notes: `Driver ${driver.full_name || driver.email} assigned`
     });
 
     res.json({
@@ -400,7 +404,7 @@ router.post('/route-plans/:id/assign-driver', async (req, res) => {
         id: updated.id,
         status: updated.status,
         assignedDriverId: updated.assigned_driver_id,
-        assignedDriverName: driver.name
+        assignedDriverName: driver.full_name || driver.email
       }
     });
   } catch (error) {
@@ -416,30 +420,39 @@ router.post('/route-plans/:id/assign-driver', async (req, res) => {
 router.get('/resources/available', async (req, res) => {
   try {
     const supabase = getClient();
-    const { requiredCapacityKg } = req.query;
+    const { requiredCapacityKg, courierId, courier } = req.query;
 
     // Get available vehicles
     let vehicleQuery = supabase
       .from('vehicles')
-      .select('id, plate, capacity_kg, status')
+      .select('id, plate_number, capacity_kg, status')
       .eq('status', 'available');
 
     if (requiredCapacityKg) {
       vehicleQuery = vehicleQuery.gte('capacity_kg', requiredCapacityKg);
     }
+    if (courierId) vehicleQuery = vehicleQuery.eq('courier_id', courierId);
 
     const { data: vehicles, error: vehicleError } = await vehicleQuery;
 
     // Get available drivers (handle missing drivers table gracefully)
     let drivers = [];
     try {
-      const { data: driversData, error: driverError } = await supabase
-        .from('drivers')
-        .select('id, name, status')
-        .eq('status', 'available');
+      let driverQuery = supabase
+        .from('users')
+        .select('id, full_name, email, is_active, courier_id')
+        .eq('role', 'driver')
+        .eq('is_active', true);
+      if (courierId) driverQuery = driverQuery.eq('courier_id', courierId);
+      const { data: driversData, error: driverError } = await driverQuery;
       
       if (!driverError) {
-        drivers = driversData || [];
+        drivers = (driversData || [])
+          .map((driver) => ({
+            ...driver,
+            status: 'Available',
+            name: driver.full_name || driver.email,
+          }));
       }
     } catch (e) {
       // Drivers table doesn't exist, skip it
@@ -1005,10 +1018,10 @@ router.get('/route-plans', async (req, res) => {
         if (route.assigned_vehicle_id) {
           const { data: vehicle } = await supabase
             .from('vehicles')
-            .select('plate')
+            .select('plate_number')
             .eq('id', route.assigned_vehicle_id)
             .single();
-          vehiclePlate = vehicle?.plate || '';
+          vehiclePlate = vehicle?.plate_number || '';
         }
 
         // Get parcel counts

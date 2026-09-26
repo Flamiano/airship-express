@@ -1,52 +1,126 @@
-const CATEGORY_TABLES = {
-  Fuel: 'fuel_costs',
-  Maintenance: 'maintenance_costs',
-  Toll: 'toll_costs',
-  Parking: 'parking_costs',
-  Other: 'other_costs',
-};
+function parseJsonMaybe(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return {};
+    }
+  }
+  if (typeof value === 'object') {
+    return value;
+  }
+  return {};
+}
 
-const CATEGORY_SELECTS = {
-  Fuel: 'cost_entry_id,liters,odometer_reading,created_at',
-  Maintenance: 'cost_entry_id,maintenance_type,created_at',
-  Toll: 'cost_entry_id,toll_location,created_at',
-  Parking: 'cost_entry_id,parking_location,created_at',
-  Other: 'cost_entry_id,description,created_at',
-};
+function buildCategoryDetails(category, record = {}) {
+  const base = parseJsonMaybe(record.category_details ?? record.categoryDetails ?? record.category_metadata ?? record.categoryMetadata ?? record.details ?? record.metadata ?? null);
+  const source = { ...base, ...(record || {}) };
 
-function categoryPayload(category, record, costEntryId) {
-  const base = { cost_entry_id: costEntryId };
-  if (category === 'Fuel') return { ...base, liters: record.liters ?? null, odometer_reading: record.odometer_reading ?? null };
-  if (category === 'Maintenance') return { ...base, maintenance_type: record.maintenance_type ?? null };
-  if (category === 'Toll') return { ...base, toll_location: record.toll_location ?? null };
-  if (category === 'Parking') return { ...base, parking_location: record.parking_location ?? null };
-  if (category === 'Other') return { ...base, description: record.description ?? record.remarks ?? null };
-  return null;
+  if (!category) return source;
+
+  const normalized = {
+    category,
+    note: source.note ?? source.remarks ?? source.description ?? null,
+    description: source.description ?? source.remarks ?? source.note ?? null,
+  };
+
+  if (category === 'Fuel') {
+    return {
+      ...normalized,
+      liters: source.liters ?? source.quantity ?? null,
+      odometer_reading: source.odometer_reading ?? source.odometerReading ?? null,
+      fuel_station: source.fuel_station ?? source.fuelStation ?? null,
+      fuel_type: source.fuel_type ?? source.fuelType ?? null,
+      reference_number: source.reference_number ?? source.referenceNumber ?? null,
+      location: source.location ?? null,
+      payment_method: source.payment_method ?? source.paymentMethod ?? null,
+    };
+  }
+
+  if (category === 'Maintenance') {
+    return {
+      ...normalized,
+      maintenance_type: source.maintenance_type ?? source.maintenanceType ?? source.type ?? null,
+      vendor: source.vendor ?? null,
+      service_date: source.service_date ?? source.serviceDate ?? null,
+    };
+  }
+
+  if (category === 'Toll') {
+    return {
+      ...normalized,
+      toll_location: source.toll_location ?? source.tollLocation ?? null,
+      vehicle_number: source.vehicle_number ?? source.vehicleNumber ?? null,
+    };
+  }
+
+  if (category === 'Parking') {
+    return {
+      ...normalized,
+      parking_location: source.parking_location ?? source.parkingLocation ?? null,
+      duration_hours: source.duration_hours ?? source.durationHours ?? null,
+    };
+  }
+
+  if (category === 'Other') {
+    return {
+      ...normalized,
+      description: source.description ?? source.remarks ?? source.note ?? null,
+    };
+  }
+
+  return normalized;
+}
+
+function extractCategoryCost(entry = {}) {
+  const rawDetails = parseJsonMaybe(entry.category_details ?? entry.categoryDetails ?? entry.category_metadata ?? entry.categoryMetadata ?? entry.details ?? entry.metadata ?? null);
+  if (rawDetails && Object.keys(rawDetails).length) {
+    return rawDetails;
+  }
+
+  const key = entry.category ?? 'Other';
+  return {
+    category: key,
+    note: entry.note ?? entry.remarks ?? entry.description ?? null,
+    description: entry.description ?? entry.remarks ?? entry.note ?? null,
+    liters: entry.liters ?? null,
+    odometer_reading: entry.odometer_reading ?? entry.odometerReading ?? null,
+    fuel_station: entry.fuel_station ?? entry.fuelStation ?? null,
+    toll_location: entry.toll_location ?? entry.tollLocation ?? null,
+    parking_location: entry.parking_location ?? entry.parkingLocation ?? null,
+    maintenance_type: entry.maintenance_type ?? entry.maintenanceType ?? null,
+  };
 }
 
 async function attachCategoryCost(supabase, category, record, costEntryId) {
-  const payload = categoryPayload(category, record, costEntryId);
-  if (!payload) return null;
+  if (!supabase || !costEntryId || !category) return null;
+  const payload = buildCategoryDetails(category, record || {});
+  if (!payload || Object.keys(payload).length === 0) return null;
+
   const { data, error } = await supabase
-    .from(CATEGORY_TABLES[category])
-    .upsert(payload, { onConflict: 'cost_entry_id' })
-    .select(CATEGORY_SELECTS[category])
+    .from('cost_entries')
+    .update({ category_details: payload })
+    .eq('id', costEntryId)
+    .select('id,category_details')
     .single();
-  if (error) throw error;
-  return data;
+
+  if (error) {
+    const message = String(error.message || error || '');
+    if (/column .*category_details|does not exist|not found/i.test(message)) {
+      return payload;
+    }
+    throw error;
+  }
+
+  return data?.category_details ?? payload;
 }
 
-async function loadCategoryCosts(supabase, rows) {
-  const result = new Map();
-  await Promise.all(Object.entries(CATEGORY_TABLES).map(async ([category, table]) => {
-    const { data, error } = await supabase.from(table).select(CATEGORY_SELECTS[category]);
-    if (error) throw error;
-    (data || []).forEach((item) => {
-      const existing = result.get(item.cost_entry_id) || {};
-      result.set(item.cost_entry_id, { ...existing, category, ...item });
-    });
+async function loadCategoryCosts(_supabase, rows) {
+  return (rows || []).map((row) => ({
+    ...row,
+    categoryCost: extractCategoryCost(row),
   }));
-  return rows.map((row) => ({ ...row, categoryCost: result.get(row.id) || null }));
 }
 
-module.exports = { attachCategoryCost, loadCategoryCosts };
+module.exports = { attachCategoryCost, loadCategoryCosts, buildCategoryDetails, extractCategoryCost };

@@ -1,6 +1,6 @@
 export default function GlobalFooter() {
   return (
-    <footer className="mt-auto w-full border-t border-pink-200/70 bg-white px-4 py-7 text-[#5b6b79] shadow-[0_-8px_24px_rgba(184,0,73,0.04)] sm:px-7">
+    <footer className="ftm-soft-footer mt-auto w-full border-t border-white/80 bg-slate-100/70 px-4 py-7 text-[#5b6b79] shadow-[0_-8px_24px_rgba(148,163,184,0.12)] sm:px-7">
       <div className="mx-auto flex max-w-[1700px] flex-col gap-4 text-sm md:flex-row md:items-center md:justify-between">
         <div>
           <div className="font-extrabold tracking-wide text-[#141d23]">AIRSHIP EXPRESS</div>

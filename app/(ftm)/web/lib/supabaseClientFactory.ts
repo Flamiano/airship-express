@@ -9,13 +9,14 @@ export function getCachedSupabaseClient(url: string, key: string): SupabaseClien
   const cache = globalScope.__airshipSupabaseClients ?? new Map<string, SupabaseClient>();
   globalScope.__airshipSupabaseClients = cache;
 
-  const cacheKey = url;
+  const cacheKey = `${url}:passkey-enabled`;
   const existingClient = cache.get(cacheKey);
   if (existingClient) return existingClient;
 
   const client = createClient(url, key, {
     auth: {
       storageKey: `airship-express-auth-${url}`,
+      experimental: { passkey: true },
     },
   });
   cache.set(cacheKey, client);

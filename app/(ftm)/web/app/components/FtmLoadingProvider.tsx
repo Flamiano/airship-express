@@ -5,9 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import ConnectionStatusNotice from "./ConnectionStatusNotice";
+import { useFtmSettings } from "./FtmSettingsProvider";
 
-const NAVIGATION_PROGRESS_CAP_MS = 1800;
-const NAVIGATION_FAILSAFE_MS = 12000;
+const NAVIGATION_PROGRESS_CAP_MS = 1500;
 const stages = [
   { at: 0, label: "Loading cargo" },
   { at: 34, label: "Calculating route" },
@@ -60,8 +60,8 @@ function TruckIcon() {
   );
 }
 
-/** Keeps a branded fullscreen handoff visible until the destination route actually resolves. */
 export default function FtmLoadingProvider({ children }: { children: React.ReactNode }) {
+  const { settings } = useFtmSettings();
   const router = useRouter();
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
@@ -72,9 +72,7 @@ export default function FtmLoadingProvider({ children }: { children: React.React
   const navigationId = useRef(0);
   const navigationActive = useRef(false);
   const clearTimer = useRef<number | null>(null);
-  const progressTimer = useRef<number | null>(null);
-  const failsafeTimer = useRef<number | null>(null);
-  const hideTimer = useRef<number | null>(null);
+  const readyFrame = useRef<number | null>(null);
   const pendingLocation = useRef<string | null>(null);
 
   const beginNavigation = (destination?: string) => {
@@ -87,96 +85,55 @@ export default function FtmLoadingProvider({ children }: { children: React.React
     setProgress(1);
     setIsNavigating(true);
 
-    if (clearTimer.current) {
-      window.clearTimeout(clearTimer.current);
-    }
-    if (progressTimer.current) {
-      window.clearInterval(progressTimer.current);
-      progressTimer.current = null;
-    }
-    if (failsafeTimer.current) {
-      window.clearTimeout(failsafeTimer.current);
-    }
-    if (hideTimer.current) {
-      window.clearTimeout(hideTimer.current);
-      hideTimer.current = null;
-    }
+    if (clearTimer.current) window.clearTimeout(clearTimer.current);
+    if (readyFrame.current) window.cancelAnimationFrame(readyFrame.current);
 
     const currentNavigation = navigationId.current;
     clearTimer.current = window.setTimeout(() => {
       if (navigationId.current === currentNavigation) {
-        // Hold at 90% briefly, then advance slowly until Next confirms the destination.
+        // Progress is visual only. Never let a timer finish a route transition.
         setProgress(90);
-        progressTimer.current = window.setInterval(() => {
-          if (navigationId.current !== currentNavigation) return;
-          setProgress((current) => Math.min(99, Math.max(90, current + 1)));
-        }, 350);
       }
     }, NAVIGATION_PROGRESS_CAP_MS);
-
-    failsafeTimer.current = window.setTimeout(() => {
-      if (navigationId.current !== currentNavigation) return;
-      if (progressTimer.current) {
-        window.clearInterval(progressTimer.current);
-        progressTimer.current = null;
-      }
-      pendingLocation.current = null;
-      navigationActive.current = false;
-      setIsNavigating(false);
-      setProgress(100);
-    }, NAVIGATION_FAILSAFE_MS);
   };
 
   useEffect(() => {
     if (!isNavigating) return;
-
-    const duration = 1800;
+    const duration = NAVIGATION_PROGRESS_CAP_MS;
     const start = performance.now();
     let frameId = 0;
-
     const tick = (now: number) => {
-      const elapsed = now - start;
-      const nextProgress = Math.min(90, Math.max(1, Math.round((elapsed / duration) * 90)));
+      const nextProgress = Math.min(90, Math.max(1, Math.round(((now - start) / duration) * 90)));
       setProgress(nextProgress);
-
-      if (nextProgress < 90) {
-        frameId = requestAnimationFrame(tick);
-      }
+      if (nextProgress < 90) frameId = requestAnimationFrame(tick);
     };
-
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
   }, [isNavigating]);
 
   useEffect(() => {
     if (!pendingLocation.current) return;
-
-    const routeReached = navigationLocationsMatch(locationKey, pendingLocation.current);
-    if (routeReached) {
-      if (clearTimer.current) {
-        window.clearTimeout(clearTimer.current);
-        clearTimer.current = null;
-      }
-      if (progressTimer.current) {
-        window.clearInterval(progressTimer.current);
-        progressTimer.current = null;
-      }
-      if (failsafeTimer.current) {
-        window.clearTimeout(failsafeTimer.current);
-        failsafeTimer.current = null;
-      }
+    if (navigationLocationsMatch(locationKey, pendingLocation.current)) {
+      if (clearTimer.current) window.clearTimeout(clearTimer.current);
       setProgress(100);
-      hideTimer.current = window.setTimeout(() => {
-        pendingLocation.current = null;
-        navigationActive.current = false;
-        setIsNavigating(false);
-        hideTimer.current = null;
-      }, 160);
+
+      const currentNavigation = navigationId.current;
+      // Effects run after React commits the destination. Two frames ensure the
+      // committed route has painted before the old-page overlay is removed.
+      readyFrame.current = window.requestAnimationFrame(() => {
+        if (navigationId.current !== currentNavigation) return;
+        readyFrame.current = window.requestAnimationFrame(() => {
+          if (navigationId.current !== currentNavigation) return;
+          pendingLocation.current = null;
+          navigationActive.current = false;
+          setIsNavigating(false);
+          readyFrame.current = null;
+        });
+      });
       return () => {
-        if (hideTimer.current) window.clearTimeout(hideTimer.current);
+        if (readyFrame.current) window.cancelAnimationFrame(readyFrame.current);
       };
     }
-
     setIsNavigating(true);
   }, [locationKey]);
 
@@ -190,14 +147,9 @@ export default function FtmLoadingProvider({ children }: { children: React.React
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
       const destination = new URL(href, window.location.href);
       if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
-
-      // Alerts query tabs still use the branded loading handoff.
       if (destination.pathname === window.location.pathname && destination.pathname !== "/alerts") return;
-
-      const destinationPath = `${destination.pathname}${destination.search}${destination.hash}`;
-      beginNavigation(destinationPath);
+      beginNavigation(`${destination.pathname}${destination.search}${destination.hash}`);
     };
-
     document.addEventListener("click", navigate, true);
     return () => document.removeEventListener("click", navigate, true);
   }, [router]);
@@ -209,9 +161,7 @@ export default function FtmLoadingProvider({ children }: { children: React.React
         navigationId.current += 1;
         pendingLocation.current = null;
         if (clearTimer.current) window.clearTimeout(clearTimer.current);
-        if (progressTimer.current) window.clearInterval(progressTimer.current);
-        if (failsafeTimer.current) window.clearTimeout(failsafeTimer.current);
-        if (hideTimer.current) window.clearTimeout(hideTimer.current);
+        if (readyFrame.current) window.cancelAnimationFrame(readyFrame.current);
         navigationActive.current = false;
         setIsNavigating(false);
         setProgress(100);
@@ -224,35 +174,36 @@ export default function FtmLoadingProvider({ children }: { children: React.React
       beginNavigation(detail.destination);
       router.push(detail.destination);
     };
-
     window.addEventListener("ftm:loading", handleLoadingEvent);
     return () => window.removeEventListener("ftm:loading", handleLoadingEvent);
   }, [router]);
 
   useEffect(() => {
+    if (!settings.system.navigationPrefetch) return;
+    const prefetchedRoutes = new Set<string>();
     const prefetch = (event: MouseEvent | FocusEvent) => {
       const link = (event.target as HTMLElement).closest("a");
       const href = link?.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
       const destination = new URL(href, window.location.href);
       if (destination.origin === window.location.origin && destination.href !== window.location.href) {
-        router.prefetch(`${destination.pathname}${destination.search}`);
+        const route = `${destination.pathname}${destination.search}`;
+        if (prefetchedRoutes.has(route)) return;
+        prefetchedRoutes.add(route);
+        router.prefetch(route);
       }
     };
-
-    document.addEventListener("mouseover", prefetch, true);
+    document.addEventListener("pointerover", prefetch, true);
     document.addEventListener("focusin", prefetch, true);
     return () => {
-      document.removeEventListener("mouseover", prefetch, true);
+      document.removeEventListener("pointerover", prefetch, true);
       document.removeEventListener("focusin", prefetch, true);
     };
-  }, [router]);
+  }, [router, settings.system.navigationPrefetch]);
 
   useEffect(() => () => {
     if (clearTimer.current) window.clearTimeout(clearTimer.current);
-    if (progressTimer.current) window.clearInterval(progressTimer.current);
-    if (failsafeTimer.current) window.clearTimeout(failsafeTimer.current);
-    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    if (readyFrame.current) window.cancelAnimationFrame(readyFrame.current);
   }, []);
 
   const currentStage = [...stages].reverse().find((item) => progress >= item.at) ?? stages[0];
@@ -261,44 +212,17 @@ export default function FtmLoadingProvider({ children }: { children: React.React
     <>
       <ConnectionStatusNotice />
       {isNavigating && (
-        <div
-          className="pointer-events-none fixed inset-0 z-[3000] flex flex-col items-center justify-center gap-8 bg-gradient-to-br from-[#fff7fb] via-[#fcfbf9] to-[#ffe8f2] px-6"
-          role="status"
-          aria-live="polite"
-          aria-label="Loading page"
-        >
+        <div className="pointer-events-none fixed inset-0 z-[3000] flex flex-col items-center justify-center gap-8 bg-gradient-to-br from-[#fff7fb] via-[#fcfbf9] to-[#ffe8f2] px-6" role="status" aria-live="polite" aria-label="Loading page">
           <Image src="/airship-logo.png" alt="Airship Express" width={180} height={50} priority className="h-10 w-auto object-contain" />
-
           <div className="flex w-full max-w-xs flex-col items-center gap-5">
             <TruckIcon />
-
             <div className="h-[2px] w-full overflow-hidden rounded-full">
-              <motion.div
-                className="h-full w-full"
-                style={{
-                  backgroundImage: "repeating-linear-gradient(90deg, #1C1B1F 0 12px, transparent 12px 24px)",
-                }}
-                animate={{ backgroundPositionX: ["0px", "-48px"] }}
-                transition={{ duration: 0.5, repeat: Infinity, ease: "linear" }}
-              />
+              <motion.div className="h-full w-full" style={{ backgroundImage: "repeating-linear-gradient(90deg, #1C1B1F 0 12px, transparent 12px 24px)" }} animate={{ backgroundPositionX: ["0px", "-48px"] }} transition={{ duration: 0.5, repeat: Infinity, ease: "linear" }} />
             </div>
-
             <div className="flex w-full flex-col items-center gap-3">
-              <span className="font-bricolage text-4xl font-extrabold tracking-[-0.02em] text-[#1C1B1F] sm:text-5xl">
-                {progress}%
-              </span>
-
-              <div className="h-1 w-full overflow-hidden rounded-full bg-[#EAEAEA]">
-                <motion.div
-                  className="h-full rounded-full bg-[#E5167E]"
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.15, ease: "linear" }}
-                />
-              </div>
-
-              <span className="text-xs font-medium uppercase tracking-[0.14em] text-[#6B6B76]">
-                {currentStage.label}
-              </span>
+              <span className="font-bricolage text-4xl font-extrabold tracking-[-0.02em] text-[#1C1B1F] sm:text-5xl">{progress}%</span>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-[#EAEAEA]"><motion.div className="h-full rounded-full bg-[#E5167E]" animate={{ width: `${progress}%` }} transition={{ duration: progress === 100 ? 0 : 0.15, ease: "linear" }} /></div>
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-[#6B6B76]">{currentStage.label}</span>
             </div>
           </div>
         </div>

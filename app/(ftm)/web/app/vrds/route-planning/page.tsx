@@ -1,7 +1,6 @@
 "use client";
 
 import { createElement, useEffect, useMemo, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import GlobalNavbar from "../../components/GlobalNavbar";
 import GlobalFooter from "../../components/GlobalFooter";
@@ -10,6 +9,7 @@ import { createBulkBooking, createRoutePlan, fetchJson } from "../../lib/api";
 import { getCityCoordinate } from "../../lib/serviceAreas";
 import { getCourierWarehouseLocation, listCourierWarehouses, resolveCourierName, resolveKnownCity } from "../../lib/courierWarehouses";
 import { getParcelGroupKey } from "../../lib/parcelGrouping";
+import { solveHeuristic } from "../../lib/heuristicSolver";
 import { SkeletonMap } from "../../components/PageSkeleton";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -363,7 +363,6 @@ function readPersistedServiceArea(): string | null {
 /* ------------------------------------------------------------------ */
 
 export default function VrdsRoutePlanningPage() {
-  const router = useRouter();
   // Route planning uses only the active pickup queue. Archived history stays
   // available on the Parcel page and is never loaded into this queue.
   const parcelStore = useParcelStore({ history: true });
@@ -975,7 +974,13 @@ export default function VrdsRoutePlanningPage() {
         prioritizeFuelEfficiency: false,
       }),
     });
-    if (!res.ok) throw new Error(`optimize-route failed: ${res.status}`);
+    if (!res.ok) {
+      console.warn(`optimize-route returned ${res.status}; using local heuristic fallback.`);
+      return solveHeuristic(origin, destination, courierStops, {
+        vehicleCount: 1,
+        availableVehicles: availableVehicleOptions.slice(0, 1),
+      });
+    }
     return res.json();
   }
 
@@ -1499,10 +1504,15 @@ export default function VrdsRoutePlanningPage() {
       const savedCouriers: string[] = [];
 
       for (const courier of generatedCouriers) {
+        const normalizedCourier = resolveCourierName(courier);
         const optimizedResult = courierRoutes.get(courier);
         if (!optimizedResult) continue;
 
-        const courierParcels = planningParcels.filter((parcel) => resolveCourierName(parcel.courier) === courier);
+        const courierParcels = planningParcels.filter((parcel) => resolveCourierName(parcel.courier) === normalizedCourier);
+        const parcelCouriers = new Set(courierParcels.map((parcel) => resolveCourierName(parcel.courier)));
+        if (parcelCouriers.size !== 1 || !parcelCouriers.has(normalizedCourier)) {
+          throw new Error(`Courier mismatch while saving the ${normalizedCourier} route. Refresh parcels and try again.`);
+        }
         const parcelIds = courierParcels.map((parcel) => parcel.id);
         const courierStopsForPlan = ensureWarehouseFirst(activeStops.filter((stop) => stop.courier === courier).slice());
         const stopById = new Map(courierStopsForPlan.map((stop) => [stop.id, stop]));
@@ -1564,7 +1574,7 @@ export default function VrdsRoutePlanningPage() {
         const fallbackMetrics = calculatePolylineMetrics(fallbackPolyline);
         const routePlanKey = `${courier}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
         const routePlan = await createRoutePlan({
-          courier,
+          courier: courierParcels[0]?.courier || courier,
           bulk_qr_code: routePlanKey,
           pickup_location: origin.label,
           pickup_latitude: origin.lat,
@@ -1595,7 +1605,7 @@ export default function VrdsRoutePlanningPage() {
           : destinations;
         const dropoffLabel = persistedDestinations.map((item: any) => item.name).filter(Boolean).join(" \u2192 ") || destination.label;
         const response = await createBulkBooking({
-          courier,
+          courier: courierParcels[0]?.courier || courier,
           bulk_qr_code: routePlanKey,
           parcel_ids: parcelIds,
           pickup_location: origin.label,
@@ -1867,7 +1877,7 @@ export default function VrdsRoutePlanningPage() {
                         {bookedAssignedParcels.length} booked parcel{bookedAssignedParcels.length === 1 ? "" : "s"} already have a route booking.
                         <button
                           type="button"
-                          onClick={() => router.push("/vrds/bookings")}
+                          onClick={() => window.dispatchEvent(new CustomEvent("ftm:loading", { detail: { destination: "/vrds/bookings" } }))}
                           className="ml-2 text-xs font-semibold text-[#b80049] underline"
                         >
                           Open Bookings

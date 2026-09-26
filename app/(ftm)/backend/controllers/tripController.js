@@ -1,9 +1,46 @@
 const { getSupabase, getServiceSupabase, getParcelsSupabase } = require('../config/db');
 const { broadcastAssignment } = require('../events/sse');
 const { normalizeTrip, buildTripPayload } = require('../models/Trip');
+const { validateAssignment } = require('../services/courierAssignmentService');
 
 function databaseUnavailable(res) {
   return res.status(503).json({ error: 'Database is not configured' });
+}
+
+async function updateResourceStatus(supabase, { driverId, vehicleId }, status) {
+  const updates = [];
+
+  if (vehicleId) {
+    updates.push((async () => {
+      const primary = await supabase
+        .from('vehicles')
+        .update({ status, availability: status, assignment_status: status.toLowerCase() })
+        .eq('id', vehicleId);
+      if (primary.error && /assignment_status|column .* does not exist|schema cache/i.test(String(primary.error.message || primary.error))) {
+        return supabase
+          .from('vehicles')
+          .update({ status, availability: status })
+          .eq('id', vehicleId);
+      }
+      return primary;
+    })());
+  }
+
+  if (driverId) {
+    updates.push(
+      supabase
+        .from('users')
+        .update({ is_active: status.toLowerCase() !== 'inactive' })
+        .eq('id', driverId)
+    );
+  }
+
+  const results = await Promise.all(updates);
+  results.forEach((result) => {
+    if (result.error) {
+      console.warn(`Unable to update ${status.toLowerCase()} resource status:`, result.error.message || result.error);
+    }
+  });
 }
 
 function isRLSPermissionError(error) {
@@ -197,7 +234,8 @@ async function getTrips(req, res) {
     const isLightRequest = req.query.light === 'true';
     const buildTripQuery = (includeStops = true, includeBookingJoin = true) => {
       const coreFields = `
-        id, booking_id, vehicle_id, driver_id, status, progress,
+        id, booking_id, vehicle_id, vehicle_plate, driver_id, driver_name, status, progress,
+        pickup_status, pickup_proof_url, pickup_confirmed_at,
         estimated_departure, estimated_arrival, actual_departure, actual_arrival,
         delay_reason, created_at, updated_at, route_plan_id
       `;
@@ -208,7 +246,8 @@ async function getTrips(req, res) {
       const baseSelect = `${coreFields}${bookingJoin}${stopsJoin}`;
       const query = supabase.from('trips').select(baseSelect).order('created_at', { ascending: false }).limit(isLightRequest ? 100 : 200);
       if (req.query.status) query.eq('status', req.query.status);
-      if (req.query.driver_id) query.eq('driver_id', req.query.driver_id);
+      if (req.fleetUser?.role === 'driver') query.eq('driver_id', req.fleetUser.id);
+      else if (req.query.driver_id) query.eq('driver_id', req.query.driver_id);
       return query;
     };
 
@@ -295,7 +334,7 @@ async function getTrips(req, res) {
     if (bookingIds.length > 0) {
       const { data: bookingRows, error: bookingRowsError } = await supabase
         .from('bookings')
-        .select('id, pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight')
+        .select('id, pickup_location, pickup_latitude, pickup_longitude, dropoff_location, dropoff_latitude, dropoff_longitude, cargo_weight, driver_id, driver_name, vehicle_id, vehicle_plate')
         .in('id', bookingIds);
       if (!bookingRowsError) {
         bookingsById = new Map((bookingRows || []).map((booking) => [String(booking.id), booking]));
@@ -382,6 +421,23 @@ async function createTrip(req, res) {
   const supabase = getServiceSupabase();
   if (!supabase) return databaseUnavailable(res);
 
+  let assignment;
+  if (payload.driver_id || payload.vehicle_id) {
+    try {
+      assignment = await validateAssignment(supabase, {
+        driverId: payload.driver_id,
+        vehicleId: payload.vehicle_id,
+        bookingId: payload.booking_id,
+        routePlanId: payload.route_plan_id,
+        courierId: payload.courier_id,
+        courier: payload.courier,
+      });
+    } catch (error) {
+      return res.status(409).json({ error: error.message || 'Driver and vehicle are not eligible for this trip.' });
+    }
+    payload.courier_id = assignment.courier.id || payload.courier_id;
+  }
+
   let { data, error } = await supabase.from('trips').insert(payload).select('*').single();
 
   if (error && (error.code === 'PGRST204' || /column|schema cache/i.test(error.message || ''))) {
@@ -437,6 +493,10 @@ async function createTrip(req, res) {
   } catch (err) {
     console.error('Failed to create driver trip assignment notification:', err?.message || err);
   }
+  await updateResourceStatus(supabase, {
+    driverId: data?.driver_id,
+    vehicleId: data?.vehicle_id,
+  }, 'Assigned');
   // Update the booking with driver and vehicle assignment
   try {
     const bookingId = data?.booking_id;
@@ -492,6 +552,85 @@ async function createTrip(req, res) {
   return res.status(201).json(normalizeTrip({ ...data, stops }));
 }
 
+async function confirmTripPickup(req, res) {
+  const supabase = getServiceSupabase();
+  if (!supabase) return databaseUnavailable(res);
+
+  const tripId = req.params.id;
+  const { driver_id, proof_url, manifest_verified, picked_up_parcel_ids = [] } = req.body || {};
+  if (!proof_url || manifest_verified !== true) {
+    return res.status(400).json({ error: 'Pickup proof and manifest verification are required before starting the trip.' });
+  }
+
+  const { data: trip, error: tripError } = await supabase
+    .from('trips')
+    .select('*')
+    .eq('id', tripId)
+    .maybeSingle();
+  if (tripError) return res.status(500).json({ error: `Unable to load trip: ${tripError.message}` });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (driver_id && trip.driver_id && String(driver_id) !== String(trip.driver_id)) {
+    return res.status(403).json({ error: 'Only the assigned driver can confirm this pickup.' });
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('trips')
+    .update({
+      pickup_status: 'confirmed',
+      pickup_proof_url: proof_url,
+      pickup_confirmed_at: now,
+      status: 'Pickup Confirmed',
+    })
+    .eq('id', tripId)
+    .select('*')
+    .single();
+  if (error) return res.status(500).json({ error: `Unable to confirm pickup: ${error.message}` });
+
+  if (trip.booking_id) {
+    await updateRemoteParcelStatus(trip.booking_id, 'picked_up');
+  }
+  if (Array.isArray(picked_up_parcel_ids) && picked_up_parcel_ids.length > 0) {
+    const parcelsSupabase = getParcelsSupabase();
+    if (parcelsSupabase) {
+      await parcelsSupabase.from('parcels').update({ status: 'picked_up' }).in('id', picked_up_parcel_ids);
+    }
+  }
+
+  return res.json(normalizeTrip(data));
+}
+
+async function startTrip(req, res) {
+  const supabase = getServiceSupabase();
+  if (!supabase) return databaseUnavailable(res);
+
+  const { data: trip, error: tripError } = await supabase
+    .from('trips')
+    .select('*')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (tripError) return res.status(500).json({ error: `Unable to load trip: ${tripError.message}` });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (trip.pickup_status !== 'confirmed') {
+    return res.status(409).json({ error: 'Pickup proof and manifest verification are required before starting the delivery trip.' });
+  }
+
+  try {
+    await validateAssignment(supabase, {
+      driverId: trip.driver_id,
+      vehicleId: trip.vehicle_id,
+      bookingId: trip.booking_id,
+      routePlanId: trip.route_plan_id,
+      courierId: trip.courier_id,
+      tripId: trip.id,
+    });
+  } catch (error) {
+    return res.status(409).json({ error: error.message || 'The current driver and vehicle are no longer eligible to dispatch this trip.' });
+  }
+
+  return updateTripStatus(req, res, 'In Transit', 5, { pickupStatus: 'started', bookingId: trip.booking_id });
+}
+
 async function assignTrip(req, res) {
   const supabase = getServiceSupabase();
   if (!supabase) return databaseUnavailable(res);
@@ -501,28 +640,35 @@ async function assignTrip(req, res) {
   if (!driver_id) return res.status(400).json({ error: 'driver_id is required' });
 
   try {
-    const { data, error } = await supabase.from('trips').update({ driver_id, status: 'Driver Assigned' }).eq('id', tripId).select('*').maybeSingle();
-    if (error) {
-      console.error('Assign trip error:', error.message || error);
-      return res.status(500).json({ error: 'Failed to assign trip' });
-    }
-    if (!data) return res.status(404).json({ error: 'Trip not found' });
-    try { broadcastAssignment({ type: 'assignment', trip: data }); } catch (err) { console.error('Broadcast failed:', err?.message || err); }
+    const { data: trip, error: tripError } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle();
+    if (tripError) return res.status(500).json({ error: `Unable to load trip: ${tripError.message}` });
+    if (!trip) return res.status(404).json({ error: 'Trip not found' });
     try {
-      await notifyDriverTripAssigned(supabase, data);
-    } catch (err) {
-      console.error('Failed to create driver trip assignment notification:', err?.message || err);
-    }
-    // update parcels for this booking to mark them assigned and with trip id
-    try {
-      const bookingId = data?.booking_id;
-      if (bookingId) {
-        await updateRemoteParcelStatus(bookingId, 'booked');
+      const assignment = await validateAssignment(supabase, {
+        driverId: driver_id,
+        vehicleId: trip.vehicle_id,
+        bookingId: trip.booking_id,
+        routePlanId: trip.route_plan_id,
+        courierId: trip.courier_id,
+        tripId,
+      });
+      const { data, error } = await supabase.from('trips').update({ driver_id, driver_name: assignment.driver.full_name || null, courier_id: assignment.courier.id || trip.courier_id, status: 'Driver Assigned' }).eq('id', tripId).select('*').maybeSingle();
+      if (error) {
+        console.error('Assign trip error:', error.message || error);
+        return res.status(500).json({ error: 'Failed to assign trip' });
       }
-    } catch (e) {
-      console.error('Failed to sync parcels with trip assign:', e);
+      if (!data) return res.status(404).json({ error: 'Trip not found' });
+      try { broadcastAssignment({ type: 'assignment', trip: data }); } catch (err) { console.error('Broadcast failed:', err?.message || err); }
+      try {
+        await notifyDriverTripAssigned(supabase, data);
+      } catch (err) {
+        console.error('Failed to create driver trip assignment notification:', err?.message || err);
+      }
+      await updateResourceStatus(supabase, { driverId: data.driver_id, vehicleId: data.vehicle_id }, 'Assigned');
+      return res.json(normalizeTrip(data));
+    } catch (error) {
+      return res.status(409).json({ error: error.message || 'Driver is not eligible for this trip.' });
     }
-    return res.json(normalizeTrip(data));
   } catch (err) {
     console.error('Assign trip exception:', err);
     return res.status(500).json({ error: 'Server error' });
@@ -537,8 +683,27 @@ async function acceptTrip(req, res) {
   const { driver_id } = req.body;
 
   try {
+    const { data: trip, error: tripError } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle();
+    if (tripError) return res.status(500).json({ error: `Unable to load trip: ${tripError.message}` });
+    if (!trip) return res.status(404).json({ error: 'Trip not found' });
     const update = {};
-    if (driver_id) update.driver_id = driver_id;
+    if (driver_id || trip.driver_id) {
+      try {
+        const assignment = await validateAssignment(supabase, {
+          driverId: driver_id || trip.driver_id,
+          vehicleId: trip.vehicle_id,
+          bookingId: trip.booking_id,
+          routePlanId: trip.route_plan_id,
+          courierId: trip.courier_id,
+          tripId,
+        });
+        update.driver_id = driver_id || trip.driver_id;
+        update.driver_name = assignment.driver.full_name || null;
+        update.courier_id = assignment.courier.id || trip.courier_id;
+      } catch (error) {
+        return res.status(409).json({ error: error.message || 'Driver is not eligible for this trip.' });
+      }
+    }
     // Mark as Scheduled/accepted — actual 'start' is separate
     update.status = 'Scheduled';
 
@@ -555,11 +720,13 @@ async function acceptTrip(req, res) {
   }
 }
 
-async function updateTripStatus(req, res, status, progress) {
+async function updateTripStatus(req, res, status, progress, options = {}) {
   const supabase = getServiceSupabase();
   if (!supabase) return databaseUnavailable(res);
 
-  const { data, error } = await supabase.from('trips').update({ status, progress }).eq('id', req.params.id).select('*').maybeSingle();
+  const update = { status, progress };
+  if (options.pickupStatus) update.pickup_status = options.pickupStatus;
+  const { data, error } = await supabase.from('trips').update(update).eq('id', req.params.id).select('*').maybeSingle();
   if (error) {
     console.error('Update trip status error:', error.message);
     if (isPermissionError(error)) {
@@ -572,7 +739,7 @@ async function updateTripStatus(req, res, status, progress) {
   }
   if (!data) return res.status(404).json({ error: 'Trip not found' });
 
-  const bookingId = data?.booking_id;
+  const bookingId = options.bookingId || data?.booking_id;
   if (bookingId) {
     const normalizedStatus = String(status || '').trim().toLowerCase();
     const parcelStatus = /delayed|late|exception/.test(normalizedStatus)
@@ -581,6 +748,8 @@ async function updateTripStatus(req, res, status, progress) {
         ? 'in_transit'
         : normalizedStatus === 'completed'
           ? 'delivered'
+            : normalizedStatus === 'in transit'
+              ? 'in_transit'
           : null;
     if (parcelStatus) {
       await updateRemoteParcelStatus(bookingId, parcelStatus);
@@ -604,7 +773,14 @@ async function updateTripStatus(req, res, status, progress) {
     }
   }
 
+  if (String(status).toLowerCase() === 'completed') {
+    await updateResourceStatus(supabase, {
+      driverId: data?.driver_id,
+      vehicleId: data?.vehicle_id,
+    }, 'Available');
+  }
+
   return res.json(normalizeTrip(data));
 }
 
-module.exports = { getTrips, createTrip, assignTrip, acceptTrip, updateTripStatus };
+module.exports = { getTrips, createTrip, confirmTripPickup, startTrip, assignTrip, acceptTrip, updateTripStatus };

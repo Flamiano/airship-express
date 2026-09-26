@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RoleRestricted from "../components/RoleRestricted";
 import GlobalNavbar from "../components/GlobalNavbar";
 import { getAdminUsers, lockAdminUser, unlockAdminUser, updateAdminUserRole } from "../lib/api";
 import { supabase } from "../lib/supabaseClient";
+import { useFtmProfileAvatar } from "../components/FtmProfileAvatarProvider";
+import FtmProfileAvatar from "../components/FtmProfileAvatar";
 
-type FtmUser = { id: string; email?: string; full_name?: string; role?: string | null; last_sign_in_at?: string | null; locked?: boolean; banned_until?: string | null };
+type FtmUser = { id: string; email?: string; full_name?: string; avatar_url?: string | null; role?: string | null; last_sign_in_at?: string | null; created_at?: string | null; locked?: boolean; banned_until?: string | null; passkey_count?: number | null };
 const ROLES = ["admin", "fleet_manager", "dispatcher", "driver"];
+type AccessFilter = "all" | "active" | "locked" | "never_signed_in";
+type SortOption = "recent" | "name" | "role";
 
 export default function ManageUsersPage() {
+  const { avatarUrl: currentAvatarUrl } = useFtmProfileAvatar();
   const [users, setUsers] = useState<FtmUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -20,6 +25,54 @@ export default function ManageUsersPage() {
   const [verifying, setVerifying] = useState(false);
   const [selectedUser, setSelectedUser] = useState<FtmUser | null>(null);
   const [lockChange, setLockChange] = useState<{ user: FtmUser; locked: boolean } | null>(null);
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [accessFilter, setAccessFilter] = useState<AccessFilter>("all");
+  const [sortOption, setSortOption] = useState<SortOption>("recent");
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [modalOffset, setModalOffset] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const handleModalPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragStart({ x: event.clientX - modalOffset.x, y: event.clientY - modalOffset.y });
+  };
+
+  const handleModalPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStart) return;
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    const margin = 16;
+    const bounds = modal.getBoundingClientRect();
+    const baseLeft = bounds.left - modalOffset.x;
+    const baseTop = bounds.top - modalOffset.y;
+    const nextX = event.clientX - dragStart.x;
+    const nextY = event.clientY - dragStart.y;
+    const minX = margin - baseLeft;
+    const maxX = window.innerWidth - margin - bounds.width - baseLeft;
+    const minY = margin - baseTop;
+    const maxY = window.innerHeight - margin - bounds.height - baseTop;
+
+    setModalOffset({
+      x: Math.min(Math.max(nextX, minX), Math.max(minX, maxX)),
+      y: Math.min(Math.max(nextY, minY), Math.max(minY, maxY)),
+    });
+  };
+
+  const handleModalPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setDragStart(null);
+  };
+
+  const closeUserDetails = () => {
+    setSelectedUser(null);
+    setModalOffset({ x: 0, y: 0 });
+    setDragStart(null);
+  };
+
 
   useEffect(() => {
     let active = true;
@@ -32,7 +85,34 @@ export default function ManageUsersPage() {
           return;
         }
         const data = await getAdminUsers();
-        if (active) setUsers(Array.isArray(data) ? data : []);
+        if (active) {
+          const nextUsers = Array.isArray(data) ? data : [];
+          const { data: currentUserData } = await supabase.auth.getUser();
+          if (currentUserData.user) {
+            setCurrentUserId(currentUserData.user.id);
+            const { data: ownPasskeys } = await supabase.auth.passkey.list();
+            let storedRegistration: { userId?: string; email?: string; count?: number } = {};
+            try {
+              storedRegistration = JSON.parse(window.localStorage.getItem("ftm-passkey-registration") || "{}");
+            } catch {
+              storedRegistration = {};
+            }
+            const ownPasskeyCount = Array.isArray(ownPasskeys)
+              ? ownPasskeys.length
+              : storedRegistration.userId === currentUserData.user.id || storedRegistration.email === currentUserData.user.email
+                ? Math.max(1, Number(storedRegistration.count) || 1)
+                : null;
+            setUsers(nextUsers.map((user) => user.id === currentUserData.user?.id
+              ? {
+                ...user,
+                passkey_count: ownPasskeyCount,
+                avatar_url: currentAvatarUrl || user.avatar_url || null,
+              }
+              : user));
+          } else {
+            setUsers(nextUsers);
+          }
+        }
       } catch (requestError) {
         if (!active) return;
         const message = requestError instanceof Error ? requestError.message : "Unable to load users";
@@ -45,7 +125,25 @@ export default function ManageUsersPage() {
     };
     void loadUsers();
     return () => { active = false; };
-  }, []);
+  }, [currentAvatarUrl, refreshNonce]);
+
+  useEffect(() => {
+    const updateOwnAvatar = (avatarUrl: string | null) => {
+      if (!currentUserId) return;
+      setUsers((currentUsers) => currentUsers.map((user) => user.id === currentUserId ? { ...user, avatar_url: avatarUrl } : user));
+      setSelectedUser((user) => user?.id === currentUserId ? { ...user, avatar_url: avatarUrl } : user);
+    };
+    const onAvatarChanged = (event: Event) => updateOwnAvatar((event as CustomEvent<string | null>).detail ?? null);
+    const onStorageChanged = (event: StorageEvent) => {
+      if (event.key === "avatarUrl") updateOwnAvatar(event.newValue);
+    };
+    window.addEventListener("ftm:avatar-changed", onAvatarChanged);
+    window.addEventListener("storage", onStorageChanged);
+    return () => {
+      window.removeEventListener("ftm:avatar-changed", onAvatarChanged);
+      window.removeEventListener("storage", onStorageChanged);
+    };
+  }, [currentUserId]);
 
   const requestRoleChange = (user: FtmUser, role: string) => {
     if (role === user.role) return;
@@ -122,12 +220,23 @@ export default function ManageUsersPage() {
   const adminCount = users.filter((user) => user.role === "admin").length;
   const dispatcherCount = users.filter((user) => user.role === "dispatcher").length;
   const activeCount = users.filter((user) => user.last_sign_in_at).length;
+  const lockedCount = users.filter((user) => user.locked).length;
+  const neverSignedInCount = users.filter((user) => !user.last_sign_in_at).length;
   const filteredUsers = users.filter((user) => {
     const query = searchText.trim().toLowerCase();
-    if (!query) return true;
-    return [user.full_name, user.email, user.role, user.id]
+    const matchesQuery = !query || [user.full_name, user.email, user.role, user.id]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
+    const matchesRole = roleFilter === "all" || user.role === roleFilter;
+    const matchesAccess = accessFilter === "all"
+      || (accessFilter === "locked" && user.locked)
+      || (accessFilter === "active" && !user.locked)
+      || (accessFilter === "never_signed_in" && !user.last_sign_in_at);
+    return matchesQuery && matchesRole && matchesAccess;
+  }).sort((left, right) => {
+    if (sortOption === "name") return String(left.full_name || left.email || "").localeCompare(String(right.full_name || right.email || ""));
+    if (sortOption === "role") return String(left.role || "").localeCompare(String(right.role || ""));
+    return new Date(right.last_sign_in_at || 0).getTime() - new Date(left.last_sign_in_at || 0).getTime();
   });
 
   const formatRole = (role?: string | null) => (role || "Unassigned").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -140,25 +249,44 @@ export default function ManageUsersPage() {
     return "border-slate-200 bg-slate-50 text-slate-600";
   };
 
+  const exportUsers = () => {
+    const header = ["Name", "Email", "Role", "Access", "Last sign-in", "User ID"];
+    const rows = filteredUsers.map((user) => [
+      user.full_name || "Unnamed user",
+      user.email || "",
+      formatRole(user.role),
+      user.locked ? "Locked" : "Active",
+      user.last_sign_in_at || "Never signed in",
+      user.id,
+    ]);
+    const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "ftm-user-directory.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <RoleRestricted allowedRoles={["admin"]}>
       <GlobalNavbar />
-      <main className="min-h-screen bg-transparent px-4 py-8 text-slate-800 sm:px-6 lg:px-10">
+      <main className="ftm-soft-shell min-h-screen px-4 py-8 text-slate-800 sm:px-6 lg:px-10">
         <div className="mx-auto w-full max-w-[1920px]">
-          <section className="relative mb-8 overflow-hidden rounded-3xl border border-pink-200/80 bg-gradient-to-br from-white via-pink-50/40 to-pink-100/30 p-6 shadow-sm backdrop-blur-md md:p-8">
-            <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-pink-300/20 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-pink-400/10 blur-3xl" />
+          <section className="ftm-soft-hero relative mb-8 overflow-hidden rounded-[2rem] p-6 backdrop-blur-md md:p-8">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-pink-200/20 blur-3xl" />
             <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-2xl">
-                <div className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-100 px-3.5 py-1.5 text-xs font-semibold text-pink-700">
+                <div className="ftm-soft-inset inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold text-pink-700">
                   <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
                   FTM Administration Hub
                 </div>
                 <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">Manage Users & Access</h1>
                 <p className="mt-3 text-base leading-relaxed text-slate-600">Manage FTM account roles and keep access aligned with each team member&apos;s operational responsibility.</p>
                 <div className="mt-6 flex flex-wrap gap-2.5">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" />Role protection active</span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700"><span className="material-symbols-outlined text-[15px]">shield</span>Admin controls</span>
+                  <span className="ftm-soft-inset inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" />Role protection active</span>
+                  <span className="ftm-soft-inset inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-pink-700"><span className="material-symbols-outlined text-[15px]">shield</span>Admin controls</span>
                 </div>
               </div>
               <div className="grid w-full grid-cols-2 gap-3 lg:max-w-xl xl:grid-cols-4">
@@ -167,19 +295,26 @@ export default function ManageUsersPage() {
                   { label: "Active users", value: activeCount, icon: "verified_user" },
                   { label: "Admins", value: adminCount, icon: "shield_person" },
                   { label: "Dispatchers", value: dispatcherCount, icon: "local_shipping" },
-                ].map((stat) => <div key={stat.label} className="rounded-2xl border border-pink-100 bg-white/85 p-4 shadow-sm backdrop-blur-sm"><span className="material-symbols-outlined text-pink-600">{stat.icon}</span><div className="mt-2 text-2xl font-black text-slate-900">{stat.value}</div><div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{stat.label}</div></div>)}
+                  { label: "Locked", value: lockedCount, icon: "lock" },
+                ].map((stat) => <div key={stat.label} className="ftm-soft-stat rounded-2xl p-4 backdrop-blur-sm"><span className="material-symbols-outlined text-pink-600">{stat.icon}</span><div className="mt-2 text-2xl font-black text-slate-900">{stat.value}</div><div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{stat.label}</div></div>)}
               </div>
             </div>
           </section>
 
           {error && <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-          <section className="rounded-2xl border border-pink-100 bg-white p-5 shadow-sm">
+          <section className="ftm-soft-panel rounded-2xl p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div><h2 className="text-lg font-black text-slate-900">User Directory</h2><p className="text-sm text-slate-500">Role changes take effect on the user&apos;s next authenticated request.</p></div>
-              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700"><span className="material-symbols-outlined text-[15px]">group</span>{users.length} accounts</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => setRefreshNonce((value) => value + 1)} className="ftm-soft-button inline-flex items-center gap-1.5 rounded-xl bg-slate-100/70 px-3 py-2 text-xs font-bold text-slate-600 hover:text-pink-700"><span className="material-symbols-outlined text-[16px]">refresh</span>Refresh</button>
+                <button type="button" onClick={exportUsers} className="ftm-soft-button inline-flex items-center gap-1.5 rounded-xl bg-pink-100/70 px-3 py-2 text-xs font-bold text-pink-700"><span className="material-symbols-outlined text-[16px]">download</span>Export CSV</button>
+                <span className="ftm-soft-inset inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-pink-700"><span className="material-symbols-outlined text-[15px]">group</span>{filteredUsers.length} shown</span>
+              </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/30 p-1.5 text-xs font-semibold text-slate-600">
-              <span className="rounded-lg bg-pink-600 px-3 py-2 text-white shadow-sm">All accounts</span>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="ftm-soft-control rounded-xl px-3 py-2.5 text-xs font-semibold"><option value="all">All roles</option>{ROLES.map((role) => <option key={role} value={role}>{formatRole(role)}</option>)}</select>
+              <select value={accessFilter} onChange={(event) => setAccessFilter(event.target.value as AccessFilter)} className="ftm-soft-control rounded-xl px-3 py-2.5 text-xs font-semibold"><option value="all">All access states</option><option value="active">Active accounts</option><option value="locked">Locked accounts</option><option value="never_signed_in">Never signed in</option></select>
+              <select value={sortOption} onChange={(event) => setSortOption(event.target.value as SortOption)} className="ftm-soft-control rounded-xl px-3 py-2.5 text-xs font-semibold"><option value="recent">Sort: Recent sign-in</option><option value="name">Sort: Name</option><option value="role">Sort: Role</option></select>
             </div>
             <div className="relative mt-4 max-w-xl">
               <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[19px] text-slate-400">search</span>
@@ -189,25 +324,28 @@ export default function ManageUsersPage() {
                 onChange={(event) => setSearchText(event.target.value)}
                 placeholder="Search by name, email, role, or user ID"
                 aria-label="Search users"
-                className="w-full rounded-xl border border-pink-200 bg-pink-50/20 py-2.5 pl-10 pr-10 text-sm text-slate-800 outline-none transition focus:border-pink-500 focus:bg-white focus:ring-2 focus:ring-pink-100"
+                className="ftm-soft-control w-full rounded-xl py-2.5 pl-10 pr-10 text-sm"
               />
               {searchText && <button type="button" onClick={() => setSearchText("")} aria-label="Clear user search" className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400 hover:text-pink-600">close</button>}
             </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500"><span className="rounded-full bg-rose-50 px-2.5 py-1 font-semibold text-rose-700">{lockedCount} locked</span><span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">{neverSignedInCount} never signed in</span><span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">{activeCount} with sign-in history</span></div>
           </section>
 
-          <section className="mt-6 overflow-hidden rounded-3xl border border-pink-200/80 bg-white shadow-sm">
+          <section className="ftm-soft-table mt-6 overflow-hidden rounded-3xl">
             {loading ? <div className="space-y-3 p-6">{[1, 2, 3].map((row) => <div key={row} className="h-14 animate-pulse rounded-xl bg-slate-100" />)}</div> : filteredUsers.length === 0 ? <div className="p-12 text-center"><span className="material-symbols-outlined text-4xl text-pink-300">person_search</span><p className="mt-3 font-bold text-slate-700">No matching users</p><p className="mt-1 text-sm text-slate-500">Try a different name, email, role, or user ID.</p><button type="button" onClick={() => setSearchText("")} className="mt-4 rounded-xl border border-pink-300 bg-pink-50 px-4 py-2 text-xs font-semibold text-pink-700 hover:bg-pink-100">Clear search</button></div> : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="border-b border-pink-100 bg-[#fff7fc] text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-500">
-                    <tr><th className="px-5 py-4">User</th><th className="px-5 py-4">Role</th><th className="px-5 py-4">Last sign-in</th><th className="px-5 py-4">Access</th></tr>
+                  <thead className="border-b border-white/70 bg-slate-100/60 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-500">
+                    <tr><th className="px-5 py-4">User</th><th className="px-5 py-4">Role</th><th className="px-5 py-4">Passkey</th><th className="px-5 py-4">Last sign-in</th><th className="px-5 py-4">Access</th><th className="px-5 py-4">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredUsers.map((user) => <tr key={user.id} onClick={() => setSelectedUser(user)} className="cursor-pointer transition-colors hover:bg-pink-50/50">
-                      <td className="px-5 py-4"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#b80049] text-xs font-black text-white">{(user.full_name || user.email || "U").split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("")}</span><div><div className="font-bold text-slate-900">{user.full_name || "Unnamed user"}</div><div className="text-xs text-slate-500">{user.email || "No email"}</div></div></div></td>
+                      <td className="px-5 py-4"><div className="flex items-center gap-3"><FtmProfileAvatar name={user.full_name || user.email || "User"} userId={user.id} src={user.avatar_url} className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-[#b80049] text-xs font-black text-white" /><div><div className="font-bold text-slate-900">{user.full_name || "Unnamed user"}</div><div className="text-xs text-slate-500">{user.email || "No email"}</div></div></div></td>
                       <td className="px-5 py-4"><div className="flex items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${roleBadge(user.role)}`}>{formatRole(user.role)}</span><select value={user.role || ""} onClick={(event) => event.stopPropagation()} onChange={(event) => requestRoleChange(user, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600" aria-label={`Change role for ${user.email || user.id}`}>{ROLES.map((role) => <option key={role} value={role}>{formatRole(role)}</option>)}</select></div></td>
+                      <td className="px-5 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${user.passkey_count === null || user.passkey_count === undefined ? "bg-slate-100 text-slate-600" : user.passkey_count > 0 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}><span className="material-symbols-outlined text-[14px]">key</span>{user.passkey_count === null || user.passkey_count === undefined ? "Unavailable" : user.passkey_count > 0 ? `Registered${user.passkey_count > 1 ? ` (${user.passkey_count})` : ""}` : "Not registered"}</span></td>
                       <td className="px-5 py-4 text-xs text-slate-500">{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString() : "Never signed in"}</td>
                       <td className="px-5 py-4"><div className="flex items-center gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${user.locked ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}><span className={`h-1.5 w-1.5 rounded-full ${user.locked ? "bg-rose-500" : "bg-emerald-500"}`} />{user.locked ? "Locked" : "Active"}</span><button type="button" onClick={(event) => { event.stopPropagation(); requestLockChange(user); }} className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${user.locked ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-rose-200 text-rose-700 hover:bg-rose-50"}`}>{user.locked ? "Unlock" : "Lock"}</button></div></td>
+                      <td className="px-5 py-4"><button type="button" onClick={(event) => { event.stopPropagation(); setSelectedUser(user); }} className="inline-flex items-center gap-1 rounded-lg border border-pink-200 bg-pink-50 px-2.5 py-1.5 text-xs font-bold text-pink-700 hover:bg-pink-100"><span className="material-symbols-outlined text-[15px]">visibility</span>View</button></td>
                     </tr>)}
                   </tbody>
                 </table>
@@ -217,40 +355,48 @@ export default function ManageUsersPage() {
         </div>
       </main>
       {(roleChange || lockChange) && (
-        <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-slate-950/40 px-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="role-verification-title">
-          <div className="w-full max-w-md rounded-3xl border border-pink-200 bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[1400] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-4 backdrop-blur-sm sm:items-center sm:px-5 sm:py-8" role="dialog" aria-modal="true" aria-labelledby="role-verification-title">
+          <div className="ftm-soft-panel my-auto w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl p-6 sm:max-h-[calc(100vh-4rem)]">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined flex h-11 w-11 items-center justify-center rounded-xl bg-pink-100 text-pink-700">password</span>
               <div><h2 id="role-verification-title" className="text-lg font-black text-slate-900">Verify security action</h2><p className="mt-1 text-sm text-slate-500">Enter your admin password to {roleChange ? <>change {roleChange.user.email || "this user"} to <strong>{formatRole(roleChange.role)}</strong></> : <>{lockChange?.locked ? "lock" : "unlock"} {lockChange?.user.email || "this account"}</>}.</p></div>
             </div>
             <label htmlFor="role-verification-password" className="mt-5 block text-xs font-bold uppercase tracking-wider text-slate-600">Admin password</label>
-            <input id="role-verification-password" type="password" autoFocus value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void verifyAndChangeRole(); }} className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-100" placeholder="Enter your password" />
+            <input id="role-verification-password" type="password" autoFocus value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void verifyAndChangeRole(); }} className="ftm-soft-control mt-2 w-full rounded-xl px-4 py-3 text-sm text-slate-900" placeholder="Enter your password" />
             {verificationError && <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{verificationError}</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={cancelSecurityVerification} disabled={verifying} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              <button type="button" onClick={() => void (roleChange ? verifyAndChangeRole() : verifyAndChangeLockState())} disabled={verifying || !verificationPassword} className="rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-50">{verifying ? "Verifying..." : roleChange ? "Verify & change role" : "Verify & update account"}</button>
+              <button type="button" onClick={cancelSecurityVerification} disabled={verifying} className="ftm-soft-button rounded-xl bg-slate-100/70 px-4 py-2.5 text-sm font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void (roleChange ? verifyAndChangeRole() : verifyAndChangeLockState())} disabled={verifying || !verificationPassword} className="ftm-soft-button rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{verifying ? "Verifying..." : roleChange ? "Verify & change role" : "Verify & update account"}</button>
             </div>
           </div>
         </div>
       )}
       {selectedUser && (
-        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-slate-950/40 px-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="user-details-title" onClick={() => setSelectedUser(null)}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-pink-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4 border-b border-pink-100 bg-gradient-to-r from-pink-50 to-white px-6 py-5">
-              <div className="flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#b80049] text-sm font-black text-white">{(selectedUser.full_name || selectedUser.email || "U").split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("")}</span><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-pink-700">User details</p><h2 id="user-details-title" className="mt-1 text-xl font-black text-slate-900">{selectedUser.full_name || "Unnamed user"}</h2></div></div>
-              <button type="button" onClick={() => setSelectedUser(null)} aria-label="Close user details" className="material-symbols-outlined rounded-full p-1.5 text-slate-400 hover:bg-pink-100 hover:text-pink-700">close</button>
+        <div className="fixed inset-0 z-[1300] flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 backdrop-blur-sm sm:items-center sm:p-8" role="dialog" aria-modal="true" aria-labelledby="user-details-title" onClick={closeUserDetails}>
+          <div ref={modalRef} style={{ transform: `translate(${modalOffset.x}px, ${modalOffset.y}px)` }} className="ftm-soft-panel my-auto w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl transition-transform sm:max-h-[calc(100dvh-4rem)]" onClick={(event) => event.stopPropagation()}>
+            <div className={`flex touch-none items-start justify-between gap-4 border-b border-white/70 bg-white/35 px-6 py-5 ${dragStart ? "cursor-grabbing" : "cursor-grab"}`} onPointerDown={handleModalPointerDown} onPointerMove={handleModalPointerMove} onPointerUp={handleModalPointerUp} onPointerCancel={handleModalPointerUp}>
+              <div className="flex items-center gap-3"><FtmProfileAvatar name={selectedUser.full_name || selectedUser.email || "User"} userId={selectedUser.id} src={selectedUser.avatar_url} className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-[#b80049] text-sm font-black text-white" /><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-pink-700">User details</p><h2 id="user-details-title" className="mt-1 text-xl font-black text-slate-900">{selectedUser.full_name || "Unnamed user"}</h2></div></div>
+              <button type="button" onClick={closeUserDetails} aria-label="Close user details" className="material-symbols-outlined rounded-full p-1.5 text-slate-400 hover:bg-pink-100 hover:text-pink-700">close</button>
             </div>
-            <div className="grid gap-4 p-6 sm:grid-cols-2">
-              {[
-                ["Email", selectedUser.email || "Not provided"],
-                ["User ID", selectedUser.id],
-                ["Role", formatRole(selectedUser.role)],
-                ["Account status", selectedUser.locked ? "Locked" : "Active"],
-                ["Last sign-in", selectedUser.last_sign_in_at ? new Date(selectedUser.last_sign_in_at).toLocaleString() : "Never signed in"],
-                ["Banned until", selectedUser.banned_until ? new Date(selectedUser.banned_until).toLocaleString() : "Not banned"],
-              ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4"><div className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500">{label}</div><div className="mt-2 break-words text-sm font-bold text-slate-900">{value}</div></div>)}
+            <div className="space-y-4 p-6">
+              <div>
+                <h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-pink-700">Account information</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {[["Email", selectedUser.email || "Not provided"], ["User ID", selectedUser.id], ["Created", selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleString() : "Not available"], ["Last sign-in", selectedUser.last_sign_in_at ? new Date(selectedUser.last_sign_in_at).toLocaleString() : "Never signed in"]].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4"><div className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500">{label}</div><div className="mt-2 break-words text-sm font-bold text-slate-900">{value}</div></div>)}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-pink-700">Security status</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-slate-500">Access</p><p className="mt-1 font-bold text-slate-900">{selectedUser.locked ? "Locked" : "Active"}</p></div><div><p className="text-xs text-slate-500">Passkey</p><p className="mt-1 font-bold text-slate-900">{selectedUser.passkey_count === null || selectedUser.passkey_count === undefined ? "Unavailable" : selectedUser.passkey_count > 0 ? `Registered (${selectedUser.passkey_count})` : "Not registered"}</p></div><div><p className="text-xs text-slate-500">Banned until</p><p className="mt-1 font-bold text-slate-900">{selectedUser.banned_until ? new Date(selectedUser.banned_until).toLocaleString() : "Not banned"}</p></div></div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-pink-700">Permissions</h3><p className="mt-2 text-sm font-bold text-slate-900">{formatRole(selectedUser.role)}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">Permissions are derived from the assigned role.</p></div>
+                <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-pink-700">Active sessions</h3><p className="mt-2 text-sm font-bold text-slate-900">Not exposed</p><p className="mt-1 text-xs leading-relaxed text-slate-500">Session inventory is managed by Supabase Auth.</p></div>
+                <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-pink-700">Activity history</h3><p className="mt-2 text-sm font-bold text-slate-900">{selectedUser.last_sign_in_at ? "Sign-in recorded" : "No sign-in recorded"}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">Detailed audit events are not exposed by this endpoint.</p></div>
+              </div>
+              <div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4"><h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-pink-700">Security actions</h3><p className="mt-2 text-xs leading-relaxed text-slate-600">Passkeys are device-bound. The user must register their own Windows Hello PIN on their device; an administrator cannot create or copy that credential remotely.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => { closeUserDetails(); requestLockChange(selectedUser); }} className={`rounded-xl px-3 py-2 text-xs font-bold ${selectedUser.locked ? "border border-emerald-200 bg-white text-emerald-700" : "bg-rose-600 text-white"}`}>{selectedUser.locked ? "Unlock account" : "Lock account"}</button><button type="button" onClick={() => { closeUserDetails(); requestRoleChange(selectedUser, selectedUser.role || "driver"); }} className="rounded-xl border border-pink-200 bg-white px-3 py-2 text-xs font-bold text-pink-700">Change role</button></div></div>
             </div>
-            <div className="flex justify-end border-t border-slate-100 px-6 py-4"><button type="button" onClick={() => setSelectedUser(null)} className="rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-pink-700">Close</button></div>
+            <div className="flex justify-end border-t border-white/70 px-6 py-4"><button type="button" onClick={closeUserDetails} className="ftm-soft-button rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white">Close</button></div>
           </div>
         </div>
       )}

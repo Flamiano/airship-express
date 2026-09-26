@@ -6,7 +6,7 @@ import RoleRestricted from "../components/RoleRestricted";
 import { SkeletonBlock } from "../components/PageSkeleton";
 
 import { useEffect, useMemo, useState } from "react";
-import { createVehicle, createVehicleDocument, getCouriers, getDashboardSnapshot, getNextVehicleId, uploadVehicleDocument } from "../lib/api";
+import { createVehicle, createVehicleDocument, getCouriers, getDashboardSnapshot, getNextVehicleId, getVehicles, uploadVehicleDocument } from "../lib/api";
 import { getCurrentRole, hasAppPermission } from "../lib/roleAccess";
 import {
   ResponsiveContainer,
@@ -226,6 +226,12 @@ export default function FvmOverviewPage() {
   const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
   const [vehicleSubmitSuccess, setVehicleSubmitSuccess] = useState("");
 
+  useEffect(() => {
+    if (!vehicleSubmitSuccess) return undefined;
+    const timeout = window.setTimeout(() => setVehicleSubmitSuccess(""), 1500);
+    return () => window.clearTimeout(timeout);
+  }, [vehicleSubmitSuccess]);
+
   const updateVehicleField = (field: keyof typeof vehicleForm, value: string) => {
     setVehicleForm((current) => ({ ...current, [field]: value }));
     if (field === "manufacturer") setVehicleForm((current) => ({ ...current, model: "" }));
@@ -310,9 +316,16 @@ export default function FvmOverviewPage() {
 
   useEffect(() => {
     let active = true;
-    getDashboardSnapshot()
-      .then((data) => {
-        if (active) setSnapshot(data);
+    Promise.all([getDashboardSnapshot(), getVehicles()])
+      .then(([data, vehicleRows]) => {
+        if (active) {
+          const vehiclesFromTable = Array.isArray(vehicleRows) ? vehicleRows : [];
+          setSnapshot({
+            ...data,
+            vehicles: vehiclesFromTable,
+            counts: { ...data?.counts, vehicles: vehiclesFromTable.length },
+          });
+        }
       })
       .catch((error) => console.error("Failed to load fleet snapshot:", error))
       .finally(() => {
@@ -910,7 +923,7 @@ export default function FvmOverviewPage() {
       </main>
 
         {vehicleSubmitSuccess && (
-          <div className="fixed inset-x-4 top-20 z-[2147483647] mx-auto flex max-w-xl items-center justify-between gap-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800 shadow-2xl shadow-emerald-950/20" role="status" aria-live="polite">
+          <div className="fixed inset-x-4 top-20 z-[2147483647] mx-auto flex max-w-xl items-center justify-between gap-4 rounded-2xl border border-emerald-300/70 bg-emerald-50/95 px-5 py-4 text-sm font-bold text-emerald-800 shadow-2xl shadow-emerald-950/20 backdrop-blur-md" role="status" aria-live="polite">
             <div className="flex items-center gap-3">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600" aria-hidden="true">✓</span>
             <span>{vehicleSubmitSuccess}</span>
@@ -923,14 +936,16 @@ export default function FvmOverviewPage() {
           <div className="fixed inset-x-0 bottom-0 top-12 z-[1100] flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-6 sm:py-8 lg:top-[84px]" onClick={() => !vehicleSubmitting && setShowAddVehicle(false)}>
             <form onSubmit={handleAddVehicle} onClick={(event) => event.stopPropagation()} style={{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }} className="fvm-panel relative max-h-[calc(100vh-6rem)] w-full max-w-2xl overflow-y-auto rounded-2xl p-4 shadow-2xl transition-transform sm:max-h-[calc(100vh-7rem)] sm:p-5 lg:max-h-[calc(100vh-9rem)]">
               {vehicleSubmitting && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 p-6 backdrop-blur-sm" role="status" aria-live="polite">
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/70 p-6 backdrop-blur-md" role="status" aria-live="polite" aria-busy="true">
                   <div className="flex w-full max-w-xs flex-col items-center gap-4 text-center">
-                    <span className="h-12 w-12 animate-spin rounded-full border-4 border-pink-100 border-t-pink-600" aria-hidden="true" />
-                    <div>
-                      <p className="text-base font-black text-slate-900">Creating vehicle</p>
-                      <p className="mt-1 text-sm text-slate-500">Saving vehicle details and documents...</p>
+                    <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-pink-300/30 bg-slate-900/90 shadow-[0_14px_30px_rgba(2,6,23,0.35),inset_1px_1px_0_rgba(255,255,255,0.12)]">
+                      <span className="h-9 w-9 animate-spin rounded-full border-4 border-pink-200/20 border-t-pink-400" aria-hidden="true" />
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-pink-100"><span className="block h-full w-2/5 animate-pulse rounded-full bg-pink-600" /></div>
+                    <div>
+                      <p className="text-base font-black text-white">Creating vehicle</p>
+                      <p className="mt-1 text-sm text-slate-300">Saving vehicle details and documents securely...</p>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10"><span className="block h-full w-2/5 animate-[ftm-loading-progress_1.2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-pink-400 to-rose-500" /></div>
                   </div>
                 </div>
               )}

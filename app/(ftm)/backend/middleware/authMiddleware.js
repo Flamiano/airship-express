@@ -7,19 +7,47 @@ const ROLE_ALIASES = {
   fleet_manager: 'fleet_manager',
   'fleet manager': 'fleet_manager',
   'fleet-manager': 'fleet_manager',
+  'operations manager': 'fleet_manager',
+  'ops manager': 'fleet_manager',
+  'dispatch manager': 'fleet_manager',
+  'pickup manager': 'fleet_manager',
   manager: 'fleet_manager',
   administrator: 'admin',
   admin: 'admin',
   super_admin: 'admin',
+  'super-admin': 'admin',
   dispatcher: 'dispatcher',
+  dispatch: 'dispatcher',
+  'dispatch officer': 'dispatcher',
+  operations: 'dispatcher',
+  'operations manager': 'fleet_manager',
+  'ops': 'dispatcher',
+  'pickup coordinator': 'dispatcher',
   driver: 'driver',
   customer: 'customer',
 };
 
 function normalizeRole(value) {
   if (!value) return null;
+
   const normalized = String(value).trim().toLowerCase().replace(/[^a-z_\-\s]/g, '');
-  return ROLE_ALIASES[normalized] || ROLE_ALIASES[normalized.replace(/\s+/g, '_')] || null;
+  const directMatch = ROLE_ALIASES[normalized] || ROLE_ALIASES[normalized.replace(/\s+/g, '_')];
+  if (directMatch) return directMatch;
+
+  if (/(fleet|operations|dispatch|pickup|route).*(manager|supervisor|lead)/.test(normalized)) {
+    return 'fleet_manager';
+  }
+  if (/(dispatch|operations|pickup|route)/.test(normalized)) {
+    return 'dispatcher';
+  }
+  if (/(driver|delivery)/.test(normalized)) {
+    return 'driver';
+  }
+  if (/(customer|client)/.test(normalized)) {
+    return 'customer';
+  }
+
+  return null;
 }
 
 // Roles allowed to use the Fleet AI assistant at all. Customers and
@@ -64,24 +92,30 @@ async function requireFleetUser(req, res, next) {
       .select('role')
       .eq('id', authUser.id)
       .maybeSingle();
-    const role = normalizeRole(
-      profile?.role
-        || authUser.app_metadata?.role
-        || authUser.user_metadata?.role
-    );
+    const role = [profile?.role, authUser.app_metadata?.role, authUser.user_metadata?.role]
+      .map(normalizeRole)
+      .find((candidate) => candidate && FLEET_AI_ROLES.has(candidate)) || null;
 
     if (!role || !FLEET_AI_ROLES.has(role)) {
-      return res.status(403).json({ error: 'Fleet AI is only available to fleet staff accounts.' });
+      return res.status(403).json({ error: 'Fleet operations are only available to fleet staff accounts.' });
     }
 
     req.fleetUser = {
       id: authUser.id,
       email: authUser.email,
       role,
+      user_metadata: authUser.user_metadata || {},
     };
 
     return next();
   } catch (err) {
+    const message = String(err?.message || err || '').toLowerCase();
+    const isAuthFailure = /jwt|token|expired|invalid|unauthorized|missing authorization|authentication/i.test(message);
+
+    if (isAuthFailure) {
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+
     console.error('Fleet AI auth middleware error:', err?.message || err);
     return res.status(500).json({ error: 'Authentication check failed' });
   }
