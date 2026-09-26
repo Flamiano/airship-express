@@ -7,6 +7,8 @@ import { detectPayslipImageIntent } from "../../shared/intent";
 import { generatePayslipImageForEmployee } from "../../actions/generatePayslipImage";
 import type { LLMRequest } from "../../shared/types";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
@@ -50,11 +52,18 @@ export async function POST(request: NextRequest) {
   const lastUserMessage = [...messages]
     .reverse()
     .find((m) => m.role === "user");
+
   const payslipIntent = lastUserMessage
     ? detectPayslipImageIntent(lastUserMessage.content)
     : null;
 
-  let attachment: { type: "image"; url: string; label: string } | null = null;
+  let attachment: {
+    type: "image";
+    url: string;
+    label: string;
+    downloadUrl?: string;
+    printUrl?: string;
+  } | null = null;
 
   if (payslipIntent?.employeeName) {
     try {
@@ -67,6 +76,8 @@ export async function POST(request: NextRequest) {
           type: "image",
           url: result.url,
           label: `Payslip - ${result.employeeName} (${result.periodLabel})`,
+          downloadUrl: result.downloadUrl,
+          printUrl: result.url,
         };
 
         if (result.isDemo) {

@@ -57,12 +57,6 @@ const MODULES = [
         full: "Benefits & Gov't Contributions",
         href: '/payroll-benefits-dashboard/benefits',
     },
-    {
-        icon: BarChart3,
-        label: 'Analytics',
-        full: 'HR Analytics Dashboard',
-        href: '/payroll-benefits-dashboard/hr-analytics-dashboard',
-    },
 ];
 
 const logoVariants: Variants = {

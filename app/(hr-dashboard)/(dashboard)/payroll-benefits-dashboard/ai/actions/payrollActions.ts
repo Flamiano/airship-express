@@ -11,7 +11,6 @@ import { checkSuspiciousRequest } from "./securityGuard";
 import { resolveModuleLink } from "./moduleLinks";
 import {
   fetchActiveEmployeeNames,
-  fetchEmployeeCounts,
   fetchEmployeesWithoutBank,
   fetchEmployeesWithoutBirthdate,
   fetchOpenRuns,
@@ -20,11 +19,7 @@ import {
   fetchTopRatedEmployees,
   findEmployeeByNameSafe,
 } from "../context/fetchers";
-import type {
-  MessageAttachment,
-  AiryBlock,
-  AiryStructuredReply,
-} from "../shared/types";
+import type { AiryBlock, AiryStructuredReply } from "../shared/types";
 
 const BASE_SYSTEM = `You are Airy, the Airship Express payroll assistant. You help the payroll admin run payroll correctly.
 
@@ -63,6 +58,15 @@ Payroll formulas:
 - net_pay = gross_pay - total_deductions
 
 Currency is Philippine peso. Format like P12,345.67 only for company-level totals or budget figures, never for an individual.`;
+
+type EmployeeWarning = "missing_bank" | "missing_birthdate";
+
+function buildWarnings(hasBank: boolean, hasBirth: boolean): EmployeeWarning[] {
+  const w: EmployeeWarning[] = [];
+  if (!hasBank) w.push("missing_bank");
+  if (!hasBirth) w.push("missing_birthdate");
+  return w;
+}
 
 function buildSystem(admin: AdminContext | null): string {
   if (!admin) {
@@ -242,32 +246,69 @@ function detectPayslipIntent(
 
 function detectListIntent(message: string): boolean {
   const lower = message.toLowerCase();
+
   const hasListVerb =
-    /\b(list|lista|names|pangalan|who are|sino|how many|count|bilang|show me all|ipakita lahat|employee roster|headcount|give me|show me|tell me)\b/.test(
+    /\b(list|lista|ilista|enumerate|display|show|ipakita|pakita|give|bigay|ibigay|tell|sabihin|who|sino|sinu-sino|which|how many|ilan|count|bilang|headcount|roster|names|pangalan|directory|show me|tell me|give me)\b/.test(
       lower
     );
+
   const hasEmployeeNoun =
-    /\b(employees|staff|team|workers|personnel|people)\b/.test(lower);
-  return hasListVerb && hasEmployeeNoun;
+    /\b(employees?|empleyado|staff|team|workers?|personnel|people|everyone|everybody|roster|headcount|workforce|tauhan|kawani|mga tao)\b/.test(
+      lower
+    );
+
+  const directListPhrase =
+    /\b(employee|staff|team|worker|personnel)\s+(list|directory|roster|names)\b/i.test(
+      lower
+    ) ||
+    /\b(list|directory|roster)\s+of\s+(employees?|staff|team|workers?|personnel)\b/i.test(
+      lower
+    );
+
+  return (hasListVerb && hasEmployeeNoun) || directListPhrase;
 }
 
 function detectTopRatedIntent(message: string): boolean {
   const lower = message.toLowerCase();
-  return /\b(top|best|highest|pinaka|magaling|rating|performance|top performer)\b/.test(
+  return /\b(top|best|highest|pinaka|pinakamagaling|magaling|rating|ratings|performance|top performer|top performers|best performing|highest rated)\b/.test(
     lower
   );
 }
 
 function detectMissingDataIntent(message: string): boolean {
   const lower = message.toLowerCase();
-  return /\b(missing|kulang|incomplete|no bank|walang bank|no birthdate|walang birthdate|pending setup)\b/.test(
-    lower
-  );
+
+  const missingWord =
+    /\b(missing|kulang|incomplete|no|without|wala|walang|kulang sa|hindi kumpleto|not complete|pending setup|needs? setup|to follow)\b/.test(
+      lower
+    );
+
+  const dataField =
+    /\b(bank|bank account|bank details|account number|birthdate|birthday|date of birth|kapanganakan|kaarawan|profile|record|details|info|information|data)\b/.test(
+      lower
+    );
+
+  const whoLacks =
+    /\b(sino|sinu-sino|which|who|ilan|how many)\b/.test(lower) &&
+    /\b(walang|wala|no|without|missing|kulang)\b/.test(lower);
+
+  return (missingWord && dataField) || whoLacks;
+}
+
+function detectBankStatusIntent(message: string): boolean {
+  const lower = message.toLowerCase();
+  const bankWord =
+    /\b(bank|bank account|bank details|account number|bank info)\b/.test(lower);
+  const statusWord =
+    /\b(status|complete|incomplete|has|have|may|meron|wala|walang|missing|kulang|list|sino|who|which|ilan|how many)\b/.test(
+      lower
+    );
+  return bankWord && statusWord;
 }
 
 function detectOpenRunsIntent(message: string): boolean {
   const lower = message.toLowerCase();
-  return /\b(open runs|pending runs|pending approval|approvals|awaiting approval|draft runs|rejected runs|list runs|payroll runs)\b/.test(
+  return /\b(open runs?|pending runs?|pending approval|for approval|awaiting approval|approvals?|draft runs?|rejected runs?|list runs?|payroll runs?|run status|payroll status)\b/.test(
     lower
   );
 }
@@ -275,14 +316,15 @@ function detectOpenRunsIntent(message: string): boolean {
 function detectLinkIntent(message: string): boolean {
   const lower = message.toLowerCase();
   const wantsLink =
-    /\b(link|url|path|open|go to|navigate|take me|click|where|how can i|how do i access|saan|paano|dalhin|pumunta)\b/.test(
+    /\b(link|url|path|open|go to|navigate|navigate to|take me|click|where is|where can i|where do i|how can i|how do i access|saan|paano|dalhin|pumunta|punta)\b/.test(
       lower
     );
   const wantsPage =
-    /\b(bank|banking|settings|payroll|compensation|claims|benefits|analytics|dashboard|profile|missing bank|account setup)\b/.test(
+    /\b(bank|banking|settings|payroll|compensation|claims|benefits|analytics|dashboard|profile|missing bank|account setup|job settings)\b/.test(
       lower
     );
-  return wantsLink && wantsPage;
+  const isListRequest = detectListIntent(message);
+  return wantsLink && wantsPage && !isListRequest;
 }
 
 function looksLikeEmployeeName(message: string): boolean {
@@ -297,6 +339,33 @@ function looksLikeEmployeeName(message: string): boolean {
     return false;
   }
   return true;
+}
+
+function buildEmployeeTableBlock(
+  heading: string,
+  rows: Array<{
+    first_name: string;
+    last_name: string;
+    employee_id_number: string;
+    job_title: string | null;
+    department: string | null;
+    has_bank: boolean;
+    has_birthdate: boolean;
+  }>
+): AiryBlock[] {
+  return [
+    { kind: "heading", text: heading },
+    {
+      kind: "employee_table",
+      items: rows.map((e) => ({
+        name: `${e.first_name} ${e.last_name}`.trim(),
+        employee_id_number: e.employee_id_number,
+        position: e.job_title,
+        department: e.department,
+        warnings: buildWarnings(e.has_bank, e.has_birthdate),
+      })),
+    },
+  ];
 }
 
 export async function airyChat(
@@ -329,9 +398,7 @@ export async function airyChat(
 
   if (pending?.intent_type === "payslip_employee" && pending.employee_id) {
     const trimmed = message.trim();
-    const runMatch = trimmed.match(/(\d{4}-\d{2}-\d{2})|(\d{1,2}[-–]\d{1,2})/);
     const runs = await getEmployeeRuns(pending.employee_id);
-
     const pickIndex = parseInt(trimmed.replace(/\D/g, ""), 10);
     const picked =
       !isNaN(pickIndex) && pickIndex > 0 && pickIndex <= runs.length
@@ -361,22 +428,20 @@ export async function airyChat(
       };
     }
 
-    if (!runMatch && runs.length > 0) {
+    if (runs.length > 0) {
       const lines = runs
         .slice(0, 6)
         .map((r, i) => `${i + 1}. ${r.period_start} to ${r.period_end}`)
         .join("\n");
       return {
-        text: `Which payroll period should I use for ${pending.employee_name}?\n\n${lines}\n\nReply with the number.`,
+        text: `Please reply with the number of the payroll period for ${pending.employee_name}.\n\n${lines}`,
       };
     }
 
-    if (runs.length === 0) {
-      await clearPendingIntent(adminUserId!);
-      return {
-        text: `${pending.employee_name} has no processed payslip yet. Process a payroll run that includes them first.`,
-      };
-    }
+    await clearPendingIntent(adminUserId!);
+    return {
+      text: `${pending.employee_name} has no processed payslip yet. Process a payroll run that includes them first.`,
+    };
   }
 
   if (
@@ -545,131 +610,146 @@ export async function airyChat(
     };
   }
 
-  if (detectLinkIntent(message) && adminUserId) {
-    const result = await resolveModuleLink(message, adminUserId);
+  if (detectListIntent(message)) {
+    const employees = await fetchActiveEmployeeNames();
 
-    if (!result.ok) {
-      if (result.reason === "wrong_role") {
-        return {
-          text: `Your role does not include access to that page. Contact your HR admin if you believe this is incorrect.`,
-          accessDenied: true,
-          blocks: [
-            {
-              kind: "link",
-              label: "Restricted",
-              full: "Restricted page",
-              href: "#",
-              allowed: false,
-              reason: "wrong_role",
-            },
-          ],
-        };
-      }
-
-      if (result.reason === "no_session") {
-        return {
-          text: `I can't verify your session right now. Please sign in again.`,
-          accessDenied: true,
-        };
-      }
-
-      return {
-        text: `I couldn't match that to a page. Try saying "open bank details" or "go to payroll runs".`,
-      };
+    if (employees.length === 0) {
+      return { text: `There are no active employees on record.` };
     }
 
-    const mod = result.module!;
+    const missingBank = employees.filter((e) => !e.has_bank).length;
+    const missingBirth = employees.filter((e) => !e.has_birthdate).length;
 
-    return {
-      text: `Here is the link to ${mod.full}.`,
-      blocks: [
-        {
-          kind: "link",
-          label: mod.label,
-          full: mod.full,
-          href: mod.href,
-          allowed: true,
-        },
-      ],
-    };
+    const blocks: AiryBlock[] = [
+      ...buildEmployeeTableBlock(
+        `Active employees (${employees.length})`,
+        employees
+      ),
+      {
+        kind: "summary",
+        items: [
+          { label: "Active", value: String(employees.length), tint: "success" },
+          {
+            label: "Missing bank",
+            value: String(missingBank),
+            tint: missingBank > 0 ? "warning" : "success",
+          },
+          {
+            label: "Missing birthdate",
+            value: String(missingBirth),
+            tint: missingBirth > 0 ? "warning" : "success",
+          },
+        ],
+      },
+    ];
+
+    const parts: string[] = [`${employees.length} active employees.`];
+    if (missingBank > 0) parts.push(`${missingBank} missing bank details.`);
+    if (missingBirth > 0) parts.push(`${missingBirth} missing birthdate.`);
+    if (missingBank === 0 && missingBirth === 0) {
+      parts.push("All records complete.");
+    }
+
+    return { text: parts.join(" "), blocks };
   }
 
-  if (detectListIntent(message)) {
-    const [employees, counts] = await Promise.all([
+  if (detectBankStatusIntent(message) || detectMissingDataIntent(message)) {
+    const [all, noBank, noBirth] = await Promise.all([
       fetchActiveEmployeeNames(),
-      fetchEmployeeCounts(),
+      fetchEmployeesWithoutBank(),
+      fetchEmployeesWithoutBirthdate(),
     ]);
 
-    if (employees.length > 0) {
+    const asksBank =
+      /\b(bank|bank account|bank details|account number|bank info)\b/i.test(
+        message
+      );
+    const asksBirth =
+      /\b(birthdate|birthday|date of birth|kapanganakan|kaarawan)\b/i.test(
+        message
+      );
+
+    if (asksBank && !asksBirth) {
+      const withBank = all.filter((e) => e.has_bank);
+
       const blocks: AiryBlock[] = [
-        { kind: "heading", text: `Active employees for ${firstName}` },
-        {
-          kind: "employee_table",
-          items: employees.map((e) => {
-            const warnings: Array<"missing_bank" | "missing_birthdate"> = [];
-            if (!e.has_bank) warnings.push("missing_bank");
-            if (!e.has_birthdate) warnings.push("missing_birthdate");
-            return {
-              name: `${e.first_name} ${e.last_name}`,
-              employee_id_number: e.employee_id_number,
-              position: e.job_title,
-              department: e.department,
-              warnings,
-            };
-          }),
-        },
+        ...buildEmployeeTableBlock(
+          `Employees without bank details (${noBank.length})`,
+          noBank
+        ),
         {
           kind: "summary",
           items: [
-            { label: "Active", value: String(counts.active), tint: "success" },
-            { label: "On leave", value: String(counts.on_leave) },
-            { label: "Inactive", value: String(counts.inactive) },
+            {
+              label: "With bank",
+              value: String(withBank.length),
+              tint: "success",
+            },
+            {
+              label: "Missing bank",
+              value: String(noBank.length),
+              tint: noBank.length > 0 ? "warning" : "success",
+            },
+            { label: "Total active", value: String(all.length) },
           ],
         },
       ];
 
-      const missingBank = employees.filter((e) => !e.has_bank).length;
-      const missingBirth = employees.filter((e) => !e.has_birthdate).length;
-      const parts: string[] = [];
-      if (missingBank > 0) parts.push(`${missingBank} missing bank details`);
-      if (missingBirth > 0) parts.push(`${missingBirth} missing birthdate`);
-
       return {
         text:
-          parts.length > 0
-            ? `${employees.length} active employees. ${parts.join(", ")}.`
-            : `${employees.length} active employees, all complete.`,
+          noBank.length === 0
+            ? `All ${all.length} active employees have complete bank details on file.`
+            : `${noBank.length} of ${all.length} active employees are missing bank details.`,
         blocks,
       };
     }
 
-    const { data: raw } = await supabaseAdmin
-      .from("hr1_employees")
-      .select("id, first_name, last_name, employee_id_number, status")
-      .eq("status", "active")
-      .limit(50);
-
-    if (!raw || raw.length === 0) {
-      return { text: `There are no active employees on record.` };
+    if (noBank.length === 0 && noBirth.length === 0) {
+      return {
+        text: `All ${all.length} active employees have complete bank details and birthdates on file.`,
+      };
     }
 
-    const fallbackBlocks: AiryBlock[] = [
-      { kind: "heading", text: `Active employees for ${firstName}` },
-      {
-        kind: "employee_table",
-        items: raw.map((r: any) => ({
-          name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
-          employee_id_number: r.employee_id_number ?? "",
-          position: null,
-          department: null,
-          warnings: [] as Array<"missing_bank" | "missing_birthdate">,
-        })),
-      },
-    ];
+    const blocks: AiryBlock[] = [];
+
+    if (noBank.length > 0) {
+      blocks.push(
+        ...buildEmployeeTableBlock(
+          `Missing bank details (${noBank.length})`,
+          noBank
+        )
+      );
+    }
+
+    if (noBirth.length > 0) {
+      blocks.push(
+        ...buildEmployeeTableBlock(
+          `Missing birthdate (${noBirth.length})`,
+          noBirth
+        )
+      );
+    }
+
+    blocks.push({
+      kind: "summary",
+      items: [
+        {
+          label: "Missing bank",
+          value: String(noBank.length),
+          tint: noBank.length > 0 ? "warning" : "success",
+        },
+        {
+          label: "Missing birthdate",
+          value: String(noBirth.length),
+          tint: noBirth.length > 0 ? "warning" : "success",
+        },
+        { label: "Total active", value: String(all.length) },
+      ],
+    });
 
     return {
-      text: `${raw.length} active employees.`,
-      blocks: fallbackBlocks,
+      text: `${noBank.length} missing bank details, ${noBirth.length} missing birthdate.`,
+      blocks,
     };
   }
 
@@ -697,70 +777,6 @@ export async function airyChat(
 
     return {
       text: `${top.length} top-rated employees.`,
-      blocks,
-    };
-  }
-
-  if (detectMissingDataIntent(message)) {
-    const [noBank, noBirth] = await Promise.all([
-      fetchEmployeesWithoutBank(),
-      fetchEmployeesWithoutBirthdate(),
-    ]);
-
-    if (noBank.length === 0 && noBirth.length === 0) {
-      return {
-        text: `All active employees have complete bank details and birthdates on file.`,
-      };
-    }
-
-    const blocks: AiryBlock[] = [];
-
-    if (noBank.length > 0) {
-      blocks.push({ kind: "heading", text: `Missing bank details` });
-      blocks.push({
-        kind: "employee_table",
-        items: noBank.map((e) => ({
-          name: `${e.first_name} ${e.last_name}`,
-          employee_id_number: e.employee_id_number,
-          position: e.job_title,
-          department: e.department,
-          warnings: ["missing_bank" as const],
-        })),
-      });
-    }
-
-    if (noBirth.length > 0) {
-      blocks.push({ kind: "heading", text: `Missing birthdate` });
-      blocks.push({
-        kind: "employee_table",
-        items: noBirth.map((e) => ({
-          name: `${e.first_name} ${e.last_name}`,
-          employee_id_number: e.employee_id_number,
-          position: e.job_title,
-          department: e.department,
-          warnings: ["missing_birthdate" as const],
-        })),
-      });
-    }
-
-    blocks.push({
-      kind: "summary",
-      items: [
-        {
-          label: "Missing bank",
-          value: String(noBank.length),
-          tint: noBank.length > 0 ? "warning" : "success",
-        },
-        {
-          label: "Missing birthdate",
-          value: String(noBirth.length),
-          tint: noBirth.length > 0 ? "warning" : "success",
-        },
-      ],
-    });
-
-    return {
-      text: `${noBank.length} missing bank details, ${noBirth.length} missing birthdate.`,
       blocks,
     };
   }
@@ -812,6 +828,55 @@ export async function airyChat(
     return {
       text: `${open.length} open, ${pendingRuns.length} awaiting approval, ${rejected.length} rejected.`,
       blocks,
+    };
+  }
+
+  if (detectLinkIntent(message) && adminUserId) {
+    const result = await resolveModuleLink(message, adminUserId);
+
+    if (!result.ok) {
+      if (result.reason === "wrong_role") {
+        return {
+          text: `Your role does not include access to that page. Contact your HR admin if you believe this is incorrect.`,
+          accessDenied: true,
+          blocks: [
+            {
+              kind: "link",
+              label: "Restricted",
+              full: "Restricted page",
+              href: "#",
+              allowed: false,
+              reason: "wrong_role",
+            },
+          ],
+        };
+      }
+
+      if (result.reason === "no_session") {
+        return {
+          text: `I can't verify your session right now. Please sign in again.`,
+          accessDenied: true,
+        };
+      }
+
+      return {
+        text: `I couldn't match that to a page. Try saying "open bank details" or "go to payroll runs".`,
+      };
+    }
+
+    const mod = result.module!;
+
+    return {
+      text: `Here is the link to ${mod.full}.`,
+      blocks: [
+        {
+          kind: "link",
+          label: mod.label,
+          full: mod.full,
+          href: mod.href,
+          allowed: true,
+        },
+      ],
     };
   }
 

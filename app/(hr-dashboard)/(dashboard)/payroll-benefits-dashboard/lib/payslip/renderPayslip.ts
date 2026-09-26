@@ -1,8 +1,10 @@
 import "server-only";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import fs from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
 
 export type PayslipRenderData = {
   companyName: string;
@@ -47,6 +49,9 @@ export type PayslipRenderData = {
   netPay: number;
 };
 
+const IS_PROD = process.env.NODE_ENV === "production";
+const STORAGE_BUCKET = "payslips"; // must exist in Supabase Storage
+
 function peso(n: number | null | undefined): string {
   if (n === null || n === undefined) return "0.00";
   return Number(n).toLocaleString("en-PH", {
@@ -65,7 +70,12 @@ function escapeHtml(input: string | null | undefined): string {
     .replace(/'/g, "&#39;");
 }
 
-function resolveLogoFileUrl(logoPath: string): string | null {
+/**
+ * Resolve the logo file into a data: URI so it works in every environment.
+ * Reading from disk fails on Vercel because `public/` is not bundled into
+ * the serverless function. Embedding the image avoids that entirely.
+ */
+async function resolveLogoDataUri(logoPath: string): Promise<string | null> {
   const publicDir = path.join(process.cwd(), "public");
 
   const candidates = [
@@ -83,24 +93,41 @@ function resolveLogoFileUrl(logoPath: string): string | null {
     if (!candidate) continue;
     const cleaned = candidate.replace(/^\/+/, "").replace(/^public\//, "");
     const absolute = path.join(publicDir, cleaned);
+
     if (existsSync(absolute)) {
-      return `file://${absolute.replace(/\\/g, "/")}`;
+      try {
+        const buf = await fs.readFile(absolute);
+        const ext = path.extname(absolute).toLowerCase();
+        const mime =
+          ext === ".png"
+            ? "image/png"
+            : ext === ".jpg" || ext === ".jpeg"
+            ? "image/jpeg"
+            : ext === ".svg"
+            ? "image/svg+xml"
+            : "application/octet-stream";
+        return `data:${mime};base64,${buf.toString("base64")}`;
+      } catch {
+        // fall through to next candidate
+      }
     }
   }
 
   return null;
 }
 
-function buildLogoBlock(logoFileUrl: string | null): string {
-  if (!logoFileUrl) {
+function buildLogoBlock(logoDataUri: string | null): string {
+  if (!logoDataUri) {
     return `<div class="logo-fallback">AE</div>`;
   }
-  return `<img src="${logoFileUrl}" alt="Airship Express" />`;
+  return `<img src="${logoDataUri}" alt="Airship Express" />`;
 }
 
-export function buildPayslipHtml(data: PayslipRenderData): string {
-  const logoFileUrl = resolveLogoFileUrl(data.logoPath);
-  const logoBlock = buildLogoBlock(logoFileUrl);
+export async function buildPayslipHtml(
+  data: PayslipRenderData
+): Promise<string> {
+  const logoDataUri = await resolveLogoDataUri(data.logoPath);
+  const logoBlock = buildLogoBlock(logoDataUri);
   const monthHeader = data.periodLabel.split(" ")[0].toUpperCase();
 
   return `
@@ -429,21 +456,108 @@ export function buildPayslipHtml(data: PayslipRenderData): string {
   `.trim();
 }
 
+/**
+ * Launch a Chromium instance appropriate for the current environment.
+ *
+ * Local dev (Windows/macOS/Linux): uses the full puppeteer package,
+ *   which downloads its own Chromium on install.
+ *
+ * Production (Vercel/Netlify/Lambda): uses @sparticuz/chromium, a
+ *   slim Chromium build that fits inside the 250MB function limit.
+ *
+ * Docker: uses the system-installed Chromium via PUPPETEER_EXECUTABLE_PATH.
+ */
+async function getBrowser() {
+  // Docker path — if you baked Chromium into the image, prefer it.
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return puppeteer.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--font-render-hinting=none",
+      ],
+    });
+  }
+
+  // Local dev — use the full puppeteer bundle that ships Chromium.
+  if (!IS_PROD) {
+    const localPuppeteer = await import("puppeteer");
+    return localPuppeteer.default.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--font-render-hinting=none",
+      ],
+    });
+  }
+
+  // Production serverless — Sparticuz Chromium.
+  const executablePath = await chromium.executablePath();
+  return puppeteer.launch({
+    args: [...chromium.args, "--font-render-hinting=none"],
+    defaultViewport: chromium.defaultViewport,
+    executablePath,
+    headless: true,
+  });
+}
+
+/**
+ * Upload the rendered PNG to Supabase Storage and return a public URL.
+ * On local dev we also write it to public/generated-payslips so hot-reload
+ * picks it up. In production we skip the disk write since /public is
+ * read-only and not web-served for new files.
+ */
+async function persistPng(
+  buffer: Buffer,
+  outputFileName: string
+): Promise<{ publicUrl: string; absolutePath: string }> {
+  // Always upload to Supabase Storage so the URL works from the browser.
+  const { error: uploadErr } = await supabaseAdmin.storage
+    .from(STORAGE_BUCKET)
+    .upload(outputFileName, buffer, {
+      contentType: "image/png",
+      upsert: true,
+      cacheControl: "3600",
+    });
+
+  if (uploadErr) {
+    throw new Error(
+      `Supabase upload failed: ${uploadErr.message}. ` +
+        `Make sure bucket "${STORAGE_BUCKET}" exists and is public.`
+    );
+  }
+
+  // Public URL — used by the <img> tag in the chat drawer.
+  const { data: publicData } = supabaseAdmin.storage
+    .from(STORAGE_BUCKET)
+    .getPublicUrl(outputFileName);
+
+  const publicUrl = publicData.publicUrl;
+
+  // Optional: mirror to /public/generated-payslips for local dev convenience.
+  let absolutePath = "";
+  if (!IS_PROD) {
+    const outDir = path.join(process.cwd(), "public", "generated-payslips");
+    await fs.mkdir(outDir, { recursive: true });
+    absolutePath = path.join(outDir, outputFileName);
+    await fs.writeFile(absolutePath, buffer);
+  }
+
+  return { publicUrl, absolutePath };
+}
+
 export async function renderPayslipPng(
   data: PayslipRenderData,
   outputFileName: string
 ): Promise<{ publicUrl: string; absolutePath: string }> {
-  const html = buildPayslipHtml(data);
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--font-render-hinting=none",
-    ],
-  });
+  const html = await buildPayslipHtml(data);
+  const browser = await getBrowser();
 
   try {
     const page = await browser.newPage();
@@ -454,21 +568,14 @@ export async function renderPayslipPng(
     });
     await page.setContent(html, { waitUntil: "networkidle0" as any });
 
-    const outDir = path.join(process.cwd(), "public", "generated-payslips");
-    await fs.mkdir(outDir, { recursive: true });
-
-    const absolutePath = path.join(outDir, outputFileName);
-    await page.screenshot({
-      path: absolutePath,
+    const buffer = (await page.screenshot({
       fullPage: true,
       type: "png",
       omitBackground: false,
-    });
+      encoding: "binary",
+    })) as Buffer;
 
-    return {
-      publicUrl: `/generated-payslips/${outputFileName}`,
-      absolutePath,
-    };
+    return await persistPng(Buffer.from(buffer), outputFileName);
   } finally {
     await browser.close();
   }

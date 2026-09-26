@@ -18,15 +18,10 @@ const FROM_EMAIL = process.env.GMAIL_HR_USER!;
 const REPLY_TO = process.env.GMAIL_HR_USER!;
 const FOOTER = "Airship Express\nBinondo, Manila, Philippines";
 
-function antiSpamHeaders() {
-  return {
-    "List-Unsubscribe": `<mailto:${REPLY_TO}?subject=unsubscribe>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    "X-Mailer": "Airship Express HR System",
-    "X-Priority": "3",
-    Precedence: "bulk",
-  };
-}
+// NOTE: antiSpamHeaders() was removed entirely.
+// The Precedence: bulk / List-Unsubscribe headers were causing
+// transactional emails (OTP, payslip, security alerts) to be
+// classified as bulk mail and routed to spam.
 
 function esc(input: string | null | undefined): string {
   if (input === null || input === undefined) return "";
@@ -37,6 +32,8 @@ function esc(input: string | null | undefined): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+/* ---------------- PAYSLIP ---------------- */
 
 export async function sendPayslipEmail({
   to,
@@ -130,9 +127,10 @@ export async function sendPayslipEmail({
     subject: `Your Payslip for ${periodLabel} — Airship Express`,
     text,
     html,
-    headers: antiSpamHeaders(),
   });
 }
+
+/* ---------------- PAYSLIP BATCH SUMMARY ---------------- */
 
 export async function sendPayslipBatchSummary({
   to,
@@ -204,20 +202,22 @@ export async function sendPayslipBatchSummary({
     replyTo: REPLY_TO,
     subject: `Payslip Distribution Report — ${periodLabel}`,
     html,
-    headers: antiSpamHeaders(),
   });
 }
+
+/* ---------------- OTP ---------------- */
 
 export async function sendOtpEmail({
   to,
   code,
   purpose,
   adminName,
-  ttlMinutes = 5,
+  ttlMinutes = 10,
 }: {
   to: string;
   code: string;
   purpose:
+    | "login"
     | "merit"
     | "bonus"
     | "merit_delete"
@@ -230,6 +230,7 @@ export async function sendOtpEmail({
   ttlMinutes?: number;
 }) {
   const labels: Record<string, string> = {
+    login: "sign-in",
     merit: "Merit Plan",
     bonus: "Bonus Allocation",
     merit_delete: "Merit Plan Deletion",
@@ -239,16 +240,22 @@ export async function sendOtpEmail({
     claim: "New Claim Submission",
     claim_delete: "Claim Deletion",
   };
-  const label = labels[purpose] || "Verification";
+  const label = labels[purpose] || "verification";
+
+  // Subject intentionally avoids the words "code", "OTP", and digits.
+  const subject =
+    purpose === "login"
+      ? `Airship Express sign-in verification`
+      : `Airship Express ${label} verification`;
 
   const text = [
     `Hello ${adminName},`,
     ``,
-    `Your Airship Express verification code for ${label}:`,
+    `Your Airship Express ${label} verification number is:`,
     ``,
     code,
     ``,
-    `This code expires in ${ttlMinutes} minutes. Do not share it with anyone.`,
+    `It expires in ${ttlMinutes} minutes. Do not share it with anyone.`,
     ``,
     FOOTER,
   ].join("\n");
@@ -256,11 +263,13 @@ export async function sendOtpEmail({
   const html = `
     <div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1c1b1f">
       <p style="margin:0 0 16px;font-size:14px">Hello ${esc(adminName)},</p>
-      <p style="margin:0 0 16px;font-size:14px;color:#555">Your Airship Express verification code for ${esc(
-        label
-      )}:</p>
-      <p style="margin:0 0 16px;font-family:'SF Mono',Consolas,monospace;font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
-      <p style="margin:0 0 16px;font-size:13px;color:#555">This code expires in ${ttlMinutes} minutes.</p>
+      <p style="margin:0 0 16px;font-size:14px;color:#555">
+        Your Airship Express ${esc(label)} verification number is:
+      </p>
+      <p style="margin:0 0 16px;font-family:Consolas,monospace;font-size:22px;font-weight:600;letter-spacing:2px">${code}</p>
+      <p style="margin:0 0 16px;font-size:13px;color:#555">
+        It expires in ${ttlMinutes} minutes.
+      </p>
       <p style="margin:24px 0 0;color:#8a8a93;font-size:11px;border-top:1px solid #eee;padding-top:16px">
         Airship Express · Binondo, Manila, Philippines
       </p>
@@ -271,12 +280,13 @@ export async function sendOtpEmail({
     from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
     to,
     replyTo: REPLY_TO,
-    subject: `Your Airship Express verification code`,
+    subject,
     text,
     html,
-    headers: antiSpamHeaders(),
   });
 }
+
+/* ---------------- SECURITY ALERT ---------------- */
 
 export async function sendSecurityAlertEmail({
   to,
@@ -472,9 +482,10 @@ export async function sendSecurityAlertEmail({
     subject: `Security Alert — ${offenderName} (Attempt ${attemptNumber} of 3)`,
     text,
     html,
-    headers: antiSpamHeaders(),
   });
 }
+
+/* ---------------- GENERIC ---------------- */
 
 export async function sendMail(opts: {
   to: string;
@@ -497,9 +508,10 @@ export async function sendMail(opts: {
     subject: opts.subject,
     text: opts.text,
     html: opts.html,
-    headers: antiSpamHeaders(),
   });
 }
+
+/* ---------------- EMAIL CHANGE ---------------- */
 
 export async function sendEmailChangeVerification({
   to,
@@ -519,11 +531,11 @@ export async function sendEmailChangeVerification({
     ``,
     `Someone requested to change your Airship Express admin email to ${to}.`,
     ``,
-    `Your verification code:`,
+    `Your verification number:`,
     ``,
     code,
     ``,
-    `This code expires in ${ttlMinutes} minutes. Do not share it with anyone.`,
+    `It expires in ${ttlMinutes} minutes. Do not share it with anyone.`,
     ``,
     `If you did not request this, ignore this email and check your account at ${oldEmail}.`,
     ``,
@@ -543,11 +555,11 @@ export async function sendEmailChangeVerification({
         <strong>${esc(to)}</strong>.
       </p>
 
-      <p style="margin:0 0 8px;font-size:12px;color:#6b6b76;text-transform:uppercase;letter-spacing:1px">Your verification code</p>
-      <p style="margin:0 0 16px;font-family:'SF Mono',Consolas,monospace;font-size:32px;font-weight:700;letter-spacing:6px;color:#7c3aed">${code}</p>
+      <p style="margin:0 0 8px;font-size:12px;color:#6b6b76;text-transform:uppercase;letter-spacing:1px">Your verification number</p>
+      <p style="margin:0 0 16px;font-family:Consolas,monospace;font-size:24px;font-weight:600;letter-spacing:3px;color:#7c3aed">${code}</p>
 
       <p style="margin:0 0 16px;font-size:13px;color:#555">
-        This code expires in ${ttlMinutes} minutes. Do not share it with anyone.
+        It expires in ${ttlMinutes} minutes. Do not share it with anyone.
       </p>
 
       <div style="margin:16px 0;padding:12px;background:#fff7ed;border-left:3px solid #f59e0b;font-size:12px;color:#7c4a03;border-radius:4px">
@@ -571,7 +583,6 @@ export async function sendEmailChangeVerification({
     subject: `Verify your new Airship Express email`,
     text,
     html,
-    headers: antiSpamHeaders(),
   });
 }
 
@@ -604,7 +615,7 @@ export async function sendEmailChangeWarning({
     `Requested new email: ${newEmail}`,
     `Requested at: ${now}`,
     ``,
-    `The change will NOT take effect until the new address is verified by entering a code sent to it.`,
+    `The change will NOT take effect until the new address is verified by entering a number sent to it.`,
     ``,
     `If this was you, no action is needed here.`,
     `If this was NOT you, contact your HR administrator immediately.`,
@@ -647,7 +658,7 @@ export async function sendEmailChangeWarning({
 
       <div style="margin:16px 0;padding:12px;background:#fff7ed;border-left:3px solid #f59e0b;font-size:12px;color:#7c4a03;border-radius:4px">
         <strong>The change will NOT take effect</strong> until the new address is
-        verified by entering a code sent to it.
+        verified by entering a number sent to it.
       </div>
 
       <div style="margin:16px 0;padding:12px;background:#fef2f2;border-left:3px solid #b91c1c;font-size:12px;color:#7c1d1d;border-radius:4px">
@@ -669,6 +680,5 @@ export async function sendEmailChangeWarning({
     subject: `Warning: Your Airship Express email is being changed`,
     text,
     html,
-    headers: antiSpamHeaders(),
   });
 }

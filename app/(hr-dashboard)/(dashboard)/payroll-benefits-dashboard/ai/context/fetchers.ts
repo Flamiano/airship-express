@@ -30,6 +30,23 @@ import type {
   RejectedRunRow,
 } from "./types";
 
+function firstOrSelf<T>(value: unknown): T | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return (value[0] as T) ?? null;
+  return value as T;
+}
+
+function strOrNull(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v);
+  return s.length > 0 ? s : null;
+}
+
+function strOrEmpty(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  return String(v);
+}
+
 export async function fetchPayrollRules(): Promise<LivePayrollRules> {
   const [sss, ph, pi] = await Promise.all([
     supabaseAdmin
@@ -141,29 +158,19 @@ export async function fetchEmployeeProfile(
 
   if (bankAccount.data) {
     const raw = bankAccount.data as Record<string, unknown>;
-
-    const bankTypesRaw = raw.hr4_bank_types;
-    const bankTypeObj: {
+    const bankTypeObj = firstOrSelf<{
       bank_name?: string | null;
       bank_type?: string | null;
-    } | null = Array.isArray(bankTypesRaw)
-      ? (bankTypesRaw[0] as {
-          bank_name?: string | null;
-          bank_type?: string | null;
-        }) ?? null
-      : (bankTypesRaw as {
-          bank_name?: string | null;
-          bank_type?: string | null;
-        } | null);
+    }>(raw.hr4_bank_types);
 
     mappedBank = {
-      account_number: String(raw.account_number ?? ""),
-      account_name: String(raw.account_name ?? ""),
-      bank_name: bankTypeObj?.bank_name ?? null,
-      bank_type: bankTypeObj?.bank_type ?? null,
+      account_number: strOrEmpty(raw.account_number),
+      account_name: strOrEmpty(raw.account_name),
+      bank_name: strOrNull(bankTypeObj?.bank_name),
+      bank_type: strOrNull(bankTypeObj?.bank_type),
       is_primary: Boolean(raw.is_primary),
       is_active: Boolean(raw.is_active),
-      verified_at: (raw.verified_at as string | null) ?? null,
+      verified_at: strOrNull(raw.verified_at),
     };
   }
 
@@ -244,59 +251,66 @@ export async function fetchCompensation(): Promise<LiveCompensation> {
 }
 
 export async function fetchActiveEmployeeNames(): Promise<SafeEmployeeRow[]> {
-  const { data: employees } = await supabaseAdmin
+  const { data: employees, error } = await supabaseAdmin
     .from("hr1_employees")
     .select(
-      `id, employee_id_number, first_name, last_name, department, status, date_hired, birthdate,
-       hr1_job_positions ( title ),
-       hr4_bank_accounts ( account_number, bank_type_id, is_active )`
+      `
+      id,
+      employee_id_number,
+      first_name,
+      last_name,
+      department,
+      status,
+      date_hired,
+      birthdate,
+      hr1_job_positions ( title ),
+      hr4_bank_accounts ( account_number, bank_type_id, is_active )
+      `
     )
     .eq("status", "active")
     .order("first_name", { ascending: true });
 
-  if (!employees) return [];
+  if (error) {
+    console.error("[fetchActiveEmployeeNames] supabase error:", error);
+    return [];
+  }
 
-  return employees.map((e: Record<string, unknown>) => {
-    const jobsRaw = e.hr1_job_positions;
-    const job: { title?: string | null } | null = Array.isArray(jobsRaw)
-      ? (jobsRaw[0] as { title?: string | null }) ?? null
-      : (jobsRaw as { title?: string | null } | null);
+  if (!employees || employees.length === 0) return [];
 
-    const banksRaw = e.hr4_bank_accounts;
-    const bank: {
+  return employees.map((raw) => {
+    const e = raw as Record<string, unknown>;
+
+    const job = firstOrSelf<{ title?: string | null }>(e.hr1_job_positions);
+    const bank = firstOrSelf<{
       account_number?: string | null;
       bank_type_id?: number | null;
       is_active?: boolean | null;
-    } | null = Array.isArray(banksRaw)
-      ? (banksRaw[0] as {
-          account_number?: string | null;
-          bank_type_id?: number | null;
-          is_active?: boolean | null;
-        }) ?? null
-      : (banksRaw as {
-          account_number?: string | null;
-          bank_type_id?: number | null;
-          is_active?: boolean | null;
-        } | null);
+    }>(e.hr4_bank_accounts);
 
     const hasBank = Boolean(
       bank &&
         bank.is_active !== false &&
         bank.account_number &&
-        bank.bank_type_id
+        String(bank.account_number).trim().length > 0 &&
+        bank.bank_type_id !== null &&
+        bank.bank_type_id !== undefined
+    );
+
+    const hasBirthdate = Boolean(
+      e.birthdate && String(e.birthdate).trim().length > 0
     );
 
     return {
-      id: String(e.id),
-      employee_id_number: String(e.employee_id_number ?? ""),
-      first_name: String(e.first_name ?? ""),
-      last_name: String(e.last_name ?? ""),
-      department: (e.department as string | null) ?? null,
-      job_title: job?.title ?? null,
-      status: String(e.status ?? "active"),
-      date_hired: (e.date_hired as string | null) ?? null,
+      id: strOrEmpty(e.id),
+      employee_id_number: strOrEmpty(e.employee_id_number),
+      first_name: strOrEmpty(e.first_name),
+      last_name: strOrEmpty(e.last_name),
+      department: strOrNull(e.department),
+      job_title: strOrNull(job?.title),
+      status: strOrEmpty(e.status) || "active",
+      date_hired: strOrNull(e.date_hired),
       has_bank: hasBank,
-      has_birthdate: Boolean(e.birthdate),
+      has_birthdate: hasBirthdate,
     };
   });
 }
@@ -339,16 +353,28 @@ export async function fetchEmployeesWithoutBirthdate(): Promise<
 export async function fetchTopRatedEmployees(
   limit = 5
 ): Promise<TopRatedEmployee[]> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("hr3_performance_appraisals")
     .select(
-      `id, employee_id, performance_rating, final_score, letter_grade, status,
-       hr1_employees ( first_name, last_name, employee_id_number, department )`
+      `
+      id,
+      employee_id,
+      performance_rating,
+      final_score,
+      letter_grade,
+      status,
+      hr1_employees ( first_name, last_name, employee_id_number, department )
+      `
     )
     .eq("status", "finalized")
     .not("performance_rating", "is", null)
     .order("performance_rating", { ascending: false })
     .limit(limit * 2);
+
+  if (error) {
+    console.error("[fetchTopRatedEmployees] supabase error:", error);
+    return [];
+  }
 
   if (!data) return [];
 
@@ -356,38 +382,30 @@ export async function fetchTopRatedEmployees(
   const result: TopRatedEmployee[] = [];
 
   for (const row of data as Array<Record<string, unknown>>) {
-    const employeeId = String(row.employee_id);
-    if (seen.has(employeeId)) continue;
+    const employeeId = strOrEmpty(row.employee_id);
+    if (!employeeId || seen.has(employeeId)) continue;
     seen.add(employeeId);
 
-    const empsRaw = row.hr1_employees;
-    const emp: {
+    const emp = firstOrSelf<{
       first_name?: string | null;
       last_name?: string | null;
       employee_id_number?: string | null;
       department?: string | null;
-    } | null = Array.isArray(empsRaw)
-      ? (empsRaw[0] as {
-          first_name?: string | null;
-          last_name?: string | null;
-          employee_id_number?: string | null;
-          department?: string | null;
-        }) ?? null
-      : (empsRaw as {
-          first_name?: string | null;
-          last_name?: string | null;
-          employee_id_number?: string | null;
-          department?: string | null;
-        } | null);
+    }>(row.hr1_employees);
 
     if (!emp) continue;
 
+    const firstName = strOrEmpty(emp.first_name);
+    const lastName = strOrEmpty(emp.last_name);
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (!fullName) continue;
+
     result.push({
-      employee_name: `${emp.first_name ?? ""} ${emp.last_name ?? ""}`.trim(),
-      employee_id_number: emp.employee_id_number ?? "",
-      department: emp.department ?? null,
+      employee_name: fullName,
+      employee_id_number: strOrEmpty(emp.employee_id_number),
+      department: strOrNull(emp.department),
       performance_rating: Number(row.performance_rating ?? 0),
-      letter_grade: (row.letter_grade as string | null) ?? null,
+      letter_grade: strOrNull(row.letter_grade),
     });
 
     if (result.length >= limit) break;
@@ -397,7 +415,7 @@ export async function fetchTopRatedEmployees(
 }
 
 export async function fetchOpenRuns(): Promise<OpenRunRow[]> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("hr4_payroll_runs")
     .select(
       "id, period_start, period_end, status, approval_status, distributed_at"
@@ -411,11 +429,16 @@ export async function fetchOpenRuns(): Promise<OpenRunRow[]> {
     .order("period_end", { ascending: false })
     .limit(10);
 
-  return (data || []) as OpenRunRow[];
+  if (error) {
+    console.error("[fetchOpenRuns] supabase error:", error);
+    return [];
+  }
+
+  return (data ?? []) as OpenRunRow[];
 }
 
 export async function fetchPendingApprovals(): Promise<OpenRunRow[]> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("hr4_payroll_runs")
     .select(
       "id, period_start, period_end, status, approval_status, distributed_at"
@@ -423,11 +446,16 @@ export async function fetchPendingApprovals(): Promise<OpenRunRow[]> {
     .eq("approval_status", "pending_approval")
     .order("period_end", { ascending: false });
 
-  return (data || []) as OpenRunRow[];
+  if (error) {
+    console.error("[fetchPendingApprovals] supabase error:", error);
+    return [];
+  }
+
+  return (data ?? []) as OpenRunRow[];
 }
 
 export async function fetchRejectedRuns(): Promise<RejectedRunRow[]> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("hr4_payroll_runs")
     .select(
       "id, period_start, period_end, approval_status, rejection_reason, rejected_by_name, rejected_at"
@@ -436,7 +464,12 @@ export async function fetchRejectedRuns(): Promise<RejectedRunRow[]> {
     .order("rejected_at", { ascending: false })
     .limit(5);
 
-  return (data || []) as RejectedRunRow[];
+  if (error) {
+    console.error("[fetchRejectedRuns] supabase error:", error);
+    return [];
+  }
+
+  return (data ?? []) as RejectedRunRow[];
 }
 
 export async function findEmployeeByNameSafe(query: string) {
@@ -461,6 +494,10 @@ export async function findEmployeeByNameSafe(query: string) {
     q = q.or(`first_name.ilike.%${first}%,last_name.ilike.%${first}%`);
   }
 
-  const { data } = await q.limit(1).maybeSingle();
+  const { data, error } = await q.limit(1).maybeSingle();
+  if (error) {
+    console.error("[findEmployeeByNameSafe] supabase error:", error);
+    return null;
+  }
   return data || null;
 }
