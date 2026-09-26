@@ -6,7 +6,7 @@ type Action = "submit" | "approve" | "reject" | "activate" | "close";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
@@ -19,6 +19,7 @@ export async function PATCH(
       role: string;
     };
 
+    const { id } = await params;
     const body = await request.json();
     const action = body.action as Action;
 
@@ -29,7 +30,7 @@ export async function PATCH(
     const { data: current, error: fetchErr } = await supabaseAdmin
       .from("hr4_compen_labor_budget_monthly")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (fetchErr || !current) {
@@ -141,7 +142,7 @@ export async function PATCH(
     const { data, error } = await supabaseAdmin
       .from("hr4_compen_labor_budget_monthly")
       .update(update)
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -162,16 +163,18 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await requireAdmin(request);
     if (authResult instanceof NextResponse) return authResult;
 
+    const { id } = await params;
+
     const { data: current } = await supabaseAdmin
       .from("hr4_compen_labor_budget_monthly")
       .select("status")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (current && !["draft", "rejected"].includes(current.status)) {
@@ -186,7 +189,7 @@ export async function DELETE(
     const { error } = await supabaseAdmin
       .from("hr4_compen_labor_budget_monthly")
       .delete()
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
