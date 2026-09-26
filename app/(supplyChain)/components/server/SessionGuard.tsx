@@ -18,7 +18,7 @@ interface AuthResponse {
     };
     session_cleared?: boolean;
 }
-const VALID_ROLES = ['Admin', 'Manager', 'Employee', 'Operator', 'Executive'];
+const VALID_ROLES = ['Admin', 'Manager', 'Staff', 'Employee', 'Operator', 'Executive'];
 const CACHE_DURATION = 60 * 1000;
 const TAMPER_POLL_INTERVAL = 30 * 1000;
 const OFFLINE_RETRY_DELAY = 5000;
@@ -897,9 +897,10 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             if (shouldSkipCheck()) {
                 const currentRole = user.getRole();
                 if (currentRole && VALID_ROLES.includes(currentRole)) {
-                    const effectiveAllowed = settingsService.getPageRoles(pathname, requiredRole);
-                    if (effectiveAllowed && effectiveAllowed.length > 0 && !effectiveAllowed.includes(currentRole as any)) {
+                    if (!settingsService.canAccessPage(currentRole, pathname, requiredRole)) {
                         setGuardState('denied');
+                    } else if (guardState === 'denied') {
+                        setGuardState('authorized');
                     }
                 }
                 return;
@@ -953,8 +954,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 if (data.user?.role) {
                     user.updateUser({ role: data.user.role });
                 }
-                const effectiveAllowedRoles = settingsService.getPageRoles(pathname, requiredRole);
-                if (effectiveAllowedRoles && effectiveAllowedRoles.length > 0 && !effectiveAllowedRoles.includes(userRole as any)) {
+                if (!settingsService.canAccessPage(userRole, pathname, requiredRole)) {
                     setGuardState('denied');
                     return;
                 }
@@ -990,26 +990,26 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             }
         };
         checkSession();
-    }, [router, requiredRole, pathname, hasValidLocalStorage, shouldSkipCheck, handleInvalidSession, clearSessionData, getSessionToken, handleDeviceBlocked]);
+    }, [router, requiredRole, pathname, hasValidLocalStorage, shouldSkipCheck, handleInvalidSession, clearSessionData, getSessionToken, handleDeviceBlocked, guardState]);
 
     // Synchronous immediate permission pre-check whenever route/role changes
     useEffect(() => {
         const currentRole = user.getRole();
         if (currentRole && VALID_ROLES.includes(currentRole)) {
-            const effectiveAllowed = settingsService.getPageRoles(pathname, requiredRole);
-            if (effectiveAllowed && effectiveAllowed.length > 0 && !effectiveAllowed.includes(currentRole as any)) {
+            if (!settingsService.canAccessPage(currentRole, pathname, requiredRole)) {
                 setGuardState('denied');
+            } else if (guardState === 'denied') {
+                setGuardState('authorized');
             }
         }
-    }, [pathname, requiredRole]);
+    }, [pathname, requiredRole, guardState]);
 
     // Live settings subscriber to instantly re-check permissions when altered
     useEffect(() => {
         const unsubscribe = settingsService.subscribe(() => {
             const currentUserRole = user.getRole();
             if (currentUserRole && VALID_ROLES.includes(currentUserRole)) {
-                const effectiveAllowed = settingsService.getPageRoles(pathname, requiredRole);
-                if (effectiveAllowed && effectiveAllowed.length > 0 && !effectiveAllowed.includes(currentUserRole as any)) {
+                if (!settingsService.canAccessPage(currentUserRole, pathname, requiredRole)) {
                     setGuardState('denied');
                 } else if (guardState === 'denied') {
                     setGuardState('authorized');

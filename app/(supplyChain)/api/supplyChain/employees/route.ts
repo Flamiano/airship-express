@@ -91,7 +91,55 @@ export async function GET(request: Request) {
             return NextResponse.json(usersList);
         }
 
-        // For Employee (and any other role), fetch all mock_employees (excluding Admin/Executive and Drop-Off Pick-Up Riders / Drivers)
+        // Position to Role Mapping Helper
+        const normalizePosition = (pos?: string | null): string => {
+            if (!pos) return '';
+            return pos.trim().toUpperCase().replace(/\s+/g, ' ');
+        };
+
+        const getRoleForPosition = (pos?: string | null): 'Manager' | 'Operator' | 'Staff' | 'Employee' | null => {
+            const p = normalizePosition(pos);
+            
+            // MANAGER: OFFICE-IN-CHARGE, PROJECT COORDINATOR, ADMIN ASSISTANT
+            if (
+                p === 'OFFICE-IN-CHARGE' ||
+                p === 'OFFICE IN CHARGE' ||
+                p === 'PROJECT COORDINATOR' ||
+                p === 'ADMIN ASSISTANT' ||
+                p === 'MANAGER'
+            ) {
+                return 'Manager';
+            }
+
+            // OPERATOR: APPRAISER
+            if (
+                p === 'APPRAISER' ||
+                p === 'OPERATOR'
+            ) {
+                return 'Operator';
+            }
+
+            // STAFF:
+            // OFFICE STAFF, SALES REPRESENTATIVE, CSR/MKTG STAFF, HR OFFICER, HR GENERALIST
+            if (
+                p === 'OFFICE STAFF' ||
+                p === 'SALES REPRESENTATIVE' ||
+                p === 'CSR/MKTG STAFF' ||
+                p === 'CSR / MKTG STAFF' ||
+                p === 'CSR/MARKETING STAFF' ||
+                p === 'HR OFFICER' ||
+                p === 'HR GENERALIST' ||
+                p === 'STAFF' ||
+                p === 'EMPLOYEE'
+            ) {
+                return 'Staff';
+            }
+
+            // All other positions (riders, drivers, etc.) are NOT part of supply chain
+            return null;
+        };
+
+        // For Staff / Employee / Manager / Operator, fetch mock_employees filtered strictly by position
         const { data: dbEmployees, error: dbError } = await supabase
             .from('mock_employees')
             .select('*')
@@ -105,62 +153,43 @@ export async function GET(request: Request) {
             );
         }
 
+        const targetRole = (role.toLowerCase() === 'employee' ? 'staff' : role.toLowerCase());
+
         const filteredDbEmployees = (dbEmployees || []).filter((emp: any) => {
-            const pos = (emp.position || '').toLowerCase();
-            const dept = (emp.department || '').toLowerCase();
-            const role = (emp.role || '').toLowerCase();
-            const title = (emp.job_title || emp.title || '').toLowerCase();
+            const name = (emp.display_name || emp.full_name || emp.name || '').toLowerCase();
+            const email = (emp.email || '').toLowerCase();
 
-            // Exclude Admin and Executive accounts
-            if (role.includes('admin') || role.includes('executive')) {
-                return false;
-            }
+            // Exclude Edizon Prado from mock_employees fetch (as he is managed as an Admin account in users table)
+            if (name.includes('edizon') && name.includes('prado')) return false;
+            if (email.includes('edizon.prado')) return false;
 
-            const isRiderOrDriver = (
-                pos.includes('rider') ||
-                pos.includes('driver') ||
-                pos.includes('drop-off') ||
-                pos.includes('drop off') ||
-                pos.includes('pick-up') ||
-                pos.includes('pick up') ||
-                title.includes('rider') ||
-                title.includes('driver') ||
-                dept.includes('rider') ||
-                dept.includes('driver') ||
-                role.includes('rider') ||
-                role.includes('driver')
-            );
-            return !isRiderOrDriver;
+            const assignedRole = getRoleForPosition(emp.position);
+            // If position is not one of the allowed supply chain positions, exclude
+            if (!assignedRole) return false;
+
+            // Only include employees that belong to the role logged in
+            return assignedRole.toLowerCase() === targetRole;
         });
 
         const employees = filteredDbEmployees.map((emp: any) => {
-            let employeeRole = 'Employee';
-            const rawRole = (emp.role || emp.position || '').trim();
-            if (/manager/i.test(rawRole)) {
-                employeeRole = 'Manager';
-            } else if (/operator/i.test(rawRole)) {
-                employeeRole = 'Operator';
-            } else if (emp.role) {
-                employeeRole = emp.role;
-            }
-
+            const assignedRole = getRoleForPosition(emp.position) || 'Staff';
             const rawEmpId = emp.employee_id;
             const cleanEmpId = rawEmpId && !isUUID(rawEmpId) ? rawEmpId : null;
 
             const rawDept = (emp.department || '').trim();
             const rawPos = (emp.position || '').trim();
-            const cleanDept = rawDept && rawDept.toLowerCase() !== employeeRole.toLowerCase() ? rawDept : null;
-            const cleanPos = rawPos && rawPos.toLowerCase() !== employeeRole.toLowerCase() && rawPos.toLowerCase() !== (cleanDept || '').toLowerCase() ? rawPos : null;
+            const cleanDept = rawDept && rawDept.toLowerCase() !== assignedRole.toLowerCase() ? rawDept : null;
+            const cleanPos = rawPos && rawPos.toLowerCase() !== assignedRole.toLowerCase() && rawPos.toLowerCase() !== (cleanDept || '').toLowerCase() ? rawPos : null;
 
             return {
                 ...emp,
                 id: emp.id || emp.user_id,
                 display_name: emp.display_name || emp.full_name || emp.name || 'Employee User',
                 email: emp.email || emp.user_email || emp.work_email,
-                role: employeeRole,
+                role: assignedRole,
                 employee_id: cleanEmpId,
                 department: cleanDept,
-                position: cleanPos
+                position: cleanPos || rawPos
             };
         });
 

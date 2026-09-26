@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function GalleryPage() {
     return (
         <Suspense fallback={<PageSkeleton />}>
-            <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive']}>
+            <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Executive']}>
                 <GalleryContentWrapper />
             </SessionGuard>
         </Suspense>

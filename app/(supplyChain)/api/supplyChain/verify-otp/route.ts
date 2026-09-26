@@ -161,7 +161,7 @@ export async function POST(request: Request) {
         // check if user exists
         const { data: existingUser } = await supabase
             .from('users')
-            .select('id, email, role, display_name')
+            .select('id, email, role, display_name, position, department')
             .eq('email', email)
             .maybeSingle();
 
@@ -184,27 +184,43 @@ export async function POST(request: Request) {
             : new Date(Date.now() + 8 * 3600000);
 
         if (existingUser) {
-            // resolve and synchronize accurate role in users table
+            // resolve and synchronize accurate role and position in users table
+            const userPosition = (hrData?.position || existingUser.position || '').trim();
             let effectiveRole = existingUser.role;
-            if (employeeRole && ['Admin', 'Executive', 'Manager', 'Operator', 'Employee'].includes(employeeRole)) {
-                effectiveRole = employeeRole;
-            } else if (hrData) {
-                const rawRole = (hrData.role || hrData.position || '').trim();
-                if (/manager/i.test(rawRole)) effectiveRole = 'Manager';
-                else if (/operator/i.test(rawRole)) effectiveRole = 'Operator';
-                else if (hrData.role) effectiveRole = hrData.role;
+
+            if (userPosition && effectiveRole !== 'Admin' && effectiveRole !== 'Executive') {
+                const p = userPosition.toUpperCase().replace(/\s+/g, ' ');
+                if (
+                    p === 'OFFICE-IN-CHARGE' ||
+                    p === 'OFFICE IN CHARGE' ||
+                    p === 'PROJECT COORDINATOR' ||
+                    p === 'ADMIN ASSISTANT' ||
+                    p === 'MANAGER'
+                ) {
+                    effectiveRole = 'Manager';
+                } else if (p === 'APPRAISER' || p === 'OPERATOR') {
+                    effectiveRole = 'Operator';
+                } else {
+                    effectiveRole = 'Staff';
+                }
+            } else if (employeeRole && ['Admin', 'Executive', 'Manager', 'Operator', 'Staff', 'Employee'].includes(employeeRole)) {
+                effectiveRole = employeeRole === 'Employee' ? 'Staff' : employeeRole;
             }
 
-            if (effectiveRole && effectiveRole !== existingUser.role) {
-                try {
-                    await supabase
-                        .from('users')
-                        .update({ role: effectiveRole, updated_at: new Date().toISOString() })
-                        .eq('id', existingUser.id);
-                    existingUser.role = effectiveRole;
-                } catch (updateRoleErr) {
-                    console.error('Error synchronizing user role:', updateRoleErr);
-                }
+            try {
+                await supabase
+                    .from('users')
+                    .update({
+                        role: effectiveRole,
+                        position: userPosition || null,
+                        department: hrData?.department || existingUser.department || null,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingUser.id);
+                (existingUser as any).role = effectiveRole;
+                (existingUser as any).position = userPosition || null;
+            } catch (updateRoleErr) {
+                console.error('Error synchronizing user role and position:', updateRoleErr);
             }
 
             // Tiered Concurrency Slot Rate Limiter
@@ -393,6 +409,7 @@ export async function POST(request: Request) {
             const roleRedirects: Record<string, string> = {
                 'Admin': '/procurement',
                 'Manager': '/warehousing?tab=incoming',
+                'Staff': '/documents',
                 'Employee': '/documents',
                 'Operator': '/warehousing?tab=incoming',
                 'Executive': '/executive'
@@ -415,12 +432,14 @@ export async function POST(request: Request) {
             // user doesn't exist - return temp token for password setup
             const tempToken = generateTemporaryToken();
 
-            let effectiveRole = employeeRole || 'Employee';
+            let effectiveRole = employeeRole || 'Staff';
             if (hrData) {
-                const rawRole = (hrData.role || hrData.position || '').trim();
-                if (/manager/i.test(rawRole)) effectiveRole = 'Manager';
-                else if (/operator/i.test(rawRole)) effectiveRole = 'Operator';
-                else if (hrData.role) effectiveRole = hrData.role;
+                const rawPos = (hrData.position || '').trim().toUpperCase().replace(/\s+/g, ' ');
+                const rawRole = (hrData.role || '').trim();
+                if (/manager|office-in-charge|project coordinator|admin assistant/i.test(rawPos) || /manager/i.test(rawRole)) effectiveRole = 'Manager';
+                else if (/appraiser|operator/i.test(rawPos) || /operator/i.test(rawRole)) effectiveRole = 'Operator';
+                else if (rawRole) effectiveRole = rawRole === 'Employee' ? 'Staff' : rawRole;
+                else effectiveRole = 'Staff';
             }
 
             return NextResponse.json({

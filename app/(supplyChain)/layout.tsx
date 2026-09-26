@@ -209,7 +209,7 @@ export default function SupplyChainLayout({ children, }: {
     children: React.ReactNode;
 }) {
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Operator', 'Executive']}>
+        <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Operator', 'Executive']}>
             <AIProvider>
                 <LayoutContent>{children}</LayoutContent>
             </AIProvider>

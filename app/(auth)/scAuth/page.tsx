@@ -1051,6 +1051,7 @@ export default function SupplyChainLoginPage() {
         switch (role) {
             case 'Admin': return 'bg-purple-100 text-purple-700 border-purple-200';
             case 'Manager': return 'bg-blue-100 text-blue-700 border-blue-200';
+            case 'Staff':
             case 'Employee': return 'bg-green-100 text-green-700 border-green-200';
             case 'Executive': return 'bg-amber-100 text-amber-700 border-amber-200';
             case 'Operator': return 'bg-orange-100 text-orange-700 border-orange-200';
@@ -1236,13 +1237,13 @@ export default function SupplyChainLoginPage() {
                                             type="button"
                                             disabled={loginLockoutSeconds > 0}
                                             onClick={() => setShowPassword((v) => !v)}
-                                            className="absolute bottom-1.5 right-0 text-muted dark:text-paper/60 transition-colors hover:text-ink dark:hover:text-paper cursor-pointer disabled:opacity-40"
+                                            className="absolute bottom-2 right-0 p-1.5 text-muted hover:text-ink dark:text-paper/80 dark:hover:text-paper transition-colors cursor-pointer disabled:opacity-40"
                                             aria-label={showPassword ? 'Hide password' : 'Show password'}
                                         >
                                             {showPassword ? (
-                                                <EyeOff size={17} strokeWidth={1.75} />
+                                                <EyeOff size={20} strokeWidth={2} />
                                             ) : (
-                                                <Eye size={17} strokeWidth={1.75} />
+                                                <Eye size={20} strokeWidth={2} />
                                             )}
                                         </button>
                                     </div>

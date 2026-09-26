@@ -137,7 +137,11 @@ export async function POST(request: NextRequest) {
             archivedParcelsRes,
             archivedPosRes,
             archivedDocsRes,
-            userActivityRes
+            userActivityRes,
+            blockedDevicesRes,
+            sessionsRes,
+            usersRes,
+            appealsRes
         ] = await Promise.all([
             // Parcels
             supabase
@@ -198,6 +202,32 @@ export async function POST(request: NextRequest) {
                 .lte("created_at", lastDay)
                 .order("created_at", { ascending: false })
                 .limit(300),
+
+            // Blocked Devices
+            supabase
+                .from("blocked_devices")
+                .select("id, device_name, user_agent, ip_address, reason, status, blocked_at, created_at")
+                .gte("created_at", startDate)
+                .lte("created_at", lastDay),
+
+            // Sessions
+            supabase
+                .from("sessions")
+                .select("id, user_id, is_active, created_at, user_agent")
+                .gte("created_at", startDate)
+                .lte("created_at", lastDay),
+
+            // Users
+            supabase
+                .from("users")
+                .select("id, display_name, email, role, position, department, status, created_at"),
+
+            // Appeals
+            supabase
+                .from("appeals")
+                .select("id, user_name, user_email, user_role, status, appeal_message, created_at")
+                .gte("created_at", startDate)
+                .lte("created_at", lastDay),
         ]);
 
         const parcels = parcelsRes.data || [];
@@ -208,6 +238,10 @@ export async function POST(request: NextRequest) {
         const archivedPos = archivedPosRes.data || [];
         const archivedDocs = archivedDocsRes.data || [];
         const userActivities = userActivityRes.data || [];
+        const blockedDevices = blockedDevicesRes.data || [];
+        const sessions = sessionsRes.data || [];
+        const users = usersRes.data || [];
+        const appeals = appealsRes.data || [];
 
         // 2. Compute Parcels Intelligence
         const dailyCountsMap = new Map<string, number>();
@@ -528,18 +562,37 @@ STRATEGIC ACTIONS & PREDICTIVE MITIGATION ROADMAP
 Actionable operational recommendations for sorting lines, preventive equipment reordering, supplier negotiations, and waste reduction.
 `;
 
-            const response = await ai.models.generateContent({
-                model: MODEL_NAME,
-                contents: prompt,
-            });
+            const candidateModels = [MODEL_NAME, "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-exp"];
+            let rawText = "";
 
-            const rawText = response.text || "";
-            cleanAiSummary = rawText
-                .replace(/#{1,6}\s*/g, "")
-                .replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1")
-                .replace(/\*+/g, "")
-                .replace(/`{1,3}/g, "")
-                .trim();
+            for (const modelCandidate of candidateModels) {
+                try {
+                    const response = await ai.models.generateContent({
+                        model: modelCandidate,
+                        contents: prompt,
+                    });
+                    if (response?.text) {
+                        rawText = response.text;
+                        break;
+                    }
+                } catch (geminiErr: any) {
+                    console.warn(`Gemini model ${modelCandidate} failed (${geminiErr?.status || geminiErr?.message}), trying fallback...`);
+                }
+            }
+
+            if (rawText) {
+                cleanAiSummary = rawText
+                    .replace(/#{1,6}\s*/g, "")
+                    .replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1")
+                    .replace(/\*+/g, "")
+                    .replace(/`{1,3}/g, "")
+                    .trim();
+            } else {
+                // Deterministic executive synthesis fallback when Gemini is temporarily unavailable (e.g. 503 high demand)
+                cleanAiSummary = generateDeterministicMonthlySynthesis(monthName, structuredMetrics);
+            }
+        } else {
+            cleanAiSummary = generateDeterministicMonthlySynthesis(monthName, structuredMetrics);
         }
 
         return NextResponse.json({
@@ -556,4 +609,47 @@ Actionable operational recommendations for sorting lines, preventive equipment r
             { status: 500 }
         );
     }
+}
+
+/**
+ * Deterministic data-driven executive synthesis fallback for when AI upstream is temporarily unavailable
+ */
+function generateDeterministicMonthlySynthesis(monthName: string, metrics: any): string {
+    const p = metrics.parcels || {};
+    const po = metrics.procurement || {};
+    const eq = metrics.equipment || {};
+    const ops = metrics.systemOperations || {};
+
+    const topCourier = p.courierDistribution?.[0] ? `${p.courierDistribution[0].name} (${p.courierDistribution[0].share})` : 'Standard Logistics';
+    const topSupplier = po.topSuppliers?.[0] ? `${po.topSuppliers[0].supplier} (₱${po.topSuppliers[0].amount.toLocaleString()})` : 'General Procurement';
+
+    return `EXECUTIVE MONTHLY SYNTHESIS & PREDICTIVE OVERVIEW
+During ${monthName}, Airship Express logged ${p.totalIntake || 0} parcels alongside ₱${(po.totalExpenditure || 0).toLocaleString()} in capital procurement commitments across ${po.totalPurchaseOrders || 0} purchase orders. Operational throughput reflects ${p.totalIntake > 0 ? 'active sorting runs and steady hub logistics' : 'quiescent baseline intake'} with warehouse operations focused on asset stabilization and inventory maintenance.
+
+PARCEL INTAKE, PEAK VELOCITY & LOGISTICS TRAJECTORY
+1. Total Monthly Intake: ${p.totalIntake || 0} registered parcels handled through the central sorting grid.
+2. Velocity Peaks: The highest daily intake occurred on ${p.peakDay?.date || 'N/A'} with ${p.peakDay?.count || 0} units, while the busiest recurring day of the week was ${p.busiestDayOfWeek?.day || 'N/A'}.
+3. Operational Window: Primary intake density clustered between ${p.busiestHourWindow?.timeRange || 'standard operating hours'}.
+4. Courier Distribution: Primary logistics carrier volume was led by ${topCourier}.
+
+PROCUREMENT OUTLAY & SPEND FORECAST
+1. Total Procurement Outlay: ₱${(po.totalExpenditure || 0).toLocaleString()} across ${po.totalPurchaseOrders || 0} verified purchase orders.
+2. Settlement Distribution: ₱${(po.paidAmount || 0).toLocaleString()} fulfilled against ₱${(po.unpaidAmount || 0).toLocaleString()} in pending liabilities (${po.paymentFulfillmentRate || '0%'} settlement efficiency).
+3. Primary Vendor Commitment: Top vendor concentration was directed to ${topSupplier}.
+4. Cashflow Outlook: Estimated next-month inventory replenishment requires maintaining a reserve buffer of approximately ₱${Math.round((po.totalExpenditure || 0) * 0.85).toLocaleString()}.
+
+EQUIPMENT STOCK VELOCITY, FAST-DEPLETION & STAGNANT ASSETS
+1. Critical Stock Replenishment: ${eq.fastDepleting?.length || 0} items identified with accelerating drawdown rates.
+2. Low Stock Exposure: ${eq.lowStockAlerts?.length || 0} equipment SKUs currently operating beneath safety stock buffers.
+3. Capital Tied in Stagnant Assets: ${eq.stagnantItems?.length || 0} untouched SKUs identified in reserve storage, representing potential working capital release through reassignment.
+
+SYSTEM OPERATIONS: DOCUMENTS, TRASH ARCHIVAL & USER ACTIVITY
+1. Regulatory & Compliance Filing: ${ops.documentsFiled || 0} compliance and manifest documents securely archived.
+2. Archival Hygiene: ${ops.trashDeletions?.total || 0} records purged or soft-deleted (${ops.trashDeletions?.parcels || 0} parcels, ${ops.trashDeletions?.purchaseOrders || 0} POs, ${ops.trashDeletions?.documents || 0} documents).
+3. User & Operator Workload: ${ops.userActionsLogged || 0} operational actions recorded across active personnel.
+
+STRATEGIC ACTIONS & PREDICTIVE MITIGATION ROADMAP
+1. Sortation Line Optimization: Calibrate personnel shift schedules to accommodate the ${p.busiestDayOfWeek?.day || 'primary'} peak window (${p.busiestHourWindow?.timeRange || 'regular shifts'}).
+2. Preventive Inventory Replenishment: Expedite purchase requests for the ${eq.lowStockAlerts?.length || 0} inventory items nearing stockout thresholds.
+3. Supplier Credit Terms: Consolidate orders with key partners to maximize volume discounts and streamline outstanding payable settlements.`;
 }

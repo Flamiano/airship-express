@@ -22,9 +22,9 @@ export default function ArchivePage() {
     const { role: userRole, isPrivileged, isLoaded } = useUserRole();
 
     const isOperator = userRole?.toLowerCase() === 'operator';
-    const isEmployee = userRole?.toLowerCase() === 'employee';
+    const isStaffOrEmployee = userRole?.toLowerCase() === 'employee' || userRole?.toLowerCase() === 'staff';
 
-    const canAccessDocuments = isPrivileged || isEmployee;
+    const canAccessDocuments = isPrivileged || isStaffOrEmployee;
     const canAccessPurchaseOrders = isPrivileged;
     const canAccessSuppliers = isPrivileged;
     const canAccessParcels = isPrivileged || isOperator;
@@ -99,7 +99,7 @@ export default function ArchivePage() {
     ];
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Employee', 'Executive', 'Operator']}>
+        <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Executive', 'Operator']}>
             <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
                 {/* header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-slate-800 pb-5">

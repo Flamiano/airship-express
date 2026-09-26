@@ -355,7 +355,7 @@ export function ChangePasswordModal({
                                             type="button"
                                             onClick={() => setShowCurrentPassword((prev) => !prev)}
                                             tabIndex={-1}
-                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition cursor-pointer"
+                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 dark:text-slate-200 hover:text-slate-800 dark:hover:text-white transition cursor-pointer"
                                         >
                                             {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                         </button>
@@ -383,7 +383,7 @@ export function ChangePasswordModal({
                                             type="button"
                                             onClick={() => setShowNewPassword((prev) => !prev)}
                                             tabIndex={-1}
-                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition cursor-pointer"
+                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 dark:text-slate-200 hover:text-slate-800 dark:hover:text-white transition cursor-pointer"
                                         >
                                             {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                         </button>
@@ -468,7 +468,7 @@ export function ChangePasswordModal({
                                             type="button"
                                             onClick={() => setShowConfirmPassword((prev) => !prev)}
                                             tabIndex={-1}
-                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition cursor-pointer"
+                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 dark:text-slate-200 hover:text-slate-800 dark:hover:text-white transition cursor-pointer"
                                         >
                                             {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                         </button>

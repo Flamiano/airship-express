@@ -357,7 +357,7 @@ export function useUserActivity() {
                 .select('role')
                 .eq('id', userId)
                 .single();
-            return data?.role === 'Admin';
+            return data?.role === 'Admin' || data?.role === 'Executive';
         } catch (error) {
             console.error('Error checking user role:', error);
             return false;
@@ -432,10 +432,15 @@ export function useUserActivity() {
     // actions
     const handleBlockDevice = async (sessionId: string, userAgent: string, ipAddress?: string, userName?: string, email?: string) => {
         const session = sessions.find(s => s.id === sessionId);
+        const sessionRole = session?.users?.role;
+        if (sessionRole === 'Admin' || sessionRole === 'Executive') {
+            toast.warning('Cannot block Admin or Executive users');
+            return;
+        }
         if (session?.user_id) {
-            const isAdmin = await isTargetUserAdmin(session.user_id);
-            if (isAdmin) {
-                toast.warning('Cannot block admin users');
+            const isProtected = await isTargetUserAdmin(session.user_id);
+            if (isProtected) {
+                toast.warning('Cannot block Admin or Executive users');
                 return;
             }
         }
@@ -719,6 +724,10 @@ export function useUserActivity() {
 
         const adminCheckPromises = Array.from(selectedSessions).map(async (sessionId) => {
             const session = sessions.find(s => s.id === sessionId);
+            const sessionRole = session?.users?.role;
+            if (sessionRole === 'Admin' || sessionRole === 'Executive') {
+                return true;
+            }
             if (session?.user_id) {
                 return await isTargetUserAdmin(session.user_id);
             }
@@ -727,7 +736,7 @@ export function useUserActivity() {
 
         const adminResults = await Promise.all(adminCheckPromises);
         if (adminResults.some(isAdmin => isAdmin)) {
-            toast.warning('Cannot block admin users');
+            toast.warning('Cannot block Admin or Executive users');
             return;
         }
 

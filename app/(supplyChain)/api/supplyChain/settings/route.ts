@@ -25,6 +25,7 @@ const DEFAULT_ROLE_REDIRECTS = {
     'Admin': '/procurement',
     'Manager': '/warehousing',
     'Operator': '/warehousing',
+    'Staff': '/documents',
     'Employee': '/documents',
 };
 
@@ -35,10 +36,10 @@ const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
     '/procurement': ['Executive', 'Admin', 'Manager'],
     '/suppliers': ['Executive', 'Admin', 'Manager'],
     '/purchase-orders': ['Executive', 'Admin', 'Manager'],
-    '/documents': ['Executive', 'Admin', 'Manager', 'Employee'],
+    '/documents': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee'],
     '/forecast': ['Executive', 'Admin'],
-    '/gallery': ['Executive', 'Admin', 'Manager', 'Employee'],
-    '/trash': ['Executive', 'Admin', 'Manager', 'Employee', 'Operator'],
+    '/gallery': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee'],
+    '/trash': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
     '/user-activity': ['Executive', 'Admin'],
     '/settings': ['Executive', 'Admin'],
 };

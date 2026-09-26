@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { AppButton } from "../../../components/ui/AppButton";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
@@ -95,13 +95,13 @@ interface MonthlyMetrics {
 }
 
 const SCOPE_OPTIONS = [
-    { value: "all", label: "All Modules (Comprehensive System)" },
-    { value: "parcels", label: "Parcels & Logistics Velocity" },
-    { value: "procurement", label: "Procurement & PO Spend" },
-    { value: "equipment", label: "Equipment & Stock Velocity" },
-    { value: "documents", label: "Documents Flow & Filing" },
-    { value: "trash", label: "Trash & Archival Deletions" },
-    { value: "users", label: "User Operations & Scans" },
+    { value: "all", label: "All Modules", fullLabel: "All Modules (Comprehensive System)", icon: "fa-layer-group", bg: "bg-pink-500/10 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400" },
+    { value: "parcels", label: "Parcels Velocity", fullLabel: "Parcels & Logistics Velocity", icon: "fa-box", bg: "bg-pink-500/10 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400" },
+    { value: "procurement", label: "Procurement Spend", fullLabel: "Procurement & PO Spend", icon: "fa-file-invoice-dollar", bg: "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" },
+    { value: "equipment", label: "Equipment Stocks", fullLabel: "Equipment & Stock Velocity", icon: "fa-boxes-stacked", bg: "bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400" },
+    { value: "documents", label: "Documents Flow", fullLabel: "Documents Flow & Filing", icon: "fa-file-lines", bg: "bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400" },
+    { value: "trash", label: "Trash & Archival", fullLabel: "Trash & Archival Deletions", icon: "fa-trash-can", bg: "bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400" },
+    { value: "users", label: "User Operations", fullLabel: "User Operations & Scans", icon: "fa-users", bg: "bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400" },
 ];
 
 const QUICK_PROMPTS = [
@@ -129,6 +129,36 @@ export default function MonthlyIntelligencePanel() {
     const [aiSummary, setAiSummary] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"ai-report" | "equipment-velocity" | "metrics-grid">("ai-report");
     const [isMinimized, setIsMinimized] = useState(false);
+
+    // Custom Dropdown Open States and Refs
+    const [isMonthOpen, setIsMonthOpen] = useState(false);
+    const [isScopeOpen, setIsScopeOpen] = useState(false);
+    const monthDropdownRef = useRef<HTMLDivElement>(null);
+    const scopeDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdowns on outside click or escape
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (monthDropdownRef.current && !monthDropdownRef.current.contains(event.target as Node)) {
+                setIsMonthOpen(false);
+            }
+            if (scopeDropdownRef.current && !scopeDropdownRef.current.contains(event.target as Node)) {
+                setIsScopeOpen(false);
+            }
+        }
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") {
+                setIsMonthOpen(false);
+                setIsScopeOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, []);
 
     // Fetch available months from DB on mount
     useEffect(() => {
@@ -233,6 +263,7 @@ export default function MonthlyIntelligencePanel() {
     }, [aiSummary]);
 
     const selectedMonthObj = availableMonths.find((m) => m.value === selectedMonth);
+    const selectedScopeObj = SCOPE_OPTIONS.find((s) => s.value === selectedScope);
 
     // Render Minimized Banner State
     if (isMinimized && aiSummary) {
@@ -322,20 +353,144 @@ export default function MonthlyIntelligencePanel() {
 
                 {/* Month Picker & Main Actions */}
                 <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-                    <div className="relative">
-                        <select
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            disabled={loadingMonths || analyzing}
-                            className="appearance-none bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-semibold rounded-2xl pl-4 pr-9 py-2.5 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] focus:outline-none cursor-pointer disabled:opacity-60"
+                    {/* Modern Month Selector Dropdown */}
+                    <div className="relative" ref={monthDropdownRef}>
+                        <button
+                            type="button"
+                            onClick={() => setIsMonthOpen((prev) => !prev)}
+                            disabled={loadingMonths || analyzing || availableMonths.length === 0}
+                            className={`group relative inline-flex items-center gap-2.5 bg-[#ebf0f7] dark:bg-[#14151c] border ${
+                                isMonthOpen
+                                    ? "border-pink-500/60 ring-2 ring-pink-500/20 shadow-[0_0_16px_rgba(244,63,94,0.18)]"
+                                    : "border-slate-200/80 dark:border-slate-800 hover:border-pink-500/40 dark:hover:border-pink-500/40"
+                            } text-slate-800 dark:text-slate-100 text-xs sm:text-sm font-semibold rounded-2xl pl-3 pr-3.5 py-2 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] focus:outline-none transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
+                            aria-haspopup="listbox"
+                            aria-expanded={isMonthOpen}
                         >
-                            {availableMonths.map((m) => (
-                                <option key={m.value} value={m.value}>
-                                    {m.label} ({m.parcelCount} parcels, {m.poCount} POs)
-                                </option>
-                            ))}
-                        </select>
-                        <i className="fa-solid fa-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none" />
+                            <div className="w-6 h-6 rounded-lg bg-pink-500/10 dark:bg-pink-500/20 text-pink-500 flex items-center justify-center text-xs shrink-0">
+                                <i className="fa-solid fa-calendar-days text-[11px]" />
+                            </div>
+
+                            <div className="flex items-center gap-2 text-left">
+                                <span className="font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                                    {loadingMonths
+                                        ? "Loading periods..."
+                                        : (selectedMonthObj?.label || "Select Period")}
+                                </span>
+
+                                {selectedMonthObj && (
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/10 dark:bg-pink-500/20 text-pink-600 dark:text-pink-300 border border-pink-500/20">
+                                            <i className="fa-solid fa-box text-[8px]" />
+                                            {selectedMonthObj.parcelCount}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20">
+                                            <i className="fa-solid fa-file-invoice text-[8px]" />
+                                            {selectedMonthObj.poCount} POs
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <i
+                                className={`fa-solid fa-chevron-down text-[10px] text-slate-400 transition-transform duration-200 ml-1 ${
+                                    isMonthOpen ? "rotate-180 text-pink-500" : "group-hover:text-slate-600 dark:group-hover:text-slate-200"
+                                }`}
+                            />
+                        </button>
+
+                        {/* Dropdown Menu Popover */}
+                        {isMonthOpen && (
+                            <div className="absolute right-0 top-full mt-2.5 z-50 w-80 sm:w-96 rounded-2xl bg-[#f0f3f8]/95 dark:bg-[#191a24]/95 backdrop-blur-xl border border-white/80 dark:border-[#2c2d3c] shadow-[0_16px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.08)] p-2.5 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-3 py-2 border-b border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <i className="fa-solid fa-calendar-check text-pink-500 text-xs" />
+                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                                            Audit Time Horizon
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                        {availableMonths.length} snapshots
+                                    </span>
+                                </div>
+
+                                <div className="mt-2 max-h-72 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                                    {availableMonths.map((m, idx) => {
+                                        const isSelected = m.value === selectedMonth;
+                                        return (
+                                            <button
+                                                key={m.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedMonth(m.value);
+                                                    setIsMonthOpen(false);
+                                                }}
+                                                className={`w-full text-left p-2.5 rounded-xl flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? "bg-gradient-to-r from-pink-500/15 via-purple-500/10 to-transparent dark:from-pink-500/25 border border-pink-500/30 text-pink-600 dark:text-pink-300 font-bold shadow-sm"
+                                                        : "hover:bg-slate-200/60 dark:hover:bg-[#20222f] text-slate-700 dark:text-slate-300 border border-transparent"
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <div
+                                                        className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs shrink-0 ${
+                                                            isSelected
+                                                                ? "bg-pink-500 text-white shadow-md shadow-pink-500/30"
+                                                                : "bg-[#ebf0f7] dark:bg-[#14151c] text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-800"
+                                                        }`}
+                                                    >
+                                                        <i className="fa-solid fa-calendar-day text-[11px]" />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-xs font-bold truncate">{m.label}</span>
+                                                            {idx === 0 && (
+                                                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-pink-500/15 text-pink-600 dark:text-pink-400">
+                                                                    Latest
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                                                            Historical Snapshot
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-pink-500/10 dark:bg-pink-500/20 text-pink-600 dark:text-pink-300 border border-pink-500/20"
+                                                        title="Parcels recorded"
+                                                    >
+                                                        <i className="fa-solid fa-box text-[8px]" />
+                                                        {m.parcelCount}
+                                                    </span>
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20"
+                                                        title="Purchase orders"
+                                                    >
+                                                        <i className="fa-solid fa-file-invoice text-[8px]" />
+                                                        {m.poCount}
+                                                    </span>
+                                                    {isSelected && (
+                                                        <i className="fa-solid fa-circle-check text-pink-500 text-xs ml-0.5" />
+                                                    )}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 px-2 flex items-center justify-between text-[11px] text-slate-400">
+                                    <span className="flex items-center gap-1.5">
+                                        <i className="fa-solid fa-circle-info text-pink-400 text-[10px]" />
+                                        Click to audit monthly trends
+                                    </span>
+                                    <span className="font-semibold text-slate-500 dark:text-slate-400">
+                                        {selectedMonthObj?.label}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <AppButton
@@ -367,21 +522,75 @@ export default function MonthlyIntelligencePanel() {
             {/* Scope Selection & Natural Language Prompt Input */}
             <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    {/* Scope Selector */}
-                    <div className="relative sm:w-56 shrink-0">
-                        <select
-                            value={selectedScope}
-                            onChange={(e) => setSelectedScope(e.target.value)}
+                    {/* Modern Scope Selector Dropdown */}
+                    <div className="relative sm:w-64 shrink-0" ref={scopeDropdownRef}>
+                        <button
+                            type="button"
+                            onClick={() => setIsScopeOpen((prev) => !prev)}
                             disabled={analyzing || !canPrompt}
-                            className="w-full appearance-none bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-2xl pl-3.5 pr-8 py-2.5 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] focus:outline-none cursor-pointer disabled:opacity-60"
+                            className={`w-full group inline-flex items-center justify-between gap-2 bg-[#ebf0f7] dark:bg-[#14151c] border ${
+                                isScopeOpen
+                                    ? "border-pink-500/60 ring-2 ring-pink-500/20 shadow-[0_0_16px_rgba(244,63,94,0.18)]"
+                                    : "border-slate-200/80 dark:border-slate-800 hover:border-pink-500/40 dark:hover:border-pink-500/40"
+                            } text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-2xl px-3.5 py-2.5 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] focus:outline-none transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
+                            aria-haspopup="listbox"
+                            aria-expanded={isScopeOpen}
                         >
-                            {SCOPE_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    Scope: {opt.label}
-                                </option>
-                            ))}
-                        </select>
-                        <i className="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none" />
+                            <div className="flex items-center gap-2 truncate">
+                                <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] ${selectedScopeObj?.bg || "bg-pink-500/10 text-pink-500"}`}>
+                                    <i className={`fa-solid ${selectedScopeObj?.icon || "fa-layer-group"}`} />
+                                </div>
+                                <span className="truncate">
+                                    Scope: <span className="font-bold text-slate-900 dark:text-white">{selectedScopeObj?.label || "All Modules"}</span>
+                                </span>
+                            </div>
+                            <i
+                                className={`fa-solid fa-chevron-down text-[10px] text-slate-400 transition-transform duration-200 shrink-0 ${
+                                    isScopeOpen ? "rotate-180 text-pink-500" : ""
+                                }`}
+                            />
+                        </button>
+
+                        {isScopeOpen && (
+                            <div className="absolute left-0 top-full mt-2 z-50 w-72 rounded-2xl bg-[#f0f3f8]/95 dark:bg-[#191a24]/95 backdrop-blur-xl border border-white/80 dark:border-[#2c2d3c] shadow-[0_16px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.08)] p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                                <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-200/60 dark:border-slate-800">
+                                    Select Analytical Scope
+                                </div>
+                                <div className="max-h-60 overflow-y-auto space-y-1 pt-1 pr-1 custom-scrollbar">
+                                    {SCOPE_OPTIONS.map((opt) => {
+                                        const isSelected = opt.value === selectedScope;
+                                        return (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedScope(opt.value);
+                                                    setIsScopeOpen(false);
+                                                }}
+                                                className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? "bg-gradient-to-r from-pink-500/15 to-transparent border border-pink-500/30 text-pink-600 dark:text-pink-300 font-bold"
+                                                        : "hover:bg-slate-200/60 dark:hover:bg-[#20222f] text-slate-700 dark:text-slate-300 border border-transparent text-xs"
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shrink-0 ${opt.bg}`}>
+                                                        <i className={`fa-solid ${opt.icon}`} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs font-semibold truncate">{opt.label}</div>
+                                                        <div className="text-[10px] text-slate-400 truncate">{opt.fullLabel}</div>
+                                                    </div>
+                                                </div>
+                                                {isSelected && (
+                                                    <i className="fa-solid fa-circle-check text-pink-500 text-xs shrink-0" />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Search Bar */}

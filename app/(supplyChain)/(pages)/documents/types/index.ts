@@ -33,7 +33,6 @@ export interface Document {
     } | null;
     force_user_name?: string | null;
     Price?: string | null;
-    "Price"?: string | null;
 }
 
 export interface Supplier {

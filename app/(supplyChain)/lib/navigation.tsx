@@ -59,7 +59,7 @@ export const NAV = [
                 label: "Documents",
                 href: "/documents",
                 icon: "fa-solid fa-folder",
-                roles: ["Executive", "Admin", "Manager", "Employee"],
+                roles: ["Executive", "Admin", "Manager", "Staff", "Employee"],
             },
             {
                 id: "forecast",
@@ -78,14 +78,14 @@ export const NAV = [
                 label: "Gallery",
                 href: "/gallery",
                 icon: "fa-solid fa-images",
-                roles: ["Executive", "Admin", "Manager", "Employee"],
+                roles: ["Executive", "Admin", "Manager", "Staff", "Employee"],
             },
             {
                 id: "Trash",
                 label: "Trash",
                 href: "/trash",
                 icon: "fa-solid fa-trash",
-                roles: ["Executive", "Admin", "Manager", "Employee", "Operator"],
+                roles: ["Executive", "Admin", "Manager", "Staff", "Employee", "Operator"],
             },
             {
                 id: "User-Activities",

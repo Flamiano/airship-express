@@ -598,11 +598,11 @@ export default function RememberedPasswordModal({
                                                     type="button"
                                                     disabled={isLockedOut}
                                                     onClick={() => setShowPassword(!showPassword)}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                                     title={showPassword ? "Hide password" : "View password"}
                                                     aria-label={showPassword ? "Hide password" : "View password"}
                                                 >
-                                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                    {showPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                                                 </button>
                                             </div>
                                         </div>
@@ -701,9 +701,9 @@ export default function RememberedPasswordModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowNewPassword(!showNewPassword)}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                                                 >
-                                                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                    {showNewPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                                                 </button>
                                             </div>
                                         </div>
@@ -724,9 +724,9 @@ export default function RememberedPasswordModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                                                 >
-                                                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                    {showConfirmPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                                                 </button>
                                             </div>
                                         </div>

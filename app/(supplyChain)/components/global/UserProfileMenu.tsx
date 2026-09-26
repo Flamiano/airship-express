@@ -360,7 +360,7 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
                                                 <Lock className="h-3.5 w-3.5"/>
                                             </div>
                                             <input type={showCurrentPassword ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" disabled={isSubmitting} className="w-full pl-9 pr-9 py-2 text-xs bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-pink-500/40 outline-none transition" autoFocus/>
-                                            <button type="button" onClick={() => setShowCurrentPassword((prev) => !prev)} tabIndex={-1} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition cursor-pointer">
+                                            <button type="button" onClick={() => setShowCurrentPassword((prev) => !prev)} tabIndex={-1} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 dark:text-slate-200 hover:text-slate-800 dark:hover:text-white transition cursor-pointer">
                                                 {showCurrentPassword ? <EyeOff className="h-3.5 w-3.5"/> : <Eye className="h-3.5 w-3.5"/>}
                                             </button>
                                         </div>
@@ -376,7 +376,7 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
                                                 <Lock className="h-3.5 w-3.5"/>
                                             </div>
                                             <input type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Enter new password" disabled={isSubmitting} className="w-full pl-9 pr-9 py-2 text-xs bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-pink-500/40 outline-none transition"/>
-                                            <button type="button" onClick={() => setShowNewPassword((prev) => !prev)} tabIndex={-1} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition cursor-pointer">
+                                            <button type="button" onClick={() => setShowNewPassword((prev) => !prev)} tabIndex={-1} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 dark:text-slate-200 hover:text-slate-800 dark:hover:text-white transition cursor-pointer">
                                                 {showNewPassword ? <EyeOff className="h-3.5 w-3.5"/> : <Eye className="h-3.5 w-3.5"/>}
                                             </button>
                                         </div>
@@ -431,7 +431,7 @@ export function UserProfileMenu({ className }: UserProfileMenuProps) {
                                             <input type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter new password" disabled={isSubmitting} className={`w-full pl-9 pr-9 py-2 text-xs bg-[#ebf0f7] dark:bg-[#14151c] border shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-pink-500/40 outline-none transition ${confirmPassword.length > 0 && !criteria.match
                     ? 'border-rose-400 dark:border-rose-500/80 focus:ring-rose-400'
                     : 'border-slate-200/60 dark:border-slate-800'}`}/>
-                                            <button type="button" onClick={() => setShowConfirmPassword((prev) => !prev)} tabIndex={-1} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition cursor-pointer">
+                                            <button type="button" onClick={() => setShowConfirmPassword((prev) => !prev)} tabIndex={-1} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 dark:text-slate-200 hover:text-slate-800 dark:hover:text-white transition cursor-pointer">
                                                 {showConfirmPassword ? <EyeOff className="h-3.5 w-3.5"/> : <Eye className="h-3.5 w-3.5"/>}
                                             </button>
                                         </div>

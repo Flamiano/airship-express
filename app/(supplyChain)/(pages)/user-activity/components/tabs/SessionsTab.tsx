@@ -153,9 +153,9 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                         ) : (
                             sessions.map((session) => {
                                 const isSelected = selectedSessions.has(session.id);
-                                const isAdmin = session.users?.role === 'Admin';
+                                const isProtectedRole = session.users?.role === 'Admin' || session.users?.role === 'Executive';
                                 const isBlocked = Boolean(session.is_blocked);
-                                const isDisabled = isAdmin || isBlocked;
+                                const isDisabled = isProtectedRole || isBlocked;
                                 const userName = session.users?.display_name || session.hr_employee_name || 'Unknown';
                                 const userIdentifier = session.user_id || session.email || session.ip_address || '';
                                 const strikeCount = session.strikes || 0;
@@ -298,8 +298,8 @@ export const SessionsTab: React.FC<SessionsTabProps> = ({
                                                         action="delete"
                                                         variant="pink"
                                                         label="Block"
-                                                        title={isAdmin ? 'Cannot block admin users' : 'Block this device'}
-                                                        disabled={isAdmin}
+                                                        title={isProtectedRole ? 'Cannot block Admin or Executive users' : 'Block this device'}
+                                                        disabled={isProtectedRole}
                                                         onClick={() =>
                                                             onBlockDevice(
                                                                 session.id,

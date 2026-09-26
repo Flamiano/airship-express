@@ -2,7 +2,7 @@
 
 import { supabase } from './client/supabase';
 
-export type UserRole = 'Admin' | 'Executive' | 'Manager' | 'Operator' | 'Employee';
+export type UserRole = 'Admin' | 'Executive' | 'Manager' | 'Operator' | 'Staff' | 'Employee';
 
 export interface InactivitySettings {
     enabled: boolean;
@@ -14,7 +14,7 @@ export interface InactivitySettings {
 export interface ConcurrencySlotSettings {
     executiveSlots: number; // Reserved exclusively for Executives & Admins (default: 10)
     managerSlots: number;   // Reserved for Managers + Executive/Admin (default: 20)
-    employeeSlots: number;  // For Employees & Operators + Manager/Executive/Admin (default: 70)
+    employeeSlots: number;  // For Staff/Employees & Operators + Manager/Executive/Admin (default: 70)
 }
 
 export interface PagePermission {
@@ -40,13 +40,14 @@ export const DEFAULT_CONCURRENCY_SLOTS: ConcurrencySlotSettings = {
     employeeSlots: 70,
 };
 
-export const ALL_ROLES: UserRole[] = ['Executive', 'Admin', 'Manager', 'Operator', 'Employee'];
+export const ALL_ROLES: UserRole[] = ['Executive', 'Admin', 'Manager', 'Operator', 'Staff', 'Employee'];
 
 export const DEFAULT_ROLE_REDIRECTS: Record<UserRole, string> = {
     'Executive': '/executive',
     'Admin': '/procurement',
     'Manager': '/warehousing',
     'Operator': '/warehousing',
+    'Staff': '/documents',
     'Employee': '/documents',
 };
 
@@ -98,7 +99,7 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
         label: 'Documents',
         description: 'Compliance files, shipping docs, and records archive',
         section: 'Intelligence',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Employee'],
+        allowedRoles: ['Executive', 'Admin', 'Manager', 'Staff', 'Employee'],
     },
     {
         route: '/forecast',
@@ -112,14 +113,14 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
         label: 'Gallery',
         description: 'Media archive, logistics photos, and inspection snapshots',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Employee'],
+        allowedRoles: ['Executive', 'Admin', 'Manager', 'Staff', 'Employee'],
     },
     {
         route: '/trash',
         label: 'Trash & Recycle Bin',
         description: 'Deleted records recovery and permanent purge controls',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Employee', 'Operator'],
+        allowedRoles: ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
     },
     {
         route: '/user-activity',
@@ -394,7 +395,7 @@ class SettingsService {
             }
         }
 
-        return fallbackRoles || ['Executive', 'Admin', 'Manager', 'Operator', 'Employee'];
+        return fallbackRoles || ['Executive', 'Admin', 'Manager', 'Operator', 'Staff', 'Employee'];
     }
 
     /**
@@ -403,7 +404,13 @@ class SettingsService {
     public canAccessPage(role: string, pathname: string, fallbackRoles?: string[]): boolean {
         if (!role) return false;
         const allowedRoles = this.getPageRoles(pathname, fallbackRoles);
-        return allowedRoles.includes(role as UserRole);
+        const normRole = role.trim().toLowerCase();
+        return allowedRoles.some(r => {
+            const normAllowed = (r || '').trim().toLowerCase();
+            if (normRole === normAllowed) return true;
+            if ((normRole === 'staff' && normAllowed === 'employee') || (normRole === 'employee' && normAllowed === 'staff')) return true;
+            return false;
+        });
     }
 
     /**

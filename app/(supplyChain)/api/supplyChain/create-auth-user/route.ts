@@ -168,10 +168,39 @@ export async function POST(request: Request) {
             console.error('supabase sign in error:', authError);
         }
 
+        // query mock_employees to fetch exact position and department
+        const { data: hrEmployee } = await supabase
+            .from('mock_employees')
+            .select('position, department, role')
+            .eq('email', email)
+            .maybeSingle();
+
+        const userPosition = hrEmployee?.position || null;
+        const userDepartment = hrEmployee?.department || null;
+
+        // Resolve accurate role based on position
+        let effectiveRole = role;
+        if (userPosition && role !== 'Admin' && role !== 'Executive') {
+            const p = userPosition.trim().toUpperCase().replace(/\s+/g, ' ');
+            if (
+                p === 'OFFICE-IN-CHARGE' ||
+                p === 'OFFICE IN CHARGE' ||
+                p === 'PROJECT COORDINATOR' ||
+                p === 'ADMIN ASSISTANT' ||
+                p === 'MANAGER'
+            ) {
+                effectiveRole = 'Manager';
+            } else if (p === 'APPRAISER' || p === 'OPERATOR') {
+                effectiveRole = 'Operator';
+            } else {
+                effectiveRole = 'Staff';
+            }
+        }
+
         // check if user exists in users table
         const { data: existingUser, error: userCheckError } = await supabase
             .from('users')
-            .select('id')
+            .select('id, position, department')
             .eq('id', userId)
             .maybeSingle();
 
@@ -182,7 +211,9 @@ export async function POST(request: Request) {
                     id: userId,
                     email: email,
                     display_name: displayName,
-                    role: role,
+                    role: effectiveRole,
+                    position: userPosition,
+                    department: userDepartment,
                     status: 'Active',
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
@@ -199,7 +230,9 @@ export async function POST(request: Request) {
             await supabase
                 .from('users')
                 .update({
-                    role: role,
+                    role: effectiveRole,
+                    position: userPosition || existingUser.position,
+                    department: userDepartment || existingUser.department,
                     display_name: displayName,
                     updated_at: new Date().toISOString(),
                 })
@@ -263,6 +296,7 @@ export async function POST(request: Request) {
         const roleRedirects: Record<string, string> = {
             'Admin': '/procurement',
             'Manager': '/warehousing?tab=incoming',
+            'Staff': '/documents',
             'Employee': '/documents',
             'Operator': '/warehousing?tab=incoming',
             'Executive': '/executive'

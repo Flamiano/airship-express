@@ -177,7 +177,9 @@ export default function UserActivityContentWrapper() {
     };
 
     const handleSelectAllSessions = () => {
-        const selectableSessions = filteredSessions.filter(s => !s.is_blocked && s.users?.role !== 'Admin');
+        const selectableSessions = filteredSessions.filter(
+            s => !s.is_blocked && s.users?.role !== 'Admin' && s.users?.role !== 'Executive'
+        );
         if (selectedSessions.size === selectableSessions.length) {
             setSelectedSessions(new Set());
         } else {

@@ -19,8 +19,14 @@ export interface ForecastReportData {
         total_parcels_in_db: number;
         total_pos_in_db: number;
         total_paid_pos_in_db?: number;
+        total_blocked_devices_in_db?: number;
+        total_sessions_in_db?: number;
+        total_users_in_db?: number;
+        total_appeals_in_db?: number;
         courier_breakdown: Record<string, number>;
         status_breakdown: Record<string, number>;
+        positions_breakdown?: Record<string, number>;
+        roles_breakdown?: Record<string, number>;
     };
     parcel_7_day: {
         predictions: number[];
@@ -74,6 +80,79 @@ export interface ForecastReportData {
             amounts: number[];
             total_actual: number;
         };
+    };
+    blocked_devices_forecast?: {
+        total_blocked: number;
+        active_blocked_count: number;
+        unblocked_count: number;
+        risk_level: string;
+        predictions: number[];
+        confidence_interval: {
+            lower: number[];
+            upper: number[];
+        };
+        total_next_week: number;
+        confidence: string;
+        model_used?: string;
+        engine?: string;
+        explanation?: string;
+        dates: string[];
+        reasons_breakdown?: Record<string, number>;
+        platform_breakdown?: { mobile: number; desktop: number; tablet: number; unknown: number };
+    };
+    active_users_forecast?: {
+        current_active_users: number;
+        unique_active_users: number;
+        total_sessions: number;
+        busiest_hour?: { timeRange: string; count: number };
+        busiest_day?: { day: string; count: number };
+        capacity_utilization?: {
+            current_active: number;
+            max_capacity: number;
+            utilization_percentage: number;
+        };
+        predictions: number[];
+        confidence_interval: {
+            lower: number[];
+            upper: number[];
+        };
+        total_next_week: number;
+        avg_daily_projected: number;
+        confidence: string;
+        model_used?: string;
+        engine?: string;
+        explanation?: string;
+        dates: string[];
+    };
+    users_positions_analytics?: {
+        total_users: number;
+        active_users_count: number;
+        positions_breakdown: Record<string, number>;
+        roles_breakdown: Record<string, number>;
+        departments_breakdown?: Record<string, number>;
+        predicted_next_month_users: number;
+        growth_rate_percentage: number;
+        confidence: string;
+        explanation?: string;
+    };
+    appeals_forecast?: {
+        total_appeals: number;
+        pending_count: number;
+        approved_count: number;
+        rejected_count: number;
+        resolution_rate: number;
+        role_breakdown?: Record<string, number>;
+        predictions: number[];
+        confidence_interval: {
+            lower: number[];
+            upper: number[];
+        };
+        total_next_week: number;
+        confidence: string;
+        model_used?: string;
+        engine?: string;
+        explanation?: string;
+        dates: string[];
     };
     timestamp?: string;
 }

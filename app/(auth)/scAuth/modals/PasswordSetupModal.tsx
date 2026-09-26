@@ -159,10 +159,10 @@ export default function PasswordSetupModal({
                                         <button
                                             type="button"
                                             onClick={() => setShowNewPassword(!showNewPassword)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                                             aria-label={showNewPassword ? 'Hide password' : 'Show password'}
                                         >
-                                            {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            {showNewPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                                         </button>
                                     </div>
                                 </div>
@@ -226,10 +226,10 @@ export default function PasswordSetupModal({
                                         <button
                                             type="button"
                                             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                                             aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                                         >
-                                            {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            {showConfirmPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                                         </button>
                                     </div>
                                     {confirmPassword.length > 0 && (
