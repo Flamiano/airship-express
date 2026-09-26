@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
+import type { ComponentType } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -65,7 +66,6 @@ interface BookingRequestDraft {
   remarks?: string;
 }
 
-
 const STEPS = [
   { number: 1, title: "Sender" },
   { number: 2, title: "Receiver" },
@@ -129,8 +129,6 @@ const PACKAGE_TYPES: { value: PackageType; label: string }[] = [
 
 const CUSTOMER_TYPES = ["Individual", "Business"] as const;
 
-// CRM intake covers walk-in and phone-call customers only. Portal customers
-// request through the separate customer portal, so PORTAL is not offered here.
 const CRM_CHANNELS: InteractionChannel[] = ["WALK_IN", "PHONE_CALL"];
 
 const MIN_SEARCH_LENGTH = 2;
@@ -163,22 +161,23 @@ const initialWizardState: WizardState = {
   },
 };
 
-/* ------------------------------------------------------------------ */
-/* Shared styles                                                       */
-/* ------------------------------------------------------------------ */
-
 const inputBase =
   "w-full text-sm border border-line bg-background text-foreground placeholder-muted/70 rounded-lg px-3 py-2.5 outline-none transition-colors focus:border-accent focus:ring-4 focus:ring-accent/15";
 
 const labelCls = "text-xs font-medium text-muted block";
 const requiredMark = <span className="text-accent">*</span>;
 
+type IconProps = {
+  size?: number | string;
+  className?: string;
+};
+
 function SectionHeader({
   icon: Icon,
   title,
   subtitle,
 }: {
-  icon: React.ElementType;
+  icon: ComponentType<IconProps>;
   title: string;
   subtitle?: string;
 }) {
@@ -210,11 +209,10 @@ function RadioOption({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-        current === value
+      className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors ${current === value
           ? "border-accent/40 bg-accent/5 text-foreground"
           : "border-line bg-background text-muted hover:border-muted/50 hover:text-foreground"
-      }`}
+        }`}
     >
       <input
         type="radio"
@@ -228,10 +226,6 @@ function RadioOption({
     </label>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Progress indicator                                                  */
-/* ------------------------------------------------------------------ */
 
 function ProgressIndicator({ current }: { current: number }) {
   return (
@@ -248,22 +242,20 @@ function ProgressIndicator({ current }: { current: number }) {
               />
             )}
             <span
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                isCurrent
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${isCurrent
                   ? "bg-accent text-white"
                   : isDone
                     ? "bg-accent/10 text-accent"
                     : "bg-background text-muted border border-line"
-              }`}
+                }`}
             >
               <span
-                className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
-                  isCurrent
+                className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${isCurrent
                     ? "bg-white/20"
                     : isDone
                       ? "bg-accent text-white"
                       : "bg-line text-muted"
-                }`}
+                  }`}
               >
                 {isDone ? <Check size={10} /> : step.number}
               </span>
@@ -276,10 +268,6 @@ function ProgressIndicator({ current }: { current: number }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Review row helper                                                   */
-/* ------------------------------------------------------------------ */
-
 function ReviewRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
@@ -288,10 +276,6 @@ function ReviewRow({ label, value }: { label: string; value: React.ReactNode }) 
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Main wizard                                                         */
-/* ------------------------------------------------------------------ */
 
 export default function NewBookingRequestWizard({
   open,
@@ -306,7 +290,6 @@ export default function NewBookingRequestWizard({
   const [step, setStep] = useState(1);
   const [wizard, setWizard] = useState<WizardState>(initialWizardState);
 
-  // Step 1 search state
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [results, setResults] = useState<CustomerSearchResult[]>([]);
@@ -355,8 +338,6 @@ export default function NewBookingRequestWizard({
     setWizard((w) => ({ ...w, receiver: { ...w.receiver, ...patch } }));
   const patchPackage = (patch: Partial<PackageState>) =>
     setWizard((w) => ({ ...w, package: { ...w.package, ...patch } }));
-
-  /* ---------------- Step 1: customer search ---------------- */
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -410,8 +391,6 @@ export default function NewBookingRequestWizard({
     wizard.sender.mode === "search"
       ? !!wizard.sender.selected
       : !!wizard.sender.newCustomer.full_name.trim();
-
-  /* ---------------- Per-step validation ---------------- */
 
   const validateStep = (target: number): string | null => {
     switch (target) {
@@ -478,17 +457,15 @@ export default function NewBookingRequestWizard({
     setSearchError(null);
   };
 
-  /* ---------------- Submission ---------------- */
-
   const buildDraft = (): BookingRequestDraft => {
     const p = wizard.package;
     const dims =
       p.dim_length && p.dim_width && p.dim_height
         ? {
-            length_cm: parseFloat(p.dim_length),
-            width_cm: parseFloat(p.dim_width),
-            height_cm: parseFloat(p.dim_height),
-          }
+          length_cm: parseFloat(p.dim_length),
+          width_cm: parseFloat(p.dim_width),
+          height_cm: parseFloat(p.dim_height),
+        }
         : undefined;
 
     return {
@@ -496,13 +473,13 @@ export default function NewBookingRequestWizard({
       new_customer:
         wizard.sender.mode === "new"
           ? {
-              full_name: wizard.sender.newCustomer.full_name,
-              customer_type: wizard.sender.newCustomer.customer_type,
-              phone: wizard.sender.newCustomer.phone
-                ? normalizePhone(wizard.sender.newCustomer.phone)
-                : undefined,
-              address: wizard.sender.newCustomer.address || undefined,
-            }
+            full_name: wizard.sender.newCustomer.full_name,
+            customer_type: wizard.sender.newCustomer.customer_type,
+            phone: wizard.sender.newCustomer.phone
+              ? normalizePhone(wizard.sender.newCustomer.phone)
+              : undefined,
+            address: wizard.sender.newCustomer.address || undefined,
+          }
           : undefined,
       request_channel: wizard.sender.channel,
       receiver_name: wizard.receiver.name,
@@ -524,7 +501,6 @@ export default function NewBookingRequestWizard({
   };
 
   const handleSubmit = (): void => {
-    // Re-validate every step before submitting.
     for (const target of [2, 3, 4]) {
       const error = validateStep(target);
       if (error) {
@@ -553,8 +529,6 @@ export default function NewBookingRequestWizard({
   };
 
   if (!open) return null;
-
-  /* ---------------- Success screen ---------------- */
 
   if (submittedRequestId) {
     return (
@@ -595,8 +569,6 @@ export default function NewBookingRequestWizard({
     );
   }
 
-  /* ---------------- Modal shell ---------------- */
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 bg-black/50 overflow-y-auto"
@@ -609,7 +581,6 @@ export default function NewBookingRequestWizard({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-3xl bg-background border border-line rounded-2xl shadow-xl my-4 sm:my-8"
       >
-        {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -638,16 +609,13 @@ export default function NewBookingRequestWizard({
           </button>
         </div>
 
-        {/* Progress indicator */}
         <div className="px-5 pt-4">
           <ProgressIndicator current={step} />
         </div>
 
         <div className="px-5 py-5 max-h-[60vh] overflow-y-auto">
-          {/* ============ STEP 1: SENDER ============ */}
           {step === 1 && (
             <div className="space-y-5">
-              {/* Mode toggle */}
               <div className="grid grid-cols-2 gap-2 rounded-lg bg-background p-1 border border-line">
                 {(
                   [
@@ -662,18 +630,16 @@ export default function NewBookingRequestWizard({
                       patchSender({ mode: m.value });
                       setStepError(null);
                     }}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                      wizard.sender.mode === m.value
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${wizard.sender.mode === m.value
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     {m.label}
                   </button>
                 ))}
               </div>
 
-              {/* Existing customer search */}
               {wizard.sender.mode === "search" &&
                 (wizard.sender.selected ? (
                   <div className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30">
@@ -795,7 +761,6 @@ export default function NewBookingRequestWizard({
                   </div>
                 ))}
 
-              {/* New customer form — customer identity fields ONLY */}
               {wizard.sender.mode === "new" && (
                 <div className="space-y-3">
                   <SectionHeader
@@ -896,8 +861,6 @@ export default function NewBookingRequestWizard({
                 </div>
               )}
 
-              {/* Interaction channel — transactional, not customer identity.
-                  Portal customers come through the customer portal, not CRM. */}
               <div className="space-y-2 rounded-xl border border-line bg-background/50 p-4">
                 <SectionHeader
                   icon={Send}
@@ -922,7 +885,6 @@ export default function NewBookingRequestWizard({
             </div>
           )}
 
-          {/* ============ STEP 2: RECEIVER ============ */}
           {step === 2 && (
             <div className="space-y-3">
               <SectionHeader
@@ -985,7 +947,6 @@ export default function NewBookingRequestWizard({
             </div>
           )}
 
-          {/* ============ STEP 3: PACKAGE ============ */}
           {step === 3 && (
             <div className="space-y-3">
               <SectionHeader
@@ -1140,7 +1101,6 @@ export default function NewBookingRequestWizard({
                 </div>
               </div>
 
-              {/* Exact spec wording: Airship Xpress Packaging */}
               <div className="space-y-2">
                 <label className={labelCls}>Airship Xpress Packaging</label>
                 <p className="text-xs text-muted">
@@ -1196,7 +1156,6 @@ export default function NewBookingRequestWizard({
             </div>
           )}
 
-          {/* ============ STEP 4: REVIEW ============ */}
           {step === 4 && (
             <div className="space-y-4">
               <div className="rounded-xl border border-line bg-background/50 p-4">
@@ -1294,8 +1253,8 @@ export default function NewBookingRequestWizard({
                     label="Dimensions"
                     value={
                       wizard.package.dim_length &&
-                      wizard.package.dim_width &&
-                      wizard.package.dim_height
+                        wizard.package.dim_width &&
+                        wizard.package.dim_height
                         ? `${wizard.package.dim_length} × ${wizard.package.dim_width} × ${wizard.package.dim_height} cm`
                         : "-"
                     }
@@ -1318,8 +1277,6 @@ export default function NewBookingRequestWizard({
                   />
                 </div>
               </div>
-
-            {/*No price yet for now*/}
             </div>
           )}
 
@@ -1330,7 +1287,6 @@ export default function NewBookingRequestWizard({
           )}
         </div>
 
-        {/* Footer navigation */}
         <div className="flex items-center justify-between gap-2 border-t border-line bg-background/50 px-5 py-4 rounded-b-2xl">
           {step === 1 ? (
             <button
