@@ -3,14 +3,12 @@ import React from 'react';
 interface CardProps {
   children: React.ReactNode;
   className?: string;
-  onClick?: () => void;
 }
 
 /** Standardized card matching the payroll & benefits paper/line theme. */
-export function Card({ children, className = '', onClick }: CardProps) {
+export function Card({ children, className = '' }: CardProps) {
   return (
     <div
-      onClick={onClick}
       className={`bg-paper rounded-2xl border border-line shadow-sm transition-all duration-300 text-ink ${className}`}
     >
       {children}

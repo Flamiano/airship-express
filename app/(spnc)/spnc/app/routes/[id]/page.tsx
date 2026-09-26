@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import DocumentLogo from "../../../spnc/components/DocumentLogo";
+import DocumentLogo from "../../../components/DocumentLogo";
 
 type RouteDetail = {
   id: string;
@@ -30,6 +30,10 @@ export default function RouteDetailPage() {
     async function fetchRoute() {
       try {
         const response = await fetch(`/spnc/app/api/routes/${params.id}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Route request failed (${response.status})`);
+        }
         const data = await response.json();
         setRoute(response.ok ? data.route || null : null);
       } catch (error) {

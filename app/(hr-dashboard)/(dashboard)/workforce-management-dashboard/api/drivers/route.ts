@@ -28,7 +28,6 @@ export async function GET() {
       id: emp.id,
       full_name: fullName,
       role,
-      department: emp.department || 'Operations',
       terminal: emp.department || 'HQ',
       on_shift: onShift.has(emp.id),
     };

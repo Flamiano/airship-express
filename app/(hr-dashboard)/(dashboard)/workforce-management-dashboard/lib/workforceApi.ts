@@ -1,4 +1,4 @@
-import { supabase } from '../../../supabase/client';
+import { supabase } from '@/app/(hr-dashboard)/supabase/client';
 
 export const WORKFORCE_API_URL =
   process.env.NEXT_PUBLIC_WORKFORCE_API_URL ||

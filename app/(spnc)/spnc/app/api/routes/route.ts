@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../lib/audit";
 import { getSupabaseClient } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +75,9 @@ export async function POST(req: NextRequest) {
       console.error("Create route error:", error);
       return NextResponse.json({ message: "Couldn't save route.", error: error.message }, { status: 500 });
     }
+
+    const actor = await getAuditActor(req);
+    if (actor) await logAuditEvent({ ...actor, eventType: "user_activity", action: `${actor.actorName} created route "${data.route_name}"`, entityType: "route", entityId: data.id, request: req });
 
     return NextResponse.json({ route: data });
   } catch (err) {

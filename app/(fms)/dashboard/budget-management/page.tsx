@@ -1,7 +1,7 @@
+// app/dashboard/budget/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { toast } from "sonner";
 import { SummaryCard } from "../../fmscomponents/dashboard/SummaryCard";
@@ -23,8 +23,8 @@ import {
   Activity,
   ArrowUpRight,
   ShieldAlert,
-  ClipboardList,
-  FileCheck,
+  Layers,
+  Percent,
 } from "lucide-react";
 import { BudgetForm } from "../../fmscomponents/financial/budget/BudgetForm";
 import {
@@ -34,14 +34,8 @@ import {
   BUDGET_FORM_ID,
 } from "../../fmscomponents/financial/budget/types";
 
-// Extend the existing BudgetRecord type to locally type DB fields like status and department
-type ExtendedBudgetRecord = BudgetRecord & {
-  status?: string;
-  department_name?: string | null;
-};
-
 export default function BudgetManagementPage() {
-  const [budgets, setBudgets] = useState<ExtendedBudgetRecord[]>([]);
+  const [budgets, setBudgets] = useState<BudgetRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -50,22 +44,22 @@ export default function BudgetManagementPage() {
   const [submittingBudget, setSubmittingBudget] = useState(false);
   const [budgetForm, setBudgetForm] = useState<BudgetFormData>(EMPTY_BUDGET_FORM);
 
-  // Safe numerical parsing
+  // Safe numerical parsing — preserved
   const parseAmount = (val: any): number => {
     if (val === null || val === undefined) return 0;
-    const num = typeof val === "number" ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, ""));
-    if (isNaN(num) || !isFinite(num)) return 0;
-    return num;
+    if (typeof val === "number") return val;
+    const cleaned = String(val).replace(/[^0-9.-]+/g, "");
+    return parseFloat(cleaned) || 0;
   };
 
-  // Fetch budget plans and calculate spending dynamically from general_ledger
+  // Fetch budget plans and calculate spending dynamically from general_ledger — preserved
   const fetchBudgets = useCallback(async () => {
     setLoading(true);
 
     try {
       const [plansRes, glRes] = await Promise.all([
         supabase.from("budget_plans").select("*").order("created_at", { ascending: false }),
-        supabase.from("general_ledger").select("amount, entry_date").eq("account_category", "expense"),
+        supabase.from("general_ledger").select("amount, created_at").eq("account_category", "expense"),
       ]);
 
       if (plansRes.error) throw plansRes.error;
@@ -74,15 +68,14 @@ export default function BudgetManagementPage() {
       const plans = plansRes.data || [];
       const glExpenses = glRes.data || [];
 
-      // Calculate spent_amount based on start_date and end_date matching GL records by entry_date
-      const computedPlans: ExtendedBudgetRecord[] = plans.map((plan) => {
+      // Calculate spent_amount based on start_date and end_date matching GL records — preserved
+      const computedPlans: BudgetRecord[] = plans.map((plan) => {
         const startTime = plan.start_date ? new Date(plan.start_date).getTime() : 0;
         const endTime = plan.end_date ? new Date(`${plan.end_date}T23:59:59.999Z`).getTime() : Infinity;
 
         const totalSpent = glExpenses
           .filter((entry) => {
-            if (!entry.entry_date) return false;
-            const entryTime = new Date(entry.entry_date).getTime();
+            const entryTime = new Date(entry.created_at).getTime();
             return entryTime >= startTime && entryTime <= endTime;
           })
           .reduce((sum, entry) => sum + parseAmount(entry.amount), 0);
@@ -122,26 +115,22 @@ export default function BudgetManagementPage() {
     }
   };
 
-  const getAllocated = (item: ExtendedBudgetRecord) => parseAmount(item.allocated_amount);
-  const getSpent = (item: ExtendedBudgetRecord) => parseAmount(item.spent_amount);
+  const getAllocated = (item: BudgetRecord) => parseAmount(item.allocated_amount);
+  const getSpent = (item: BudgetRecord) => parseAmount(item.spent_amount);
 
-  // Derived collections based STRICTLY on approved plans for operational metric integrity
-  const approvedBudgets = useMemo(() => budgets.filter((b) => b.status === "approved"), [budgets]);
-
-  // Dynamic Metric Calculations based ONLY on approved plans
+  // Dynamic Metric Calculations — preserved
   const metrics = useMemo(() => {
     let totalAllocated = 0;
     let totalSpent = 0;
     let overBudgetCount = 0;
 
-    approvedBudgets.forEach((item) => {
+    budgets.forEach((item) => {
       const allocated = getAllocated(item);
       const spent = getSpent(item);
 
       totalAllocated += allocated;
       totalSpent += spent;
 
-      // Only evaluate over-budget warnings against an approved allocation ceiling > 0
       if (spent > allocated && allocated > 0) {
         overBudgetCount += 1;
       }
@@ -158,23 +147,21 @@ export default function BudgetManagementPage() {
       overBudgetCount,
       utilizationRate,
       rawUtilization,
-      totalCount: approvedBudgets.length,
+      totalCount: budgets.length,
     };
-  }, [approvedBudgets]);
+  }, [budgets]);
 
-  // Filtering Logic applies to the whole table so users can find proposed/closed/rejected plans
+  // Filtering Logic — preserved (Period Name, Start Date, End Date, Budget Plan ID)
   const filteredBudgets = useMemo(() => {
     return budgets.filter((item) => {
       const searchLower = searchTerm.toLowerCase();
       const period = (item.period_name || "").toLowerCase();
-      const dept = (item.department_name || "").toLowerCase();
       const startDate = (item.start_date || "").toLowerCase();
       const endDate = (item.end_date || "").toLowerCase();
       const matchId = String(item.id).toLowerCase().includes(searchLower);
 
       return (
         period.includes(searchLower) ||
-        dept.includes(searchLower) ||
         startDate.includes(searchLower) ||
         endDate.includes(searchLower) ||
         matchId
@@ -182,7 +169,7 @@ export default function BudgetManagementPage() {
     });
   }, [budgets, searchTerm]);
 
-  // Handle Form Submission for New Budget Plan
+  // Handle Form Submission for New Budget Plan — preserved
   const handleCreateBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     const allocated = parseFloat(budgetForm.allocated_amount);
@@ -192,27 +179,9 @@ export default function BudgetManagementPage() {
       return;
     }
 
-    if (isNaN(allocated) || !isFinite(allocated) || allocated <= 0) {
-      toast.error("Please enter a valid positive allocated amount.");
+    if (isNaN(allocated) || allocated <= 0) {
+      toast.error("Please enter a valid allocated amount.");
       return;
-    }
-
-    const { start_date, end_date } = budgetForm;
-
-    // Robust Date Validation
-    if (start_date && !end_date) {
-      toast.error("Please provide an end date if a start date is specified.");
-      return;
-    }
-    if (end_date && !start_date) {
-      toast.error("Please provide a start date if an end date is specified.");
-      return;
-    }
-    if (start_date && end_date) {
-      if (new Date(start_date) > new Date(end_date)) {
-        toast.error("Start date must be less than or equal to the end date.");
-        return;
-      }
     }
 
     setSubmittingBudget(true);
@@ -222,20 +191,19 @@ export default function BudgetManagementPage() {
         {
           period_name: budgetForm.period_name.trim(),
           allocated_amount: allocated,
-          start_date: start_date || null,
-          end_date: end_date || null,
-          // Status relies on the default 'proposed' in the DB.
+          start_date: budgetForm.start_date || null,
+          end_date: budgetForm.end_date || null,
         },
       ]);
 
       if (error) throw error;
 
-      toast.success("Budget plan created successfully.");
+      toast.success("Budget plan allocated successfully!");
       setIsAllocateOpen(false);
       setBudgetForm(EMPTY_BUDGET_FORM);
       fetchBudgets();
     } catch (err: any) {
-      toast.error(`Failed to create budget plan: ${err.message}`);
+      toast.error(`Failed to allocate budget: ${err.message}`);
     } finally {
       setSubmittingBudget(false);
     }
@@ -245,15 +213,13 @@ export default function BudgetManagementPage() {
     setBudgetForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  // CSV Export Handler
+  // CSV Export Handler — preserved
   const handleExportCSV = () => {
-    if (filteredBudgets.length === 0) return;
+    if (budgets.length === 0) return;
 
     const headers = [
       "ID",
       "Period Name",
-      "Department",
-      "Status",
       "Start Date",
       "End Date",
       "Allocated Amount (PHP)",
@@ -261,14 +227,12 @@ export default function BudgetManagementPage() {
       "Remaining (PHP)",
     ];
 
-    const rows = filteredBudgets.map((item) => {
+    const rows = budgets.map((item) => {
       const allocated = getAllocated(item);
       const spent = getSpent(item);
       return [
         `"${item.id}"`,
         `"${item.period_name || "—"}"`,
-        `"${item.department_name || "—"}"`,
-        `"${item.status || "proposed"}"`,
         `"${formatDate(item.start_date)}"`,
         `"${formatDate(item.end_date)}"`,
         allocated,
@@ -289,7 +253,7 @@ export default function BudgetManagementPage() {
   };
 
   // Table columns with enhanced financial indicators
-  const budgetColumns: ColumnDef<ExtendedBudgetRecord>[] = [
+  const budgetColumns: ColumnDef<BudgetRecord>[] = [
     {
       header: "Period / Department",
       accessor: (item) => (
@@ -297,24 +261,9 @@ export default function BudgetManagementPage() {
           <span className="font-bold text-[#e5167e] truncate block max-w-[200px]">
             {item.period_name || `Plan #${item.id.slice(0, 8)}`}
           </span>
-          {item.department_name && (
-            <span className="text-xs font-medium text-foreground/80 block">
-              {item.department_name}
-            </span>
-          )}
-          <div className="flex items-center gap-2 pt-0.5">
-            <span className="text-[10px] text-muted-foreground font-mono">
-              ID: {item.id.slice(0, 8)}
-            </span>
-            <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-sm ${
-              item.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600' :
-              item.status === 'rejected' ? 'bg-rose-500/10 text-rose-600' :
-              item.status === 'closed' ? 'bg-slate-500/10 text-slate-600' :
-              'bg-muted text-muted-foreground'
-            }`}>
-              {item.status || 'proposed'}
-            </span>
-          </div>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            ID: {item.id.slice(0, 8)}
+          </span>
         </div>
       ),
     },
@@ -347,17 +296,7 @@ export default function BudgetManagementPage() {
       header: "Remaining Capacity",
       accessor: (item) => {
         const remaining = getAllocated(item) - getSpent(item);
-        const isApproved = item.status === "approved";
         const isNegative = remaining < 0;
-
-        if (!isApproved) {
-          return (
-            <span className="font-extrabold px-2.5 py-1 rounded-lg text-xs inline-flex items-center gap-1 bg-muted text-muted-foreground border border-border">
-              {formatPeso(remaining)}
-            </span>
-          );
-        }
-
         return (
           <span
             className={`font-extrabold px-2.5 py-1 rounded-lg text-xs inline-flex items-center gap-1 ${
@@ -377,56 +316,41 @@ export default function BudgetManagementPage() {
       accessor: (item) => {
         const allocated = getAllocated(item);
         const spent = getSpent(item);
-        const isApproved = item.status === "approved";
-        
-        const rawPercentage = (isApproved && allocated > 0) ? (spent / allocated) * 100 : 0;
+        const rawPercentage = allocated > 0 ? (spent / allocated) * 100 : 0;
         const displayPercentage = Math.min(Math.round(rawPercentage), 100);
-        
-        const isOver = isApproved && spent > allocated && allocated > 0;
-        const isWarning = isApproved && rawPercentage >= 85 && !isOver;
-
-        const statusLabel = !isApproved
-          ? item.status === 'proposed' ? 'Pending' :
-            item.status === 'rejected' ? 'Rejected' :
-            item.status === 'closed' ? 'Closed' : 'Inactive'
-          : (isOver ? "Exceeded" : isWarning ? "Near Limit" : "Normal");
-
-        const barColor = isOver ? "bg-rose-500" : isWarning ? "bg-amber-500" : "bg-[#e5167e]";
+        const isOver = spent > allocated && allocated > 0;
+        const isWarning = rawPercentage >= 85 && !isOver;
 
         return (
           <div className="space-y-1.5 min-w-[150px]">
             <div className="flex justify-between items-center text-[11px] font-bold">
               <span
                 className={
-                  !isApproved
-                    ? "text-muted-foreground"
-                    : isOver
+                  isOver
                     ? "text-rose-500 flex items-center gap-1"
                     : isWarning
                     ? "text-amber-500"
                     : "text-foreground/70"
                 }
               >
-                {!isApproved ? (
-                  "Not Operational"
-                ) : (
-                  <>
-                    {isOver && <AlertTriangle className="w-3 h-3 shrink-0" />}
-                    {Math.round(rawPercentage)}% Used
-                  </>
-                )}
+                {isOver && <AlertTriangle className="w-3 h-3 shrink-0" />}
+                {Math.round(rawPercentage)}% Used
               </span>
               <span className="text-[10px] text-muted-foreground">
-                {statusLabel}
+                {isOver ? "Exceeded" : isWarning ? "Near Limit" : "Normal"}
               </span>
             </div>
             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-              {isApproved && (
-                <div
-                  className={`h-full transition-all duration-500 ${barColor}`}
-                  style={{ width: `${displayPercentage}%` }}
-                />
-              )}
+              <div
+                className={`h-full transition-all duration-500 ${
+                  isOver
+                    ? "bg-rose-500"
+                    : isWarning
+                    ? "bg-amber-500"
+                    : "bg-[#e5167e]"
+                }`}
+                style={{ width: `${displayPercentage}%` }}
+              />
             </div>
           </div>
         );
@@ -450,7 +374,7 @@ export default function BudgetManagementPage() {
               Budget Control <span className="text-[#e5167e]">& Variance</span>
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-              Monitor departmental allocations, track GL expense utilization, evaluate capacity thresholds, and enforce budget discipline.
+              Monitor departmental allocations, track real-time GL expense utilization, evaluate capacity thresholds, and enforce budget discipline.
             </p>
           </div>
 
@@ -476,44 +400,9 @@ export default function BudgetManagementPage() {
               className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#e5167e] rounded-xl hover:bg-[#e5167e]/90 transition shadow-md shadow-[#e5167e]/20 active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              Create Budget Plan
+              Allocate New Budget
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* PAYROLL BUDGET REVIEW INTEGRATION ENTRY POINT */}
-      <div className="relative overflow-hidden rounded-2xl bg-card border border-border p-5 md:p-6 shadow-sm hover:border-[#e5167e]/40 transition-all group">
-        <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-[#e5167e]/5 to-transparent pointer-events-none" />
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-start md:items-center gap-4">
-            <div className="p-3 bg-[#e5167e]/10 border border-[#e5167e]/20 text-[#e5167e] rounded-xl shrink-0 group-hover:scale-105 transition-transform">
-              <ClipboardList className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#e5167e] bg-[#e5167e]/10 px-2.5 py-0.5 rounded-full border border-[#e5167e]/20">
-                  Payroll & Benefits Integration
-                </span>
-                <span className="text-xs text-muted-foreground hidden sm:inline">• Labor Budget Approval Flow</span>
-              </div>
-              <h3 className="text-base font-bold text-foreground group-hover:text-[#e5167e] transition-colors">
-                Payroll Budget Review
-              </h3>
-              <p className="text-xs text-muted-foreground max-w-2xl">
-                Review, evaluate, and approve or reject labor and compensation budget submissions coming from Payroll & Benefits (HR4) before formal ledger allocation.
-              </p>
-            </div>
-          </div>
-
-          <Link
-            href="/dashboard/payroll-budgetplan"
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#e5167e] hover:bg-[#e5167e]/90 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#e5167e]/20 shrink-0 active:scale-95"
-          >
-            <FileCheck className="w-4 h-4" />
-            <span>Payroll Budget Review</span>
-            <ArrowUpRight className="w-4 h-4 ml-0.5" />
-          </Link>
         </div>
       </div>
 
@@ -543,7 +432,7 @@ export default function BudgetManagementPage() {
             {/* Master Progress Track */}
             <div className="space-y-2 pt-2">
               <div className="flex justify-between items-center text-xs font-bold">
-                <span className="text-muted-foreground">Cumulative Expenditure Utilization</span>
+                <span className="text-muted-foreground">Cumulative Expenditure Velocity</span>
                 <span className={metrics.rawUtilization > 100 ? "text-rose-500 font-extrabold" : "text-[#e5167e]"}>
                   {metrics.utilizationRate}% Depleted
                 </span>
@@ -572,7 +461,7 @@ export default function BudgetManagementPage() {
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                   <span className="text-[10px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400 block">
-                    Remaining Capacity
+                    Remaining Unallocated Pool
                   </span>
                   <span className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400">
                     {formatPeso(metrics.remainingBalance)}
@@ -583,9 +472,9 @@ export default function BudgetManagementPage() {
           </div>
 
           <div className="mt-6 pt-4 border-t border-border/50 flex flex-wrap items-center justify-between text-xs text-muted-foreground gap-2">
-            <span>Source: General Ledger matching on <code className="font-mono text-foreground">account_category = 'expense'</code></span>
+            <span>Source: Real-time GL matching on <code className="font-mono text-foreground">account_category = 'expense'</code></span>
             <span className="font-semibold text-foreground flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> General Ledger Sync
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Dynamic Ledger Sync
             </span>
           </div>
         </div>
@@ -621,7 +510,7 @@ export default function BudgetManagementPage() {
               </div>
 
               <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 space-y-1">
-                <div className="text-xs text-muted-foreground">Over-Budget Approved Plans</div>
+                <div className="text-xs text-muted-foreground">Over-Budget Periods</div>
                 <div className="text-2xl font-black text-foreground">
                   {metrics.overBudgetCount} <span className="text-xs font-normal text-muted-foreground">/ {metrics.totalCount} plans</span>
                 </div>
@@ -638,8 +527,8 @@ export default function BudgetManagementPage() {
 
           <div className="mt-4 pt-4 border-t border-border/50 text-xs text-muted-foreground">
             {metrics.overBudgetCount === 0
-              ? "All approved plan expenditures remain strictly within authorized allocation caps."
-              : "Exceeded allocation limits detected. Review individual plan limits in the register below."}
+              ? "All active period expenditures remain strictly within authorized allocation caps."
+              : "Exceeded allocation limits detected. Review individual period limits in the register below."}
           </div>
         </div>
       </div>
@@ -649,13 +538,13 @@ export default function BudgetManagementPage() {
         <SummaryCard
           title="Total Approved Pool"
           value={formatPeso(metrics.totalAllocated)}
-          subtitle={`Across ${metrics.totalCount} approved plans`}
+          subtitle={`Across ${metrics.totalCount} active periods`}
           trend="Authorized"
           isPositive={true}
           icon={<PieChart className="w-5 h-5 text-[#e5167e]" />}
         />
         <SummaryCard
-          title="Approved Plan Expenditures"
+          title="YTD Expenditures"
           value={formatPeso(metrics.totalSpent)}
           subtitle={`${metrics.utilizationRate}% pool utilized`}
           trend="Spent GL"
@@ -672,7 +561,7 @@ export default function BudgetManagementPage() {
         />
         <SummaryCard
           title="Over-Budget Alerts"
-          value={`${metrics.overBudgetCount} Plan${metrics.overBudgetCount === 1 ? "" : "s"}`}
+          value={`${metrics.overBudgetCount} Period${metrics.overBudgetCount === 1 ? "" : "s"}`}
           subtitle="Requires allocation review"
           trend={metrics.overBudgetCount === 0 ? "Compliant" : "Exceeded"}
           isPositive={metrics.overBudgetCount === 0}
@@ -686,7 +575,7 @@ export default function BudgetManagementPage() {
           <div>
             <h3 className="text-base font-bold text-foreground">Budget Allocation Register</h3>
             <p className="text-xs text-muted-foreground">
-              Detailed list of all budget plans, matching general ledger expenditures, and available thresholds.
+              Detailed list of approved budget plans, matching general ledger expenditures, and available thresholds.
             </p>
           </div>
         </div>
@@ -694,7 +583,7 @@ export default function BudgetManagementPage() {
         <SearchFilterBar
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          placeholder="Search by period name, department, dates, or ID..."
+          placeholder="Search by period name, dates, or ID..."
         >
           <span className="text-xs text-muted-foreground font-semibold whitespace-nowrap bg-muted px-3 py-1.5 rounded-lg border border-border/60">
             Showing {filteredBudgets.length} of {budgets.length} plans
@@ -710,11 +599,11 @@ export default function BudgetManagementPage() {
         />
       </section>
 
-      {/* CREATE BUDGET MODAL */}
+      {/* ALLOCATE NEW BUDGET MODAL */}
       <Modal
         isOpen={isAllocateOpen}
         onClose={() => setIsAllocateOpen(false)}
-        title="Create Budget Plan"
+        title="Allocate New Budget Plan"
         maxWidth="max-w-md"
         footer={
           <>

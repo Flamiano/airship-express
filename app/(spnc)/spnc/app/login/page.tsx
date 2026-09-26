@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Image from "next/image";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Oswald, IBM_Plex_Mono, Inter } from "next/font/google";
 import { Eye, EyeOff, Loader2, Sun, Moon } from "lucide-react";
@@ -12,7 +13,14 @@ const body = Inter({ subsets: ["latin"], variable: "--font-body" });
 export default function LoginPage() {
   const router = useRouter();
 
-  const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+
+    const saved = window.localStorage.getItem("theme");
+    return saved === "light" || saved === "dark" ? saved : "light";
+  });
   const isDark = theme === "dark";
 
   const [email, setEmail] = useState("");
@@ -20,13 +28,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "light" || saved === "dark") {
-      setTheme(saved);
-    }
-  }, []);
 
   function toggleTheme() {
     const next = isDark ? "light" : "dark";
@@ -53,6 +54,7 @@ export default function LoginPage() {
         return;
       }
 
+      sessionStorage.setItem("spnc-last-activity", String(Date.now()));
       router.push("/spnc/app/dashboard");
       router.refresh();
     } catch {
@@ -67,6 +69,7 @@ export default function LoginPage() {
       className={`${display.variable} ${monoLabel.variable} ${body.variable} relative grid min-h-screen grid-cols-1 lg:grid-cols-2 ${
         isDark ? "bg-[#0B1220]" : "bg-white"
       }`}
+      suppressHydrationWarning
       style={{ fontFamily: "var(--font-body)" }}
     >
       {/* Light/dark toggle — top right */}
@@ -104,8 +107,8 @@ export default function LoginPage() {
         }`}
       >
         {/* Logo mark */}
-        <img
-          src="/images/logo-remove-bg.png"
+        <Image
+          src="/airship-logo.png"
           alt="Airship Express"
           width={220}
           height={80}

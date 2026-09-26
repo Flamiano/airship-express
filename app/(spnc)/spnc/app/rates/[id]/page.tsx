@@ -40,6 +40,10 @@ export default function RateDetailPage() {
     async function fetchRate() {
       try {
         const response = await fetch(`/spnc/app/api/rates/${params.id}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Rate request failed (${response.status})`);
+        }
         const data = await response.json();
         setRate(response.ok ? data.rate || null : null);
       } catch (error) {

@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useShell } from "../../../components/ShellContext";
+import PageHeader from "../../../components/PageHeader";
 import { ArrowLeft, Loader2, Printer, Star } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import DocumentLogo from "../../../components/DocumentLogo";
+
+type ProviderAttachment = {
+  name: string;
+  dataUrl: string;
+};
 
 type ProviderDetail = {
   id: string;
@@ -19,6 +26,7 @@ type ProviderDetail = {
   rating: number;
   contract_ref: string | null;
   notes: string | null;
+  attachments?: ProviderAttachment[];
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -35,10 +43,28 @@ export default function ServiceProviderDetailPage() {
   const [provider, setProvider] = useState<ProviderDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const firstAttachment = provider?.attachments?.[0];
+
+  function handlePrintPdf() {
+    if (!firstAttachment?.dataUrl) return;
+
+    const printWindow = window.open(firstAttachment.dataUrl, "_blank", "noopener,noreferrer");
+    if (printWindow) {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 800);
+    }
+  }
+
   useEffect(() => {
     async function fetchProvider() {
       try {
         const response = await fetch(`/spnc/app/api/service-providers/${params.id}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Service provider request failed (${response.status})`);
+        }
         const data = await response.json();
         setProvider(response.ok ? data.provider || null : null);
       } catch (error) {
@@ -83,7 +109,7 @@ export default function ServiceProviderDetailPage() {
         </button>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={handlePrintPdf}
           className="flex items-center gap-2 rounded-md bg-[#F2419B] px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#D9297E]"
         >
           <Printer size={18} />
@@ -91,77 +117,21 @@ export default function ServiceProviderDetailPage() {
         </button>
       </div>
 
-      <div className="mx-auto max-w-3xl">
-        <DocumentLogo />
-        <h1 className="mt-2 text-3xl font-bold text-gray-900">{provider.name}</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Service Provider · {TYPE_LABELS[provider.type] || provider.type}
-        </p>
-
-        <div className="mt-4 h-1 w-full bg-[#F2419B]" />
-
-        <div className="mt-8 grid grid-cols-2 gap-x-8 gap-y-6 border border-gray-200 p-6">
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Contact Person</p>
-            <p className="mt-1 text-sm text-gray-900">{provider.contact_person || "—"}</p>
+      <div className="mx-auto w-full max-w-6xl">
+        {provider.attachments && provider.attachments.length > 0 && firstAttachment ? (
+          <div className="overflow-hidden bg-white">
+            <iframe
+              src={firstAttachment.dataUrl}
+              title={`${provider.name} PDF preview`}
+              className="h-[85vh] w-full border-0 bg-white"
+              style={{ backgroundColor: "white" }}
+            />
           </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Email</p>
-            <p className="mt-1 text-sm text-gray-900">{provider.email || "—"}</p>
+        ) : (
+          <div className="flex min-h-[60vh] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500">
+            No PDF attached.
           </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Phone</p>
-            <p className="mt-1 text-sm text-gray-900">{provider.phone || "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Country</p>
-            <p className="mt-1 text-sm text-gray-900">{provider.country || "—"}</p>
-          </div>
-          <div className="col-span-2">
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Address</p>
-            <p className="mt-1 text-sm text-gray-900">{provider.address || "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Service Modes</p>
-            <p className="mt-1 text-sm text-gray-900">
-              {provider.service_modes && provider.service_modes.length > 0
-                ? provider.service_modes.join(", ")
-                : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Contract Ref</p>
-            <p className="mt-1 text-sm text-gray-900">{provider.contract_ref || "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Status</p>
-            <p className="mt-1 text-sm text-gray-900 capitalize">{provider.status}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase">Rating</p>
-            <div className="mt-1 flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Star
-                  key={n}
-                  size={14}
-                  className={n <= provider.rating ? "fill-[#F2A23B] text-[#F2A23B]" : "text-gray-300"}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <p className="border-b border-gray-200 pb-2 text-sm font-bold tracking-wide text-gray-900 uppercase">
-            Notes
-          </p>
-          <p className="mt-4 text-sm leading-relaxed text-gray-800">{provider.notes || "No notes added."}</p>
-        </div>
-
-        <div className="mt-16 flex items-center justify-between border-t border-gray-200 pt-3 text-xs text-gray-400">
-          <span>{provider.contract_ref || provider.name}</span>
-          <span>Airship Express</span>
-        </div>
+        )}
       </div>
     </div>
   );

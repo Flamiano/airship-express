@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   computePeakDeficit,
   computeMomGrowthPct,
+  computeCertificationStats,
   computeOnShiftUtilization,
+  topSkillGaps,
 } from '../analytics';
-import type { WorkforceForecast, AttendanceLog } from '../../types/workforce';
+import type { WorkforceForecast, SkillingProgress, AttendanceLog } from '../../types/workforce';
 
 function forecastRow(overrides: Partial<WorkforceForecast>): WorkforceForecast {
   return {
@@ -15,6 +17,18 @@ function forecastRow(overrides: Partial<WorkforceForecast>): WorkforceForecast {
     required_staff: 20,
     deficit: 10,
     created_at: '2026-01-01',
+    ...overrides,
+  };
+}
+
+function skillingRow(overrides: Partial<SkillingProgress>): SkillingProgress {
+  return {
+    id: 's',
+    department: 'Dept',
+    certified_count: 5,
+    total_count: 10,
+    completion_rate: 50,
+    updated_at: '2026-01-01',
     ...overrides,
   };
 }
@@ -78,18 +92,65 @@ describe('computeMomGrowthPct', () => {
   });
 });
 
-describe('computeOnShiftUtilization', () => {
-  it('returns 0 when there is no workforce', () => {
-    expect(computeOnShiftUtilization([attendanceRow('On-Shift')], 0)).toBe(0);
+describe('computeCertificationStats', () => {
+  it('returns zeros and null for empty data', () => {
+    expect(computeCertificationStats([])).toEqual({
+      certifiedCount: 0,
+      certifiedTotal: 0,
+      compliancePct: null,
+    });
   });
 
-  it('returns a percentage of On-Shift staff', () => {
+  it('weights certification across departments', () => {
+    const rows = [
+      skillingRow({ certified_count: 8, total_count: 10, completion_rate: 80 }),
+      skillingRow({ certified_count: 2, total_count: 10, completion_rate: 20 }),
+    ];
+    const { certifiedCount, certifiedTotal, compliancePct } =
+      computeCertificationStats(rows);
+    expect(certifiedCount).toBe(10);
+    expect(certifiedTotal).toBe(20);
+    expect(compliancePct).toBe(50);
+  });
+});
+
+describe('computeOnShiftUtilization', () => {
+  it('returns "0" when there is no workforce', () => {
+    expect(computeOnShiftUtilization([attendanceRow('On-Shift')], 0)).toBe('0');
+  });
+
+  it('returns a one-decimal percentage of On-Shift staff', () => {
     const rows = [
       attendanceRow('On-Shift'),
       attendanceRow('On-Shift'),
       attendanceRow('On-Break'),
       attendanceRow('Absent'),
     ];
-    expect(computeOnShiftUtilization(rows, 4)).toBe(50);
+    expect(computeOnShiftUtilization(rows, 4)).toBe('50.0');
+  });
+});
+
+describe('topSkillGaps', () => {
+  it('returns an empty array for no data', () => {
+    expect(topSkillGaps([])).toEqual([]);
+  });
+
+  it('sorts ascending and returns the lowest completion departments', () => {
+    const rows = [
+      skillingRow({ id: 'a', department: 'A', completion_rate: 80 }),
+      skillingRow({ id: 'b', department: 'B', completion_rate: 20 }),
+      skillingRow({ id: 'c', department: 'C', completion_rate: 60 }),
+      skillingRow({ id: 'd', department: 'D', completion_rate: 40 }),
+    ];
+    expect(topSkillGaps(rows).map((d) => d.department)).toEqual(['B', 'D', 'C']);
+  });
+
+  it('respects a custom count', () => {
+    const rows = [
+      skillingRow({ id: 'a', department: 'A', completion_rate: 80 }),
+      skillingRow({ id: 'b', department: 'B', completion_rate: 20 }),
+      skillingRow({ id: 'c', department: 'C', completion_rate: 60 }),
+    ];
+    expect(topSkillGaps(rows, 2).map((d) => d.department)).toEqual(['B', 'C']);
   });
 });

@@ -3,8 +3,6 @@
 import '../hrWorkforce.css';
 import { AuthProvider } from '../contexts/AuthContext';
 
-import { DashboardLayout } from '../components/layout/DashboardLayout';
-
 export default function WorkforceManagementLayout({
   children,
 }: {
@@ -12,9 +10,7 @@ export default function WorkforceManagementLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardLayout>
-        {children}
-      </DashboardLayout>
+      {children}
     </AuthProvider>
   );
 }

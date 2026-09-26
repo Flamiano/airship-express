@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../../lib/audit";
 import { getSupabaseClient } from "../../../../lib/supabase";
 
 export async function GET(
@@ -21,6 +22,8 @@ export async function GET(
     console.error("Fetch schedule error:", error);
     return NextResponse.json({ message: "Could not load schedule." }, { status: 500 });
   }
+
+  // Viewing a schedule is a read, not an update — no audit log write here.
 
   return NextResponse.json({ schedule: data });
 }
@@ -82,6 +85,19 @@ export async function PUT(
     return NextResponse.json({ message: "Could not update schedule." }, { status: 500 });
   }
 
+  // Audit log now correctly fires only when an update actually happens.
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "user_activity",
+      action: `${actor.actorName} updated schedule "${data.schedule_code}"`,
+      entityType: "schedule",
+      entityId: data.id,
+      request: req,
+    });
+  }
+
   return NextResponse.json({ schedule: data });
 }
 
@@ -108,6 +124,18 @@ export async function DELETE(
       { message: "Schedule not found or you don't have permission to delete it." },
       { status: 404 }
     );
+  }
+
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "archive",
+      action: `${actor.actorName} deleted schedule ${id}`,
+      entityType: "schedule",
+      entityId: id,
+      request: req,
+    });
   }
 
   return NextResponse.json({ success: true });

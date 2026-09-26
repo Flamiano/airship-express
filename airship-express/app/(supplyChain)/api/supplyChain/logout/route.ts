@@ -1,0 +1,109 @@
+import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
+
+export async function POST(request: Request) {
+    try {
+        let sessionToken = request.headers.get('x-session-token');
+        const userAgent = request.headers.get('user-agent') || 'Unknown';
+        const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'Unknown';
+
+        let body: any = {};
+        try {
+            body = await request.json();
+            if (!sessionToken && body?.session_token) {
+                sessionToken = body.session_token;
+            }
+        } catch (e) {
+            // no body or invalid json
+        }
+
+        if (!sessionToken) {
+            return NextResponse.json(
+                { message: 'No session found' },
+                { status: 400 }
+            );
+        }
+
+        // find session
+        const { data: session, error: sessionError } = await supabaseAdmin
+            .from('sessions')
+            .select('*')
+            .eq('session_token', sessionToken)
+            .maybeSingle();
+
+        if (sessionError || !session) {
+            return NextResponse.json(
+                { message: 'Session not found' },
+                { status: 404 }
+            );
+        }
+
+        // deactivate session but keep for reuse
+        const { error: updateError } = await supabaseAdmin
+            .from('sessions')
+            .update({
+                is_active: false,
+                user_agent: userAgent,
+            })
+            .eq('id', session.id);
+
+        if (updateError) {
+            console.error('Failed to deactivate session:', updateError);
+            return NextResponse.json(
+                { message: 'Failed to logout' },
+                { status: 500 }
+            );
+        }
+
+        const isInactive = body?.reason === 'user_inactive' || body?.action === 'INACTIVITY_TIMEOUT';
+        const action = body?.action || (isInactive ? 'INACTIVITY_TIMEOUT' : 'LOGOUT');
+        const description = body?.description || (isInactive
+            ? `Session ended: user inactive${session.hr_employee_name ? ` (${session.hr_employee_name})` : ''}`
+            : `User logged out${session.hr_employee_name ? ` (${session.hr_employee_name})` : ''}`);
+
+        // log activity
+        try {
+            await supabaseAdmin
+                .from('user_activity')
+                .insert({
+                    user_id: session.user_id,
+                    action: action,
+                    module: 'Authentication',
+                    description: description,
+                    ip_address: ipAddress,
+                    user_agent: userAgent,
+                });
+        } catch (activityError) {
+            // non-critical
+        }
+
+        return NextResponse.json({
+            message: 'Logged out successfully',
+            session_id: session.id,
+            deactivated: true,
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+        return NextResponse.json(
+            { message: 'Failed to logout' },
+            { status: 500 }
+        );
+    }
+}
+
+// preflight support
+export async function OPTIONS() {
+    return NextResponse.json({}, { status: 200 });
+}

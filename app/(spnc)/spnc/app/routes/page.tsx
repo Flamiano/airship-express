@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Map,
   Pencil,
-  Trash2,
+  Archive,
   X,
   Plus,
   Loader2,
@@ -15,14 +15,22 @@ import {
   GripVertical,
   Search,
   Eye,
+  Check,
+  ChevronDown,
+  Clock,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
 import LocationPicker from "../../components/LocationPicker";
+import MiniRouteMap from "../../components/MiniRouteMap";
 
 const MODES = ["Road", "Rail", "Air", "Sea", "Multimodal"];
 const STATUSES = ["Active", "Planned", "Discontinued"];
 const PAGE_SIZE = 5;
+const GEOCODE_DELAY_MS = 800;
+const ADDRESS_PREVIEW_CHARS = 45; // longer origin → destination text gets "See more"
+const RECENT_SEARCHES_KEY = "routes_recent_searches";
+const MAX_RECENT_SEARCHES = 5;
 
 function statusStyle(status: string, isDark: boolean) {
   switch (status) {
@@ -37,8 +45,10 @@ function statusStyle(status: string, isDark: boolean) {
   }
 }
 
-type Provider = { id: string; name: string };
+type Provider = { id: string; name: string; service_modes?: string[] | null };
 type Coordinate = [number, number];
+type LocationField = "origin" | "destination";
+type LookupState = "idle" | "loading" | "notfound";
 
 type RouteItem = {
   id: string;
@@ -61,7 +71,7 @@ const emptyForm = {
   route_name: "",
   origin: "",
   destination: "",
-  mode_of_transport: "Road",
+  mode_of_transport: [] as string[],
   service_provider_id: "",
   distance_km: "",
   estimated_transit_hours: "",
@@ -73,6 +83,20 @@ const emptyForm = {
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// "road, sea" (as saved) → ["Road", "Sea"] in the order of MODES.
+function parseModes(value: string | null | undefined): string[] {
+  const picked = (value ?? "")
+    .split(",")
+    .map((m) => m.trim().toLowerCase())
+    .filter(Boolean);
+  return MODES.filter((m) => picked.includes(m.toLowerCase()));
+}
+
+// A provider's Service Modes (e.g. ["Road", "Sea"]) in MODES order.
+function providerModes(provider: Provider | null | undefined): string[] {
+  return parseModes((provider?.service_modes ?? []).join(","));
 }
 
 function distanceBetweenLocations(origin: Coordinate, destination: Coordinate) {
@@ -105,6 +129,70 @@ async function findLocationCoordinates(label: string): Promise<Coordinate | null
   }
 }
 
+// ---- Cached, rate-limited geocoding --------------------------------------------------------
+// OpenStreetMap's free lookup allows ~1 request/second, so table rows queue up here and results
+// are remembered in the browser so each address is only ever looked up once.
+const GEO_CACHE_KEY = "routes_geocode_cache_v1";
+const GEO_SPACING_MS = 1100;
+const geoCache = new globalThis.Map<string, Coordinate | null>();
+const geoPending = new globalThis.Map<string, Promise<Coordinate | null>>();
+let geoQueue: Promise<void> = Promise.resolve();
+let geoCacheLoaded = false;
+
+function loadGeoCache() {
+  if (geoCacheLoaded || typeof window === "undefined") return;
+  geoCacheLoaded = true;
+  try {
+    const stored = window.localStorage.getItem(GEO_CACHE_KEY);
+    if (stored) {
+      for (const [k, v] of Object.entries(JSON.parse(stored) as Record<string, Coordinate>)) geoCache.set(k, v);
+    }
+  } catch {
+    // ignore unavailable/corrupt storage
+  }
+}
+
+function saveGeoCache() {
+  try {
+    const found: Record<string, Coordinate> = {};
+    for (const [k, v] of geoCache) if (v) found[k] = v; // don't persist misses, so they can be retried later
+    window.localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(found));
+  } catch {
+    // ignore
+  }
+}
+
+function geocodeQueued(label: string): Promise<Coordinate | null> {
+  const key = label.trim().toLowerCase();
+  if (!key) return Promise.resolve(null);
+  loadGeoCache();
+  if (geoCache.has(key)) return Promise.resolve(geoCache.get(key) ?? null);
+  const pending = geoPending.get(key);
+  if (pending) return pending;
+
+  const promise = new Promise<Coordinate | null>((resolve) => {
+    geoQueue = geoQueue.then(async () => {
+      const position = await findLocationCoordinates(label);
+      geoCache.set(key, position);
+      geoPending.delete(key);
+      saveGeoCache();
+      resolve(position);
+      await new Promise((r) => setTimeout(r, GEO_SPACING_MS));
+    });
+  });
+  geoPending.set(key, promise);
+  return promise;
+}
+
+// Google Maps directions link: origin → (transit points) → destination.
+function googleMapsRouteUrl(route: Pick<RouteItem, "origin" | "destination" | "transit_points" | "mode_of_transport">) {
+  const params = new URLSearchParams({ api: "1", origin: route.origin, destination: route.destination });
+  if (route.transit_points?.length) params.set("waypoints", route.transit_points.join("|"));
+  const modes = parseModes(route.mode_of_transport);
+  if (modes.length === 1 && modes[0] === "Road") params.set("travelmode", "driving");
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 // Every field is required except Notes and Transit Points.
 function isFormComplete(form: typeof emptyForm, distanceKm = form.distance_km) {
   return (
@@ -112,7 +200,7 @@ function isFormComplete(form: typeof emptyForm, distanceKm = form.distance_km) {
     form.route_name.trim() !== "" &&
     form.origin.trim() !== "" &&
     form.destination.trim() !== "" &&
-    form.mode_of_transport.trim() !== "" &&
+    form.mode_of_transport.length > 0 &&
     form.service_provider_id.trim() !== "" &&
     distanceKm.trim() !== "" &&
     form.estimated_transit_hours.trim() !== "" &&
@@ -128,8 +216,8 @@ function getMissingFieldsMessage(form: typeof emptyForm, distanceKm = form.dista
   if (form.route_name.trim() === "") missing.push("Route Name");
   if (form.origin.trim() === "") missing.push("Origin");
   if (form.destination.trim() === "") missing.push("Destination");
-  if (form.mode_of_transport.trim() === "") missing.push("Mode of Transport");
   if (form.service_provider_id.trim() === "") missing.push("Service Provider");
+  else if (form.mode_of_transport.length === 0) missing.push("Mode of Transport (add Service Modes to this provider first)");
   if (distanceKm.trim() === "") missing.push("Distance (km)");
   if (form.estimated_transit_hours.trim() === "") missing.push("Transit Time (hrs)");
   if (form.status.trim() === "") missing.push("Status");
@@ -153,7 +241,7 @@ export default function RoutesPage() {
   const [showFieldErrors, setShowFieldErrors] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [locationField, setLocationField] = useState<"origin" | "destination" | null>(null);
+  const [locationField, setLocationField] = useState<LocationField | null>(null);
   const [locationPositions, setLocationPositions] = useState<{
     origin: Coordinate | null;
     destination: Coordinate | null;
@@ -161,6 +249,91 @@ export default function RoutesPage() {
   const [page, setPage] = useState(1);
   const [pageLoading, setPageLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const searchWrapperRef = useRef<HTMLDivElement>(null);
+
+  // Rows whose origin → destination text is expanded ("See more")
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(() => new Set());
+  const [providerOpen, setProviderOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [providerSearch, setProviderSearch] = useState("");
+
+  const selectedProvider = providers.find((p) => p.id === form.service_provider_id) || null;
+  const filteredProviderOptions = providers.filter((p) =>
+    p.name.toLowerCase().includes(providerSearch.trim().toLowerCase())
+  );
+
+  // Mode of Transport is fixed by the chosen provider's Service Modes.
+  function selectProvider(id: string) {
+    const provider = providers.find((p) => p.id === id);
+    setForm((f) => ({ ...f, service_provider_id: id, mode_of_transport: providerModes(provider) }));
+    setProviderOpen(false);
+    setProviderSearch("");
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedRoutes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Mini map: which text each saved coordinate belongs to, and the lookup status per field.
+  const resolvedLabels = useRef<Record<LocationField, string>>({ origin: "", destination: "" });
+  const [lookupState, setLookupState] = useState<Record<LocationField, LookupState>>({
+    origin: "idle",
+    destination: "idle",
+  });
+
+  function resetLocations() {
+    resolvedLabels.current = { origin: "", destination: "" };
+    setLocationPositions({ origin: null, destination: null });
+    setLookupState({ origin: "idle", destination: "idle" });
+  }
+
+  // Look up a typed location (after a short pause in typing) so the mini map and distance update.
+  function scheduleGeocode(field: LocationField, label: string) {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      resolvedLabels.current[field] = "";
+      setLocationPositions((c) => ({ ...c, [field]: null }));
+      setLookupState((s) => ({ ...s, [field]: "idle" }));
+      return;
+    }
+    if (resolvedLabels.current[field] === label) return; // already located (e.g. picked on the map)
+
+    let cancelled = false;
+    setLookupState((s) => ({ ...s, [field]: "loading" }));
+    const timer = setTimeout(async () => {
+      const position = await geocodeQueued(trimmed);
+      if (cancelled) return;
+      resolvedLabels.current[field] = label;
+      setLocationPositions((c) => ({ ...c, [field]: position }));
+      setLookupState((s) => ({ ...s, [field]: position ? "idle" : "notfound" }));
+    }, GEOCODE_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }
+
+  useEffect(() => {
+    if (!showForm) return;
+    return scheduleGeocode("origin", form.origin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.origin, showForm]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    return scheduleGeocode("destination", form.destination);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.destination, showForm]);
 
   async function loadRoutes() {
     setLoading(true);
@@ -180,6 +353,60 @@ export default function RoutesPage() {
     loadRoutes();
     loadProviders();
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {
+      // ignore unavailable/corrupt storage
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
+        setShowRecentSearches(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function persistRecentSearches(next: string[]) {
+    setRecentSearches(next);
+    try {
+      window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    } catch {
+      // ignore unavailable storage
+    }
+  }
+
+  function addRecentSearch(term: string) {
+    const deduped = [term, ...recentSearches.filter((item) => item.toLowerCase() !== term.toLowerCase())];
+    persistRecentSearches(deduped.slice(0, MAX_RECENT_SEARCHES));
+  }
+
+  async function runSearch(term: string = searchInput) {
+    const trimmed = term.trim();
+    setSearchInput(term);
+    setShowRecentSearches(false);
+    setSearching(true);
+    try {
+      await loadRoutes();
+    } catch (error) {
+      console.error("Search routes failed:", error);
+    } finally {
+      setSearchTerm(trimmed);
+      setSearching(false);
+    }
+    if (trimmed) addRecentSearch(trimmed);
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearchTerm("");
+  }
 
   const filteredRoutes = routes.filter((route) => {
     const query = searchTerm.trim().toLowerCase();
@@ -247,21 +474,24 @@ export default function RoutesPage() {
     setSaveError(null);
     setShowFieldErrors(false);
     setForm(emptyForm);
-    setLocationPositions({ origin: null, destination: null });
+    resetLocations();
     setShowForm(true);
   }
 
-  async function handleEditClick(route: RouteItem) {
+  function handleEditClick(route: RouteItem) {
     setEditingId(route.id);
     setSaveError(null);
     setShowFieldErrors(false);
-    setLocationPositions({ origin: null, destination: null });
+    resetLocations(); // origin/destination get looked up automatically for the mini map
     setForm({
       route_code: route.route_code || "",
       route_name: route.route_name || "",
       origin: route.origin || "",
       destination: route.destination || "",
-      mode_of_transport: route.mode_of_transport || "Road",
+      mode_of_transport: (() => {
+        const fromProvider = providerModes(providers.find((p) => p.id === route.service_provider_id));
+        return fromProvider.length ? fromProvider : parseModes(route.mode_of_transport);
+      })(),
       service_provider_id: route.service_provider_id || "",
       distance_km: route.distance_km?.toString() || "",
       estimated_transit_hours: route.estimated_transit_hours?.toString() || "",
@@ -271,12 +501,6 @@ export default function RoutesPage() {
       notes: route.notes || "",
     });
     setShowForm(true);
-
-    const [origin, destination] = await Promise.all([
-      findLocationCoordinates(route.origin),
-      findLocationCoordinates(route.destination),
-    ]);
-    setLocationPositions({ origin, destination });
   }
 
   async function handleSave() {
@@ -304,7 +528,7 @@ export default function RoutesPage() {
           route_name: form.route_name,
           origin: form.origin,
           destination: form.destination,
-          mode_of_transport: form.mode_of_transport.toLowerCase(),
+          mode_of_transport: form.mode_of_transport.map((m) => m.toLowerCase()).join(", "),
           service_provider_id: form.service_provider_id || null,
           distance_km: (calculatedDistance || form.distance_km) ? Number(calculatedDistance || form.distance_km) : null,
           estimated_transit_hours: form.estimated_transit_hours ? Number(form.estimated_transit_hours) : null,
@@ -322,7 +546,7 @@ export default function RoutesPage() {
 
       setForm(emptyForm);
       setEditingId(null);
-      setLocationPositions({ origin: null, destination: null });
+      resetLocations();
       setShowForm(false);
       await loadRoutes();
     } catch (error) {
@@ -333,17 +557,19 @@ export default function RoutesPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this route?")) return;
+  async function handleArchive(id: string) {
+    if (!confirm("Archive this route?")) return;
     await fetch(`/spnc/app/api/routes/${id}`, { method: "DELETE" });
     loadRoutes();
   }
 
   function closeForm() {
     setShowForm(false);
+    setProviderOpen(false);
+    setStatusOpen(false);
     setEditingId(null);
     setLocationField(null);
-    setLocationPositions({ origin: null, destination: null });
+    resetLocations();
     setSaveError(null);
     setShowFieldErrors(false);
     setForm(emptyForm);
@@ -352,8 +578,10 @@ export default function RoutesPage() {
   function selectLocation(label: string, position: Coordinate) {
     if (!locationField) return;
     const selectedField = locationField;
+    resolvedLabels.current[selectedField] = label; // skip re-lookup; we already have the exact point
     setForm((current) => ({ ...current, [selectedField]: label }));
     setLocationPositions((current) => ({ ...current, [selectedField]: position }));
+    setLookupState((s) => ({ ...s, [selectedField]: "idle" }));
     setLocationField(null);
   }
 
@@ -364,6 +592,8 @@ export default function RoutesPage() {
     }
     return isDark ? "border-[#2C4356] focus:border-[#F2419B]" : "border-gray-300 focus:border-[#F2419B]";
   }
+
+  const mutedText = isDark ? "text-[#8FA0AF]" : "text-gray-500";
 
   return (
     <div className={`min-h-full pb-24 ${isDark ? "bg-[#0B1220]" : "bg-white"}`}>
@@ -380,7 +610,7 @@ export default function RoutesPage() {
             <p className="text-sm font-semibold text-[#F2419B]">Loading</p>
           </div>
         ) : routes.length === 0 ? (
-          <p className={`text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>No routes yet. Add your first one.</p>
+          <p className={`text-sm ${mutedText}`}>No routes yet. Add your first one.</p>
         ) : pageLoading ? (
           <div className="flex flex-col items-center gap-3 py-16">
             <Loader2 size={32} className="animate-spin text-[#F2419B]" />
@@ -390,28 +620,64 @@ export default function RoutesPage() {
           <>
             <div className="space-y-4">
               <div className="flex justify-end">
-                <div className="relative w-full max-w-md">
-                  <Search
-                    size={16}
-                    className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${
-                      isDark ? "text-[#8FA0AF]" : "text-gray-400"
-                    }`}
-                  />
+                <div className="relative w-full max-w-md" ref={searchWrapperRef}>
                   <input
                     type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => {
+                      setSearchInput(e.target.value);
+                      if (!e.target.value.trim()) setSearchTerm("");
+                    }}
+                    onFocus={() => setShowRecentSearches(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        runSearch();
+                      } else if (event.key === "Escape") {
+                        setShowRecentSearches(false);
+                      }
+                    }}
                     placeholder="Search routes, providers, cities..."
-                    className={`w-full rounded-md border py-2.5 pl-10 pr-3 text-sm outline-none ${
+                    className={`w-full rounded-md border py-2.5 pl-3 pr-20 text-sm outline-none ${
                       isDark
                         ? "border-[#2C4356] bg-[#121B26] text-[#F2F1EC] placeholder:text-[#4B5A68] focus:border-[#F2419B]"
                         : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#F2419B]"
                     }`}
                   />
+                  <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                    {searchInput && (
+                      <button type="button" onClick={clearSearch} aria-label="Clear search" title="Clear" className={`flex h-7 w-7 items-center justify-center rounded-md transition ${isDark ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}>
+                        <X size={15} />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => runSearch()} disabled={searching} aria-label="Search" title="Search" className="flex h-8 w-8 items-center justify-center rounded-md bg-[#F2419B] text-white transition hover:bg-[#F55CAB] disabled:opacity-70">
+                      {searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                    </button>
+                  </div>
+                  {showRecentSearches && recentSearches.length > 0 && (
+                    <div className={`absolute left-0 right-0 top-full z-20 mt-1.5 overflow-hidden rounded-md border shadow-lg ${isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
+                      <div className={`flex items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wide ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                        <span>Recent searches</span>
+                        <button type="button" onMouseDown={(event) => { event.preventDefault(); persistRecentSearches([]); }} className={`normal-case ${isDark ? "text-[#8FA0AF] hover:text-[#F2F1EC]" : "text-gray-400 hover:text-gray-700"}`}>Clear</button>
+                      </div>
+                      <ul>
+                        {recentSearches.map((term) => (
+                          <li key={term}>
+                            <div className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${isDark ? "text-[#C7D1DA] hover:bg-[#182230]" : "text-gray-700 hover:bg-gray-50"}`} onMouseDown={(event) => { event.preventDefault(); runSearch(term); }}>
+                              <span className="flex min-w-0 items-center gap-2"><Clock size={13} className={`shrink-0 ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`} /><span className="truncate">{term}</span></span>
+                              <button type="button" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); persistRecentSearches(recentSearches.filter((item) => item !== term)); }} aria-label={`Remove "${term}" from recent searches`} className={`opacity-0 transition group-hover:opacity-100 ${isDark ? "text-[#4B5A68] hover:text-[#F2F1EC]" : "text-gray-300 hover:text-gray-600"}`}><X size={13} /></button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {filteredRoutes.length === 0 ? (
+              {searching ? (
+                <div className="flex flex-col items-center gap-3 py-16"><Loader2 size={32} className="animate-spin text-[#F2419B]" /><p className="text-sm font-semibold text-[#F2419B]">Searching…</p></div>
+              ) : filteredRoutes.length === 0 ? (
                 <div
                   className={`rounded-lg border border-dashed px-4 py-10 text-center text-sm ${
                     isDark ? "border-[#2C4356] text-[#8FA0AF]" : "border-gray-300 text-gray-500"
@@ -429,7 +695,7 @@ export default function RoutesPage() {
                     <table className="min-w-full divide-y divide-[#23303D] text-left">
                       <thead className={isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}>
                         <tr>
-                          {['Route', 'Mode', 'Provider', 'Distance', 'Status', 'Actions'].map((header) => (
+                          {["Route", "Mode", "Location", "Provider", "Distance", "Status", "Actions"].map((header) => (
                             <th key={header} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
                               {header}
                             </th>
@@ -442,27 +708,60 @@ export default function RoutesPage() {
                             <td className="px-4 py-4 align-top">
                               <div className="space-y-1">
                                 <div className="font-semibold text-[#F2419B]">{r.route_code || r.route_name}</div>
-                                <div className={isDark ? "text-[#8FA0AF]" : "text-gray-500"}>
-                                  {r.origin} → {r.destination}
-                                </div>
-                                {r.route_name && (
-                                  <div className={`text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                                    {r.route_name}
-                                  </div>
-                                )}
+                                {(() => {
+                                  const text = `${r.origin} → ${r.destination}`;
+                                  const isLong = text.length > ADDRESS_PREVIEW_CHARS;
+                                  const isExpanded = expandedRoutes.has(r.id);
+                                  return (
+                                    <div className="max-w-md">
+                                      <div className={`${mutedText} ${isLong && !isExpanded ? "line-clamp-1" : ""}`}>{text}</div>
+                                      {isLong && (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleExpanded(r.id)}
+                                          className="mt-0.5 text-xs font-medium text-[#F2419B] hover:underline"
+                                        >
+                                          {isExpanded ? "See less" : "See more"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                                {r.route_name && <div className={`text-xs ${mutedText}`}>{r.route_name}</div>}
                               </div>
                             </td>
                             <td className="px-4 py-4 align-top">
-                              <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${isDark ? "border-[#2C4356] text-[#C7D1DA]" : "border-gray-300 text-gray-600"}`}>
-                                {r.mode_of_transport}
-                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                {(parseModes(r.mode_of_transport).length ? parseModes(r.mode_of_transport) : [r.mode_of_transport]).map((m) => (
+                                  <span
+                                    key={m}
+                                    className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${
+                                      isDark ? "border-[#2C4356] text-[#C7D1DA]" : "border-gray-300 text-gray-600"
+                                    }`}
+                                  >
+                                    {m}
+                                  </span>
+                                ))}
+                              </div>
                             </td>
                             <td className="px-4 py-4 align-top">
-                              {r.service_providers?.name || "—"}
+                              <a
+                                href={googleMapsRouteUrl(r)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Open ${r.route_code || r.route_name} in Google Maps`}
+                                title={`Open in Google Maps\n${r.origin} → ${r.destination}`}
+                                className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                                  isDark
+                                    ? "text-[#F2419B] hover:bg-[#3A1229]"
+                                    : "text-[#D9297E] hover:bg-[#FCE4F1]"
+                                }`}
+                              >
+                                <MapPin size={17} />
+                              </a>
                             </td>
-                            <td className="px-4 py-4 align-top">
-                              {r.distance_km ? `${r.distance_km} km` : "—"}
-                            </td>
+                            <td className="whitespace-nowrap px-4 py-4 align-top">{r.service_providers?.name || "—"}</td>
+                            <td className="px-4 py-4 align-top">{r.distance_km ? `${r.distance_km} km` : "—"}</td>
                             <td className="px-4 py-4 align-top">
                               <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle(r.status, isDark)}`}>
                                 {cap(r.status)}
@@ -472,7 +771,7 @@ export default function RoutesPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => router.push(`/routes/${r.id}`)}
+                                  onClick={() => router.push(`/spnc/app/routes/${r.id}`)}
                                   aria-label={`View ${r.route_code || r.route_name}`}
                                   title="View route details"
                                   className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
@@ -496,10 +795,10 @@ export default function RoutesPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDelete(r.id)}
+                                  onClick={() => handleArchive(r.id)}
                                   className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212]"
                                 >
-                                  <Trash2 size={15} />
+                                  <Archive size={15} />
                                 </button>
                               </div>
                             </td>
@@ -528,7 +827,7 @@ export default function RoutesPage() {
                   Back
                 </button>
 
-                <span className={`text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                <span className={`text-sm ${mutedText}`}>
                   Page {page} of {totalPages}
                 </span>
 
@@ -587,9 +886,7 @@ export default function RoutesPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                    Route Code *
-                  </label>
+                  <label className={`mb-1 block text-xs font-medium ${mutedText}`}>Route Code *</label>
                   <input
                     type="text"
                     placeholder="RTE-001"
@@ -603,9 +900,7 @@ export default function RoutesPage() {
                   />
                 </div>
                 <div>
-                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                    Route Name *
-                  </label>
+                  <label className={`mb-1 block text-xs font-medium ${mutedText}`}>Route Name *</label>
                   <input
                     type="text"
                     placeholder="Shanghai-Rotterdam Sea"
@@ -622,7 +917,10 @@ export default function RoutesPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                  <label className={`mb-1 flex items-center gap-1.5 text-xs font-medium ${mutedText}`}>
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#1FA968] text-[9px] font-bold text-white">
+                      A
+                    </span>
                     Origin *
                   </label>
                   <div className="flex gap-2">
@@ -653,7 +951,10 @@ export default function RoutesPage() {
                   </div>
                 </div>
                 <div>
-                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                  <label className={`mb-1 flex items-center gap-1.5 text-xs font-medium ${mutedText}`}>
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#F2419B] text-[9px] font-bold text-white">
+                      B
+                    </span>
                     Destination *
                   </label>
                   <div className="flex gap-2">
@@ -685,79 +986,188 @@ export default function RoutesPage() {
                 </div>
               </div>
 
+              {/* Mini map preview of origin → destination */}
               <div>
-                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Mode of Transport *
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {MODES.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setForm({ ...form, mode_of_transport: m })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.mode_of_transport === m
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p
-                  className={`mb-2 text-xs font-medium tracking-wide uppercase ${
-                    showFieldErrors && !form.service_provider_id.trim()
-                      ? "text-[#E2685A]"
-                      : isDark
-                      ? "text-[#8FA0AF]"
-                      : "text-gray-500"
-                  }`}
-                >
-                  Service Provider *
-                </p>
-                <div
-                  className={`flex flex-wrap gap-2 rounded-md ${
-                    showFieldErrors && !form.service_provider_id.trim()
-                      ? "border border-[#E2685A] p-2"
-                      : ""
-                  }`}
-                >
-                  {providers.length === 0 ? (
-                    <p className={`text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                      No providers yet — create one in Service Providers first.
-                    </p>
-                  ) : (
-                    providers.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setForm({ ...form, service_provider_id: p.id })}
-                        className={`rounded-full px-4 py-1.5 text-sm transition ${
-                          form.service_provider_id === p.id
-                            ? "bg-[#F2419B] text-white"
-                            : isDark
-                            ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                            : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
-                        }`}
-                      >
-                        {p.name}
-                      </button>
-                    ))
+                <MiniRouteMap
+                  isDark={isDark}
+                  origin={locationPositions.origin}
+                  destination={locationPositions.destination}
+                  originLabel={form.origin}
+                  destinationLabel={form.destination}
+                  loading={lookupState.origin === "loading" || lookupState.destination === "loading"}
+                />
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                  <div className="space-y-0.5">
+                    {(["origin", "destination"] as LocationField[]).map((field) =>
+                      lookupState[field] === "notfound" ? (
+                        <p key={field} className="text-[#E2685A]">
+                          Couldn&apos;t find “{form[field]}”. Use the pin button to pick the {field} on the map.
+                        </p>
+                      ) : null
+                    )}
+                  </div>
+                  {calculatedDistance && (
+                    <span className={mutedText}>
+                      Straight-line distance: <span className="font-semibold text-[#F2419B]">{Number(calculatedDistance).toLocaleString()} km</span>
+                    </span>
                   )}
                 </div>
               </div>
 
+              <div className="relative">
+                <p
+                  className={`mb-2 text-xs font-medium tracking-wide uppercase ${
+                    showFieldErrors && !form.service_provider_id.trim() ? "text-[#E2685A]" : mutedText
+                  }`}
+                >
+                  Service Provider *
+                </p>
+                {providers.length === 0 ? (
+                  <p className={`text-xs ${mutedText}`}>No providers yet — create one in Service Providers first.</p>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusOpen(false);
+                        setProviderSearch("");
+                        setProviderOpen((o) => !o);
+                      }}
+                      aria-haspopup="listbox"
+                      aria-expanded={providerOpen}
+                      className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left outline-none ${
+                        showFieldErrors && !form.service_provider_id.trim()
+                          ? "border-[#E2685A]"
+                          : providerOpen
+                          ? "border-[#F2419B]"
+                          : isDark
+                          ? "border-[#2C4356]"
+                          : "border-gray-300"
+                      } ${isDark ? "bg-[#0B1220] text-[#F2F1EC]" : "bg-white text-gray-900"}`}
+                    >
+                      <span className={`truncate ${selectedProvider ? "" : isDark ? "text-[#4B5A68]" : "text-gray-400"}`}>
+                        {selectedProvider ? selectedProvider.name : "Select a service provider"}
+                      </span>
+                      <ChevronDown
+                        size={16}
+                        className={`shrink-0 transition ${providerOpen ? "rotate-180" : ""} ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}
+                      />
+                    </button>
+
+                    {providerOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setProviderOpen(false)} />
+                        <div
+                          className={`absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg ${
+                            isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
+                          }`}
+                        >
+                          <div className={`flex items-center gap-2 border-b px-3 py-2 ${isDark ? "border-[#2C4356]" : "border-gray-200"}`}>
+                            <Search size={15} className={isDark ? "text-[#8FA0AF]" : "text-gray-400"} />
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search providers…"
+                              value={providerSearch}
+                              onChange={(e) => setProviderSearch(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && filteredProviderOptions[0]) {
+                                  e.preventDefault();
+                                  selectProvider(filteredProviderOptions[0].id);
+                                } else if (e.key === "Escape") {
+                                  setProviderOpen(false);
+                                }
+                              }}
+                              className={`w-full bg-transparent text-sm outline-none ${
+                                isDark ? "text-[#F2F1EC] placeholder:text-[#4B5A68]" : "text-gray-900 placeholder:text-gray-400"
+                              }`}
+                            />
+                          </div>
+                          <div role="listbox" className="max-h-56 overflow-y-auto">
+                            {filteredProviderOptions.length === 0 ? (
+                              <p className={`px-3 py-3 text-sm ${mutedText}`}>No providers found.</p>
+                            ) : (
+                              filteredProviderOptions.map((p) => {
+                                const selected = form.service_provider_id === p.id;
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={selected}
+                                    onClick={() => selectProvider(p.id)}
+                                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                                      selected
+                                        ? "bg-[#F2419B] text-white"
+                                        : isDark
+                                        ? "text-[#C7D1DA] hover:bg-[#1A2530]"
+                                        : "text-gray-700 hover:bg-gray-100"
+                                    }`}
+                                  >
+                                    <span className="truncate">{p.name}</span>
+                                    {selected && <Check size={14} className="shrink-0" />}
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Mode of Transport — fixed: comes from the selected provider's Service Modes */}
+              <div>
+                <p
+                  className={`mb-2 text-xs font-medium tracking-wide uppercase ${
+                    showFieldErrors && form.service_provider_id && form.mode_of_transport.length === 0
+                      ? "text-[#E2685A]"
+                      : mutedText
+                  }`}
+                >
+                  Mode of Transport *
+                </p>
+                <div
+                  className={`flex min-h-[46px] flex-wrap items-center gap-2 rounded-md border px-3 py-2 ${
+                    showFieldErrors && form.service_provider_id && form.mode_of_transport.length === 0
+                      ? "border-[#E2685A]"
+                      : isDark
+                      ? "border-[#2C4356] bg-[#0E1621]"
+                      : "border-gray-200 bg-gray-50"
+                  }`}
+                  title="Set by the service provider's Service Modes"
+                >
+                  {!form.service_provider_id ? (
+                    <span className={`text-sm ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`}>
+                      Select a service provider first
+                    </span>
+                  ) : form.mode_of_transport.length === 0 ? (
+                    <span className="text-sm text-[#E2685A]">
+                      This provider has no Service Modes. Add them in Service Providers.
+                    </span>
+                  ) : (
+                    form.mode_of_transport.map((m) => (
+                      <span
+                        key={m}
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          isDark ? "bg-[#3A1229] text-[#F2419B]" : "bg-[#FCE4F1] text-[#D9297E]"
+                        }`}
+                      >
+                        {m}
+                      </span>
+                    ))
+                  )}
+                </div>
+                {form.service_provider_id && form.mode_of_transport.length > 0 && (
+                  <p className={`mt-1 text-xs ${mutedText}`}>From {selectedProvider?.name}&apos;s Service Modes</p>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                    Distance (km) *
-                  </label>
+                  <label className={`mb-1 block text-xs font-medium ${mutedText}`}>Distance (km) *</label>
                   <input
                     type="number"
                     placeholder="19500"
@@ -773,9 +1183,7 @@ export default function RoutesPage() {
                   />
                 </div>
                 <div>
-                  <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                    Transit Time (hrs) *
-                  </label>
+                  <label className={`mb-1 block text-xs font-medium ${mutedText}`}>Transit Time (hrs) *</label>
                   <input
                     type="number"
                     placeholder="720"
@@ -792,11 +1200,9 @@ export default function RoutesPage() {
                 </div>
               </div>
 
-              {/* Transit Points — optional, pink theme to match the rest of the app */}
+              {/* Transit Points — optional */}
               <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Transit Points
-                </label>
+                <label className={`mb-1 block text-xs font-medium ${mutedText}`}>Transit Points</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -826,15 +1232,9 @@ export default function RoutesPage() {
                 </div>
 
                 {form.transit_points.length === 0 ? (
-                  <p className={`mt-2 text-xs ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`}>
-                    No stops added. This is optional.
-                  </p>
+                  <p className={`mt-2 text-xs ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`}>No stops added. This is optional.</p>
                 ) : (
-                  <div
-                    className={`mt-3 overflow-hidden rounded-lg border ${
-                      isDark ? "border-[#2C4356]" : "border-gray-200"
-                    }`}
-                  >
+                  <div className={`mt-3 overflow-hidden rounded-lg border ${isDark ? "border-[#2C4356]" : "border-gray-200"}`}>
                     {form.transit_points.map((wp, idx) => (
                       <div
                         key={idx}
@@ -873,34 +1273,74 @@ export default function RoutesPage() {
                 )}
               </div>
 
-              <div>
-                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Status *
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm({ ...form, status: s })}
-                      className={`rounded-full px-4 py-1.5 text-sm transition ${
-                        form.status === s
-                          ? "bg-[#F2419B] text-white"
-                          : isDark
-                          ? "border border-[#2C4356] text-[#C7D1DA] hover:border-[#F2419B]/40"
-                          : "border border-gray-300 text-gray-600 hover:border-[#F2419B]/60"
+              <div className="relative">
+                <p className={`mb-2 text-xs font-medium tracking-wide uppercase ${mutedText}`}>Status *</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProviderOpen(false);
+                    setStatusOpen((o) => !o);
+                  }}
+                  aria-haspopup="listbox"
+                  aria-expanded={statusOpen}
+                  className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left outline-none ${
+                    statusOpen ? "border-[#F2419B]" : isDark ? "border-[#2C4356]" : "border-gray-300"
+                  } ${isDark ? "bg-[#0B1220] text-[#F2F1EC]" : "bg-white text-gray-900"}`}
+                >
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle(form.status.toLowerCase(), isDark)}`}>
+                    {form.status}
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`transition ${statusOpen ? "rotate-180" : ""} ${isDark ? "text-[#8FA0AF]" : "text-gray-400"}`}
+                  />
+                </button>
+
+                {statusOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setStatusOpen(false)} />
+                    <div
+                      role="listbox"
+                      className={`absolute bottom-full z-20 mb-1 w-full overflow-hidden rounded-md border shadow-lg ${
+                        isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-300 bg-white"
                       }`}
                     >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                      {STATUSES.map((s) => {
+                        const selected = form.status === s;
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            onClick={() => {
+                              setForm((f) => ({ ...f, status: s }));
+                              setStatusOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                              selected
+                                ? isDark
+                                  ? "bg-[#1A2530]"
+                                  : "bg-gray-100"
+                                : isDark
+                                ? "hover:bg-[#1A2530]"
+                                : "hover:bg-gray-100"
+                            }`}
+                          >
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle(s.toLowerCase(), isDark)}`}>
+                              {s}
+                            </span>
+                            {selected && <Check size={14} className="text-[#F2419B]" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
 
               <div>
-                <label className={`mb-1 block text-xs font-medium ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-                  Notes
-                </label>
+                <label className={`mb-1 block text-xs font-medium ${mutedText}`}>Notes</label>
                 <textarea
                   placeholder="Optional notes"
                   value={form.notes}
@@ -915,9 +1355,7 @@ export default function RoutesPage() {
               </div>
 
               {saveError && (
-                <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
-                  {saveError}
-                </div>
+                <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">{saveError}</div>
               )}
             </div>
 
@@ -926,9 +1364,7 @@ export default function RoutesPage() {
                 type="button"
                 onClick={closeForm}
                 className={`flex-1 rounded-md border py-2.5 text-sm font-medium transition ${
-                  isDark
-                    ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                  isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
                 }`}
               >
                 Cancel

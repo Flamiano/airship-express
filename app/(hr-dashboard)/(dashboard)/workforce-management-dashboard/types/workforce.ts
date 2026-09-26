@@ -23,9 +23,7 @@ export type UserRole =
   | 'HR Officer'
   | 'Marketing/Admin Staff'
   | 'Drop-Off Pick-Up Rider'
-  | 'Manila Rider'
-  | 'Delivery Rider'
-  | 'Courier Driver';
+  | 'Manila Rider';
 
 // Attendance status enum
 export type AttendanceStatus = 'On-Shift' | 'On-Break' | 'Tardy' | 'Absent' | 'Clocked Out';
@@ -38,6 +36,15 @@ export type ShiftPriority = 'Normal' | 'High' | 'Critical';
 
 // Timesheet status enum
 export type TimesheetStatus = 'Pending Approval' | 'Approved' | 'Flagged Overtime' | 'Rejected';
+
+// Freight load status enum (matches hr2_freight_loads status check constraint)
+export type LoadStatus =
+  | 'Pending Driver'
+  | 'Scheduled'
+  | 'In Transit'
+  | 'Delivered'
+  | 'On Hold'
+  | 'Cancelled';
 
 // Performance doughnut segment interface
 export interface PerformanceSegment {
@@ -52,26 +59,12 @@ export type LeaveStatus = 'Pending HR Review' | 'Approved' | 'Rejected';
 // Leave type enum
 export type LeaveType = 'Mandatory Fatigue Rest' | 'Paid Time Off (PTO)' | 'Medical Leave' | 'Unpaid Leave';
 
-// Employee grouping classification
-export type EmployeeGroup = 'Office' | 'Employed Rider' | 'Third-Party Rider';
-
-export function getEmployeeGroup(role: UserRole | string | undefined): EmployeeGroup {
-  if (!role) return 'Office';
-  if (role === 'Courier Driver') return 'Third-Party Rider';
-  if (role === 'Delivery Rider') return 'Employed Rider';
-  // Fallbacks for other mock roles if they sneak in
-  if (role.includes('JNT') || role.includes('3rd Party')) return 'Third-Party Rider';
-  if (role.toLowerCase().includes('rider') || role.toLowerCase().includes('driver')) return 'Employed Rider';
-  return 'Office';
-}
-
 // Employee/Profile interface
 export interface Employee {
   id: string;
   email: string;
   full_name: string;
   role: UserRole;
-  department: string;
   avatar_initials: string;
   terminal: string;
   created_at: string;
@@ -94,33 +87,18 @@ export interface AttendanceLog {
   employee?: Employee; // Joined employee data
 }
 
-// Core Schedule Interface (replaces raw Shift)
+// Shift interface (matches shifts table)
 export interface Shift {
   id: string;
-  title?: string;
-  employee_id: string; // Rename driver_id to employee_id
+  title: string;
+  driver_id: string | null;
+  vehicle: string;
   shift_date: string;
-  
-  // Office Specific
-  shift_time?: string; 
-  break_duration_minutes?: number; // e.g. 0, 30, 60
-  break_time?: string; // e.g. 12:00 PM - 01:00 PM
-  
-  // Rider Specific
-  gate_in?: string | null;
-  gate_out?: string | null;
-  
-  // Mapped Fleet Data (Read-only, fetched from Fleet DB)
-  fleet_data?: {
-    vehicle: string;
-    expected_arrival: string;
-    priority: 'Normal' | 'High' | 'Critical';
-  };
-
+  shift_time: string;
   status: ShiftStatus;
-  override_reason?: string;
+  priority: ShiftPriority;
   created_at: string;
-  employee?: Employee; 
+  driver?: Employee; // Joined driver data
 }
 
 // Timesheet interface (matches timesheets table)
@@ -162,9 +140,6 @@ export interface PerformanceMetrics {
   on_time_rate: number;
   task_completion_rate: number;
   active_courses: number;
-  top_performers_pct?: number;
-  steady_workers_pct?: number;
-  needs_review_pct?: number;
   created_at: string;
 }
 
@@ -182,4 +157,51 @@ export interface WorkforceForecast {
   created_at: string;
 }
 
+// Skilling progress interface (matches hr2_skilling_progress table)
+export interface SkillingProgress {
+  id: string;
+  department: string;
+  certified_count: number;
+  total_count: number;
+  completion_rate: number;
+  completion_pct?: number; // Computed in API
+  updated_at?: string;
+  created_at?: string;
+}
 
+// Compliance audit item interface
+export interface ComplianceAuditItem {
+  id: string;
+  type: string;
+  severity: 'Compliant' | 'Low' | 'Medium' | 'High' | 'Critical';
+  description: string;
+  timestamp: string;
+  status: 'Open' | 'Resolved' | 'In Progress';
+}
+
+// Active load tracking (Card 4 on Dashboard)
+export interface ActiveLoad {
+  id: string;
+  load_ref: string;
+  origin: string;
+  destination: string;
+  driver_name: string;
+  driver_initials: string;
+  eta: string;
+  status: 'In Transit' | 'Delayed' | 'Dispatched' | 'Delivered';
+  progress_pct: number;
+}
+
+// Freight load interface (matches hr2_freight_loads table)
+export interface FreightLoad {
+  id: string;
+  load_ref: string;
+  origin: string;
+  destination: string;
+  pickup_date: string;
+  status: LoadStatus;
+  priority: ShiftPriority;
+  driver_id: string | null;
+  created_at: string;
+  driver?: Employee;
+}

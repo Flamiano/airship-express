@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../../lib/audit";
 import { getSupabaseClient } from "../../../../lib/supabase";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
@@ -18,6 +19,8 @@ export async function GET(
     console.error("Fetch route error:", error);
     return NextResponse.json({ message: "Couldn't load route." }, { status: 500 });
   }
+
+  // Viewing a route is a read, not an update — no audit log write here.
 
   return NextResponse.json({ route: data });
 }
@@ -54,6 +57,19 @@ export async function PUT(
     return NextResponse.json({ message: "Couldn't update route." }, { status: 500 });
   }
 
+  // Audit log now correctly fires only when an update actually happens.
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "user_activity",
+      action: `${actor.actorName} updated route "${data.route_name}"`,
+      entityType: "route",
+      entityId: data.id,
+      request: req,
+    });
+  }
+
   return NextResponse.json({ route: data });
 }
 
@@ -65,7 +81,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
@@ -76,6 +92,18 @@ export async function DELETE(
   if (error) {
     console.error("Delete route error:", error);
     return NextResponse.json({ message: "Couldn't delete route." }, { status: 500 });
+  }
+
+  const actor = await getAuditActor(req);
+  if (actor) {
+    await logAuditEvent({
+      ...actor,
+      eventType: "archive",
+      action: `${actor.actorName} deleted route ${id}`,
+      entityType: "route",
+      entityId: id,
+      request: req,
+    });
   }
 
   return NextResponse.json({ success: true });

@@ -35,7 +35,6 @@ export async function getRequestProfile(
       email: 'jose.ramos@airshipexpress.com',
       full_name: 'Jose Ramos',
       role: 'HR Generalist',
-      department: 'Human Resources',
       avatar_initials: 'JR',
       terminal: 'HQ — Operations Center',
       created_at: new Date().toISOString(),
@@ -52,7 +51,6 @@ export async function getRequestProfile(
     email: data.email || 'hr@airshipexpress.com',
     full_name: fullName,
     role: 'HR Generalist', // Ensure HR permissions in RBAC
-    department: 'Human Resources',
     avatar_initials: initials,
     terminal: data.department || 'HQ — Operations Center',
     created_at: new Date().toISOString(),

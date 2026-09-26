@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import DocumentLogo from "../../../spnc/components/DocumentLogo";
+import DocumentLogo from "../../../components/DocumentLogo";
 
 type Schedule = {
   id: string;
@@ -49,7 +49,10 @@ export default function ScheduleDetailPage() {
     async function fetchSchedule() {
       try {
         const response = await fetch(`/spnc/app/api/schedules/${params.id}`);
-        if (!response.ok) throw new Error(`Schedule request failed (${response.status})`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new Error(`Schedule request failed (${response.status})`);
+        }
         const data = await response.json();
         setSchedule(response.ok ? data.schedule || null : null);
       } catch (error) {
@@ -129,4 +132,4 @@ export default function ScheduleDetailPage() {
       </div>
     </div>
   );
-}
+} 

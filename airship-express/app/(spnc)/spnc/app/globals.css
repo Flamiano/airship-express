@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@keyframes draw-route {
+  from {
+    stroke-dashoffset: 300;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.route-line {
+  stroke-dasharray: 5 7;
+  animation: draw-route 1.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-line {
+    animation: none;
+  }
+}
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@media print {
+  @page {
+    margin: 0;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+}

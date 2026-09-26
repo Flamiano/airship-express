@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Clock, Radio, Key, CheckCircle, AlertCircle, RefreshCw, LogIn, LogOut, ArrowRightCircle, Users } from 'lucide-react';
+import { Clock, Radio, Key, CheckCircle, AlertCircle, RefreshCw, LogIn, LogOut, ArrowRightCircle } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -134,51 +134,23 @@ export default function AttendancePage() {
     } catch {}
   };
 
-  const uniqueDepartments = Array.from(new Set(profiles.map((p) => p.department).filter(Boolean))) as string[];
-  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
-  
-  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'previous_day' | 'custom'>('today');
-  const [customDate, setCustomDate] = useState<string>('');
+  const filteredScans = attendance.filter((a) =>
+    (a.employee?.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
+    (a.employee?.role ?? '').toLowerCase().includes(filter.toLowerCase())
+  );
 
-  const getTargetDate = () => {
-    const today = new Date();
-    if (dateFilter === 'today') return today.toISOString().split('T')[0];
-    if (dateFilter === 'yesterday') return new Date(today.getTime() - 86400000).toISOString().split('T')[0];
-    if (dateFilter === 'previous_day') return new Date(today.getTime() - 2 * 86400000).toISOString().split('T')[0];
-    return customDate;
-  };
-
-  const filteredScans = attendance.filter((a) => {
-    const deptMatch = departmentFilter === 'all' || a.employee?.department === departmentFilter;
-    const textMatch = 
-      (a.employee?.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-      (a.employee?.role ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-      (a.employee?.department ?? '').toLowerCase().includes(filter.toLowerCase());
-      
-    const targetDate = getTargetDate();
-    const scanDate = a.time_in ? a.time_in.split('T')[0] : a.last_scan?.split('T')[0] || '';
-    const dateMatch = !targetDate || scanDate === targetDate;
-
-    return deptMatch && textMatch && dateMatch;
-  });
-
-  const filteredRoster = profiles.filter((p) => {
-    const deptMatch = departmentFilter === 'all' || p.department === departmentFilter;
-    const textMatch = 
-      (p.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-      (p.role ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-      (p.department ?? '').toLowerCase().includes(filter.toLowerCase()) ||
-      (p.email ?? '').toLowerCase().includes(filter.toLowerCase());
-
-    return deptMatch && textMatch;
-  });
+  const filteredRoster = profiles.filter((p) =>
+    (p.full_name ?? '').toLowerCase().includes(filter.toLowerCase()) ||
+    (p.role ?? '').toLowerCase().includes(filter.toLowerCase()) ||
+    (p.email ?? '').toLowerCase().includes(filter.toLowerCase())
+  );
 
   const onShiftCount = attendance.filter((a) => a.status === 'On-Shift').length;
   const onBreakCount = attendance.filter((a) => a.status === 'On-Break').length;
   const tardyCount = attendance.filter((a) => a.status === 'Tardy').length;
 
   return (
-    <>
+    <DashboardLayout realtimeConnected={connected}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-paper p-5 rounded-2xl border border-line shadow-sm">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -226,45 +198,25 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">On-Shift Active</p>
-              <div className="group relative">
-                <AlertCircle size={12} className="text-muted cursor-help" />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-ink text-paper text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 text-center">
-                  Displays who is currently clocked in and working in the facility.
-                </div>
-              </div>
-            </div>
+            <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">On-Shift Active</p>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
           </div>
           <p className="text-2xl font-bold text-ink mt-1">{onShiftCount}</p>
         </div>
         <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm">
-          <div className="flex items-center gap-1.5">
-            <p className="text-xs font-semibold text-accent uppercase tracking-wider">On Break</p>
-            <div className="group relative">
-              <AlertCircle size={12} className="text-muted cursor-help" />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-ink text-paper text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 text-center">
-                For people who are currently clocked out for a break.
-              </div>
-            </div>
-          </div>
+          <p className="text-xs font-semibold text-accent uppercase tracking-wider">On Break</p>
           <p className="text-2xl font-bold text-ink mt-1">{onBreakCount}</p>
         </div>
         <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm">
-          <div className="flex items-center gap-1.5">
-            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Tardy / Late</p>
-            <div className="group relative">
-              <AlertCircle size={12} className="text-muted cursor-help" />
-              <div className="absolute bottom-full right-0 translate-x-1/4 mb-2 w-52 bg-ink text-paper text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 text-center">
-                Shows late arrivals scoped only for today's date.
-              </div>
-            </div>
-          </div>
+          <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Tardy / Late</p>
           <p className="text-2xl font-bold text-rose-500 mt-1">{tardyCount}</p>
+        </div>
+        <div className="bg-paper border border-line p-4 rounded-2xl shadow-sm">
+          <p className="text-xs font-semibold text-muted uppercase tracking-wider">Total Roster</p>
+          <p className="text-2xl font-bold text-ink mt-1">{profiles.length}</p>
         </div>
       </div>
 
@@ -280,7 +232,7 @@ export default function AttendancePage() {
             </div>
             <div className="text-center py-4 space-y-3">
               <div className="w-16 h-16 rounded-full bg-accent/15 text-accent font-bold text-xl flex items-center justify-center mx-auto shadow-inner">
-                {selectedEmployee.avatar_initials || selectedEmployee.full_name?.charAt(0) || 'E'}
+                {selectedEmployee.avatar_initials || '👤'}
               </div>
               <div>
                 <h4 className="font-semibold text-ink text-base">{selectedEmployee.full_name}</h4>
@@ -314,23 +266,23 @@ export default function AttendancePage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('live_scans')}
-              className={`flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
+              className={`text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
                 activeTab === 'live_scans'
                   ? 'bg-accent text-paper shadow-sm shadow-accent/25'
                   : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
               }`}
             >
-              <Clock size={16} /> Attendance Logs
+              ⏱️ Attendance logs ({filteredScans.length})
             </button>
             <button
               onClick={() => setActiveTab('roster')}
-              className={`flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
+              className={`text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-xl transition-all ${
                 activeTab === 'roster'
                   ? 'bg-accent text-paper shadow-sm shadow-accent/25'
                   : 'text-muted hover:text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06]'
               }`}
             >
-              <Users size={16} /> Employee & ID Setup
+              👥 Employee and ID-setup ({filteredRoster.length})
             </button>
           </div>
           <input
@@ -342,86 +294,11 @@ export default function AttendancePage() {
           />
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-          {/* Department Filter */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            <span className="text-xs font-semibold text-muted shrink-0 mr-1">Department:</span>
-            <button
-              onClick={() => setDepartmentFilter('all')}
-              className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
-                departmentFilter === 'all' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
-              }`}
-            >
-              All
-            </button>
-            {uniqueDepartments.map(dept => (
-              <button
-                key={dept}
-                onClick={() => setDepartmentFilter(dept)}
-                className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
-                  departmentFilter === dept ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
-                }`}
-              >
-                {dept}
-              </button>
-            ))}
-          </div>
-
-          {/* Date Filter (Only for Logs) */}
-          {activeTab === 'live_scans' && (
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-              <span className="text-xs font-semibold text-muted shrink-0 mr-1">Date:</span>
-              <button
-                onClick={() => setDateFilter('today')}
-                className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
-                  dateFilter === 'today' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setDateFilter('yesterday')}
-                className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
-                  dateFilter === 'yesterday' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
-                }`}
-              >
-                Yesterday
-              </button>
-              <button
-                onClick={() => setDateFilter('previous_day')}
-                className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
-                  dateFilter === 'previous_day' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
-                }`}
-              >
-                Previous Day
-              </button>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setDateFilter('custom')}
-                  className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all ${
-                    dateFilter === 'custom' ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5'
-                  }`}
-                >
-                  Custom
-                </button>
-                {dateFilter === 'custom' && (
-                  <input 
-                    type="date"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
-                    className="text-xs bg-ink/[0.03] dark:bg-paper/[0.05] border border-line rounded-lg px-2 py-1 text-ink focus:outline-none"
-                  />
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
         {activeTab === 'live_scans' && (
           <Table>
             <THead>
               <TR header>
-                <TH>Employee</TH><TH>Role & Department</TH><TH>Device Station</TH><TH>Time In</TH><TH>Time Out</TH><TH>Status</TH>
+                <TH>Employee</TH><TH>Role & Terminal</TH><TH>Device Station</TH><TH>Time In</TH><TH>Time Out</TH><TH>Status</TH>
               </TR>
             </THead>
             <TBody>
@@ -440,11 +317,11 @@ export default function AttendancePage() {
                   </TD>
                   <TD>
                     <div className="font-medium text-xs text-ink">{row.employee?.role || 'Staff'}</div>
-                    <div className="text-[11px] text-muted font-semibold">{row.employee?.department || 'Unassigned'}</div>
+                    <div className="text-[11px] text-muted">{row.terminal}</div>
                   </TD>
                   <TD>
                     <span className="font-mono text-[11px] bg-ink/[0.04] dark:bg-paper/[0.06] border border-line px-2 py-0.5 rounded text-ink font-medium">
-                      {row.terminal?.includes('ESP') ? row.terminal : 'ESP32-GATE-01'}
+                      {row.terminal.includes('ESP32') ? row.terminal : 'ESP32-GATE-01'}
                     </span>
                   </TD>
                   <TD className="text-emerald-600 dark:text-emerald-400 font-mono text-xs font-semibold">{formatScan(row.time_in || row.last_scan)}</TD>
@@ -464,7 +341,7 @@ export default function AttendancePage() {
           <Table>
             <THead>
               <TR header>
-                <TH>Employee Name</TH><TH>Role</TH><TH>Department</TH><TH>Registered Card UID</TH><TH className="text-right">Card Assignment</TH>
+                <TH>Employee Name</TH><TH>Role</TH><TH>Terminal Location</TH><TH>Registered Card UID</TH><TH className="text-right">Card Assignment</TH>
               </TR>
             </THead>
             <TBody>
@@ -473,18 +350,18 @@ export default function AttendancePage() {
                   <TD className="font-semibold text-ink">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full bg-accent/15 text-accent font-bold text-xs flex items-center justify-center">
-                        {emp.avatar_initials || emp.full_name?.charAt(0) || 'E'}
+                        {emp.avatar_initials || '👤'}
                       </div>
                       <span className="text-sm">{emp.full_name}</span>
                     </div>
                   </TD>
                   <TD className="text-xs text-muted font-medium">{emp.role}</TD>
-                  <TD className="text-xs text-muted font-semibold">{emp.department || 'Unassigned'}</TD>
+                  <TD className="text-xs text-muted">{emp.terminal || 'Manila Hub'}</TD>
                   <TD>
                     {emp.rfid_uid ? (
-                      <div className="flex items-center gap-1.5 font-mono text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-lg font-bold w-max">
-                        <Key size={12} /> {emp.rfid_uid}
-                      </div>
+                      <span className="font-mono text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-lg font-bold">
+                        🔑 {emp.rfid_uid}
+                      </span>
                     ) : (
                       <span className="text-xs text-muted italic">Unassigned</span>
                     )}
@@ -514,7 +391,7 @@ export default function AttendancePage() {
           <p className="text-xs text-muted text-center py-8">No matching roster employees found.</p>
         )}
       </Card>
-    </>
+    </DashboardLayout>
 
   );
 }

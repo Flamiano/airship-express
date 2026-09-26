@@ -6,18 +6,10 @@ export type ApiResponse<T> = { data: T } | { error: string };
 export interface CreateShiftPayload {
   title: string;
   driver_id: string | null;
+  vehicle: string;
   shift_date: string;
-  
-  // Office fields
-  shift_time?: string;
-  break_duration_minutes?: number;
-  break_time?: string;
-}
-
-export interface UpdateShiftPayload extends Partial<CreateShiftPayload> {
-  id: string;
-  override_reason?: string;
-  status?: string;
+  shift_time: string;
+  priority: 'Normal' | 'High' | 'Critical';
 }
 
 // Payload for creating a freight load (POST /api/loads)

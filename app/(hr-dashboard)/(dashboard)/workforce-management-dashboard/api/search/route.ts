@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const supabase = getSupabaseAdmin();
   const pat = `%${q}%`;
 
-  const [people, shifts, timesheets, leave] = await Promise.all([
+  const [people, shifts, timesheets, leave, loads] = await Promise.all([
     supabase
       .from('hr1_employees')
       .select('id, first_name, last_name, department, job_position:hr1_job_positions(title)')
@@ -48,6 +48,12 @@ export async function GET(request: NextRequest) {
       .from('hr2_leave_requests')
       .select('id, leave_type, status, start_date, end_date, employee:hr1_employees(first_name, last_name)')
       .or(`leave_type.ilike.${pat},status.ilike.${pat}`)
+      .limit(PER_GROUP)
+      .then((r) => r.data ?? [], () => []),
+    supabase
+      .from('hr2_freight_loads')
+      .select('id, load_ref, origin, destination, status, driver:hr1_employees(first_name, last_name)')
+      .or(`load_ref.ilike.${pat},origin.ilike.${pat},destination.ilike.${pat},status.ilike.${pat}`)
       .limit(PER_GROUP)
       .then((r) => r.data ?? [], () => []),
   ]);
@@ -91,6 +97,15 @@ export async function GET(request: NextRequest) {
         title: `${nameOf(l.employee)} — ${l.leave_type}`,
         subtitle: `${l.start_date} → ${l.end_date} • ${l.status}`,
         href: '/workforce-management-dashboard/leave',
+      })
+    ),
+    ...loads.map(
+      (ld: any): SearchResult => ({
+        id: ld.id,
+        type: 'load',
+        title: `${ld.load_ref} — ${ld.origin} → ${ld.destination}`,
+        subtitle: `${nameOf(ld.driver)} • ${ld.status}`,
+        href: '/workforce-management-dashboard/loads',
       })
     ),
   ];

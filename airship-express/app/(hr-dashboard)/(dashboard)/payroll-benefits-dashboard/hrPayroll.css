@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+
+  --color-sss: var(--sss);
+  --color-sss-soft: var(--sss-soft);
+  --color-philhealth: var(--philhealth);
+  --color-philhealth-soft: var(--philhealth-soft);
+  --color-pagibig: var(--pagibig);
+  --color-pagibig-soft: var(--pagibig-soft);
+}
+
+:root {
+  --background: #fcfbf9;
+  --foreground: #1c1b1f;
+
+  --ink: #1c1b1f;
+  --muted: #6b6b76;
+  --accent: #e5167e;
+  --accent-dark: #b3115f;
+  --paper: #fcfbf9;
+  --line: #eaeaea;
+
+  --sss: #2455c7;
+  --sss-soft: #eef3fe;
+  --philhealth: #0b8f6b;
+  --philhealth-soft: #e9f8f2;
+  --pagibig: #b8720e;
+  --pagibig-soft: #fbf1de;
+}
+
+:root.dark,
+.dark {
+  --background: #131217 !important;
+  --foreground: #f4f3f6 !important;
+
+  --ink: #f4f3f6 !important;
+  --muted: #9a98a3 !important;
+  --accent: #ff4d9b !important;
+  --accent-dark: #e5167e !important;
+  --paper: #1c1b22 !important;
+  --line: #2b2a33 !important;
+
+  --sss: #6f97ff !important;
+  --sss-soft: #182241 !important;
+  --philhealth: #2fd6a4 !important;
+  --philhealth-soft: #0e2b23 !important;
+  --pagibig: #f0a53d !important;
+  --pagibig-soft: #35260f !important;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+html,
+body {
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+* {
+  transition: background-color 0.3s ease, color 0.3s ease,
+    border-color 0.3s ease, box-shadow 0.3s ease, fill 0.3s ease,
+    stroke 0.3s ease;
+}
+
+.bg-background {
+  background-color: var(--background);
+}
+
+.text-foreground {
+  color: var(--foreground);
+}
+
+.bg-paper {
+  background-color: var(--paper);
+}
+
+.text-ink {
+  color: var(--ink);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+.border-line {
+  border-color: var(--line);
+}
+
+.bg-accent {
+  background-color: var(--accent);
+}
+
+.text-accent {
+  color: var(--accent);
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.dark .card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+::selection {
+  background: var(--accent);
+  color: white;
+}

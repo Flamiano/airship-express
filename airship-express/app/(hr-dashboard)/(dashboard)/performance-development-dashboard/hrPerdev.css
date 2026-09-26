@@ -1,0 +1,30 @@
+/*
+ * HR3 Performance Development — scoped dark-mode compatibility layer.
+ *
+ * app/globals.css flips token VALUES under `.dark`, while HR3 markup
+ * treats `paper` and `ink` as STATIC pigments and swaps them itself via
+ * explicit `dark:` variants (`bg-paper dark:bg-ink`, etc.). Without this
+ * layer those variants double-flip and render light surfaces in dark
+ * mode. Pin paper/ink to their literal values here; line, muted and
+ * accent intentionally stay adaptive (inherited from globals.css).
+ */
+
+.hr-perdev {
+  color-scheme: light;
+  --color-paper: #fcfbf9;
+  --color-ink: #1c1b1f;
+}
+
+.dark .hr-perdev {
+  color-scheme: dark;
+  --color-paper: #fcfbf9;
+  --color-ink: #1c1b1f;
+}
+
+/* Native select popups stay readable (Chromium/Firefox honor these;
+   Safari falls back to OS rendering via color-scheme above). */
+.hr-perdev select option,
+.hr-perdev select optgroup {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}

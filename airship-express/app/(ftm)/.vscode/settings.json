@@ -1,0 +1,11 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+  "css.lint.unknownProperties": "ignore",
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "never"
+  },
+  "typescript.tsserver.experimental.enableProjectDiagnostics": true,
+  "typescript.excludeAllTsconfigJsonFiles": false
+}

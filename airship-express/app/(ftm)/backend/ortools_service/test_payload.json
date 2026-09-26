@@ -1,0 +1,11 @@
+{
+  "depot": { "name": "Depot", "lat": 37.7749, "lng": -122.4194 },
+  "stops": [
+    { "name": "A", "lat": 37.7790, "lng": -122.4184 },
+    { "name": "B", "lat": 37.7680, "lng": -122.4370 },
+    { "name": "C", "lat": 37.7600, "lng": -122.4260 }
+  ],
+  "num_vehicles": 1,
+  "use_road_distance": true,
+  "time_limit_secs": 3
+}

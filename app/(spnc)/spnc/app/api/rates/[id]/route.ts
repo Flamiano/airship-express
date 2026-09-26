@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditActor, logAuditEvent } from "../../../../lib/audit";
 import { getSupabaseClient } from "../../../../lib/supabase";
 
 export async function GET(
@@ -21,6 +22,9 @@ export async function GET(
     console.error("Fetch rate error:", error);
     return NextResponse.json({ message: "Could not load rate." }, { status: 500 });
   }
+
+  const actor = await getAuditActor(req);
+  if (actor) await logAuditEvent({ ...actor, eventType: "user_activity", action: `${actor.actorName} updated rate "${data.rate_code}"`, entityType: "rate", entityId: data.id, request: req });
 
   return NextResponse.json({ rate: data });
 }
@@ -100,6 +104,9 @@ export async function DELETE(
     console.error("Delete rate error:", error);
     return NextResponse.json({ message: "Could not delete rate." }, { status: 500 });
   }
+
+  const actor = await getAuditActor(req);
+  if (actor) await logAuditEvent({ ...actor, eventType: "archive", action: `${actor.actorName} deleted rate ${id}`, entityType: "rate", entityId: id, request: req });
 
   return NextResponse.json({ success: true });
 }

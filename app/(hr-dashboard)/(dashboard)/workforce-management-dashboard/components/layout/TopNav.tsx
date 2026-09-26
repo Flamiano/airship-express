@@ -17,16 +17,11 @@ import {
   Clock,
   CheckCheck,
   Package,
-  Trash2,
-  ChevronRightSquare,
-  ChevronLeftSquare,
-  Sparkles
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useSidebar } from './SidebarContext';
-import { useAiSplit } from './AiSplitContext';
 import UserMenu from './UserMenu';
-import ThemeToggle from '../../../../../components/ThemeToggle';
+import ThemeToggle from '@/app/components/ThemeToggle';
 import { useSearch } from '../../hooks/useSearch';
 import { useNotifications, type NotificationType } from '../../hooks/useNotifications';
 import type { SearchResult, SearchResultType } from '../../types/api';
@@ -36,7 +31,7 @@ const GROUP_META: Record<SearchResultType, { label: string; icon: React.ReactNod
   shift: { label: 'Shifts & Schedules', icon: <Truck size={13} /> },
   timesheet: { label: 'Timesheets', icon: <FileText size={13} /> },
   leave: { label: 'Leave & Rest', icon: <UserCheck size={13} /> },
-  load: { label: 'Loads & Freight', icon: <Package size={13} /> },
+  load: { label: 'Freight Loads', icon: <Package size={13} /> },
 };
 
 const GROUP_ORDER: SearchResultType[] = ['person', 'shift', 'timesheet', 'leave', 'load'];
@@ -53,18 +48,9 @@ function relativeTime(iso: string): string {
   return formatDistanceToNow(d, { addSuffix: true });
 }
 
-function isQuestion(q: string): boolean {
-  const t = q.trim().toLowerCase();
-  if (!t) return false;
-  if (t.endsWith('?')) return true;
-  const starters = ['how ', 'what ', 'can ', 'why ', 'who ', 'where ', 'summarize '];
-  return starters.some(s => t.startsWith(s));
-}
-
 export function TopNav() {
   const router = useRouter();
   const { toggle, isCollapsed, toggleCollapsed } = useSidebar();
-  const { isAiSplitOpen, toggleAiSplit, openAiSplit } = useAiSplit();
   const notifications = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
 
@@ -118,19 +104,6 @@ export function TopNav() {
     [clear, router]
   );
 
-  const handleQueryEnter = () => {
-    if (isQuestion(query)) {
-      setOpen(false);
-      openAiSplit(query);
-      clear();
-      return;
-    }
-    
-    // Normal search
-    const chosen = ordered[activeIndex];
-    if (chosen) go(chosen);
-  };
-
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       clear();
@@ -138,12 +111,6 @@ export function TopNav() {
       inputRef.current?.blur();
       return;
     }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleQueryEnter();
-      return;
-    }
-    
     if (!ordered.length) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -151,11 +118,14 @@ export function TopNav() {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setActiveIndex((i) => (i - 1 + ordered.length) % ordered.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const chosen = ordered[activeIndex];
+      if (chosen) go(chosen);
     }
   };
 
   const showDropdown = open && query.trim().length >= 2;
-  const queryIsQuestion = isQuestion(query);
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-line bg-paper transition-colors duration-300">
@@ -183,17 +153,11 @@ export function TopNav() {
             <PanelLeftClose size={19} strokeWidth={1.75} />
           )}
         </button>
-        
 
-
-        {/* Center: Omnibar (AI Search) */}
-        <div ref={searchRef} className="relative flex flex-1 items-center max-w-xl mx-2 sm:mx-4">
-          <div className={`flex w-full items-center gap-2 rounded-2xl border px-3 py-2 text-[13px] transition-all duration-300 ${open || query.trim() ? 'border-accent shadow-sm bg-paper' : 'border-line bg-ink/5 dark:bg-paper/5'}`}>
-            {queryIsQuestion ? (
-              <Sparkles size={16} strokeWidth={2} className="shrink-0 text-accent animate-pulse" />
-            ) : (
-              <Search size={16} strokeWidth={1.75} className="shrink-0 text-muted" />
-            )}
+        {/* Center: Global Search */}
+        <div ref={searchRef} className="relative flex flex-1 items-center max-w-md mx-2 sm:mx-4">
+          <div className="flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-[12.5px] transition-colors">
+            <Search size={14} strokeWidth={1.75} className="shrink-0 text-muted" />
             <input
               ref={inputRef}
               type="text"
@@ -207,17 +171,15 @@ export function TopNav() {
               role="combobox"
               aria-expanded={showDropdown}
               aria-controls="global-search-listbox"
-              placeholder="Search or ask SMART FREIGHT Assistant..."
-              className="w-full bg-transparent outline-none placeholder:text-muted text-ink font-medium"
+              placeholder="Search drivers, shifts, routes, timesheets…"
+              className="w-full bg-transparent outline-none placeholder:text-muted text-ink"
             />
-            {loading && !queryIsQuestion && (
-              <RefreshCw size={12} className="animate-spin text-accent shrink-0" />
-            )}
-            
-            {queryIsQuestion && (
-               <div className="hidden shrink-0 items-center gap-1 sm:flex text-[10px] font-semibold text-accent/80 bg-accent/10 px-2 py-0.5 rounded-full">
-                 Press Enter to Ask AI
-               </div>
+            {loading ? (
+              <RefreshCw size={11} className="animate-spin text-accent shrink-0" />
+            ) : (
+              <kbd className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] text-muted sm:block">
+                ⌘K
+              </kbd>
             )}
           </div>
 
@@ -228,32 +190,13 @@ export function TopNav() {
               role="listbox"
               className="absolute top-full left-0 right-0 mt-2 bg-paper border border-line rounded-2xl shadow-xl py-2 max-h-96 overflow-y-auto z-50 text-ink"
             >
-              {queryIsQuestion && (
-                 <button
-                  onClick={() => {
-                    setOpen(false);
-                    openAiSplit(query);
-                    clear();
-                  }}
-                  className="w-full text-left px-4 py-3 border-b border-line flex items-center gap-3 hover:bg-accent/5 transition-colors"
-                 >
-                   <div className="p-2 bg-accent/10 rounded-lg text-accent">
-                     <Sparkles size={16} />
-                   </div>
-                   <div>
-                     <p className="text-sm font-semibold text-ink">Ask AI Assistant</p>
-                     <p className="text-xs text-muted">"{query}"</p>
-                   </div>
-                 </button>
-              )}
-              
-              {ordered.length === 0 && !loading && !queryIsQuestion && (
+              {ordered.length === 0 && !loading && (
                 <p className="px-4 py-6 text-center text-xs text-muted">
                   No matches for &quot;{query.trim()}&quot;.
                 </p>
               )}
 
-              {ordered.length === 0 && loading && !queryIsQuestion && (
+              {ordered.length === 0 && loading && (
                 <p className="px-4 py-6 text-center text-xs text-muted">Searching…</p>
               )}
 
@@ -261,7 +204,7 @@ export function TopNav() {
                 const group = results.filter((r) => r.type === type);
                 if (group.length === 0) return null;
                 return (
-                  <div key={type} className="px-1.5 pt-2">
+                  <div key={type} className="px-1.5">
                     <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-[10px] font-bold text-muted uppercase tracking-wider">
                       {GROUP_META[type].icon}
                       {GROUP_META[type].label}
@@ -303,19 +246,6 @@ export function TopNav() {
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 ml-auto">
           <ThemeToggle className="hidden sm:flex" />
 
-          {/* Ask AI Toggle */}
-          <button
-            onClick={toggleAiSplit}
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-colors text-xs font-semibold border ${
-              isAiSplitOpen 
-                ? 'bg-accent text-white border-accent' 
-                : 'bg-transparent text-ink hover:bg-ink/[0.04] dark:hover:bg-paper/[0.06] border-line'
-            }`}
-          >
-            <Sparkles size={14} className={isAiSplitOpen ? 'text-white' : 'text-accent'} />
-            Ask AI
-          </button>
-
           {/* Notifications */}
           <div ref={notifRef} className="relative">
             <button
@@ -340,28 +270,15 @@ export function TopNav() {
                       </span>
                     )}
                   </p>
-                  <div className="flex items-center gap-2">
-                    {notifications.unreadCount > 0 && (
-                      <button
-                        onClick={notifications.markAllRead}
-                        className="text-[10px] font-bold text-accent hover:underline flex items-center gap-1"
-                        title="Mark all as read"
-                      >
-                        <CheckCheck size={12} />
-                      </button>
-                    )}
-                    {notifications.items.length > 0 && (
-                      <button
-                        onClick={() => {
-                          notifications.clearAll();
-                        }}
-                        className="text-[10px] font-bold text-rose-500 hover:underline flex items-center gap-1 ml-2"
-                        title="Clear Notifications"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </div>
+                  {notifications.unreadCount > 0 && (
+                    <button
+                      onClick={notifications.markAllRead}
+                      className="text-[10px] font-bold text-accent hover:underline flex items-center gap-1"
+                    >
+                      <CheckCheck size={12} />
+                      Mark all read
+                    </button>
+                  )}
                 </div>
 
                 <div className="max-h-80 overflow-y-auto">

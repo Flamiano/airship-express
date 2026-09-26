@@ -31,6 +31,7 @@ export default function LoginForm() {
         return;
       }
 
+      sessionStorage.setItem("spnc-last-activity", String(Date.now()));
       router.push("/spnc/app/dashboard");
       router.refresh();
     } catch {
