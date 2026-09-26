@@ -4,8 +4,7 @@ import { chat, streamChat } from "../../providers";
 import { buildSystemPrompt } from "../../knowledge/builder";
 import { loadKnowledgeServer } from "../../knowledge/serverLoader";
 import { detectPayslipImageIntent } from "../../shared/intent";
-import { findEmployeeByName } from "../../actions/findEmployeeByName";
-import { generatePayslipImage } from "../../actions/generatePayslipImage";
+import { generatePayslipImageForEmployee } from "../../actions/generatePayslipImage";
 import type { LLMRequest } from "../../shared/types";
 
 export const dynamic = "force-dynamic";
@@ -59,18 +58,30 @@ export async function POST(request: NextRequest) {
 
   if (payslipIntent?.employeeName) {
     try {
-      const employee = await findEmployeeByName(payslipIntent.employeeName);
+      const result = await generatePayslipImageForEmployee(
+        payslipIntent.employeeName
+      );
 
-      if (employee) {
-        const result = await generatePayslipImage(employee);
+      if (result.ok) {
         attachment = {
           type: "image",
-          url: result.svgDataUrl,
-          label: `Payslip - ${result.employeeFullName} (${result.periodLabel})`,
+          url: result.url,
+          label: `Payslip - ${result.employeeName} (${result.periodLabel})`,
         };
-        systemPrompt += `\n\n## Tool Result\nYou just generated a print-ready payslip image for ${result.employeeFullName}, covering ${result.periodLabel}. The image is already shown to the admin above your reply — do not describe it as something they need to click or open, just briefly confirm it's ready and mention the name/period, in the same language the admin used.`;
+
+        if (result.isDemo) {
+          systemPrompt += `\n\n## Tool Result\nThe admin asked for a payslip for "${result.employeeName}", but no matching employee or payslip record was found. You generated a SAMPLE payslip instead covering ${result.periodLabel}. Be honest that this is an example, not their real payslip, and ask them to confirm the employee's name or provide an employee ID.`;
+        } else {
+          systemPrompt += `\n\n## Tool Result\nYou just generated a print-ready payslip image for ${
+            result.employeeName
+          }, covering ${
+            result.periodLabel
+          }. Net pay: ₱${result.netPay.toLocaleString("en-PH", {
+            minimumFractionDigits: 2,
+          })}. The image is already shown to the admin above your reply — do not describe it as something they need to click or open, just briefly confirm it's ready and mention the name/period, in the same language the admin used.`;
+        }
       } else {
-        systemPrompt += `\n\n## Tool Result\nThe admin asked for a payslip image for "${payslipIntent.employeeName}" but no matching active employee was found. Tell them clearly, in the language they used, and ask them to check the spelling or give the employee ID instead.`;
+        systemPrompt += `\n\n## Tool Result\nGenerating the payslip failed: ${result.error}. Apologize briefly, in the language the admin used, and suggest trying again or checking the employee's name.`;
       }
     } catch (err) {
       console.error("[ai/api/chat] payslip image generation failed:", err);
