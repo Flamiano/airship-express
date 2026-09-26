@@ -359,13 +359,13 @@ function applySecurityHeaders(
   return response;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   try {
     const { pathname, search } = request.nextUrl;
     const normalizedPath = normalizePath(pathname);
     const { subdomain, baseHost, protocol } = resolveHostInfo(request);
 
-    console.log("[Middleware]", {
+    console.log("[Proxy]", {
       host: request.headers.get("host"),
       pathname,
       subdomain,
@@ -494,12 +494,12 @@ export function middleware(request: NextRequest) {
 
     return applySecurityHeaders(NextResponse.next(), protocol);
   } catch (error) {
-    console.error("[Middleware Error]", error);
+    console.error("[Proxy Error]", error);
     return applySecurityHeaders(NextResponse.next(), "http");
   }
 }
 
-export default middleware;
+export default proxy;
 
 export const config = {
   matcher: [

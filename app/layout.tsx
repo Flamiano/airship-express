@@ -19,6 +19,11 @@ const rethink = Rethink_Sans({
 export const metadata: Metadata = {
   title: "Airship Express Courier Services",
   description: "Fast, reliable courier and delivery services you can trust.",
+  icons: {
+    icon: "/images/logo-remove-bg.png",
+    shortcut: "/images/logo-remove-bg.png",
+    apple: "/images/logo-remove-bg.png",
+  },
 };
 
 export default function RootLayout({
