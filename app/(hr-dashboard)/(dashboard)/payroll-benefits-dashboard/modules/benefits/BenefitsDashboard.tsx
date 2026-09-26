@@ -11,7 +11,7 @@ import { Dropdown } from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dash
 
 type TabKey = 'sss' | 'philhealth' | 'pagibig';
 
-const TABS: { value: TabKey; label: string; icon: React.ElementType }[] = [
+const TABS: { value: TabKey; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }[] = [
     { value: 'sss', label: 'SSS Brackets', icon: Building2 },
     { value: 'philhealth', label: 'PhilHealth Rates', icon: HeartPulse },
     { value: 'pagibig', label: 'Pag-IBIG Tiers', icon: Home },

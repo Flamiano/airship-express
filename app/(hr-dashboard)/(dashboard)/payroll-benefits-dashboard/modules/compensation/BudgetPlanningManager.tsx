@@ -61,7 +61,7 @@ const peso = (n: number) =>
     `₱${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
 function StatCard({ icon: Icon, label, value, tint, subtitle }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     value: string;
     tint: 'accent' | 'emerald' | 'blue' | 'amber' | 'purple' | 'gray' | 'red';
@@ -98,7 +98,7 @@ function StatusBadge({ status }: { status: BudgetStatus | null }) {
             </span>
         );
     }
-    const map: Record<BudgetStatus, { label: string; cls: string; icon: React.ElementType }> = {
+    const map: Record<BudgetStatus, { label: string; cls: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }> = {
         draft: { label: 'Draft', cls: 'bg-gray-50 text-gray-600 ring-gray-200 dark:bg-gray-800/30 dark:text-gray-400 dark:ring-gray-700', icon: FileText },
         pending_approval: { label: 'Pending Approval', cls: 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800/40', icon: Send },
         approved: { label: 'Approved', cls: 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-800/40', icon: ShieldCheck },

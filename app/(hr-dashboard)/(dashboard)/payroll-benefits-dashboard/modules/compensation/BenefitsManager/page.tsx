@@ -9,7 +9,7 @@ import HolidayPayTab from './HolidayPayTab';
 
 type TabKey = 'benefits' | 'nightdiff' | 'overtime' | 'holiday';
 
-const TABS: { value: TabKey; label: string; icon: React.ElementType }[] = [
+const TABS: { value: TabKey; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }[] = [
     { value: 'benefits', label: 'Benefits & Incentives', icon: Gift },
     { value: 'nightdiff', label: 'Night Differential', icon: Moon },
     { value: 'overtime', label: 'Overtime', icon: Clock3 },

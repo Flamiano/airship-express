@@ -66,7 +66,7 @@ function Choice({
     active,
     onClick,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     active: boolean;
     onClick: () => void;

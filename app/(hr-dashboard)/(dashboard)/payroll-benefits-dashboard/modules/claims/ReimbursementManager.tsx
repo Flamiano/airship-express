@@ -55,7 +55,7 @@ const avatarClass = (seed: string) => {
     return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 };
 
-function StatCard({ icon: Icon, label, value, tint }: { icon: React.ElementType; label: string; value: string; tint: 'emerald' | 'blue' | 'amber' | 'gray' | 'accent'; }) {
+function StatCard({ icon: Icon, label, value, tint }: { icon: React.ComponentType<{ className?: string; size?: number; title?: string }>; label: string; value: string; tint: 'emerald' | 'blue' | 'amber' | 'gray' | 'accent'; }) {
     const tints: Record<string, string> = {
         emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
         blue: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400',

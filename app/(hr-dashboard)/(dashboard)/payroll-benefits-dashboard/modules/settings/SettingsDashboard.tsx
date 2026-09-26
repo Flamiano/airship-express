@@ -30,7 +30,7 @@ type Tab =
 
 const TABS: {
     id: Tab;
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     description: string;
 }[] = [

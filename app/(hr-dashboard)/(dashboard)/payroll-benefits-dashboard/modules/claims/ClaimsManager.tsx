@@ -99,7 +99,7 @@ const isValidId = (id: any): boolean =>
 function StatCard({
     icon: Icon, label, value, tint,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     value: string;
     tint: 'accent' | 'emerald' | 'blue' | 'amber' | 'red' | 'gray';
@@ -680,7 +680,7 @@ const ClaimsManager = () => {
     const currentEmpty = emptyStateFor(activeTab);
     const EmptyIcon = currentEmpty.icon;
 
-    const SUB_TABS: { value: ClaimSubTab; label: string; icon: React.ElementType }[] = [
+    const SUB_TABS: { value: ClaimSubTab; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }[] = [
         { value: 'active', label: 'Active', icon: Clock3 },
         { value: 'approved', label: 'Approved', icon: CheckCircle2 },
         { value: 'rejected', label: 'Rejected', icon: XCircle },

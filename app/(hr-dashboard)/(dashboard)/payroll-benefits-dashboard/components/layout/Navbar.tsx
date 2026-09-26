@@ -42,7 +42,7 @@ type SearchResult = {
 
 const TYPE_META: Record<
     SearchResult['type'],
-    { icon: React.ElementType; label: string; tone: string }
+    { icon: React.ComponentType<{ className?: string; size?: number; title?: string }>; label: string; tone: string }
 > = {
     employee: { icon: User, label: 'Employee', tone: 'text-blue-600 dark:text-blue-400' },
     claim: { icon: Receipt, label: 'Claim', tone: 'text-pink-600 dark:text-pink-400' },

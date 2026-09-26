@@ -93,7 +93,7 @@ type DeviceInfo = {
     type: 'phone' | 'tablet' | 'laptop' | 'desktop' | 'unknown';
 };
 
-const EVENT_ICONS: Record<string, React.ElementType> = {
+const EVENT_ICONS: Record<string, React.ComponentType<{ className?: string; size?: number; title?: string }>> = {
     login_success: LogIn,
     login_failed: AlertTriangle,
     logout_manual: LogOut,
@@ -939,7 +939,7 @@ function MiniCard({
     subtitle,
     tone,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     title: string;
     value: string;
     subtitle: string;

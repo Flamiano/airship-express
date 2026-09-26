@@ -19,7 +19,7 @@ import ReimbursementManager from './ReimbursementManager';
 
 type ClaimsTab = 'claims' | 'reimbursement' | 'types';
 
-const TABS: { value: ClaimsTab; label: string; icon: React.ElementType }[] = [
+const TABS: { value: ClaimsTab; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }[] = [
     { value: 'claims', label: 'Claims', icon: Receipt },
     { value: 'reimbursement', label: 'Reimbursement', icon: Banknote },
     { value: 'types', label: 'Claim Types', icon: Tag },
@@ -34,7 +34,7 @@ function StatCard({
     value,
     tint,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     value: string;
     tint: 'accent' | 'emerald' | 'amber' | 'blue' | 'purple';

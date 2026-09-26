@@ -68,12 +68,12 @@ type VrdsDashboardSnapshot = {
     trips?: number;
     bookings?: number;
     drivers?: number;
-      parcels?: number;
+    parcels?: number;
   };
   vehicles?: Array<{ id?: string; status?: string; plate_number?: string; plateNumber?: string; last_location_lat?: number; last_location_lng?: number; locationLat?: number; locationLng?: number; fuel_efficiency?: number; fuelEfficiency?: number }>;
   trips?: Array<{ id?: string; trip_id?: string; status?: string; updated_at?: string; vehicle_id?: string; from_location?: string; to_location?: string }>;
   bookings?: Array<{ id?: string; pickup_location?: string; dropoff_location?: string }>;
-  drivers?: Array<{ id?: string; full_name?: string }>; 
+  drivers?: Array<{ id?: string; full_name?: string }>;
   parcels?: Array<{
     id?: string;
     status?: string;
@@ -172,7 +172,7 @@ export default function VrdsDashboardPage() {
     const loadSnapshot = () => Promise.all([getVehicles(), getTrips(), getBookings(), getDrivers()])
       .then(([vehiclesData, tripsData, bookingsData, driversData]) => {
         if (!active) return;
-        const toArray = (value: unknown) => {
+        const toArray = (value: unknown): unknown[] => {
           if (Array.isArray(value)) return value;
           if (value && typeof value === "object" && Array.isArray((value as { data?: unknown }).data)) {
             return (value as { data: unknown[] }).data;
@@ -184,10 +184,10 @@ export default function VrdsDashboardPage() {
         const bookings = toArray(bookingsData);
         const drivers = toArray(driversData);
         setSnapshot({
-          vehicles,
-          trips,
-          bookings,
-          drivers,
+          vehicles: vehicles as VrdsDashboardSnapshot["vehicles"],
+          trips: trips as VrdsDashboardSnapshot["trips"],
+          bookings: bookings as VrdsDashboardSnapshot["bookings"],
+          drivers: drivers as VrdsDashboardSnapshot["drivers"],
           counts: {
             vehicles: vehicles.length,
             trips: trips.length,
@@ -196,7 +196,7 @@ export default function VrdsDashboardPage() {
           },
         });
       })
-      .catch((error) => console.error("Failed to load fleet snapshot:", error))
+      .catch((error: unknown) => console.error("Failed to load fleet snapshot:", error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -368,8 +368,8 @@ export default function VrdsDashboardPage() {
           },
         };
       })
-      .filter(Boolean),
-  ], [activeParcels, vehicles]);
+      .filter((marker): marker is NonNullable<typeof marker> => marker !== null),
+    ], [activeParcels, vehicles]);
   const displayMetricValue = (value: string) => showMetricValues ? value : "****";
   const alerts = useMemo(() => {
     const criticalTrips = trips.filter((trip) => /delayed|late|delay|exception|problem|hold/i.test(trip.status ?? ""));
@@ -466,11 +466,11 @@ export default function VrdsDashboardPage() {
     const sourceRecords = trips.length > 0
       ? trips
       : bookings.filter((booking: any) => {
-          const status = String(booking.status ?? "").toLowerCase();
-          const isTerminal = /completed|delivered|cancelled|canceled|closed|rejected/.test(status);
-          const hasAssignment = Boolean(booking.driver_id ?? booking.driverId ?? booking.vehicle_id ?? booking.vehicleId ?? booking.route_plan_id ?? booking.routePlanId);
-          return !isTerminal && hasAssignment;
-        });
+        const status = String(booking.status ?? "").toLowerCase();
+        const isTerminal = /completed|delivered|cancelled|canceled|closed|rejected/.test(status);
+        const hasAssignment = Boolean(booking.driver_id ?? booking.driverId ?? booking.vehicle_id ?? booking.vehicleId ?? booking.route_plan_id ?? booking.routePlanId);
+        return !isTerminal && hasAssignment;
+      });
     const counts = new Map([
       ["In Transit", 0],
       ["Queued", 0],
@@ -517,351 +517,350 @@ export default function VrdsDashboardPage() {
 
         {/* Main Full-Width Dashboard Container */}
         <main className="flex-1 w-full max-w-[1850px] mx-auto px-4 sm:px-6 lg:px-10 py-6 space-y-6">
-        
-        {/* Top Header Banner */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 backdrop-blur-md rounded-2xl p-6 border border-pink-100 shadow-sm shadow-pink-500/5">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-                VRDS Dispatch Operations
-              </h1>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/80">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+
+          {/* Top Header Banner */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 backdrop-blur-md rounded-2xl p-6 border border-pink-100 shadow-sm shadow-pink-500/5">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                  VRDS Dispatch Operations
+                </h1>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/80">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  System Live
                 </span>
-                System Live
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              Real-time dispatch visibility, vehicle telemetry, and fleet routing engine for Metro Manila.
-            </p>
-          </div>
-
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-white/90 p-1.5">
-          {(["active", "archived", "all"] as const).map((scope) => (
-            <button
-              key={scope}
-              type="button"
-              onClick={() => setDashboardScope(scope)}
-              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                dashboardScope === scope ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-pink-50 hover:text-pink-700"
-              }`}
-            >
-              {scope === "active" ? "Active" : scope === "archived" ? "Archived" : "All History"}
-            </button>
-          ))}
-          <span className="ml-auto px-2 text-xs text-slate-500">
-            {dashboardScope === "active" ? "7-day or active-trip parcels" : dashboardScope === "archived" ? "Outside the active window" : "All recognized parcel statuses"}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard
-            icon="inventory_2"
-            label={`${dashboardScope === "active" ? "Active" : dashboardScope === "archived" ? "Archived" : "All History"} Parcel Records`}
-            value={displayMetricValue(String(totalParcels))}
-            sub={<span className="text-slate-500">{parcelShare(inTransitParcels)} in transit</span>}
-            progress={totalParcels > 0 ? 100 : 0}
-            trendValue={parcelShare(inTransitParcels)}
-          />
-          <StatCard
-            icon="local_shipping"
-            label="Active Fleet"
-            value={displayMetricValue(String(activeVehicles))}
-            sub={<span className="text-slate-500">{activeVehicleShare} utilization</span>}
-            progress={totalVehicles > 0 ? Math.min(100, (activeVehicles / totalVehicles) * 100) : 0}
-            trendValue={activeVehicleShare}
-          />
-          <StatCard
-            icon="route"
-            label="Active Trips"
-            value={displayMetricValue(String(activeTrips))}
-            sub={<span className="text-slate-500">currently in progress</span>}
-            progress={trips.length > 0 ? Math.min(100, (activeTrips / trips.length) * 100) : 0}
-            trendValue={trips.length > 0 ? `${Math.round((activeTrips / trips.length) * 100)}%` : "—"}
-          />
-          <StatCard
-            icon="bolt"
-            label="Avg Fuel Efficiency"
-            value={displayMetricValue(String(averageFuelEfficiency))}
-            sub={<span className="text-slate-500">fleet efficiency</span>}
-            progress={fuelEfficiencyValues.length > 0 ? Math.min(100, (Number(averageFuelEfficiency.replace(/[^0-9.]/g, "")) / 20) * 100) : 0}
-            trendValue={fuelEfficiencyValues.length > 0 ? "+8.2%" : "—"}
-          />
-          <StatCard
-            icon="pending_actions"
-            label="Alerts"
-            value={displayMetricValue(String(alerts.length))}
-            sub={<span className="text-slate-500">{delayedParcels} delayed parcels</span>}
-            progress={alerts.length > 0 ? Math.min(100, (alerts.length / 5) * 100) : 0}
-            trendValue={delayedParcels > 0 ? `${delayedParcels} flagged` : "Clear"}
-          />
-        </div>
-
-        {/* Global Action / Notification Banner */}
-        {(scrambleStatus || alertActionMessage || optimizationMessage) && (
-          <div className="rounded-xl border border-pink-200 bg-pink-50/90 backdrop-blur-sm px-5 py-3.5 text-pink-900 text-sm font-medium flex items-center justify-between shadow-sm animate-fadeIn">
-            <div className="flex items-center gap-2.5">
-              <span className="material-symbols-outlined text-pink-600 text-[20px]">
-                info
-              </span>
-              <span>{scrambleStatus ?? alertActionMessage ?? optimizationMessage}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Operational Charts Instead of KPI Cards */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Volume</p>
-                <h3 className="text-base font-bold text-slate-900">Parcel Throughput</h3>
               </div>
-              <span className="rounded-full bg-pink-50 px-2 py-1 text-[10px] font-semibold text-pink-700">{totalParcels} total</span>
+              <p className="mt-1 text-sm text-slate-500">
+                Real-time dispatch visibility, vehicle telemetry, and fleet routing engine for Metro Manila.
+              </p>
             </div>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={operationalOverview}>
-                  <defs>
-                    <linearGradient id="throughputFill" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="5%" stopColor="#ec4899" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#ec4899" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
-                    formatter={(value: number) => [`${value} parcels`, "Volume"]}
-                  />
-                  <Area type="monotone" dataKey="parcels" stroke="#ec4899" strokeWidth={3} fill="url(#throughputFill)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+
           </div>
 
-          <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Status</p>
-                <h3 className="text-base font-bold text-slate-900">Parcel Status Mix</h3>
-              </div>
-              <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">{parcels.length} items</span>
-            </div>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={statusMixData}>
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
-                    formatter={(value: number) => [`${value} parcels`, "Count"]}
-                  />
-                  <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                    {statusMixData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-100 bg-white/90 p-1.5">
+            {(["active", "archived", "all"] as const).map((scope) => (
+              <button
+                key={scope}
+                type="button"
+                onClick={() => setDashboardScope(scope)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${dashboardScope === scope ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-pink-50 hover:text-pink-700"
+                  }`}
+              >
+                {scope === "active" ? "Active" : scope === "archived" ? "Archived" : "All History"}
+              </button>
+            ))}
+            <span className="ml-auto px-2 text-xs text-slate-500">
+              {dashboardScope === "active" ? "7-day or active-trip parcels" : dashboardScope === "archived" ? "Outside the active window" : "All recognized parcel statuses"}
+            </span>
           </div>
 
-          <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fleet</p>
-                <h3 className="text-base font-bold text-slate-900">Fleet Health</h3>
-              </div>
-              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">{activeVehicles}/{totalVehicles} active</span>
-            </div>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={fleetHealthData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={46}
-                    outerRadius={68}
-                    paddingAngle={3}
-                  >
-                    {fleetHealthData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
-                    formatter={(value: number) => [`${value} vehicles`, "Fleet"]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard
+              icon="inventory_2"
+              label={`${dashboardScope === "active" ? "Active" : dashboardScope === "archived" ? "Archived" : "All History"} Parcel Records`}
+              value={displayMetricValue(String(totalParcels))}
+              sub={<span className="text-slate-500">{parcelShare(inTransitParcels)} in transit</span>}
+              progress={totalParcels > 0 ? 100 : 0}
+              trendValue={parcelShare(inTransitParcels)}
+            />
+            <StatCard
+              icon="local_shipping"
+              label="Active Fleet"
+              value={displayMetricValue(String(activeVehicles))}
+              sub={<span className="text-slate-500">{activeVehicleShare} utilization</span>}
+              progress={totalVehicles > 0 ? Math.min(100, (activeVehicles / totalVehicles) * 100) : 0}
+              trendValue={activeVehicleShare}
+            />
+            <StatCard
+              icon="route"
+              label="Active Trips"
+              value={displayMetricValue(String(activeTrips))}
+              sub={<span className="text-slate-500">currently in progress</span>}
+              progress={trips.length > 0 ? Math.min(100, (activeTrips / trips.length) * 100) : 0}
+              trendValue={trips.length > 0 ? `${Math.round((activeTrips / trips.length) * 100)}%` : "—"}
+            />
+            <StatCard
+              icon="bolt"
+              label="Avg Fuel Efficiency"
+              value={displayMetricValue(String(averageFuelEfficiency))}
+              sub={<span className="text-slate-500">fleet efficiency</span>}
+              progress={fuelEfficiencyValues.length > 0 ? Math.min(100, (Number(averageFuelEfficiency.replace(/[^0-9.]/g, "")) / 20) * 100) : 0}
+              trendValue={fuelEfficiencyValues.length > 0 ? "+8.2%" : "—"}
+            />
+            <StatCard
+              icon="pending_actions"
+              label="Alerts"
+              value={displayMetricValue(String(alerts.length))}
+              sub={<span className="text-slate-500">{delayedParcels} delayed parcels</span>}
+              progress={alerts.length > 0 ? Math.min(100, (alerts.length / 5) * 100) : 0}
+              trendValue={delayedParcels > 0 ? `${delayedParcels} flagged` : "Clear"}
+            />
           </div>
-        </div>
 
-        {/* Main Grid Section: Operations Map & Action Panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Map Section (Spans 8 columns on large screens) */}
-          <div className="lg:col-span-8 flex flex-col gap-3">
-            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          {/* Global Action / Notification Banner */}
+          {(scrambleStatus || alertActionMessage || optimizationMessage) && (
+            <div className="rounded-xl border border-pink-200 bg-pink-50/90 backdrop-blur-sm px-5 py-3.5 text-pink-900 text-sm font-medium flex items-center justify-between shadow-sm animate-fadeIn">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-pink-100/70 text-pink-600">
-                  <span className="material-symbols-outlined text-[20px] block">public</span>
-                </div>
+                <span className="material-symbols-outlined text-pink-600 text-[20px]">
+                  info
+                </span>
+                <span>{scrambleStatus ?? alertActionMessage ?? optimizationMessage}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Operational Charts Instead of KPI Cards */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
+              <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Metro Manila Live Operations
-                  </h2>
-                  <p className="text-xs text-slate-500">Live GPS tracking & delivery zone coverage</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Volume</p>
+                  <h3 className="text-base font-bold text-slate-900">Parcel Throughput</h3>
                 </div>
+                <span className="rounded-full bg-pink-50 px-2 py-1 text-[10px] font-semibold text-pink-700">{totalParcels} total</span>
               </div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3.5 py-1.5 text-xs font-semibold text-pink-700 border border-pink-200/60">
-                <span className="material-symbols-outlined text-[15px] text-pink-600">hub</span>
-                OR-Tools v9.8
-              </span>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={operationalOverview}>
+                    <defs>
+                      <linearGradient id="throughputFill" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="5%" stopColor="#ec4899" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#ec4899" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
+                      formatter={(value) => [`${value ?? 0} parcels`, "Volume"]}
+                    />
+                    <Area type="monotone" dataKey="parcels" stroke="#ec4899" strokeWidth={3} fill="url(#throughputFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {/* Interactive Map Wrapper */}
-            <div className="grid min-h-[460px] grid-cols-1 overflow-hidden rounded-2xl border border-pink-100 bg-slate-50 shadow-sm shadow-pink-500/5 md:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="min-h-[320px] relative">
-                <LeafletMap
-                  center={{ lat: 14.62, lng: 121.05 }}
-                  zoom={10}
-                  markers={liveMapMarkers}
-                />
-              </div>
-
-              {/* Service Area Sidebar */}
-              <aside className="hidden border-l border-pink-100 bg-white/80 md:flex md:flex-col">
-                <div className="border-b border-pink-100 px-4 py-3.5 bg-pink-50/40">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-pink-600">
-                    Active Coverage
-                  </p>
-                  <h3 className="text-sm font-extrabold text-slate-900 mt-0.5">
-                    {liveMapMarkers.length} Live Points
-                  </h3>
+            <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Status</p>
+                  <h3 className="text-base font-bold text-slate-900">Parcel Status Mix</h3>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
-                  {SERVICE_AREAS.map((area) => (
-                    <div
-                      key={area.name}
-                      className="flex items-center justify-between px-4 py-2.5 text-xs text-slate-700 hover:bg-pink-50/50 transition-colors"
+                <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">{parcels.length} items</span>
+              </div>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={statusMixData}>
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
+                      formatter={(value) => [`${value ?? 0} parcels`, "Count"]}
+                    />
+                    <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                      {statusMixData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-pink-100 bg-white/90 p-4 shadow-sm shadow-pink-500/5">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fleet</p>
+                  <h3 className="text-base font-bold text-slate-900">Fleet Health</h3>
+                </div>
+                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">{activeVehicles}/{totalVehicles} active</span>
+              </div>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={fleetHealthData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={46}
+                      outerRadius={68}
+                      paddingAngle={3}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full shadow-sm"
-                          style={{ backgroundColor: area.color }}
-                        />
-                        <span className="font-medium">{area.name}</span>
-                      </div>
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase">Active</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-pink-100 px-4 py-2.5 text-[11px] text-slate-500 bg-slate-50/50 text-center font-medium">
-                  + expanding coverage weekly
-                </div>
-              </aside>
-            </div>
-
-            {/* Map Legend Footer */}
-            <div className="mt-3.5 flex items-center gap-6 text-xs text-slate-600 pt-2 border-t border-slate-100">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-pink-600 inline-block" /> In Transit
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> Delayed
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Delivered
-              </span>
+                      {fleetHealthData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#fff", border: "1px solid #fbcfe8", borderRadius: 12 }}
+                      formatter={(value) => [`${value ?? 0} vehicles`, "Fleet"]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
-          {/* Right Control Center (Spans 4 columns on large screens) */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="rounded-2xl border border-pink-100 bg-white/90 p-5 shadow-sm shadow-pink-500/5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Operations Pulse</h3>
-                  <p className="text-[11px] text-slate-500">Live dispatch and parcel mix</p>
+          {/* Main Grid Section: Operations Map & Action Panel */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            {/* Map Section (Spans 8 columns on large screens) */}
+            <div className="lg:col-span-8 flex flex-col gap-3">
+              <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-pink-100/70 text-pink-600">
+                    <span className="material-symbols-outlined text-[20px] block">public</span>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Metro Manila Live Operations
+                    </h2>
+                    <p className="text-xs text-slate-500">Live GPS tracking & delivery zone coverage</p>
+                  </div>
                 </div>
-                <span className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
-                  Live
+                <span className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3.5 py-1.5 text-xs font-semibold text-pink-700 border border-pink-200/60">
+                  <span className="material-symbols-outlined text-[15px] text-pink-600">hub</span>
+                  OR-Tools v9.8
                 </span>
               </div>
 
-              <div className="space-y-5">
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-semibold uppercase tracking-wider">Trip Status</span>
-                    <span>{operationalTripCount} trips</span>
-                  </div>
-                  <div className="flex h-28 items-end gap-2">
-                    {tripStatusSeries.map((item) => {
-                      const max = Math.max(...tripStatusSeries.map((entry) => entry.value), 1);
-                      return (
-                        <div key={item.label} className="group flex-1 flex flex-col items-center justify-end gap-2">
-                          <div className="relative flex h-full w-full items-end justify-center">
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition-all group-hover:opacity-100 whitespace-nowrap">
-                              {item.value}
-                            </div>
-                            <div
-                              className={`w-full rounded-t-xl transition-all duration-200 group-hover:scale-[1.03] ${item.value === 0 ? "min-h-[3px] opacity-30" : ""}`}
-                              style={{
-                                height: `${(item.value / max) * 100}%`,
-                                background: `linear-gradient(180deg, ${item.color} 0%, ${item.color}cc 100%)`,
-                              }}
-                            />
-                          </div>
-                          <span className="text-[9px] text-slate-500">{item.label.slice(0, 3)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+              {/* Interactive Map Wrapper */}
+              <div className="grid min-h-[460px] grid-cols-1 overflow-hidden rounded-2xl border border-pink-100 bg-slate-50 shadow-sm shadow-pink-500/5 md:grid-cols-[minmax(0,1fr)_260px]">
+                <div className="min-h-[320px] relative">
+                  <LeafletMap
+                    center={{ lat: 14.62, lng: 121.05 }}
+                    zoom={10}
+                    markers={liveMapMarkers}
+                  />
                 </div>
 
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-semibold uppercase tracking-wider">Parcel Flow</span>
-                    <span>{parcels.length} parcels</span>
+                {/* Service Area Sidebar */}
+                <aside className="hidden border-l border-pink-100 bg-white/80 md:flex md:flex-col">
+                  <div className="border-b border-pink-100 px-4 py-3.5 bg-pink-50/40">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-pink-600">
+                      Active Coverage
+                    </p>
+                    <h3 className="text-sm font-extrabold text-slate-900 mt-0.5">
+                      {liveMapMarkers.length} Live Points
+                    </h3>
                   </div>
-                  <div className="flex h-28 items-end gap-2">
-                    {parcelStatusSeries.map((item) => {
-                      const max = Math.max(...parcelStatusSeries.map((entry) => entry.value), 1);
-                      const barHeight = Math.max(8, Math.round((item.value / max) * 92));
-                      return (
-                        <div key={item.label} className="group flex-1 flex flex-col items-center justify-end gap-2">
-                          <div className="relative flex h-full w-full items-end justify-center">
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition-all group-hover:opacity-100 whitespace-nowrap">
-                              {item.value}
-                            </div>
-                            <div
-                              className="w-full rounded-t-xl transition-all duration-200 group-hover:scale-[1.03]"
-                              style={{
-                                height: `${barHeight}px`,
-                                minHeight: "8px",
-                                opacity: item.value === 0 ? 0.35 : 1,
-                                background: `linear-gradient(180deg, ${item.color} 0%, ${item.color}cc 100%)`,
-                              }}
-                            />
-                          </div>
-                          <span className="text-[9px] text-slate-500">{item.label.slice(0, 3)}</span>
+                  <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
+                    {SERVICE_AREAS.map((area) => (
+                      <div
+                        key={area.name}
+                        className="flex items-center justify-between px-4 py-2.5 text-xs text-slate-700 hover:bg-pink-50/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full shadow-sm"
+                            style={{ backgroundColor: area.color }}
+                          />
+                          <span className="font-medium">{area.name}</span>
                         </div>
-                      );
-                    })}
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase">Active</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-pink-100 px-4 py-2.5 text-[11px] text-slate-500 bg-slate-50/50 text-center font-medium">
+                    + expanding coverage weekly
+                  </div>
+                </aside>
+              </div>
+
+              {/* Map Legend Footer */}
+              <div className="mt-3.5 flex items-center gap-6 text-xs text-slate-600 pt-2 border-t border-slate-100">
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <span className="w-2.5 h-2.5 rounded-full bg-pink-600 inline-block" /> In Transit
+                </span>
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> Delayed
+                </span>
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Delivered
+                </span>
+              </div>
+            </div>
+
+            {/* Right Control Center (Spans 4 columns on large screens) */}
+            <div className="lg:col-span-4 space-y-6">
+              <div className="rounded-2xl border border-pink-100 bg-white/90 p-5 shadow-sm shadow-pink-500/5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Operations Pulse</h3>
+                    <p className="text-[11px] text-slate-500">Live dispatch and parcel mix</p>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
+                    Live
+                  </span>
+                </div>
+
+                <div className="space-y-5">
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="font-semibold uppercase tracking-wider">Trip Status</span>
+                      <span>{operationalTripCount} trips</span>
+                    </div>
+                    <div className="flex h-28 items-end gap-2">
+                      {tripStatusSeries.map((item) => {
+                        const max = Math.max(...tripStatusSeries.map((entry) => entry.value), 1);
+                        return (
+                          <div key={item.label} className="group flex-1 flex flex-col items-center justify-end gap-2">
+                            <div className="relative flex h-full w-full items-end justify-center">
+                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition-all group-hover:opacity-100 whitespace-nowrap">
+                                {item.value}
+                              </div>
+                              <div
+                                className={`w-full rounded-t-xl transition-all duration-200 group-hover:scale-[1.03] ${item.value === 0 ? "min-h-[3px] opacity-30" : ""}`}
+                                style={{
+                                  height: `${(item.value / max) * 100}%`,
+                                  background: `linear-gradient(180deg, ${item.color} 0%, ${item.color}cc 100%)`,
+                                }}
+                              />
+                            </div>
+                            <span className="text-[9px] text-slate-500">{item.label.slice(0, 3)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="font-semibold uppercase tracking-wider">Parcel Flow</span>
+                      <span>{parcels.length} parcels</span>
+                    </div>
+                    <div className="flex h-28 items-end gap-2">
+                      {parcelStatusSeries.map((item) => {
+                        const max = Math.max(...parcelStatusSeries.map((entry) => entry.value), 1);
+                        const barHeight = Math.max(8, Math.round((item.value / max) * 92));
+                        return (
+                          <div key={item.label} className="group flex-1 flex flex-col items-center justify-end gap-2">
+                            <div className="relative flex h-full w-full items-end justify-center">
+                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition-all group-hover:opacity-100 whitespace-nowrap">
+                                {item.value}
+                              </div>
+                              <div
+                                className="w-full rounded-t-xl transition-all duration-200 group-hover:scale-[1.03]"
+                                style={{
+                                  height: `${barHeight}px`,
+                                  minHeight: "8px",
+                                  opacity: item.value === 0 ? 0.35 : 1,
+                                  background: `linear-gradient(180deg, ${item.color} 0%, ${item.color}cc 100%)`,
+                                }}
+                              />
+                            </div>
+                            <span className="text-[9px] text-slate-500">{item.label.slice(0, 3)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
         </main>
 
         <GlobalFooter />
@@ -958,11 +957,10 @@ function AlertItem({ alert, onAction }: { alert: Alert; onAction: (label: string
   const isCritical = alert.severity === "critical";
   return (
     <div
-      className={`rounded-xl p-3.5 border transition-all ${
-        isCritical
+      className={`rounded-xl p-3.5 border transition-all ${isCritical
           ? "border-pink-200 bg-pink-50/60"
           : "border-slate-200/80 bg-slate-50/60"
-      }`}
+        }`}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-bold text-slate-900">{alert.title}</span>
@@ -980,5 +978,3 @@ function AlertItem({ alert, onAction }: { alert: Alert; onAction: (label: string
     </div>
   );
 }
-
-

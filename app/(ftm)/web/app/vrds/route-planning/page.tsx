@@ -1447,7 +1447,7 @@ export default function VrdsRoutePlanningPage() {
     if (courierRoutes.size > 0) {
       const generatedRoutes = Array.from(courierRoutes.values())
         .map((result) => result.polyline?.length ? result.polyline : result.routes?.[0]?.polyline?.length ? result.routes[0].polyline : null)
-        .filter((points): points is LatLng[] => Boolean(points) && points.length >= 4);
+        .filter((points): points is LatLng[] => points !== null && points.length >= 4);
 
       if (generatedRoutes.length > 0) {
         return generatedRoutes[0];

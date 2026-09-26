@@ -8,7 +8,7 @@ import {
     SESSION_INACTIVITY_MINUTES,
     SESSION_WARNING_SECONDS,
     SESSION_START_KEY,
-} from '@/app/(hr-dashboard)/constants/session';
+} from '@/lib/hr-dashboard/constants/session';
 
 interface InactivityProviderProps {
     children: ReactNode;

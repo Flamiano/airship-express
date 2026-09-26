@@ -6,7 +6,7 @@ import {
   OTP_LOCK_MINUTES,
 } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/otp";
 import { sendOtpEmail } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/mailer";
-import { LOGIN_OTP_TTL_MINUTES } from "@/app/(hr-dashboard)/constants/session";
+import { LOGIN_OTP_TTL_MINUTES } from "@/lib/hr-dashboard/constants/session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

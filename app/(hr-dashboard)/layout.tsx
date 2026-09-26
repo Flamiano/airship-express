@@ -4,7 +4,7 @@ import { useHRAccess } from '@/app/(hr-dashboard)/hooks/HRAccess';
 import Loader from '@/app/components/Loader';
 import ToastProvider from '@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/components/ui/Toast';
 import { InactivityProvider } from '@/app/(hr-dashboard)/(sessionTimeout)/providers/InactivityProvider';
-import { SESSION_INACTIVITY_MINUTES } from '@/app/(hr-dashboard)/constants/session';
+import { SESSION_INACTIVITY_MINUTES } from '@/lib/hr-dashboard/constants/session';
 
 export default function HRDashboardLayout({
     children,

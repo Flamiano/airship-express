@@ -25,7 +25,7 @@ function Field({
   value,
   mono = false,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string | null | undefined;
   mono?: boolean;
@@ -45,9 +45,8 @@ function Field({
       <div className="min-w-0 flex-1">
         <p className="text-sm text-muted">{label}</p>
         <p
-          className={`mt-0.5 truncate text-sm ${
-            value ? "text-foreground" : "text-muted/60"
-          } ${mono ? "font-mono" : ""}`}
+          className={`mt-0.5 truncate text-sm ${value ? "text-foreground" : "text-muted/60"
+            } ${mono ? "font-mono" : ""}`}
         >
           {value ?? "Not provided"}
         </p>

@@ -15,7 +15,7 @@ import {
     LOGIN_OTP_TTL_SECONDS,
     OTP_RESEND_COOLDOWN_SECONDS,
     SESSION_START_KEY,
-} from "@/app/(hr-dashboard)/constants/session";
+} from "@/lib/hr-dashboard/constants/session";
 
 type Step = "credentials" | "otp";
 

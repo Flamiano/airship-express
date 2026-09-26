@@ -7,7 +7,7 @@ import BonusTab from './BonusTab';
 
 type TabKey = 'merit' | 'bonus';
 
-const TABS: { value: TabKey; label: string; icon: React.ElementType }[] = [
+const TABS: { value: TabKey; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }[] = [
     { value: 'merit', label: 'Merit Increases', icon: BarChart3 },
     { value: 'bonus', label: 'Bonuses', icon: Gift },
 ];

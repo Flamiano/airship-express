@@ -56,7 +56,7 @@ const EMPTY_FORM = {
     description: '',
 };
 
-const TYPE_STYLES: Record<string, { bg: string; text: string; ring: string; dot: string; label: string; icon: React.ElementType }> = {
+const TYPE_STYLES: Record<string, { bg: string; text: string; ring: string; dot: string; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }> = {
     allowance: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-300', ring: 'ring-blue-200 dark:ring-blue-800/40', dot: 'bg-blue-500', label: 'Allowance', icon: Wallet2 },
     incentive: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-300', ring: 'ring-amber-200 dark:ring-amber-800/40', dot: 'bg-amber-500', label: 'Incentive', icon: TrendingUp },
     commission: { bg: 'bg-purple-50 dark:bg-purple-950/30', text: 'text-purple-700 dark:text-purple-300', ring: 'ring-purple-200 dark:ring-purple-800/40', dot: 'bg-purple-500', label: 'Commission', icon: DollarSign },

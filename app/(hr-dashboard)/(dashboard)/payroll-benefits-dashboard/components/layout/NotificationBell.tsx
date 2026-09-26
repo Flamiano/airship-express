@@ -30,7 +30,7 @@ type Notification = {
     created_at: string;
 };
 
-const TYPE_ICON: Record<string, React.ElementType> = {
+const TYPE_ICON: Record<string, React.ComponentType<{ className?: string; size?: number; title?: string }>> = {
     payroll_run_pending: Wallet,
     payroll_run_approved: Wallet,
     payroll_run_rejected: Wallet,

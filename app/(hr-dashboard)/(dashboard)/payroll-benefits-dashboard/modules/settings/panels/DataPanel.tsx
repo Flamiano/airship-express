@@ -50,7 +50,7 @@ function ExportRow({
     title,
     description,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     title: string;
     description: string;
 }) {

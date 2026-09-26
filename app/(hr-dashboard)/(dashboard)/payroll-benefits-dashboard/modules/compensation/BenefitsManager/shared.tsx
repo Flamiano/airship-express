@@ -87,7 +87,7 @@ export function StatCard({
     value,
     tint,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     value: string;
     tint: StatTint;

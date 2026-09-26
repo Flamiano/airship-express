@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { formatCurrency, formatDateTime, formatNumber, statusTone } from "../services/fleetService";
 import type { StructuredCard } from "../types/chatbot";
 
@@ -247,7 +248,7 @@ function IncidentCreatedCard({ data }: { data: any }) {
   );
 }
 
-const RENDERERS: Record<string, (props: { data: any }) => JSX.Element> = {
+const RENDERERS: Record<string, (props: { data: any }) => React.JSX.Element> = {
   fleet_summary: FleetSummaryCard,
   vehicle_list: VehicleListCard,
   vehicle: VehicleCard,

@@ -40,7 +40,7 @@ function FieldLabel({
   htmlFor,
   children,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
   htmlFor: string;
   children: React.ReactNode;
 }) {
@@ -65,7 +65,7 @@ function InputField({
   required = false,
   placeholder,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
   id: string;
   name: string;
   type?: string;
@@ -102,7 +102,7 @@ function TextAreaField({
   placeholder,
   rows = 3,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
   id: string;
   name: string;
   value: string;

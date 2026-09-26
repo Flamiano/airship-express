@@ -22,5 +22,5 @@ export interface BillFormData {
   bill_number: string;
   amount_due: string;
   due_date: string;
-  status: "pending";
+  status: "pending" | "approved" | "paid";
 }

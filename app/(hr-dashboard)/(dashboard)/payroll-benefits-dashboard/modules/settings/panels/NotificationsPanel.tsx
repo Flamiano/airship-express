@@ -36,7 +36,7 @@ const SECTIONS: Array<{
     subtitle: string;
     rows: Array<{
         key: BooleanKey;
-        icon: React.ElementType;
+        icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
         title: string;
         description: string;
     }>;
@@ -272,7 +272,7 @@ function Row({
     disabled,
     onChange,
 }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     title: string;
     description: string;
     checked: boolean;

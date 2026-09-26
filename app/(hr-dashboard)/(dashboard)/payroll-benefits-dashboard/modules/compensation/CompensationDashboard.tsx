@@ -14,7 +14,7 @@ import CompensationReports from './CompensationReports';
 
 type TabKey = 'salary-structure' | 'benefits' | 'budget' | 'performance' | 'reports';
 
-const TABS: { value: TabKey; label: string; icon: React.ElementType }[] = [
+const TABS: { value: TabKey; label: string; icon: React.ComponentType<{ className?: string; size?: number; title?: string }> }[] = [
     { value: 'salary-structure', label: 'Salary Structure', icon: Award },
     { value: 'benefits', label: 'Benefits & Allowances', icon: Gift },
     { value: 'budget', label: 'Budget Planning', icon: PieChart },
@@ -27,7 +27,7 @@ const DEFAULT_TAB: TabKey = 'salary-structure';
 const peso = (n: number) => `₱${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
 function StatCard({ icon: Icon, label, value, subtitle, tint }: {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string; size?: number; title?: string }>;
     label: string;
     value: string;
     subtitle?: string;
