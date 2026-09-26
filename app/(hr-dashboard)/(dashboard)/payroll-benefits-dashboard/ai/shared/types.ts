@@ -145,3 +145,35 @@ export interface AiryStructuredReply {
   accessDenied?: boolean;
   redirectTo?: string;
 }
+
+export interface AIInsight {
+  id?: string;
+  severity: "info" | "warning" | "critical" | "low" | "medium" | "high";
+  title: string;
+  message?: string;
+  description?: string;
+  category?: string;
+  recommendation?: string;
+  affectedEmployees?: string[];
+  affectedRecords?: Array<Record<string, unknown>>;
+  metric?: string;
+  value?: number | string;
+  threshold?: number | string;
+  createdAt?: string;
+}
+
+export interface AIInsight {
+  id?: string;
+  severity: "info" | "warning" | "critical" | "low" | "medium" | "high";
+  title: string;
+  message?: string;
+  description?: string;
+  category?: string;
+  recommendation?: string;
+  affectedEmployees?: string[];
+  affectedRecords?: Array<Record<string, unknown>>;
+  metric?: string;
+  value?: number | string;
+  threshold?: number | string;
+  createdAt?: string;
+}
