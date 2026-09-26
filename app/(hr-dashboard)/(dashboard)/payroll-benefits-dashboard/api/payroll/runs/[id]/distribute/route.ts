@@ -1,12 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/(hr-dashboard)/supabase/admin-client";
-import { sendPayslipEmail } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/mailer";
+import { sendPayslipEmailWithPdf } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/mailer";
+import { buildPayslipPdf } from "@/app/(hr-dashboard)/(dashboard)/payroll-benefits-dashboard/lib/payslipPdf";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MAX_SENDS = 3;
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function birthdatePassword(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return `${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${String(
+    d.getFullYear()
+  ).slice(-2)}`;
+}
+
+function num(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export async function POST(
   request: NextRequest,
@@ -58,8 +79,8 @@ export async function POST(
     const { data: payslips, error: slipErr } = await supabaseAdmin
       .from("hr4_payslips")
       .select(
-        `id, employee_id, net_pay,
-        hr1_employees ( first_name, last_name, email )`
+        `*,
+        hr1_employees ( id, first_name, last_name, employee_id_number, birthdate, email, department, hr1_job_positions ( title, department ) )`
       )
       .eq("payroll_run_id", runId);
 
@@ -74,12 +95,16 @@ export async function POST(
       );
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL_HR!;
-
     let sent = 0;
     let failed = 0;
     const failedList: Array<{ name: string; email: string; reason: string }> =
       [];
+
+    const periodLabel = `${new Date(run.period_start)
+      .toLocaleDateString("en-PH", { month: "long" })
+      .toUpperCase()} ${new Date(run.period_start).getDate()}-${new Date(
+      run.period_end
+    ).getDate()}, ${new Date(run.period_end).getFullYear()}`;
 
     for (const slip of payslips) {
       const emp = Array.isArray(slip.hr1_employees)
@@ -95,18 +120,100 @@ export async function POST(
         continue;
       }
 
-      const portalUrl = `${baseUrl}/employee-portal/payslip/${slip.id}`;
-      const employeeName = `${emp.first_name} ${emp.last_name}`;
+      if (!emp.birthdate) {
+        failed++;
+        failedList.push({
+          name: `${emp.first_name} ${emp.last_name}`,
+          email: emp.email,
+          reason: "No birthdate set — PDF password cannot be generated",
+        });
+        continue;
+      }
+
+      const password = birthdatePassword(emp.birthdate);
+      if (!password) {
+        failed++;
+        failedList.push({
+          name: `${emp.first_name} ${emp.last_name}`,
+          email: emp.email,
+          reason: "Invalid birthdate format",
+        });
+        continue;
+      }
+
+      const job = Array.isArray(emp.hr1_job_positions)
+        ? emp.hr1_job_positions[0]
+        : emp.hr1_job_positions;
+
+      const dailyRate = num(slip.daily_rate);
+      const overtime = num(slip.overtime_hours) * (dailyRate / 8) * 1.25;
+      const totalPay = num(slip.basic_pay) + overtime;
 
       try {
-        await sendPayslipEmail({
+        const pdfBytes = await buildPayslipPdf(
+          {
+            companyName: "R.E.T AIRSHIP COURIER SERVICES",
+            companyAddress: "352 Escolta St., Tomas Pinpin, Binondo, Manila.",
+            periodLabel,
+            employee: {
+              email: emp.email,
+              name: `${emp.first_name} ${emp.last_name}`,
+              position: job?.title || "—",
+              idNumber: emp.employee_id_number || "",
+              cutOff: `${new Date(run.period_start).toLocaleDateString(
+                "en-PH",
+                {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                }
+              )} - ${new Date(run.period_end).toLocaleDateString("en-PH", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}`,
+              dailyRate,
+            },
+            earnings: {
+              totalPay,
+              daysWorked: num(slip.days_worked),
+              overtime,
+              regularHoliday: num(slip.holiday_pay),
+              specialHoliday: 0,
+              incentives: num(slip.incentive_pay),
+              load: 0,
+              transpo: num(slip.allowances_pay),
+              miscellaneous: num(slip.bonus_pay),
+              gas: 0,
+              adjustment: 0,
+            },
+            deductions: {
+              sss: num(slip.sss_employee_share),
+              pagibig: num(slip.pagibig_employee_share),
+              philhealth: num(slip.philhealth_employee_share),
+              sssLoan: 0,
+              pagibigLoan: 0,
+              cashAdvanceBalance: 0,
+              tardiness: 0,
+              penalty: 0,
+              employeeSavings: 0,
+              excess: 0,
+            },
+            grossTotal: num(slip.gross_pay),
+            totalDeduction: num(slip.total_deductions),
+            netPay: num(slip.net_pay),
+          },
+          password
+        );
+
+        await sendPayslipEmailWithPdf({
           to: emp.email,
-          employeeName,
+          employeeName: `${emp.first_name} ${emp.last_name}`,
           periodStart: run.period_start,
           periodEnd: run.period_end,
-          netPay: Number(slip.net_pay || 0),
-          portalUrl,
-          employeeIdNumber: "",
+          netPay: num(slip.net_pay),
+          pdfBytes,
+          employeeIdNumber: emp.employee_id_number || "",
         });
 
         await supabaseAdmin.from("hr4_payslip_distributions").upsert(
@@ -125,7 +232,7 @@ export async function POST(
       } catch (err: any) {
         failed++;
         failedList.push({
-          name: employeeName,
+          name: `${emp.first_name} ${emp.last_name}`,
           email: emp.email,
           reason: err?.message || "Send failed",
         });

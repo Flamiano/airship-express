@@ -18,11 +18,6 @@ const FROM_EMAIL = process.env.GMAIL_HR_USER!;
 const REPLY_TO = process.env.GMAIL_HR_USER!;
 const FOOTER = "Airship Express\nBinondo, Manila, Philippines";
 
-// NOTE: antiSpamHeaders() was removed entirely.
-// The Precedence: bulk / List-Unsubscribe headers were causing
-// transactional emails (OTP, payslip, security alerts) to be
-// classified as bulk mail and routed to spam.
-
 function esc(input: string | null | undefined): string {
   if (input === null || input === undefined) return "";
   return String(input)
@@ -127,6 +122,110 @@ export async function sendPayslipEmail({
     subject: `Your Payslip for ${periodLabel} — Airship Express`,
     text,
     html,
+  });
+}
+
+export async function sendPayslipEmailWithPdf({
+  to,
+  employeeName,
+  periodStart,
+  periodEnd,
+  netPay,
+  pdfBytes,
+  employeeIdNumber,
+}: {
+  to: string;
+  employeeName: string;
+  periodStart: string;
+  periodEnd: string;
+  netPay: number;
+  pdfBytes: Uint8Array;
+  employeeIdNumber: string;
+}) {
+  const periodLabel = `${new Date(periodStart).toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+  })} – ${new Date(periodEnd).toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })}`;
+
+  const netPayFormatted = `₱${Number(netPay || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+  })}`;
+
+  const fileName = `Payslip_${periodLabel.replace(/[^A-Za-z0-9]+/g, "_")}.pdf`;
+
+  const text = [
+    `Hello ${employeeName},`,
+    ``,
+    `Your payslip for ${periodLabel} is attached to this email as a PDF.`,
+    ``,
+    `Employee ID: ${employeeIdNumber}`,
+    `Net Pay: ${netPayFormatted}`,
+    ``,
+    `The PDF is password-protected. Use your birthdate in MMDDYY format.`,
+    `Example: April 08, 2005 → 040805`,
+    ``,
+    FOOTER,
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1c1b1f;background:#ffffff">
+      <div style="border-bottom:2px solid #e5167e;padding-bottom:12px;margin-bottom:20px">
+        <h1 style="margin:0;font-size:20px;color:#1c1b1f">Airship Express</h1>
+        <p style="margin:4px 0 0;font-size:12px;color:#6b6b76">Payslip Notification</p>
+      </div>
+      <p style="margin:0 0 16px;font-size:14px">Hello ${esc(employeeName)},</p>
+      <p style="margin:0 0 16px;font-size:14px;color:#4a4a52">
+        Your payslip for <strong>${esc(
+          periodLabel
+        )}</strong> is attached to this email.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;border:1px solid #eaeaea">
+        <tr>
+          <td style="padding:10px 12px;background:#f7f7f9;font-size:12px;color:#6b6b76;width:40%">Employee ID</td>
+          <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(
+            employeeIdNumber
+          )}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;background:#f7f7f9;font-size:12px;color:#6b6b76;border-top:1px solid #eaeaea">Net Pay</td>
+          <td style="padding:10px 12px;font-size:13px;font-weight:700;color:#0b8f6b;border-top:1px solid #eaeaea">${netPayFormatted}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;background:#f7f7f9;font-size:12px;color:#6b6b76;border-top:1px solid #eaeaea">Attachment</td>
+          <td style="padding:10px 12px;font-size:13px;border-top:1px solid #eaeaea">${esc(
+            fileName
+          )}</td>
+        </tr>
+      </table>
+      <div style="margin:16px 0;padding:12px;background:#fff7ed;border-left:3px solid #f59e0b;font-size:12px;color:#7c4a03;border-radius:4px">
+        <strong>PDF Password:</strong> Your birthdate in <strong>MMDDYY</strong> format.<br>
+        Example: April 08, 2005 → <strong>040805</strong>
+      </div>
+      <p style="margin:24px 0 0;color:#8a8a93;font-size:11px;border-top:1px solid #eee;padding-top:16px">
+        Airship Express · Binondo, Manila, Philippines<br>
+        This is an automated message. Do not reply to this email.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+    to,
+    replyTo: REPLY_TO,
+    subject: `Your Payslip for ${periodLabel} — Airship Express`,
+    text,
+    html,
+    attachments: [
+      {
+        filename: fileName,
+        content: Buffer.from(pdfBytes),
+        contentType: "application/pdf",
+      },
+    ],
   });
 }
 
@@ -242,7 +341,6 @@ export async function sendOtpEmail({
   };
   const label = labels[purpose] || "verification";
 
-  // Subject intentionally avoids the words "code", "OTP", and digits.
   const subject =
     purpose === "login"
       ? `Airship Express sign-in verification`

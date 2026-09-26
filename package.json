@@ -41,6 +41,7 @@
     "motion": "^12.42.2",
     "next": "16.2.10",
     "nodemailer": "^9.0.5",
+    "pdf-lib": "^1.17.1",
     "puppeteer": "^24.43.1",
     "puppeteer-core": "^24.43.1",
     "qrcode.react": "^4.2.0",
