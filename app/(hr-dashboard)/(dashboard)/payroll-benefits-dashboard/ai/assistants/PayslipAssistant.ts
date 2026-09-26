@@ -1,6 +1,6 @@
 "use client";
 
-import { streamChat } from "../providers/client";
+import { streamChat } from "../providers";
 import type {
   ChatMessage,
   PayrollContext,
