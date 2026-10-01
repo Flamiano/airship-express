@@ -8,6 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env'), override: true });
 const { initSupabase } = require('./config/db');
 const { requireFleetUser, requireRoles } = require('./middleware/authMiddleware');
 const { permissionForMethod } = require('./middleware/permissions');
+const { createCorsMiddleware } = require('./middleware/cors');
 
 initSupabase();
 
@@ -16,25 +17,7 @@ const PORT = Number(process.env.PORT || 8001);
 
 const adminRoutes = require('./routes/adminRoutes');
 
-const allowedOrigin = process.env.CORS_ORIGIN || '*';
-const allowedOrigins = Array.isArray(allowedOrigin)
-  ? allowedOrigin
-  : allowedOrigin.split(',').map((origin) => origin.trim()).filter(Boolean);
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes('*')) {
-    res.header('Access-Control-Allow-Origin', '*');
-  } else if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  next();
-});
+app.use(createCorsMiddleware(process.env.CORS_ORIGIN));
 
 app.use(express.json({ limit: '20mb' }));
 

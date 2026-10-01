@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const crypto = require('node:crypto');
 const { getSupabase, getServiceSupabase } = require('../config/db');
 const { normalizeUser } = require('../models/User');
 const failedLogins = new Map();
@@ -6,9 +7,9 @@ const otpStore = new Map();
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 const OTP_LIFETIME_OPTIONS = new Set([60, 120, 240, 300, 600]);
-const DEFAULT_OTP_LIFETIME_SECONDS = 60;
-const MAX_OTP_ATTEMPTS = 5;
-const OTP_RESEND_COOLDOWN_SECONDS = 30;
+const DEFAULT_OTP_LIFETIME_SECONDS = Number(process.env.OTP_TTL_SECONDS) || 60;
+const MAX_OTP_ATTEMPTS = Math.max(1, Number(process.env.OTP_MAX_ATTEMPTS) || 5);
+const OTP_RESEND_COOLDOWN_SECONDS = Math.max(1, Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 30);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getValidatedUpdatedByUserId(fleetUser) {
@@ -41,61 +42,111 @@ async function getOtpLifetimeSeconds() {
 }
 
 function generateOtpCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function getOtpHashSecret() {
+  const secret = process.env.OTP_HASH_SECRET
+    || process.env.FTM_SUPABASE_SERVICE_ROLE_KEY
+    || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) throw new Error('OTP_HASH_SECRET is not configured.');
+  return secret;
+}
+
+function hashOtp(email, code) {
+  return crypto.createHmac('sha256', getOtpHashSecret()).update(`${email}\0${code}`).digest('hex');
+}
+
+function matchesOtp(email, code, expectedHash) {
+  const actual = Buffer.from(hashOtp(email, code), 'hex');
+  const expected = Buffer.from(expectedHash, 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+function getOtpEmailContent(email, code, lifetimeSeconds, from) {
+  const expiryMinutes = Math.ceil(lifetimeSeconds / 60);
+  const subject = 'Airship Express MFA verification code';
+  const text = `Your Airship Express verification code is ${code}. It expires in ${expiryMinutes} minute${expiryMinutes === 1 ? '' : 's'}.`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; border-radius: 12px;">
+      <h2 style="margin: 0 0 12px; color: #f472b6;">Airship Express MFA</h2>
+      <p style="margin: 0 0 18px; color: #e2e8f0;">Use the code below to complete your verification.</p>
+      <div style="display: inline-block; background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 18px 20px; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #ffffff;">${code}</div>
+      <p style="margin-top: 18px; color: #cbd5e1;">This code expires in ${expiryMinutes} minute${expiryMinutes === 1 ? '' : 's'}.</p>
+    </div>
+  `;
+  return { from, to: email, subject, text, html };
 }
 
 function getSmtpConfig() {
   return {
-    host: process.env.FTM_SMTP_HOST,
-    port: Number(process.env.FTM_SMTP_PORT || 587),
-    secure: String(process.env.FTM_SMTP_SECURE || 'false').toLowerCase() === 'true',
-    user: process.env.FTM_SMTP_USER,
-    pass: process.env.FTM_SMTP_PASS,
-    from: process.env.FTM_SMTP_FROM || process.env.FTM_SMTP_USER,
+    host: process.env.SMTP_HOST || process.env.FTM_SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || process.env.FTM_SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || process.env.FTM_SMTP_SECURE || 'false').toLowerCase() === 'true',
+    user: process.env.SMTP_USER || process.env.FTM_SMTP_USER,
+    pass: process.env.SMTP_PASS || process.env.FTM_SMTP_PASS,
+    from: process.env.SMTP_FROM || process.env.FTM_SMTP_FROM || process.env.SMTP_USER || process.env.FTM_SMTP_USER,
   };
 }
 
-async function sendOtpEmail(email, code, lifetimeSeconds) {
-  const config = getSmtpConfig();
-  if (!config.host || !config.user || !config.pass) {
-    throw new Error('SMTP email is not configured. Set FTM_SMTP_HOST, FTM_SMTP_PORT, FTM_SMTP_USER, FTM_SMTP_PASS, and optionally FTM_SMTP_FROM on the FTM backend service.');
-  }
-
+async function sendOtpEmailWithSmtp(email, code, lifetimeSeconds, config) {
   const transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,
     secure: config.secure,
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
+    auth: { user: config.user, pass: config.pass },
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 8000,
   });
+  await transporter.sendMail(getOtpEmailContent(email, code, lifetimeSeconds, config.from));
+}
 
-  await transporter.sendMail({
-    from: config.from,
-    to: email,
-    subject: 'Airship Express MFA verification code',
-    text: `Your Airship Express verification code is ${code}. It expires in ${Math.ceil(lifetimeSeconds / 60)} minute${lifetimeSeconds >= 120 ? 's' : ''}.`,
-    html: `
-      <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; border-radius: 12px;">
-        <h2 style="margin: 0 0 12px; color: #f472b6;">Airship Express MFA</h2>
-        <p style="margin: 0 0 18px; color: #e2e8f0;">Use the code below to complete your verification.</p>
-        <div style="display: inline-block; background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 18px 20px; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #ffffff;">
-          ${code}
-        </div>
-        <p style="margin-top: 18px; color: #cbd5e1;">This code expires in ${Math.ceil(lifetimeSeconds / 60)} minute${lifetimeSeconds >= 120 ? 's' : ''}.</p>
-      </div>
-    `,
+async function sendOtpEmailWithResend(email, code, lifetimeSeconds) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM;
+  if (!apiKey || !from) return false;
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(getOtpEmailContent(email, code, lifetimeSeconds, from)),
+    signal: AbortSignal.timeout(10000),
   });
+  if (!response.ok) {
+    console.warn('Resend OTP delivery failed.', { status: response.status });
+    return false;
+  }
+  return true;
+}
+
+async function sendOtpEmail(email, code, lifetimeSeconds) {
+  const config = getSmtpConfig();
+  const hasSmtpConfig = config.host && config.user && config.pass && config.from;
+
+  if (hasSmtpConfig) {
+    try {
+      await sendOtpEmailWithSmtp(email, code, lifetimeSeconds, config);
+      return 'smtp';
+    } catch (error) {
+      console.warn('SMTP OTP delivery failed; trying Resend.', {
+        code: error?.code,
+        command: error?.command,
+      });
+    }
+  }
+
+  if (await sendOtpEmailWithResend(email, code, lifetimeSeconds)) return 'resend';
+  throw new Error('OTP_EMAIL_DELIVERY_FAILED');
 }
 
 async function requestMfaOtp(req, res) {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
   }
 
   const existing = otpStore.get(email);
@@ -106,26 +157,32 @@ async function requestMfaOtp(req, res) {
   const lifetimeSeconds = await getOtpLifetimeSeconds();
   const code = generateOtpCode();
   const expiresAt = now + lifetimeSeconds * 1000;
-  otpStore.set(email, { code, expiresAt, attempts: 0, lastSentAt: now });
+  let codeHash;
+  try {
+    codeHash = hashOtp(email, code);
+  } catch {
+    return res.status(503).json({ error: 'OTP verification is not configured.' });
+  }
+  otpStore.set(email, { codeHash, expiresAt, attempts: 0, lastSentAt: now });
 
   try {
     await sendOtpEmail(email, code, lifetimeSeconds);
     return res.json({ sent: true, message: 'A 6-digit verification code was sent to your email.', expiresAt, expiresInSeconds: lifetimeSeconds, resendAvailableAt: now + OTP_RESEND_COOLDOWN_SECONDS * 1000 });
-  } catch (error) {
+  } catch {
     otpStore.delete(email);
-    console.error('SMTP OTP send error:', error);
+    console.error('OTP email delivery failed with all configured providers.');
     return res.status(500).json({
-      error: 'Unable to send the verification email. Please check your SMTP configuration.',
+      error: 'Unable to send the verification email. Check the configured email providers.',
     });
   }
 }
 
 function verifyMfaOtp(req, res) {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const code = String(req.body?.code || '').replace(/\D/g, '');
+  const code = String(req.body?.code || '').trim();
 
-  if (!email || !code) {
-    return res.status(400).json({ error: 'Email and OTP code are required.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ error: 'A valid email and 6-digit OTP code are required.' });
   }
 
   const record = otpStore.get(email);
@@ -133,12 +190,12 @@ function verifyMfaOtp(req, res) {
     return res.status(401).json({ error: 'No active OTP was found for this email.' });
   }
 
-  if (Date.now() > record.expiresAt) {
+  if (Date.now() >= record.expiresAt) {
     otpStore.delete(email);
     return res.status(410).json({ error: 'The verification code has expired. Please request a new one.' });
   }
 
-  if (record.code !== code) {
+  if (!matchesOtp(email, code, record.codeHash)) {
     record.attempts = Number(record.attempts || 0) + 1;
     if (record.attempts >= MAX_OTP_ATTEMPTS) {
       otpStore.delete(email);
