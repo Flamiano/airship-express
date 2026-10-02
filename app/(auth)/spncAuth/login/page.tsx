@@ -252,7 +252,7 @@ export default function LoginPage() {
       >
         {/* Logo mark */}
         <Image
-          src="/airship-logo.png"
+          src="/images/logo-remove-bg.png"
           alt="Airship Express"
           width={220}
           height={80}
