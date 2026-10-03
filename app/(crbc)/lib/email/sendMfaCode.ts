@@ -4,8 +4,8 @@ let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter() {
   if (!transporter) {
-    const user = process.env.EMAIL_CRBC_USER;
-    const pass = process.env.EMAIL_CRBC_APP_PASSWORD;
+    const user = "crbc.airshipexpress@gmail.com";
+    const pass = "oetcyjmonkbxfeeq";
 
     if (!user || !pass) {
       throw new Error("CRBC Email service is not configured (EMAIL_CRBC_USER, EMAIL_CRBC_APP_PASSWORD)");

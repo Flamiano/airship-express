@@ -4,6 +4,7 @@ import { createClient } from "../library/supabase/server";
 import { sendMfaCodeEmail } from "../lib/email/sendMfaCode";
 import { generateOtp, hashOtp, verifyOtp } from "../lib/utils/otp";
 import { recordAudit } from "../services/audit.service";
+import { Const } from "three/src/nodes/core/VarNode.js";
 
 export interface MfaActionResult {
   success: boolean;
@@ -246,16 +247,17 @@ export async function enableMfaWithPassword(
     const mailTransporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.EMAIL_CRBC_USER,
-        pass: process.env.EMAIL_CRBC_APP_PASSWORD,
+        user: "crbc.airshipexpress@gmail.com",
+        pass: "oetcyjmonkbxfeeq",
       },
       connectionTimeout: 10000,
       greetingTimeout: 5000,
       socketTimeout: 10000,
     });
-
+const EMAIL_CRBC_USER = "crbc.airshipexpress@gmail.com"
+const EMAIL_CRBC_FROM_NAME = "Airship Express CRBC"
     await mailTransporter.sendMail({
-      from: `"${process.env.EMAIL_CRBC_FROM_NAME || "Airship Express CRBC"}" <${process.env.EMAIL_CRBC_USER}>`,
+      from: `"${EMAIL_CRBC_FROM_NAME}" <${EMAIL_CRBC_USER}>`,
       to: profile.email,
       subject: "Your MFA has been enabled",
       html: `
