@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import airshiplogo from "../../../../public/images/logo-remove-bg.png"
 import {
   LayoutDashboard,
   Building2,
@@ -83,7 +84,7 @@ export default function Sidebar() {
                     <span className="text-sm font-bold text-[#0B1220]">AE</span>
                   ) : (
                     <Image
-                      src="/images/logo-remove-bg.png"
+                      src={airshiplogo}
                       alt="Airship Express"
                       width={40}
                       height={40}

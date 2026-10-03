@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Oswald, IBM_Plex_Mono, Inter } from "next/font/google";
 import { Eye, EyeOff, Loader2, Sun, Moon } from "lucide-react";
+import airshiplogo from "../../../../public/images/logo-remove-bg.png"
 
 const display = Oswald({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-display" });
 const monoLabel = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono-label" });
@@ -252,7 +253,7 @@ export default function LoginPage() {
       >
         {/* Logo mark */}
         <Image
-          src="/images/logo-remove-bg.png"
+          src={airshiplogo}
           alt="Airship Express"
           width={220}
           height={80}

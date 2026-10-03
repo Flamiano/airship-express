@@ -37,7 +37,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem("theme");
       if (saved === "light" || saved === "dark") setTheme(saved);
 
-      if (pathname === "/spnc/app/login") {
+      if (pathname === "/spncAuth/login") {
         sessionStorage.removeItem(LAST_ACTIVITY_KEY);
         setSessionActive(false);
         setRole(null);
