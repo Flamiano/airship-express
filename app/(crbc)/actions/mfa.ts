@@ -16,7 +16,7 @@ export interface MfaActionResult {
 
 
 const OTP_EXPIRY_MINUTES = 5;
-const MAX_OTP_SENDS_PER_WINDOW = 13;
+const MAX_OTP_SENDS_PER_WINDOW = 3;
 const OTP_WINDOW_MINUTES = 3;
 
 /** OTP must be digits only - no letters, symbols or spaces. */

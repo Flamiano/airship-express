@@ -13,10 +13,10 @@ export const createClient = async (role?: "staff" | "customer") => {
 
   if (role === "staff") {
     // Staff: 8 hours max age
-    cookieOptions.maxAge = 60 * 30; // 30 mins
+    cookieOptions.maxAge = 60 * 10; // 10 mins
   } else if (role === "customer") {
     // Set cookie maxAge to 30 mins absolute max
-    cookieOptions.maxAge = 60 * 30; // 30 mins
+    cookieOptions.maxAge = 60 * 10; // 10 mins
   }
 
   return createServerClient(
