@@ -45,7 +45,7 @@ export const SUBDOMAIN_PORTALS: SubdomainPortal[] = [
     routes: [
       "/hr-dashboard",
       "/payroll-benefits-dashboard",
-      "/recruitment-core-hub-dashboard", // fixed: was missing leading slash
+      "/recruitment-core-hub-dashboard",
       "/performance-development-dashboard",
       "/workforce-management-hr",
     ],
@@ -132,6 +132,29 @@ const ALL_PORTAL_SUBDOMAINS = new Set(
 const HOST_FORMAT_REGEX = /^[a-z0-9.-]+(?::[0-9]{1,5})?$/i;
 const IPV4_REGEX = /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/;
 const IPV6_REGEX = /^\[?[a-f0-9:]+\]?(?::\d+)?$/i;
+
+// Static asset extensions that must NEVER be redirected/rewritten by the proxy.
+const STATIC_ASSET_REGEX =
+  /\.(?:svg|png|jpe?g|gif|webp|avif|ico|bmp|tiff?|css|js|mjs|cjs|map|woff2?|ttf|otf|eot|mp4|webm|ogg|mp3|wav|flac|aac|json|xml|txt|pdf|zip|glb|gltf)$/i;
+
+// Public top-level folders that serve static files and must bypass the proxy.
+const PUBLIC_STATIC_PREFIXES = [
+  "/images/",
+  "/image/",
+  "/img/",
+  "/icons/",
+  "/fonts/",
+  "/assets/",
+  "/static/",
+  "/media/",
+  "/public/",
+  "/_next/",
+];
+
+function isStaticAsset(pathname: string): boolean {
+  if (STATIC_ASSET_REGEX.test(pathname)) return true;
+  return PUBLIC_STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 function getConfiguredBaseHost(): {
   baseHost: string;
@@ -392,6 +415,16 @@ function applySecurityHeaders(
 export function proxy(request: NextRequest) {
   try {
     const { pathname, search } = request.nextUrl;
+
+    // -----------------------------------------------------------------
+    // CRITICAL FIX: bypass the proxy for all static assets.
+    // This makes /images/logo-remove-bg.png, /airship-logo.png, etc.
+    // load correctly on every subdomain (hr, sc, spnc, ftm, ...).
+    // -----------------------------------------------------------------
+    if (isStaticAsset(pathname)) {
+      return NextResponse.next();
+    }
+
     const normalizedPath = normalizePath(pathname);
     const { subdomain, baseHost, protocol } = resolveHostInfo(request);
 
@@ -612,8 +645,15 @@ export default proxy;
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2|ttf|eot|mp4|webm|ogg|mp3|wav|json|glb|gltf)$).*)",
-    "/((?!api|_next/static|_next/image).+\\.(?:svg|png|jpe?g|gif|webp|ico|css|js|woff2?|ttf|eot|mp4|webm|ogg|mp3|wav|glb|gltf)$)",
-    "/api/:path*",
+    /*
+     * Match all request paths EXCEPT:
+     *  - /api/*                (handled explicitly below if needed)
+     *  - /_next/static/*       (Next.js build assets)
+     *  - /_next/image/*        (Next.js image optimizer)
+     *  - /images/*             (public images folder — fixes the logo)
+     *  - favicon.ico, robots.txt, sitemap.xml
+     *  - any path ending in a static asset extension
+     */
+    "/((?!api|_next/static|_next/image|images/|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|mjs|cjs|map|woff|woff2|ttf|otf|eot|mp4|webm|ogg|mp3|wav|flac|aac|json|xml|txt|pdf|zip|glb|gltf)$).*)",
   ],
 };
