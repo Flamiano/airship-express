@@ -141,10 +141,11 @@ export async function processDeliveredPurchaseOrdersAction(
             };
         }
 
-        // 2. Fetch all existing inventory items
-        const { data: invData, error: invError } = await dbClient
-            .from('inventory_items')
-            .select('*');
+        // 2. Fetch all existing inventory items and valid warehouse storage zones
+        const [{ data: invData, error: invError }, { data: zonesData }] = await Promise.all([
+            dbClient.from('inventory_items').select('*'),
+            dbClient.from('warehouse_storage_zones').select('zone_code')
+        ]);
 
         if (invError) {
             return {
@@ -155,6 +156,11 @@ export async function processDeliveredPurchaseOrdersAction(
             };
         }
 
+        const validZoneCodes = new Set(
+            (zonesData || []).map((z: any) => String(z.zone_code || '').toUpperCase().trim())
+        );
+        const defaultZoneCode = zonesData && zonesData.length > 0 ? zonesData[0].zone_code : null;
+
         const allInventory: any[] = invData || [];
         const existingCodes = new Set(
             allInventory.map((i: any) => String(i.item_code || '').toLowerCase().trim())
@@ -163,6 +169,7 @@ export async function processDeliveredPurchaseOrdersAction(
         const results: DeliveryProcessingResult[] = [];
         let grandTotalUpdated = 0;
         let grandTotalCreated = 0;
+        let lastDbError: string | null = null;
 
         for (const order of orders) {
             const poResult: DeliveryProcessingResult = {
@@ -236,7 +243,15 @@ export async function processDeliveredPurchaseOrdersAction(
                 const itemCategory = String(item.category || order.category || 'General').trim();
                 const itemPrice = Math.max(0, Number(item.unit_price ?? item.price ?? 0));
                 const itemSupplier = String(item.supplier || poSupplier).trim();
-                const targetStorageLocation = options?.storageLocation || order.delivery_location || 'Warehouse - Receiving Bay';
+                // Validate target storage location to prevent foreign key constraint violations
+                let targetStorageLocation: string | null = null;
+                if (options?.storageLocation && validZoneCodes.has(options.storageLocation.toUpperCase().trim())) {
+                    targetStorageLocation = options.storageLocation.trim();
+                } else if (order.delivery_location && validZoneCodes.has(order.delivery_location.toUpperCase().trim())) {
+                    targetStorageLocation = order.delivery_location.trim();
+                } else {
+                    targetStorageLocation = defaultZoneCode;
+                }
                 const refNumber = options?.deliveryReceiptNumber || options?.invoiceNumber || order.po_number;
 
                 // Look for an existing inventory item with the same name AND same supplier
@@ -262,9 +277,15 @@ export async function processDeliveredPurchaseOrdersAction(
                     const updatePayload: Record<string, any> = {
                         current_stock: newStock,
                         status: newStatus,
-                        storage_location: targetStorageLocation || matchingItem.storage_location,
                         updated_at: new Date().toISOString(),
                     };
+
+                    // Only assign a valid storage location
+                    if (targetStorageLocation) {
+                        updatePayload.storage_location = targetStorageLocation;
+                    } else if (matchingItem.storage_location && validZoneCodes.has(String(matchingItem.storage_location).toUpperCase().trim())) {
+                        updatePayload.storage_location = matchingItem.storage_location;
+                    }
 
                     // Backfill supplier if it was empty
                     if (!matchingItem.supplier || !matchingItem.supplier.trim()) {
@@ -285,6 +306,7 @@ export async function processDeliveredPurchaseOrdersAction(
 
                     if (updateErr) {
                         console.error('Failed to update inventory item:', updateErr);
+                        lastDbError = updateErr.message;
                     } else {
                         // Reflect in memory
                         matchingItem.current_stock = newStock;
@@ -360,6 +382,7 @@ export async function processDeliveredPurchaseOrdersAction(
 
                     if (insertErr || !createdItem) {
                         console.error('Failed to create new inventory item for supplier:', insertErr);
+                        lastDbError = insertErr?.message || 'Failed to create new inventory item';
                     } else {
                         // Add to in-memory inventory pool
                         allInventory.push(createdItem);
@@ -405,6 +428,14 @@ export async function processDeliveredPurchaseOrdersAction(
                         });
                     }
                 }
+            }
+
+            // If zero items were successfully updated or created, don't mark PO delivered
+            if (poResult.updatedCount === 0 && poResult.createdCount === 0 && orderItems.length > 0) {
+                poResult.success = false;
+                poResult.error = lastDbError || 'No inventory items could be updated or created in database.';
+                results.push(poResult);
+                continue;
             }
 
             // 3. Mark the Purchase Order as Delivered & Fully Received
@@ -519,13 +550,27 @@ export async function processDeliveredPurchaseOrdersAction(
             results.push(poResult);
         }
 
-        // Revalidate Next.js cache so inventory, movements, procurement, and PO tabs update instantly
+        // Revalidate Next.js cache so inventory, movements, procurement, warehousing, and PO tabs update instantly
         try {
             revalidatePath('/purchase-orders');
             revalidatePath('/inventory');
             revalidatePath('/procurement');
+            revalidatePath('/warehousing');
         } catch (revErr) {
             console.warn('revalidatePath notice:', revErr);
+        }
+
+        if (grandTotalUpdated === 0 && grandTotalCreated === 0 && orders.length > 0) {
+            return {
+                success: false,
+                results,
+                summary: {
+                    totalOrders: orders.length,
+                    totalUpdated: 0,
+                    totalCreated: 0,
+                },
+                error: lastDbError || 'No items could be added or updated in inventory. Please verify storage zone selection.',
+            };
         }
 
         return {

@@ -92,6 +92,20 @@ export function ReportDefectiveItemsModal({
         );
     }, [selectedPOId, purchaseOrders]);
 
+    // Check if PO was already delivered / received into warehouse
+    const isAlreadyReceived = useMemo(() => {
+        if (!activePO) return false;
+        const st = String(activePO.status || "").toLowerCase().trim();
+        return st === "delivered" || st === "received" || Boolean(activePO.fully_received);
+    }, [activePO]);
+
+    // Automatically check isDiscoveredPostReceiving when the PO is already delivered
+    useEffect(() => {
+        if (activePO) {
+            setIsDiscoveredPostReceiving(isAlreadyReceived);
+        }
+    }, [activePO, isAlreadyReceived]);
+
     // Available items for the selected PO
     const poItems = useMemo(() => {
         if (!activePO) return [];
@@ -558,18 +572,37 @@ export function ReportDefectiveItemsModal({
                                 </div>
 
                                 {/* Discovery timing checkbox */}
-                                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-start gap-2.5 text-amber-800 dark:text-amber-300">
+                                <div className={`p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 transition-colors ${
+                                    isDiscoveredPostReceiving
+                                        ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+                                        : "bg-slate-500/10 border-slate-500/20 text-slate-700 dark:text-slate-300"
+                                }`}>
                                     <input
                                         type="checkbox"
                                         id="postReceivingCheckbox"
                                         checked={isDiscoveredPostReceiving}
                                         onChange={(e) => setIsDiscoveredPostReceiving(e.target.checked)}
-                                        className="mt-0.5 rounded text-pink-600 focus:ring-pink-500"
+                                        className="mt-0.5 rounded text-pink-600 focus:ring-pink-500 cursor-pointer"
                                     />
-                                    <label htmlFor="postReceivingCheckbox" className="cursor-pointer">
-                                        <span className="font-bold">Discovered after receiving completed?</span>
-                                        <span className="block text-[11px] opacity-90">
-                                            If checked, this item was already restocked into usable inventory. Submitting will safely deduct the {defectiveQuantity} unit(s) from usable stock and move them to quarantine stock with a traceable movement record.
+                                    <label htmlFor="postReceivingCheckbox" className="cursor-pointer space-y-1 select-none">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="font-bold">Discovered after receiving completed?</span>
+                                            {isAlreadyReceived && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                                                    Auto-checked (PO #{activePO?.po_number} is Delivered)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="block text-[11px] opacity-90 leading-relaxed">
+                                            {isDiscoveredPostReceiving ? (
+                                                <>
+                                                    <strong>Auto-deduction active:</strong> Since this PO was already received into warehouse inventory, submitting will automatically deduct <strong>{defectiveQuantity} unit(s)</strong> from active usable stock and isolate them in quarantine stock.
+                                                </>
+                                            ) : (
+                                                <>
+                                                    If checked, this item was already restocked into usable inventory. Submitting will safely deduct the {defectiveQuantity} unit(s) from usable stock and move them to quarantine stock with a traceable movement record.
+                                                </>
+                                            )}
                                         </span>
                                     </label>
                                 </div>
@@ -630,6 +663,19 @@ export function ReportDefectiveItemsModal({
                                                 {requestedResolution}
                                             </span>
                                         </div>
+                                    </div>
+
+                                    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 text-[11px] text-amber-900 dark:text-amber-300">
+                                        <span className="font-bold block mb-0.5">Inventory Stock Impact:</span>
+                                        {isDiscoveredPostReceiving ? (
+                                            <span>
+                                                Will automatically deduct <strong>{defectiveQuantity} unit(s)</strong> from active usable inventory and allocate <strong>+{defectiveQuantity} unit(s)</strong> into quarantine stock.
+                                            </span>
+                                        ) : (
+                                            <span>
+                                                Will isolate <strong>{defectiveQuantity} unit(s)</strong> directly into quarantine stock prior to warehouse shelving.
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div>

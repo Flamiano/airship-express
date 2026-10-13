@@ -43,6 +43,8 @@ import {
     fetchApprovedReplacementReturnsAction, 
     SupplierReturnRequestRecord 
 } from "../../server/supplier-returns-actions";
+import { StorageLocationZone } from "../../types";
+import { fetchStorageZonesFromDB } from "../../server/warehouse-db";
 
 interface ReceiveSuppliesTabProps {
     inventoryItems: any[];
@@ -140,6 +142,45 @@ export function ReceiveSuppliesTab({
         };
     }, [loadApprovedReplacements]);
 
+    // State for Storage Zones
+    const [storageZones, setStorageZones] = useState<StorageLocationZone[]>([]);
+    const [isLoadingZones, setIsLoadingZones] = useState<boolean>(false);
+
+    const loadStorageZones = useCallback(async () => {
+        setIsLoadingZones(true);
+        try {
+            const zones = await fetchStorageZonesFromDB();
+            setStorageZones(zones);
+        } catch (err) {
+            console.error("Error loading storage zones in ReceiveSuppliesTab:", err);
+        } finally {
+            setIsLoadingZones(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadStorageZones();
+
+        const channel = supabase
+            .channel(`warehouse_receive_zones_realtime_${Date.now()}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "warehouse_storage_zones",
+                },
+                () => {
+                    loadStorageZones();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [loadStorageZones]);
+
     // Filter purchase orders strictly: ONLY get those with status Issued (or Delivered/received) AND approved by financial AND approved by admin
     const eligibleOrders = useMemo(() => {
         return purchaseOrders.filter((po) => {
@@ -217,10 +258,11 @@ export function ReceiveSuppliesTab({
                 initialItemsMap[key] = qty;
             });
         }
+        const defaultZone = storageZones.length > 0 ? storageZones[0].zone_code : "";
         setReceiptForm({
             deliveryReceiptNumber: "",
             invoiceNumber: po.po_number || `PO-${po.id}`,
-            storageLocation: "",
+            storageLocation: defaultZone,
             condition: "Passed QC Inspection",
             receivedBy: "",
             notes: "",
@@ -234,6 +276,11 @@ export function ReceiveSuppliesTab({
         e.preventDefault();
         if (!selectedPO) return;
 
+        if (!receiptForm.storageLocation || !receiptForm.storageLocation.trim()) {
+            toast.error("Please select a valid Storage Location Destination zone.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const deliveryRes = await processDeliveredPurchaseOrdersAction(
@@ -244,7 +291,7 @@ export function ReceiveSuppliesTab({
                     id: user.getId() || undefined,
                 },
                 {
-                    storageLocation: receiptForm.storageLocation || undefined,
+                    storageLocation: receiptForm.storageLocation.trim(),
                     deliveryReceiptNumber: receiptForm.deliveryReceiptNumber || undefined,
                     invoiceNumber: receiptForm.invoiceNumber || undefined,
                     notes: receiptForm.notes || undefined,
@@ -826,15 +873,21 @@ export function ReceiveSuppliesTab({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                     <div>
                                         <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                            Storage Location Destination
+                                            Storage Location Destination <span className="text-pink-500 font-black">*</span>
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
+                                            required
                                             value={receiptForm.storageLocation}
                                             onChange={(e) => setReceiptForm({ ...receiptForm, storageLocation: e.target.value })}
-                                            className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
-                                            placeholder="Enter storage location / rack"
-                                        />
+                                            className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 font-bold"
+                                        >
+                                            <option value="">-- Select Destination Storage Zone (Required) --</option>
+                                            {storageZones.map((zone) => (
+                                                <option key={zone.id || zone.zone_code} value={zone.zone_code}>
+                                                    {zone.zone_code} — {zone.zone_name} ({zone.building_or_hub || "Main Hub"})
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     <div>
@@ -1023,15 +1076,21 @@ export function ReceiveSuppliesTab({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                     <div>
                                         <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                            Storage Bin / Location
+                                            Storage Bin / Location <span className="text-pink-500 font-black">*</span>
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
+                                            required
                                             value={directStockForm.storageLocation}
                                             onChange={(e) => setDirectStockForm({ ...directStockForm, storageLocation: e.target.value })}
-                                            className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
-                                            placeholder="Enter storage location"
-                                        />
+                                            className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 font-bold"
+                                        >
+                                            <option value="">-- Select Destination Storage Zone (Required) --</option>
+                                            {storageZones.map((zone) => (
+                                                <option key={zone.id || zone.zone_code} value={zone.zone_code}>
+                                                    {zone.zone_code} — {zone.zone_name} ({zone.building_or_hub || "Main Hub"})
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     <div>

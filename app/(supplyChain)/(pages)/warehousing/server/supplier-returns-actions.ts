@@ -375,8 +375,12 @@ export async function reportDefectiveItemAction(payload: DefectiveItemSubmission
                 const newQuarantine = prevQuarantine + defectiveQty;
 
                 // If reported after receipt was already added to usable stock, decrement usable stock
+                const poStatus = String(poRecord?.status || '').toLowerCase().trim();
+                const isDeliveredPO = poStatus === 'delivered' || poStatus === 'received' || Boolean(poRecord?.fully_received);
+                const shouldDeductUsableStock = Boolean(payload.isDiscoveredPostReceiving || isDeliveredPO);
+
                 let updatedStock = currentStock;
-                if (payload.isDiscoveredPostReceiving) {
+                if (shouldDeductUsableStock) {
                     updatedStock = Math.max(0, currentStock - defectiveQty);
                 }
 
@@ -385,8 +389,16 @@ export async function reportDefectiveItemAction(payload: DefectiveItemSubmission
                     quarantine_stock: newQuarantine,
                     updated_at: new Date().toISOString(),
                 };
-                if (payload.isDiscoveredPostReceiving) {
+                if (shouldDeductUsableStock) {
                     updateData.current_stock = updatedStock;
+                    const reorderLevel = Number(invItem.reorder_level) || 0;
+                    if (updatedStock <= 0) {
+                        updateData.status = 'out-of-stock';
+                    } else if (updatedStock <= reorderLevel) {
+                        updateData.status = 'low-stock';
+                    } else {
+                        updateData.status = 'available';
+                    }
                 }
 
                 await dbClient

@@ -15,7 +15,7 @@ import { useConfirm } from "../ui/ConfirmModal";
 import { NotificationBell } from "./NotificationBell";
 import { UserProfileMenu } from "./UserProfileMenu";
 import { SessionLogoutTimer } from "./SessionLogoutTimer";
-import ThemeToggle from "@/app/components/ThemeToggle";
+import ThemeToggle from "../../../components/ThemeToggle";
 import { AppButton } from "../ui/AppButton";
 import { StatusBadge } from "../ui/StatusBadge";
 import { ChangePasswordModal } from "../modals/ChangePasswordModal";

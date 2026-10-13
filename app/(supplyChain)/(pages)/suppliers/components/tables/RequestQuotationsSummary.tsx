@@ -358,7 +358,7 @@ export function RequestQuotationsSummary({
                 leadTimeDays: Number(winningQuote.lead_time_days || 1),
                 availability: winningQuote.availability || "In Stock",
                 overallScore: winnerRanking?.overallScore || 96,
-                summary: aiResult?.aiExecutiveBrief || localEvaluation?.executiveBrief || `AI recommends ${winningQuote.supplier_name} for optimal price-to-turnaround efficiency on ${group.itemName}.`,
+                summary: aiResult?.aiExecutiveBrief || localEvaluation?.aiExecutiveBrief || `AI recommends ${winningQuote.supplier_name} for optimal price-to-turnaround efficiency on ${group.itemName}.`,
                 strengths: winnerRanking?.strengths || [],
                 comparisonQuotes: validQuotes.map((q) => ({
                     supplierName: q.supplier_name,
@@ -537,7 +537,7 @@ export function RequestQuotationsSummary({
                                             leadTimeDays: Number(winningQuote.lead_time_days || 1),
                                             availability: winningQuote.availability || "In Stock",
                                             overallScore: winnerRanking?.overallScore || 96,
-                                            summary: aiResult?.aiExecutiveBrief || localEvaluation?.executiveBrief || `AI recommends ${winningQuote.supplier_name} as providing the optimal balance of competitive pricing and turnaround speed.`,
+                                            summary: aiResult?.aiExecutiveBrief || localEvaluation?.aiExecutiveBrief || `AI recommends ${winningQuote.supplier_name} as providing the optimal balance of competitive pricing and turnaround speed.`,
                                             strengths: winnerRanking?.strengths || [],
                                             comparisonQuotes: validQuotes.map(q => ({
                                                 supplierName: q.supplier_name,
