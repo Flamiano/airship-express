@@ -33,6 +33,7 @@ let isRegistered = false;
 export function useSuppliers() {
     const { confirm } = useConfirm();
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [potentialCount, setPotentialCount] = useState<number>(0);
     const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -176,7 +177,7 @@ export function useSuppliers() {
         setCurrentPage(1);
     }, [searchTerm, categoryFilter]);
 
-    // fetch suppliers list from supabase
+    // fetch suppliers list from supabase (active suppliers and potential count)
     const fetchSuppliers = async () => {
         setIsLoading(true);
         try {
@@ -185,8 +186,14 @@ export function useSuppliers() {
                 .select("*")
                 .order("name");
             if (error) throw error;
-            setSuppliers(data || []);
-            const uniqueCategories = [...new Set(data?.map((s) => s.category).filter(Boolean))];
+            const allSuppliers = data || [];
+            const activeOnly = allSuppliers.filter((s) => s.is_active !== false);
+            const potentialOnly = allSuppliers.filter(
+                (s) => s.is_active === false || (s.notes && s.notes.toLowerCase().includes("potential"))
+            );
+            setSuppliers(activeOnly);
+            setPotentialCount(potentialOnly.length);
+            const uniqueCategories = [...new Set(activeOnly.map((s) => s.category).filter(Boolean))];
             setCategories(uniqueCategories);
         } catch (error) {
             console.error("Error fetching suppliers:", error);
@@ -211,23 +218,67 @@ export function useSuppliers() {
         }
     };
 
+    // helper to sanitize email and phone adhering to PostgreSQL check constraints
+    const sanitizeSupplierEmail = (emailStr?: string | null) => {
+        if (!emailStr || typeof emailStr !== "string") return null;
+        const trimmed = emailStr.trim();
+        if (!trimmed) return null;
+        const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+        return emailRegex.test(trimmed) ? trimmed : null;
+    };
+
+    const sanitizeSupplierPhone = (phoneStr?: string | null) => {
+        const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+        if (!phoneStr || typeof phoneStr !== "string") return "+63 2 8000 0000";
+        const cleaned = phoneStr.trim().replace(/[^0-9+\s\-()]/g, "").trim();
+        if (cleaned.length >= 7 && cleaned.length <= 20 && phoneRegex.test(cleaned)) {
+            return cleaned;
+        }
+        const digits = phoneStr.replace(/\D/g, "");
+        if (digits.length >= 7 && digits.length <= 15) {
+            return digits.startsWith("63") ? `+${digits}` : digits.startsWith("0") ? `+63 ${digits.slice(1)}` : `+63 ${digits}`;
+        }
+        return "+63 2 8000 0000";
+    };
+
+    // handle adding a new supplier
     // handle adding a new supplier
     const handleAddSupplier = async (e: React.FormEvent) => {
         e.preventDefault();
+        const trimmedName = newSupplier.name.trim();
+        if (!trimmedName) {
+            toast.error("Supplier name is required.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
+            // Check for duplicate supplier name
+            const { data: existingSuppliers } = await supabase
+                .from("suppliers")
+                .select("id, name, is_active")
+                .ilike("name", trimmedName)
+                .limit(1);
+
+            if (existingSuppliers && existingSuppliers.length > 0) {
+                const ex = existingSuppliers[0];
+                toast.error(`Duplicate Supplier: "${ex.name}" already exists in ${ex.is_active ? "Registered Suppliers" : "Potential Suppliers"}.`);
+                setIsSubmitting(false);
+                return;
+            }
+
             const { data, error } = await supabase
                 .from("suppliers")
                 .insert({
-                    name: newSupplier.name,
-                    category: newSupplier.category,
-                    contact_person: newSupplier.contact_person,
-                    phone: newSupplier.phone,
-                    email: newSupplier.email,
-                    location: newSupplier.location,
-                    products: newSupplier.products,
-                    notes: newSupplier.notes,
-                    fb_link: newSupplier.fb_link,
+                    name: trimmedName,
+                    category: newSupplier.category || "General Supplies",
+                    contact_person: newSupplier.contact_person?.trim() || "Store Contact",
+                    phone: sanitizeSupplierPhone(newSupplier.phone),
+                    email: sanitizeSupplierEmail(newSupplier.email),
+                    location: newSupplier.location || "Metro Manila, Philippines",
+                    products: newSupplier.products || "",
+                    notes: newSupplier.notes || "",
+                    fb_link: newSupplier.fb_link || "",
                     is_active: true,
                 })
                 .select()
@@ -259,23 +310,65 @@ export function useSuppliers() {
     const handleUpdateSupplier = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingSupplier) return;
+        const trimmedName = editingSupplier.name.trim();
+        if (!trimmedName) {
+            toast.error("Supplier name is required.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
+            // Check for duplicate supplier name on other records
+            const { data: existingSuppliers } = await supabase
+                .from("suppliers")
+                .select("id, name")
+                .ilike("name", trimmedName)
+                .neq("id", editingSupplier.id)
+                .limit(1);
+
+            if (existingSuppliers && existingSuppliers.length > 0) {
+                toast.error(`Duplicate Name: Another supplier with name "${existingSuppliers[0].name}" already exists.`);
+                setIsSubmitting(false);
+                return;
+            }
+
+            const updatePayload: any = {
+                name: trimmedName,
+                category: editingSupplier.category || "General Supplies",
+                contact_person: editingSupplier.contact_person?.trim() || "Store Contact",
+                phone: sanitizeSupplierPhone(editingSupplier.phone),
+                email: sanitizeSupplierEmail(editingSupplier.email),
+                location: editingSupplier.location || "Metro Manila, Philippines",
+                products: editingSupplier.products || "",
+                notes: editingSupplier.notes || "",
+                fb_link: editingSupplier.fb_link || "",
+                is_active: editingSupplier.is_active,
+                updated_at: new Date().toISOString(),
+            };
+
+            if (editingSupplier.payment_terms !== undefined) updatePayload.payment_terms = editingSupplier.payment_terms;
+            if (editingSupplier.payment_method !== undefined) updatePayload.payment_method = editingSupplier.payment_method;
+            if (editingSupplier.delivery_terms !== undefined) updatePayload.delivery_terms = editingSupplier.delivery_terms;
+            if (editingSupplier.warranty !== undefined) updatePayload.warranty = editingSupplier.warranty;
+            if (editingSupplier.lead_time !== undefined) updatePayload.lead_time = editingSupplier.lead_time;
+            if (editingSupplier.moq !== undefined) updatePayload.moq = editingSupplier.moq;
+            if (editingSupplier.return_policy !== undefined) updatePayload.return_policy = editingSupplier.return_policy;
+            if (editingSupplier.terms_and_conditions !== undefined) updatePayload.terms_and_conditions = editingSupplier.terms_and_conditions;
+            if (editingSupplier.tin !== undefined) updatePayload.tin = editingSupplier.tin;
+            if (editingSupplier.tax_id !== undefined) updatePayload.tax_id = editingSupplier.tax_id;
+            if (editingSupplier.tax_type !== undefined) updatePayload.tax_type = editingSupplier.tax_type;
+            if (editingSupplier.bank_name !== undefined) updatePayload.bank_name = editingSupplier.bank_name;
+            if (editingSupplier.bank_account_name !== undefined) updatePayload.bank_account_name = editingSupplier.bank_account_name;
+            if (editingSupplier.bank_account_number !== undefined) updatePayload.bank_account_number = editingSupplier.bank_account_number;
+            if (editingSupplier.other_products_offer !== undefined) {
+                updatePayload.other_products_offer = Array.isArray(editingSupplier.other_products_offer) 
+                    ? editingSupplier.other_products_offer 
+                    : [];
+            }
+
             const { error } = await supabase
                 .from("suppliers")
-                .update({
-                    name: editingSupplier.name,
-                    category: editingSupplier.category,
-                    contact_person: editingSupplier.contact_person,
-                    phone: editingSupplier.phone,
-                    email: editingSupplier.email,
-                    location: editingSupplier.location,
-                    products: editingSupplier.products,
-                    notes: editingSupplier.notes,
-                    fb_link: editingSupplier.fb_link,
-                    is_active: editingSupplier.is_active,
-                    updated_at: new Date().toISOString(),
-                })
+                .update(updatePayload)
                 .eq("id", editingSupplier.id);
             if (error) throw error;
             toast.success(`Supplier "${editingSupplier.name}" updated successfully!`);
@@ -464,8 +557,9 @@ export function useSuppliers() {
         setShowPurchaseOrderModal(true);
     };
 
-    // computed filtered suppliers
+    // computed filtered suppliers (active suppliers only)
     const filteredSuppliers = suppliers.filter((supplier) => {
+        if (supplier.is_active === false) return false;
         const matchesSearch =
             supplier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             supplier.contact_person?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -770,6 +864,18 @@ export function useSuppliers() {
         });
     };
 
+    // manually trigger redrawing of charts (e.g. when tab switches back to registered)
+    const redrawCharts = () => {
+        setTimeout(() => {
+            if (activityChartRef.current) {
+                createActivityChart();
+            }
+            if (categoryChartRef.current) {
+                createCategoryChart();
+            }
+        }, 100);
+    };
+
     // initialize and redraw charts when data updates
     useEffect(() => {
         if (isLoading) return;
@@ -814,8 +920,10 @@ export function useSuppliers() {
 
     return {
         suppliers,
+        potentialCount,
         purchaseOrders,
         isLoading,
+        setIsLoading,
         searchTerm,
         setSearchTerm,
         categoryFilter,
@@ -869,6 +977,7 @@ export function useSuppliers() {
         fetchUnreadMessageCounts,
         fetchSuppliers,
         fetchPurchaseOrders,
+        redrawCharts,
         handleAddSupplier,
         handleUpdateSupplier,
         handleDeleteSupplier,

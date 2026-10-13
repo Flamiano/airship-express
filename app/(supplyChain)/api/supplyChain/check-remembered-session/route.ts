@@ -75,6 +75,14 @@ export async function GET(request: Request) {
             .eq('id', session.user_id)
             .maybeSingle();
 
+        const userRole = (userData?.role || '').toLowerCase().trim();
+        if (userRole !== 'supplier') {
+            return NextResponse.json(
+                { remembered: false, message: 'Remembered sessions are exclusively permitted for Suppliers.' },
+                { status: 401 }
+            );
+        }
+
         if (userError) {
             // fallback to session data
             return NextResponse.json({
@@ -89,7 +97,7 @@ export async function GET(request: Request) {
                     id: session.user_id,
                     display_name: 'User',
                     email: session.email,
-                    role: 'Employee',
+                    role: 'Operator',
                 }
             });
         }

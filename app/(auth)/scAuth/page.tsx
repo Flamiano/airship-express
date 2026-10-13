@@ -1,7 +1,7 @@
 'use client';
 
 import '../../(supplyChain)/supplyChain.css';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -16,27 +16,20 @@ import { useConfirm } from '../../(supplyChain)/components/ui/ConfirmModal';
 import { OfflineDetector } from '../../(supplyChain)/components/global/OfflineDetector';
 import CustomCursor from '../../(supplyChain)/components/global/CustomCursor';
 import {
-    EmployeeSelectionModal,
-    isDropOffPickupRider,
-    PasswordSetupModal,
-    RememberedPasswordModal,
+    OtpVerificationModal,
     AppealModal,
     LoginQueueModal,
 } from './modals';
 import { user } from '../../(supplyChain)/lib/services/Class/user';
 import {
     clearUserSession,
+    validateSessionApi,
     checkRememberedSessionApi,
     restoreSupabaseSession,
-    checkEmployeeSessionApi,
     loginSupplyChainApi,
-    fetchHREmployeesApi,
     requestOtpApi,
     verifyOtpApi,
-    createAuthUserApi,
-    signInWithSupabasePassword,
     setSupabaseSession,
-    activateSessionApi,
     checkIfDeviceBlocked,
     checkExistingAppeal,
     submitAppeal,
@@ -55,7 +48,7 @@ export default function SupplyChainLoginPage() {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(true);
 
-    // login form
+    // Login form state
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -63,37 +56,28 @@ export default function SupplyChainLoginPage() {
     const [loginError, setLoginError] = useState<string | null>(null);
     const [loggedInUser, setLoggedInUser] = useState<any>(null);
 
-    // rate limiting (3 failed attempts -> 1 min lockout)
+    // Rate limiting (3 failed attempts -> 1 min lockout)
     const [loginAttempts, setLoginAttempts] = useState<number>(0);
     const [loginLockoutSeconds, setLoginLockoutSeconds] = useState<number>(0);
     const MAX_LOGIN_ATTEMPTS = 3;
 
-    // employee selection
-    const [employees, setEmployees] = useState<any[]>([]);
-    const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
-    const [showEmployeeModal, setShowEmployeeModal] = useState(false);
-
-    // remembered session
-    const [isRemembered, setIsRemembered] = useState(false);
-    const [isCheckingRemembered, setIsCheckingRemembered] = useState(false);
-    const [rememberedData, setRememberedData] = useState<any>(null);
-    const [otpSent, setOtpSent] = useState(false);
+    // OTP verification modal state (for Superadmin / Admin)
+    const [showOtpModal, setShowOtpModal] = useState(false);
+    const [otpTargetEmail, setOtpTargetEmail] = useState('');
+    const [otpMaskedEmail, setOtpMaskedEmail] = useState('');
+    const [otpTargetUserId, setOtpTargetUserId] = useState('');
+    const [otpTargetRole, setOtpTargetRole] = useState('Admin');
+    const [otpTargetDisplayName, setOtpTargetDisplayName] = useState('');
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
-    const [isVerifying, setIsVerifying] = useState(false);
-    const [countdown, setCountdown] = useState(0); // Resend button cooldown (120s = 2 mins)
-    const [otpExpiresIn, setOtpExpiresIn] = useState(0); // OTP code lifespan (300s = 5m)
+    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+    const [isResendingOtp, setIsResendingOtp] = useState(false);
+    const [countdown, setCountdown] = useState(0); // Resend cooldown (120s)
+    const [otpExpiresIn, setOtpExpiresIn] = useState(0); // OTP validity (300s)
     const [otpError, setOtpError] = useState<string | null>(null);
     const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
-    const [rememberMe, setRememberMe] = useState(false);
-    const [isRequestingOTP, setIsRequestingOTP] = useState(false);
-    const [isResending, setIsResending] = useState(false);
-    const [isLoggingInWithRemembered, setIsLoggingInWithRemembered] = useState(false);
-    const [isCurrentlyActive, setIsCurrentlyActive] = useState(false);
-    const [isSelectionLocked, setIsSelectionLocked] = useState(false);
+    const [otpRememberMe, setOtpRememberMe] = useState(false);
 
-    // device blocking
+    // Device blocking & Appeal modal state
     const [isDeviceBlocked, setIsDeviceBlocked] = useState(false);
     const [blockedDeviceId, setBlockedDeviceId] = useState<string | null>(null);
     const [showAppealModal, setShowAppealModal] = useState(false);
@@ -101,21 +85,9 @@ export default function SupplyChainLoginPage() {
     const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
     const [existingAppeal, setExistingAppeal] = useState<any>(null);
     const [isEditingAppeal, setIsEditingAppeal] = useState(false);
-
-    // password setup
-    const [showPasswordModal, setShowPasswordModal] = useState(false);
-    const [tempToken, setTempToken] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [isCreatingUser, setIsCreatingUser] = useState(false);
-    const [selectedEmployeeForPassword, setSelectedEmployeeForPassword] = useState<any>(null);
-
-    // remembered password modal
-    const [showRememberedPasswordModal, setShowRememberedPasswordModal] = useState(false);
-    const [rememberedPassword, setRememberedPassword] = useState('');
     const [authRestrictionMessage, setAuthRestrictionMessage] = useState<string | null>(null);
 
-    // login queue modal (100-user concurrency limit)
+    // Login queue modal (concurrency slot limit)
     const [showQueueModal, setShowQueueModal] = useState(false);
     const [queuePosition, setQueuePosition] = useState(1);
     const [queueActiveUsers, setQueueActiveUsers] = useState(1);
@@ -126,7 +98,7 @@ export default function SupplyChainLoginPage() {
     const checkCacheDuration = 60 * 1000;
     const { confirm } = useConfirm();
 
-    // helper keys for login rate limiting
+    // Helper keys for login rate limiting
     const getLoginLockoutKey = () => 'sc_login_lockout_until';
     const getLoginAttemptsKey = () => 'sc_login_attempts';
 
@@ -146,7 +118,7 @@ export default function SupplyChainLoginPage() {
         return 0;
     };
 
-    // initialize login rate limit on mount
+    // Initialize rate limit state on mount
     useEffect(() => {
         const remaining = getRemainingLoginLockout();
         if (remaining > 0) {
@@ -159,7 +131,7 @@ export default function SupplyChainLoginPage() {
         }
     }, []);
 
-    // countdown interval for login lockout
+    // Countdown timer for lockout
     useEffect(() => {
         if (loginLockoutSeconds > 0) {
             const timer = setTimeout(() => {
@@ -177,7 +149,7 @@ export default function SupplyChainLoginPage() {
         }
     }, [loginLockoutSeconds]);
 
-    // check for inactivity logout toast
+    // Check for inactivity logout redirect
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const urlParams = new URLSearchParams(window.location.search);
@@ -198,7 +170,7 @@ export default function SupplyChainLoginPage() {
         }
     }, []);
 
-    // fetch existing appeal when device is blocked
+    // Fetch existing appeal if device is blocked
     useEffect(() => {
         if (isDeviceBlocked && blockedDeviceId) {
             const fetchAppeal = async () => {
@@ -209,125 +181,7 @@ export default function SupplyChainLoginPage() {
         }
     }, [isDeviceBlocked, blockedDeviceId]);
 
-    // submit appeal
-    const handleSubmitAppeal = async () => {
-        if (!appealMessage.trim()) {
-            toast.error('Please enter an appeal message');
-            return;
-        }
-
-        if (!blockedDeviceId) {
-            toast.error('No blocked device found');
-            return;
-        }
-
-        setIsSubmittingAppeal(true);
-
-        try {
-            const existing = await checkExistingAppeal(blockedDeviceId);
-            if (existing) {
-                toast.warning('You already have a pending appeal for this device');
-                setShowAppealModal(false);
-                setIsSubmittingAppeal(false);
-                return;
-            }
-
-            const { data, error } = await submitAppeal({
-                blockedDeviceId,
-                userAgent: navigator.userAgent,
-                userEmail: loggedInUser?.email || '',
-                userName: loggedInUser?.display_name || 'Unknown User',
-                userRole: loggedInUser?.role || 'Employee',
-                appealMessage: appealMessage.trim(),
-            });
-
-            if (error) {
-                toast.error('Failed to submit appeal. Please try again.');
-                return;
-            }
-
-            toast.success('Appeal submitted successfully. Please wait for admin approval.');
-            setShowAppealModal(false);
-            setAppealMessage('');
-            setIsEditingAppeal(false);
-            setExistingAppeal(data || null);
-        } catch {
-            toast.error('Failed to submit appeal. Please try again.');
-        } finally {
-            setIsSubmittingAppeal(false);
-        }
-    };
-
-    // update appeal
-    const handleUpdateAppeal = async () => {
-        if (!appealMessage.trim()) {
-            toast.error('Please enter an appeal message');
-            return;
-        }
-
-        if (!existingAppeal?.id) {
-            toast.error('No appeal found to update');
-            return;
-        }
-
-        setIsSubmittingAppeal(true);
-
-        try {
-            const { error } = await updateAppeal(existingAppeal.id, appealMessage);
-
-            if (error) {
-                toast.error('Failed to update appeal. Please try again.');
-                return;
-            }
-
-            toast.success('Appeal updated successfully');
-            setShowAppealModal(false);
-            setAppealMessage('');
-            setIsEditingAppeal(false);
-            setExistingAppeal({ ...existingAppeal, appeal_message: appealMessage.trim() });
-        } catch {
-            toast.error('Failed to update appeal. Please try again.');
-        } finally {
-            setIsSubmittingAppeal(false);
-        }
-    };
-
-    // delete appeal
-    const handleDeleteAppeal = async () => {
-        if (!existingAppeal?.id) {
-            toast.error('No appeal found to delete');
-            return;
-        }
-
-        const confirmed = await confirm({
-            title: 'Delete Appeal',
-            message: 'Are you sure you want to delete this appeal? This action cannot be undone.',
-            confirmText: 'Delete',
-            cancelText: 'Cancel',
-            confirmVariant: 'danger',
-        });
-
-        if (!confirmed) return;
-
-        try {
-            const { error } = await deleteAppeal(existingAppeal.id);
-
-            if (error) {
-                toast.error('Failed to delete appeal. Please try again.');
-                return;
-            }
-
-            toast.success('Appeal deleted successfully');
-            setExistingAppeal(null);
-            setAppealMessage('');
-            setIsEditingAppeal(false);
-            setShowAppealModal(false);
-        } catch {
-            toast.error('Failed to delete appeal. Please try again.');
-        }
-    };
-
-    // check for existing session on load
+    // Check existing active or remembered session on mount
     useEffect(() => {
         const checkExistingSession = async () => {
             const sessionToken = user.getSessionToken();
@@ -348,13 +202,56 @@ export default function SupplyChainLoginPage() {
             isCheckingRef.current = true;
 
             try {
-                const { ok, data } = await checkRememberedSessionApi(sessionToken);
+                const urlParams = new URLSearchParams(window.location.search);
+                const redirectQuery = urlParams.get('redirect') || urlParams.get('returnUrl');
 
+                // 1. First check if user has an active, valid session
+                const { ok: validOk, data: validData } = await validateSessionApi(sessionToken);
                 lastCheckRef.current = now;
 
-                if (ok && data.remembered) {
+                if (validOk && validData?.valid && validData?.user) {
+                    const userAgent = user.getUserAgent() || navigator.userAgent;
+                    const blockedDevice = await checkIfDeviceBlocked(validData.user.id, userAgent);
+
+                    if (blockedDevice) {
+                        setIsDeviceBlocked(true);
+                        setBlockedDeviceId(blockedDevice.id);
+                        toast.error(`This device is blocked. Reason: ${blockedDevice.reason || 'Blocked by admin'}`);
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    user.updateUser({
+                        role: validData.user.role,
+                        name: validData.user.display_name,
+                        email: validData.user.email,
+                        userId: validData.user.id,
+                    });
+                    await restoreSupabaseSession();
+
+                    const defaultRedirect = settingsService.getRoleRedirect(validData.user.role);
+                    const finalPath = (redirectQuery && redirectQuery.startsWith('/') && redirectQuery !== '/scAuth')
+                        ? redirectQuery
+                        : defaultRedirect;
+
+                    window.location.href = finalPath;
+                    return;
+                }
+
+                // 2. Fallback: check remembered session (exclusively for Suppliers)
+                const { ok, data } = await checkRememberedSessionApi(sessionToken);
+
+                if (ok && data?.remembered) {
+                    const userRole = (data.user?.role || '').toLowerCase();
+                    // Only Supplier sessions can be remembered; all other roles are strictly disallowed
+                    if (userRole !== 'supplier') {
+                        await clearUserSession();
+                        setIsLoading(false);
+                        return;
+                    }
+
                     if (data.differentDevice) {
-                        toast.warning('Different device. Please login with OTP.');
+                        toast.warning('Different device detected. Please sign in again.');
                         setIsLoading(false);
                         return;
                     }
@@ -371,18 +268,20 @@ export default function SupplyChainLoginPage() {
                     }
 
                     user.updateUser({ role: data.user.role });
-
                     await restoreSupabaseSession();
 
-                    const redirectPath = settingsService.getRoleRedirect(data.user.role);
-                    window.location.href = redirectPath;
+                    const defaultRedirect = settingsService.getRoleRedirect(data.user.role);
+                    const finalPath = (redirectQuery && redirectQuery.startsWith('/') && redirectQuery !== '/scAuth')
+                        ? redirectQuery
+                        : defaultRedirect;
+
+                    window.location.href = finalPath;
                     return;
                 }
 
                 await clearUserSession();
-                toast.error('Session expired. Please login again.');
             } catch (error) {
-                console.error('Error checking remembered session:', error);
+                console.error('Error checking existing session:', error);
             } finally {
                 isCheckingRef.current = false;
                 setIsLoading(false);
@@ -392,7 +291,7 @@ export default function SupplyChainLoginPage() {
         checkExistingSession();
     }, []);
 
-    // countdown timer for otp resend
+    // OTP Countdown timers
     useEffect(() => {
         if (countdown > 0) {
             const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
@@ -400,7 +299,6 @@ export default function SupplyChainLoginPage() {
         }
     }, [countdown]);
 
-    // countdown timer for otp expiration (5 minutes = 300s)
     useEffect(() => {
         if (otpExpiresIn > 0) {
             const timer = setTimeout(() => setOtpExpiresIn(otpExpiresIn - 1), 1000);
@@ -408,72 +306,12 @@ export default function SupplyChainLoginPage() {
         }
     }, [otpExpiresIn]);
 
-    // handle employee selection
-    const handleEmployeeSelect = async (employee: any) => {
-        if (!employee) return;
-        if (isDropOffPickupRider(employee)) {
-            toast.warning('Drop-Off Pick-Up Drivers are field personnel and cannot access the web portal.');
-            return;
-        }
-        if (isSelectionLocked || isCheckingRemembered || isRequestingOTP || isDeviceBlocked) return;
-
-        setSelectedEmployee(employee);
-        setIsCheckingRemembered(true);
-        setIsRemembered(false);
-        setIsCurrentlyActive(false);
-        setRememberedData(null);
-        setIsSelectionLocked(true);
-
-        try {
-            const data = await checkEmployeeSessionApi(employee.email);
-
-            if (data.found && data.user_id) {
-                const userAgent = navigator.userAgent;
-                const blockedDevice = await checkIfDeviceBlocked(data.user_id, userAgent);
-
-                if (blockedDevice) {
-                    setIsDeviceBlocked(true);
-                    setBlockedDeviceId(blockedDevice.id);
-                    toast.error(`This device is blocked. Reason: ${blockedDevice.reason || 'Blocked by admin'}`);
-                    setIsCheckingRemembered(false);
-                    setIsSelectionLocked(false);
-                    return;
-                }
-            }
-
-            if (data.found && data.is_currently_active) {
-                setIsCurrentlyActive(true);
-                toast.info(`${employee.display_name} is currently logged in on another device`);
-                setIsCheckingRemembered(false);
-                setIsSelectionLocked(false);
-                return;
-            }
-
-            if (data.found && data.remember_me && data.is_same_device && !data.is_expired) {
-                setIsRemembered(true);
-                setRememberedData({
-                    ...data,
-                    role: data.role || employee.role || 'Employee',
-                    user: { role: data.role || employee.role || 'Employee' },
-                });
-                toast.success(`${employee.display_name} is remembered on this device`);
-            } else {
-                setIsRemembered(false);
-            }
-        } catch {
-            setIsRemembered(false);
-        } finally {
-            setIsCheckingRemembered(false);
-            setIsSelectionLocked(false);
-        }
-    };
-
-    // notify admin when login is not authorized (max 2 per 5 minutes per notice category)
+    // Handle Notify Admin when login is restricted
     const handleNotifyAdmin = async (userInfo: { email: string; userId?: string; displayName?: string; role?: string; reason?: string }) => {
         const category = getNoticeCategory(userInfo.reason || authRestrictionMessage || loginError || otpError);
         const remaining = getRemainingNotifyCooldown(category, userInfo.email);
         if (remaining > 0) {
-            toast.error(`Rate limit reached: Max 2 notifications allowed every 5 minutes for this notice. Please wait ${formatNotifyCooldown(remaining)}.`, { id: 'auth-req' });
+            toast.error(`Rate limit reached: Max 2 notifications allowed every 5 minutes. Please wait ${formatNotifyCooldown(remaining)}.`, { id: 'auth-req' });
             return false;
         }
 
@@ -500,144 +338,7 @@ export default function SupplyChainLoginPage() {
         }
     };
 
-    // show password modal for remembered login
-    const handleLoginWithRemembered = () => {
-        if (!selectedEmployee || isDeviceBlocked) {
-            if (isDeviceBlocked) {
-                toast.error('This device is blocked. Please submit an appeal.');
-            }
-            return;
-        }
-
-        setShowRememberedPasswordModal(true);
-        setRememberedPassword('');
-        setAuthRestrictionMessage(null);
-    };
-
-    const handleVerifyRememberedPassword = async (): Promise<boolean | string> => {
-        if (!rememberedPassword.trim()) {
-            toast.error('Please enter your password');
-            return false;
-        }
-
-        setIsLoggingInWithRemembered(true);
-        setAuthRestrictionMessage(null);
-
-        try {
-            const userRole = rememberedData?.role ||
-                selectedEmployee?.role ||
-                loggedInUser?.role ||
-                user.getRole() ||
-                'Employee';
-
-            const sessionToken = rememberedData?.session_token || user.getRememberToken(selectedEmployee?.email) || user.getSessionToken();
-
-            // verify password with supabase
-            try {
-                const { error: signInError } = await signInWithSupabasePassword(
-                    selectedEmployee.email,
-                    rememberedPassword
-                );
-
-                if (signInError) {
-                    setIsLoggingInWithRemembered(false);
-                    return false;
-                }
-            } catch (authError) {
-                console.error('Auth error:', authError);
-                toast.error('Authentication failed. Please try again.');
-                setIsLoggingInWithRemembered(false);
-                return false;
-            }
-
-            // activate remembered session
-            if (!sessionToken) {
-                toast.error('No remembered session token found on this device. Please verify with OTP.');
-                setIsLoggingInWithRemembered(false);
-                setShowRememberedPasswordModal(false);
-                return false;
-            }
-
-            const currentUserAgent = navigator.userAgent;
-
-            const blockedDevice = await checkIfDeviceBlocked(rememberedData?.user_id || loggedInUser?.id, currentUserAgent);
-            if (blockedDevice) {
-                setIsDeviceBlocked(true);
-                setBlockedDeviceId(blockedDevice.id);
-                toast.error(`This device is blocked. Reason: ${blockedDevice.reason || 'Blocked by admin'}`);
-                setIsLoggingInWithRemembered(false);
-                setShowRememberedPasswordModal(false);
-                return false;
-            }
-
-            const { ok, status, data: activateData } = await activateSessionApi(sessionToken, currentUserAgent);
-
-            if (!ok) {
-                if (activateData?.notAllowed || status === 403) {
-                    const msg = activateData?.message || 'You are not authorized to login at this time.';
-                    setAuthRestrictionMessage(msg);
-                    toast.info(msg, {
-                        duration: 8000,
-                        action: {
-                            label: 'Notify Admin',
-                            onClick: () => handleNotifyAdmin({
-                                email: selectedEmployee?.email || rememberedData?.email || '',
-                                userId: rememberedData?.user_id || loggedInUser?.id || selectedEmployee?.id,
-                                displayName: selectedEmployee?.display_name,
-                                role: userRole,
-                            }),
-                        },
-                    });
-                    setIsLoggingInWithRemembered(false);
-                    return 'not_allowed';
-                }
-
-                if (activateData?.queued || status === 429) {
-                    setQueuePosition(activateData?.position || 1);
-                    setQueueActiveUsers(activateData?.tierActive ?? activateData?.activeUsers ?? 1);
-                    setQueueMaxCapacity(activateData?.tierSlots ?? activateData?.maxCapacity ?? 1);
-                    setShowQueueModal(true);
-                    setIsLoggingInWithRemembered(false);
-                    setShowRememberedPasswordModal(false);
-                    return 'queued';
-                }
-                toast.error(activateData?.message || 'Session activation failed. Please login with OTP.');
-                setIsLoggingInWithRemembered(false);
-                setShowRememberedPasswordModal(false);
-                return 'error';
-            }
-
-            const sessionExpiresAt = activateData?.session?.expires_at || rememberedData?.expires_at || new Date(Date.now() + 15 * 24 * 3600000).toISOString();
-
-            user.setUser({
-                name: selectedEmployee.display_name,
-                role: userRole,
-                email: selectedEmployee.email,
-                sessionToken: sessionToken,
-                expiresAt: sessionExpiresAt,
-                rememberMe: true,
-                userId: rememberedData?.user_id || loggedInUser?.id,
-                allowedTimeEnd: activateData?.session?.allowed_time_end || rememberedData?.allowed_time_end,
-                allowedTimeStart: activateData?.session?.allowed_time_start || rememberedData?.allowed_time_start,
-                allowedDays: activateData?.session?.allowed_days || rememberedData?.allowed_days,
-            });
-
-            toast.success('Login successful!');
-            setShowRememberedPasswordModal(false);
-            setShowEmployeeModal(false);
-            router.push(settingsService.getRoleRedirect(userRole));
-            return true;
-
-        } catch (error) {
-            console.error('Error logging in:', error);
-            toast.error('Failed to login. Please try again.');
-            return false;
-        } finally {
-            setIsLoggingInWithRemembered(false);
-        }
-    };
-
-    // main login handler
+    // Main Login Handler
     async function handleLogin(e: React.FormEvent) {
         e.preventDefault();
         setLoginError(null);
@@ -651,7 +352,7 @@ export default function SupplyChainLoginPage() {
             return;
         }
 
-        if (!email || !password) {
+        if (!email.trim() || !password) {
             setLoginError('Please enter your email and password.');
             return;
         }
@@ -659,9 +360,9 @@ export default function SupplyChainLoginPage() {
         setIsLoggingIn(true);
         try {
             await clearUserSession();
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-            const { ok, status, data } = await loginSupplyChainApi(email, password);
+            const { ok, status, data } = await loginSupplyChainApi(email.trim(), password, false);
 
             if (!ok) {
                 if (data?.notAllowed || status === 403) {
@@ -705,417 +406,77 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            // Reset rate limit tracking on success
+            // Reset rate limit tracking on credentials match
             localStorage.removeItem(getLoginLockoutKey());
             localStorage.removeItem(getLoginAttemptsKey());
             setLoginAttempts(0);
             setLoginLockoutSeconds(0);
 
-            setLoggedInUser(data.user);
+            // CASE 1: Superadmin / Admin requires 2FA Email OTP
+            if (data.requireOtp) {
+                setLoggedInUser({
+                    id: data.userId,
+                    email: data.email,
+                    role: data.role,
+                    display_name: data.displayName,
+                });
 
-            user.updateUser({
-                name: data.user.display_name || 'User',
-                role: data.user.role,
-                email: data.user.email,
-                userId: data.user.id,
-                userAgent: navigator.userAgent,
-            });
+                setOtpTargetEmail(data.email);
+                setOtpMaskedEmail(data.maskedEmail || maskEmail(data.email));
+                setOtpTargetUserId(data.userId);
+                setOtpTargetRole(data.role);
+                setOtpTargetDisplayName(data.displayName || 'Admin User');
+                setOtpCode(['', '', '', '', '', '']);
+                setOtpError(null);
+                setOtpSuccess(null);
+                setOtpRememberMe(false);
+                setCountdown(120); // 2 minutes resend cooldown
+                setOtpExpiresIn(300); // 5 minutes OTP validity
+                setShowOtpModal(true);
 
-            // Load accounts into the modal (from users table for Admin/Executive, mock_employees for Employee)
-            await loadEmployeesFromHR(data.user.role);
-            setSelectedEmployee(null);
-            setOtpSent(false);
-            setShowEmployeeModal(true);
-        } catch {
+                toast.success(`Security code sent to ${data.maskedEmail || maskEmail(data.email)}`);
+                setTimeout(() => document.getElementById('otp-0')?.focus(), 150);
+                return;
+            }
+
+            // CASE 2: Standard Users (Purchase Officer, Operator, Supplier) Direct Login
+            if (data.success && data.user) {
+                if (data.access_token) {
+                    await setSupabaseSession(data.access_token, data.refresh_token || '');
+                }
+
+                user.setUser({
+                    name: data.user.display_name || 'User',
+                    role: data.user.role,
+                    email: data.user.email,
+                    sessionToken: data.session_token,
+                    expiresAt: data.expires_at || '',
+                    rememberMe: false,
+                    userId: data.user.id,
+                });
+
+                toast.success('Login successful!');
+                const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+                const redirectQuery = urlParams?.get('redirect') || urlParams?.get('returnUrl');
+                const defaultRedirect = data.redirect_url || settingsService.getRoleRedirect(data.user.role);
+                const targetRedirect = (redirectQuery && redirectQuery.startsWith('/') && redirectQuery !== '/scAuth')
+                    ? redirectQuery
+                    : defaultRedirect;
+                router.push(targetRedirect);
+            }
+        } catch (err: any) {
+            console.error('Login error:', err);
             setLoginError('Something went wrong. Please try again.');
         } finally {
             setIsLoggingIn(false);
         }
     }
 
-    // load employees from hr system
-    async function loadEmployeesFromHR(role: string) {
-        setIsLoadingEmployees(true);
-        try {
-            const userEmail = loggedInUser?.email;
-            const { ok, data } = await fetchHREmployeesApi(role, userEmail);
-
-            if (ok) {
-                const nonRiders = Array.isArray(data)
-                    ? data.filter((emp: any) => !isDropOffPickupRider(emp))
-                    : [];
-                setEmployees(nonRiders);
-            } else {
-                setLoginError('Failed to load employees from HR system.');
-            }
-        } catch {
-            setLoginError('Failed to connect to HR system.');
-        } finally {
-            setIsLoadingEmployees(false);
-        }
-    }
-
-    // request otp
-    async function requestOTP(targetEmp?: any) {
-        // Guard against React SyntheticEvent being passed when used in onClick={requestOTP}
-        const emp = (targetEmp && typeof targetEmp === 'object' && 'email' in targetEmp && !('nativeEvent' in targetEmp))
-            ? targetEmp
-            : selectedEmployee;
-
-        if (!emp || isDeviceBlocked) {
-            if (isDeviceBlocked) {
-                toast.error('This device is blocked. Please submit an appeal.');
-            }
-            return;
-        }
-
-        setIsRequestingOTP(true);
-        setOtpError(null);
-        setOtpSuccess(null);
-
-        try {
-            const currentUserId = loggedInUser?.id || user.getUserId() || emp.id;
-            const targetId = emp.id || currentUserId;
-            const targetEmail = emp.email || emp.user_email;
-
-            if (!targetEmail) {
-                toast.error('No email address found for the selected account.');
-                setIsRequestingOTP(false);
-                return;
-            }
-
-            const blockedDevice = await checkIfDeviceBlocked(currentUserId, navigator.userAgent);
-            if (blockedDevice) {
-                setIsDeviceBlocked(true);
-                setBlockedDeviceId(blockedDevice.id);
-                toast.error(`This device is blocked. Reason: ${blockedDevice.reason || 'Blocked by admin'}`);
-                setIsRequestingOTP(false);
-                return;
-            }
-
-            const { ok, status, data } = await requestOtpApi({
-                userId: targetId,
-                email: targetEmail,
-                loggedInUserId: currentUserId,
-                employeeName: emp.display_name || 'User',
-            });
-
-            if (!ok) {
-                if (status === 429) {
-                    const msg = data?.message || 'Too many OTP requests. Please wait 5 minutes.';
-                    toast.error(msg);
-                    setOtpError(msg);
-                } else {
-                    throw new Error(data.message || 'Failed to send OTP');
-                }
-                return;
-            }
-
-            toast.success(`OTP sent to ${maskEmail(targetEmail)}`);
-            setOtpSuccess(`OTP sent to ${maskEmail(targetEmail)}`);
-
-            setOtpSent(true);
-            setCountdown(120); // 2 mins (120s) resend cooldown
-            setOtpExpiresIn(300); // 5 minutes code validity
-            setTimeout(() => document.getElementById('otp-0')?.focus(), 100);
-        } catch (err: any) {
-            toast.error(err.message);
-            setOtpError(err.message);
-        } finally {
-            setIsRequestingOTP(false);
-        }
-    }
-
-    // resend otp
-    async function resendOTP() {
-        if (!selectedEmployee || isDeviceBlocked) {
-            if (isDeviceBlocked) {
-                toast.error('This device is blocked. Please submit an appeal.');
-            }
-            return;
-        }
-
-        setIsResending(true);
-        setOtpError(null);
-        setOtpSuccess(null);
-
-        try {
-            const currentUserId = loggedInUser?.id || user.getUserId() || selectedEmployee.id;
-            const targetId = selectedEmployee.id || currentUserId;
-            const targetEmail = selectedEmployee.email;
-
-            if (!targetEmail) {
-                toast.error('No email address found for the selected account.');
-                setIsResending(false);
-                return;
-            }
-
-            const blockedDevice = await checkIfDeviceBlocked(currentUserId, navigator.userAgent);
-            if (blockedDevice) {
-                setIsDeviceBlocked(true);
-                setBlockedDeviceId(blockedDevice.id);
-                toast.error(`This device is blocked. Reason: ${blockedDevice.reason || 'Blocked by admin'}`);
-                setIsResending(false);
-                return;
-            }
-
-            const { ok, status, data } = await requestOtpApi({
-                userId: targetId,
-                email: targetEmail,
-                loggedInUserId: currentUserId,
-                employeeName: selectedEmployee.display_name || 'User',
-            });
-
-            if (!ok) {
-                if (status === 429) {
-                    const msg = data?.message || 'Too many OTP requests. Please wait 5 minutes.';
-                    toast.error(msg);
-                    setOtpError(msg);
-                } else {
-                    throw new Error(data.message || 'Failed to resend OTP');
-                }
-                return;
-            }
-
-            toast.success(`New OTP sent to ${maskEmail(targetEmail)}`);
-            setOtpSuccess(`New OTP sent to ${maskEmail(targetEmail)}`);
-            setCountdown(120); // 2 mins (120s) resend cooldown
-            setOtpExpiresIn(300); // 5 minutes code validity
-        } catch (err: any) {
-            toast.error(err.message);
-            setOtpError(err.message);
-        } finally {
-            setIsResending(false);
-        }
-    }
-
-    async function verifyOTP() {
-        const otpString = otpCode.join('');
-        if (otpString.length !== 6) {
-            toast.error('Please enter all 6 digits');
-            setOtpError('Please enter all 6 digits');
-            return;
-        }
-
-        if (otpExpiresIn === 0 && otpSent) {
-            const errorMsg = 'The inputted OTP is already expired. Please click Resend Code to receive a new OTP.';
-            toast.error(errorMsg);
-            setOtpError(errorMsg);
-            return;
-        }
-
-        if (isDeviceBlocked) {
-            toast.error('This device is blocked. Please submit an appeal.');
-            return;
-        }
-
-        setIsVerifying(true);
-        setOtpError(null);
-        setOtpSuccess(null);
-
-        try {
-            const blockedDevice = await checkIfDeviceBlocked(loggedInUser.id, navigator.userAgent);
-            if (blockedDevice) {
-                setIsDeviceBlocked(true);
-                setBlockedDeviceId(blockedDevice.id);
-                toast.error(`This device is blocked. Reason: ${blockedDevice.reason || 'Blocked by admin'}`);
-                setIsVerifying(false);
-                return;
-            }
-
-            const { ok, status, data } = await verifyOtpApi({
-                userId: loggedInUser.id,
-                otp: otpString,
-                targetUserId: selectedEmployee.id,
-                rememberMe: rememberMe,
-                email: selectedEmployee.email,
-                employeeName: selectedEmployee.display_name,
-                employeeRole: selectedEmployee.role,
-            });
-
-            if (!ok) {
-                if (data?.notAllowed || status === 403) {
-                    const userTarget = data?.user || selectedEmployee || { email: selectedEmployee?.email };
-                    const msg = data?.message || 'You are not authorized to login at this time.';
-                    setOtpError(msg);
-                    toast.info(msg, {
-                        duration: 8000,
-                        action: {
-                            label: 'Notify Admin',
-                            onClick: () => handleNotifyAdmin({
-                                email: userTarget.email || selectedEmployee?.email,
-                                userId: userTarget.id || selectedEmployee?.id,
-                                displayName: userTarget.display_name || selectedEmployee?.display_name,
-                                role: userTarget.role || selectedEmployee?.role,
-                            }),
-                        },
-                    });
-                    setIsVerifying(false);
-                    return;
-                }
-
-                if (data?.queued || status === 429) {
-                    setQueuePosition(data?.position || 1);
-                    setQueueActiveUsers(data?.tierActive ?? data?.activeUsers ?? 1);
-                    setQueueMaxCapacity(data?.tierSlots ?? data?.maxCapacity ?? 1);
-                    setShowQueueModal(true);
-                    setIsVerifying(false);
-                    return;
-                }
-                throw new Error(data.message || 'Invalid OTP');
-            }
-
-            toast.success('Security code has been used and verified successfully.');
-            setOtpSuccess('Security code verified and used successfully.');
-
-            if (data.userExists) {
-                const isRemember = Boolean(data.remember_me ?? rememberMe);
-                const sessionExpiry = data.expires_at || (isRemember ? new Date(Date.now() + 15 * 24 * 3600000).toISOString() : '');
-
-                user.setUser({
-                    name: data.employee.display_name,
-                    role: data.role,
-                    email: data.employee.email,
-                    sessionToken: data.session_token,
-                    expiresAt: sessionExpiry,
-                    rememberMe: isRemember,
-                    userId: data.userId,
-                });
-
-                setSelectedEmployee({
-                    id: data.employee.id || selectedEmployee.id,
-                    display_name: data.employee.display_name,
-                    email: data.employee.email,
-                    role: data.employee.role || selectedEmployee.role,
-                    employee_id: selectedEmployee.employee_id,
-                    department: selectedEmployee.department,
-                    position: selectedEmployee.position,
-                });
-
-                setRememberedData({
-                    session_token: data.session_token,
-                    role: data.role,
-                    user_id: data.userId,
-                    expires_at: sessionExpiry,
-                });
-
-                setShowRememberedPasswordModal(true);
-                setRememberedPassword('');
-                setOtpSent(false);
-                setShowEmployeeModal(false);
-            } else {
-                setTempToken(data.tempToken);
-                setSelectedEmployeeForPassword({
-                    ...data.employee,
-                    role: data.employee.role || selectedEmployee.role,
-                });
-                setShowPasswordModal(true);
-                setOtpSent(false);
-                setShowEmployeeModal(false);
-            }
-        } catch (err: any) {
-            toast.error(err.message);
-            setOtpError(err.message);
-            setOtpCode(['', '', '', '', '', '']);
-            document.getElementById('otp-0')?.focus();
-        } finally {
-            setIsVerifying(false);
-        }
-    }
-
-    // create account
-    async function handleCreateAccount() {
-        if (newPassword.length < 8) {
-            toast.error('Password must be at least 8 characters long');
-            return;
-        }
-        if (!/[A-Z]/.test(newPassword)) {
-            toast.error('Password must contain at least 1 uppercase letter (A-Z)');
-            return;
-        }
-        if (!/[a-z]/.test(newPassword)) {
-            toast.error('Password must contain at least 1 lowercase letter (a-z)');
-            return;
-        }
-        if (!/[0-9]/.test(newPassword)) {
-            toast.error('Password must contain at least 1 number (0-9)');
-            return;
-        }
-        if (!/[^A-Za-z0-9]/.test(newPassword)) {
-            toast.error('Password must contain at least 1 special character (e.g. !@#$%^&*)');
-            return;
-        }
-        if (newPassword !== confirmPassword) {
-            toast.error('Passwords do not match');
-            return;
-        }
-
-        setIsCreatingUser(true);
-
-        try {
-            const { ok, data } = await createAuthUserApi({
-                email: selectedEmployeeForPassword.email,
-                password: newPassword,
-                displayName: selectedEmployeeForPassword.display_name,
-                role: selectedEmployeeForPassword.role,
-                tempToken: tempToken,
-                useHrPassword: false,
-                hrPassword: null,
-                rememberMe: rememberMe,
-            });
-
-            if (ok) {
-                toast.success('Account created successfully!');
-
-                if (data.access_token) {
-                    const { error: sessionError } = await setSupabaseSession(
-                        data.access_token,
-                        data.refresh_token || ''
-                    );
-
-                    if (sessionError) {
-                        console.error('Error setting Supabase session:', sessionError);
-                    }
-                } else {
-                    const { error: signInError } = await signInWithSupabasePassword(
-                        selectedEmployeeForPassword.email,
-                        newPassword
-                    );
-
-                    if (signInError) {
-                        console.error('Fallback sign in error:', signInError);
-                        toast.warning('Please login again to refresh your session');
-                    }
-                }
-
-                user.setUser({
-                    name: selectedEmployeeForPassword.display_name,
-                    role: data.role,
-                    email: selectedEmployeeForPassword.email,
-                    sessionToken: data.session_token,
-                    expiresAt: data.expires_at || (rememberMe ? new Date(Date.now() + 15 * 24 * 3600000).toISOString() : ''),
-                    rememberMe: data.remember_me || rememberMe,
-                });
-
-                setShowPasswordModal(false);
-                setShowEmployeeModal(false);
-                const targetRedirect = settingsService.getRoleRedirect(data.role) || data.redirect_url || '/warehousing';
-                router.push(targetRedirect);
-            } else {
-                toast.error(data.message || 'Failed to create account');
-            }
-        } catch {
-            toast.error('Something went wrong');
-        } finally {
-            setIsCreatingUser(false);
-        }
-    }
-
-    // otp input handlers
+    // Handle OTP input digits
     function handleOtpChange(index: number, value: string) {
         if (!/^\d*$/.test(value)) return;
         const newOtp = [...otpCode];
-        newOtp[index] = value.slice(0, 1);
+        newOtp[index] = value.slice(-1);
         setOtpCode(newOtp);
         if (value && index < 5) {
             document.getElementById(`otp-${index + 1}`)?.focus();
@@ -1137,51 +498,202 @@ export default function SupplyChainLoginPage() {
         document.getElementById('otp-5')?.focus();
     }
 
-    // get role color
-    const getRoleColor = (role: string) => {
-        switch (role) {
-            case 'Admin': return 'bg-purple-100 text-purple-700 border-purple-200';
-            case 'Manager': return 'bg-blue-100 text-blue-700 border-blue-200';
-            case 'Staff':
-            case 'Employee': return 'bg-green-100 text-green-700 border-green-200';
-            case 'Executive': return 'bg-amber-100 text-amber-700 border-amber-200';
-            case 'Operator': return 'bg-orange-100 text-orange-700 border-orange-200';
-            default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    // Verify OTP Submission
+    async function handleVerifyOtp() {
+        const otpString = otpCode.join('');
+        if (otpString.length !== 6) {
+            setOtpError('Please enter all 6 digits of your security code.');
+            return;
         }
-    };
 
-    // close modal and cleanup
-    const handleCloseModal = async () => {
-        setShowEmployeeModal(false);
-        setOtpSent(false);
-        setOtpCode(['', '', '', '', '', '']);
+        if (otpExpiresIn === 0) {
+            setOtpError('Your security code has expired. Please click Resend Code.');
+            return;
+        }
+
+        setIsVerifyingOtp(true);
         setOtpError(null);
         setOtpSuccess(null);
-        setIsRemembered(false);
-        setSelectedEmployee(null);
-        await clearUserSession();
-        router.push('/scAuth');
+
+        try {
+            const { ok, status, data } = await verifyOtpApi({
+                userId: otpTargetUserId,
+                otp: otpString,
+                targetUserId: otpTargetUserId,
+                rememberMe: false,
+                email: otpTargetEmail,
+                employeeName: otpTargetDisplayName,
+                employeeRole: otpTargetRole,
+            });
+
+            if (!ok) {
+                throw new Error(data?.message || 'Invalid security code. Please try again.');
+            }
+
+            toast.success('Security code verified successfully!');
+            setOtpSuccess('Security code verified. Signing in…');
+
+            user.setUser({
+                name: data.user?.display_name || otpTargetDisplayName || 'User',
+                role: data.role || otpTargetRole,
+                email: data.user?.email || otpTargetEmail,
+                sessionToken: data.session_token,
+                expiresAt: data.expires_at || '',
+                rememberMe: false,
+                userId: data.userId || otpTargetUserId,
+            });
+
+            setShowOtpModal(false);
+            const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+            const redirectQuery = urlParams?.get('redirect') || urlParams?.get('returnUrl');
+            const defaultRedirect = data.redirect_url || settingsService.getRoleRedirect(data.role || otpTargetRole);
+            const redirectUrl = (redirectQuery && redirectQuery.startsWith('/') && redirectQuery !== '/scAuth')
+                ? redirectQuery
+                : defaultRedirect;
+            router.push(redirectUrl);
+
+        } catch (err: any) {
+            setOtpError(err.message || 'Failed to verify security code');
+            toast.error(err.message || 'Invalid security code');
+            setOtpCode(['', '', '', '', '', '']);
+            document.getElementById('otp-0')?.focus();
+        } finally {
+            setIsVerifyingOtp(false);
+        }
+    }
+
+    // Resend OTP
+    async function handleResendOtp() {
+        if (isResendingOtp || countdown > 0) return;
+
+        setIsResendingOtp(true);
+        setOtpError(null);
+        setOtpSuccess(null);
+
+        try {
+            const { ok, status, data } = await requestOtpApi({
+                userId: otpTargetUserId,
+                email: otpTargetEmail,
+                loggedInUserId: otpTargetUserId,
+                employeeName: otpTargetDisplayName,
+            });
+
+            if (!ok) {
+                if (status === 429) {
+                    throw new Error(data?.message || 'Too many requests. Please wait before requesting another code.');
+                }
+                throw new Error(data?.message || 'Failed to resend code');
+            }
+
+            toast.success(`New security code sent to ${otpMaskedEmail || maskEmail(otpTargetEmail)}`);
+            setOtpSuccess(`New security code sent to ${otpMaskedEmail || maskEmail(otpTargetEmail)}`);
+            setCountdown(120); // 2 mins cooldown
+            setOtpExpiresIn(300); // 5 mins validity
+            setOtpCode(['', '', '', '', '', '']);
+            document.getElementById('otp-0')?.focus();
+        } catch (err: any) {
+            setOtpError(err.message || 'Failed to resend security code');
+            toast.error(err.message || 'Failed to resend security code');
+        } finally {
+            setIsResendingOtp(false);
+        }
+    }
+
+    // Submit Appeal for blocked device
+    const handleSubmitAppeal = async () => {
+        if (!appealMessage.trim()) {
+            toast.error('Please enter an appeal message');
+            return;
+        }
+
+        if (!blockedDeviceId) {
+            toast.error('No blocked device found');
+            return;
+        }
+
+        setIsSubmittingAppeal(true);
+        try {
+            const { data, error } = await submitAppeal({
+                blockedDeviceId,
+                userAgent: navigator.userAgent,
+                userEmail: email.trim(),
+                userName: loggedInUser?.display_name || 'User',
+                userRole: loggedInUser?.role || 'User',
+                appealMessage: appealMessage.trim(),
+            });
+
+            if (error) {
+                toast.error('Failed to submit appeal. Please try again.');
+                return;
+            }
+
+            toast.success('Appeal submitted successfully. Please wait for admin approval.');
+            setShowAppealModal(false);
+            setAppealMessage('');
+            setExistingAppeal(data || null);
+        } catch {
+            toast.error('Failed to submit appeal.');
+        } finally {
+            setIsSubmittingAppeal(false);
+        }
     };
 
-    // open appeal modal
-    const openAppealModal = () => {
-        if (existingAppeal) {
-            setAppealMessage(existingAppeal.appeal_message);
-            setIsEditingAppeal(false);
-        } else {
-            setAppealMessage('');
-            setIsEditingAppeal(false);
+    const handleUpdateAppeal = async () => {
+        if (!appealMessage.trim() || !existingAppeal?.id) return;
+        setIsSubmittingAppeal(true);
+        try {
+            const { error } = await updateAppeal(existingAppeal.id, appealMessage);
+            if (error) {
+                toast.error('Failed to update appeal.');
+                return;
+            }
+            toast.success('Appeal updated successfully');
+            setShowAppealModal(false);
+            setExistingAppeal({ ...existingAppeal, appeal_message: appealMessage.trim() });
+        } catch {
+            toast.error('Failed to update appeal.');
+        } finally {
+            setIsSubmittingAppeal(false);
         }
+    };
+
+    const handleDeleteAppeal = async () => {
+        if (!existingAppeal?.id) return;
+        const confirmed = await confirm({
+            title: 'Delete Appeal',
+            message: 'Are you sure you want to delete this appeal?',
+            confirmText: 'Delete',
+            confirmVariant: 'danger',
+        });
+        if (!confirmed) return;
+
+        try {
+            const { error } = await deleteAppeal(existingAppeal.id);
+            if (error) {
+                toast.error('Failed to delete appeal.');
+                return;
+            }
+            toast.success('Appeal deleted successfully');
+            setExistingAppeal(null);
+            setShowAppealModal(false);
+        } catch {
+            toast.error('Failed to delete appeal.');
+        }
+    };
+
+    const openAppealModal = () => {
+        setAppealMessage(existingAppeal?.appeal_message || '');
+        setIsEditingAppeal(false);
         setShowAppealModal(true);
     };
 
-    // loading state
+    // Loading Splash Screen
     if (isLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-paper dark:bg-ink transition-colors duration-300">
                 <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-                    <p className="mt-2 text-muted dark:text-paper/70">Checking session...</p>
+                    <p className="mt-2 text-muted dark:text-paper/70 text-sm">Checking session…</p>
                 </div>
             </div>
         );
@@ -1197,11 +709,11 @@ export default function SupplyChainLoginPage() {
                 blurAmount={4}
             >
                 <div className="supplychain-container h-dvh w-full bg-paper dark:bg-ink text-ink dark:text-paper font-rethink grid grid-cols-1 lg:grid-cols-[1fr_460px] transition-colors duration-300">
-                    {/* left side - branding */}
+                    {/* Left side - Branding Hero */}
                     <div className="relative hidden lg:flex flex-col justify-between border-r border-line dark:border-paper/10 px-16 py-14 overflow-hidden">
                         <div className="absolute bottom-14 right-14 rotate-[-6deg] select-none">
                             <div className="flex items-center gap-2 rounded-full border border-line dark:border-paper/15 px-4 py-2">
-                                <span className="h-1.5 w-1.5 rounded-full bg-accent dark:bg-accent" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                                 <span className="font-rethink text-[10px] font-medium uppercase tracking-[0.16em] text-muted dark:text-paper/70">
                                     Supply Chain
                                 </span>
@@ -1230,7 +742,7 @@ export default function SupplyChainLoginPage() {
                             transition={{ duration: 0.55, ease: 'easeOut', delay: 0.1 }}
                         >
                             <p className="font-rethink text-[13px] font-medium uppercase tracking-[0.2em] text-accent">
-                                Secure Access
+                                Unified Enterprise Access
                             </p>
                             <h1 className="mt-5 font-bricolage text-[44px] font-medium leading-[1.05] tracking-tight text-ink dark:text-paper">
                                 Supply Chain
@@ -1240,8 +752,7 @@ export default function SupplyChainLoginPage() {
                                 Portal
                             </h1>
                             <p className="mt-5 text-[15px] leading-relaxed text-muted dark:text-paper/70">
-                                Access the supply chain management system to track inventory,
-                                manage orders, and optimize logistics.
+                                Direct single-sign-on access for Executives, Administrators, Purchase Officers, Operators, and Authorized Suppliers.
                             </p>
                         </motion.div>
 
@@ -1251,7 +762,7 @@ export default function SupplyChainLoginPage() {
                         </div>
                     </div>
 
-                    {/* right side - login form */}
+                    {/* Right side - Login Form */}
                     <div className="h-dvh overflow-y-auto flex items-center justify-center px-5 py-8 sm:px-12 sm:py-16 bg-paper dark:bg-ink">
                         <motion.div
                             className="w-full max-w-sm"
@@ -1277,14 +788,15 @@ export default function SupplyChainLoginPage() {
                                 Sign in to Supply Chain
                             </h2>
                             <p className="mt-2 sm:mt-2.5 text-[13.5px] sm:text-[14.5px] leading-relaxed text-muted dark:text-paper/70">
-                                Use your company email and password.
+                                Use your registered email and password.
                             </p>
 
                             <form
                                 onSubmit={handleLogin}
-                                className="mt-6 sm:mt-9 lg:mt-11 space-y-5 sm:space-y-7 lg:space-y-8"
+                                className="mt-6 sm:mt-9 lg:mt-11 space-y-5 sm:space-y-6"
                                 noValidate
                             >
+                                {/* Email Field */}
                                 <div>
                                     <label
                                         htmlFor="email"
@@ -1304,6 +816,7 @@ export default function SupplyChainLoginPage() {
                                     />
                                 </div>
 
+                                {/* Password Field */}
                                 <div>
                                     <div className="flex items-baseline justify-between">
                                         <label
@@ -1340,6 +853,8 @@ export default function SupplyChainLoginPage() {
                                     </div>
                                 </div>
 
+
+
                                 {/* Rate limit lockout banner */}
                                 {loginLockoutSeconds > 0 && (
                                     <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 flex items-center gap-3 text-xs text-amber-700 dark:text-amber-300 animate-in fade-in">
@@ -1361,10 +876,11 @@ export default function SupplyChainLoginPage() {
                                     </div>
                                 )}
 
+                                {/* Sign In Button */}
                                 <button
                                     type="submit"
                                     disabled={isLoggingIn || loginLockoutSeconds > 0}
-                                    className={`w-full px-4 py-3.5 text-[14px] font-medium tracking-wide transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer ${
+                                    className={`w-full px-4 py-3.5 text-[14px] font-medium tracking-wide transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer rounded-xl ${
                                         loginLockoutSeconds > 0
                                             ? 'bg-amber-600 dark:bg-amber-700 text-white cursor-not-allowed opacity-85'
                                             : 'bg-ink dark:bg-paper text-paper dark:text-ink hover:bg-accent dark:hover:bg-accent dark:hover:text-paper disabled:cursor-not-allowed disabled:opacity-60'
@@ -1386,6 +902,21 @@ export default function SupplyChainLoginPage() {
                                 </button>
                             </form>
 
+                            {/* Blocked Device Notice Button */}
+                            {isDeviceBlocked && (
+                                <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-center justify-between">
+                                    <span>This device is currently blocked.</span>
+                                    <button
+                                        type="button"
+                                        onClick={openAppealModal}
+                                        className="font-bold underline cursor-pointer hover:text-red-700"
+                                    >
+                                        Submit Appeal
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Help / HR Contact */}
                             <div className="mt-6 p-4 rounded-2xl bg-[#EAF0F6] dark:bg-[#13161F] border border-white/60 dark:border-white/[0.06] shadow-[inset_2px_2px_5px_#cbd6e4,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.6),inset_-1px_-1px_4px_rgba(255,255,255,0.02)] transition-all">
                                 <p className="text-center text-xs sm:text-[12.5px] text-slate-600 dark:text-slate-300 font-medium">
                                     Trouble accessing your account? Contact HR at{' '}
@@ -1401,85 +932,37 @@ export default function SupplyChainLoginPage() {
                     </div>
                 </div>
 
-                {/* modals */}
-                <EmployeeSelectionModal
-                    showEmployeeModal={showEmployeeModal}
-                    loggedInUser={loggedInUser}
-                    employees={employees}
-                    selectedEmployee={selectedEmployee}
-                    searchTerm={searchTerm}
-                    setSearchTerm={setSearchTerm}
-                    isLoadingEmployees={isLoadingEmployees}
-                    isSelectionLocked={isSelectionLocked}
-                    isCheckingRemembered={isCheckingRemembered}
-                    isDeviceBlocked={isDeviceBlocked}
-                    isCurrentlyActive={isCurrentlyActive}
-                    isRemembered={isRemembered}
-                    isRequestingOTP={isRequestingOTP}
-                    isResending={isResending}
-                    isVerifying={isVerifying}
-                    otpSent={otpSent}
+                {/* OTP Verification Modal for Superadmin / Admin / Supplier */}
+                <OtpVerificationModal
+                    isOpen={showOtpModal}
+                    onClose={() => {
+                        setShowOtpModal(false);
+                        setOtpCode(['', '', '', '', '', '']);
+                        setOtpError(null);
+                        setOtpSuccess(null);
+                        setOtpRememberMe(false);
+                    }}
+                    email={otpTargetEmail}
+                    maskedEmail={otpMaskedEmail}
+                    role={otpTargetRole}
+                    displayName={otpTargetDisplayName}
                     otpCode={otpCode}
-                    otpError={otpError}
-                    otpSuccess={otpSuccess}
-                    rememberMe={rememberMe}
-                    setRememberMe={setRememberMe}
-                    countdown={countdown}
-                    otpExpiresIn={otpExpiresIn}
-                    existingAppeal={existingAppeal}
-                    blockedDeviceId={blockedDeviceId}
-                    getRoleColor={getRoleColor}
-                    handleEmployeeSelect={handleEmployeeSelect}
-                    handleCloseModal={handleCloseModal}
-                    handleLoginWithRemembered={handleLoginWithRemembered}
-                    requestOTP={requestOTP}
-                    resendOTP={resendOTP}
-                    verifyOTP={verifyOTP}
                     handleOtpChange={handleOtpChange}
                     handleOtpKeyDown={handleOtpKeyDown}
                     handleOtpPaste={handleOtpPaste}
-                    openAppealModal={openAppealModal}
-                    setOtpSent={setOtpSent}
-                    setOtpCode={setOtpCode}
-                    setOtpError={setOtpError}
-                    setOtpSuccess={setOtpSuccess}
-                    setIsRemembered={setIsRemembered}
+                    onVerify={handleVerifyOtp}
+                    onResend={handleResendOtp}
+                    isVerifying={isVerifyingOtp}
+                    isResending={isResendingOtp}
+                    countdown={countdown}
+                    otpExpiresIn={otpExpiresIn}
+                    otpError={otpError}
+                    otpSuccess={otpSuccess}
+                    rememberMe={otpRememberMe}
+                    setRememberMe={setOtpRememberMe}
                 />
 
-                <PasswordSetupModal
-                    showPasswordModal={showPasswordModal}
-                    selectedEmployeeForPassword={selectedEmployeeForPassword}
-                    newPassword={newPassword}
-                    setNewPassword={setNewPassword}
-                    confirmPassword={confirmPassword}
-                    setConfirmPassword={setConfirmPassword}
-                    isCreatingUser={isCreatingUser}
-                    getRoleColor={getRoleColor}
-                    handleCreateAccount={handleCreateAccount}
-                    setShowPasswordModal={setShowPasswordModal}
-                    setOtpSent={setOtpSent}
-                    setShowEmployeeModal={setShowEmployeeModal}
-                />
-
-                <RememberedPasswordModal
-                    showRememberedPasswordModal={showRememberedPasswordModal}
-                    selectedEmployee={selectedEmployee}
-                    rememberedPassword={rememberedPassword}
-                    setRememberedPassword={setRememberedPassword}
-                    isLoggingInWithRemembered={isLoggingInWithRemembered}
-                    getRoleColor={getRoleColor}
-                    handleVerifyRememberedPassword={handleVerifyRememberedPassword}
-                    setShowRememberedPasswordModal={setShowRememberedPasswordModal}
-                    authRestrictionMessage={authRestrictionMessage}
-                    setAuthRestrictionMessage={setAuthRestrictionMessage}
-                    onNotifyAdmin={() => handleNotifyAdmin({
-                        email: selectedEmployee?.email || rememberedData?.email || '',
-                        userId: rememberedData?.user_id || loggedInUser?.id || selectedEmployee?.id,
-                        displayName: selectedEmployee?.display_name,
-                        role: rememberedData?.role || selectedEmployee?.role || loggedInUser?.role || 'Employee',
-                    })}
-                />
-
+                {/* Appeal Modal for Blocked Devices */}
                 <AppealModal
                     showAppealModal={showAppealModal}
                     existingAppeal={existingAppeal}
@@ -1494,18 +977,17 @@ export default function SupplyChainLoginPage() {
                     handleDeleteAppeal={handleDeleteAppeal}
                 />
 
+                {/* Login Queue Concurrency Modal */}
                 <LoginQueueModal
                     isOpen={showQueueModal}
-                    role={selectedEmployee?.role}
+                    role={loggedInUser?.role}
                     initialPosition={queuePosition}
                     initialActiveUsers={queueActiveUsers}
                     maxCapacity={queueMaxCapacity}
                     onRetry={() => {
                         setShowQueueModal(false);
-                        if (isRemembered && rememberedPassword) {
-                            handleVerifyRememberedPassword();
-                        } else if (otpSent) {
-                            verifyOTP();
+                        if (showOtpModal) {
+                            handleVerifyOtp();
                         }
                     }}
                     onClose={() => setShowQueueModal(false)}

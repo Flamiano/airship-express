@@ -439,7 +439,7 @@ export default function SettingsContentWrapper() {
         const tierName = tier === 'executiveSlots'
             ? 'Executive & Admin'
             : tier === 'managerSlots'
-                ? 'Manager'
+                ? 'Purchase Officer'
                 : tier === 'supplierSlots'
                     ? 'Supplier'
                     : 'Staff & Operator';
@@ -629,7 +629,7 @@ export default function SettingsContentWrapper() {
                 if (p.route === '/executive') {
                     newPermissions[p.route] = ['Executive'];
                 } else {
-                    newPermissions[p.route] = ['Executive', 'Admin', 'Manager', 'Operator', 'Employee'];
+                    newPermissions[p.route] = ['Executive', 'Admin', 'Purchase Officer', 'Operator', 'Employee'];
                 }
             });
         } else if (template === 'strict') {
@@ -639,7 +639,7 @@ export default function SettingsContentWrapper() {
                 } else if (p.route === '/settings' || p.route === '/user-activity') {
                     newPermissions[p.route] = ['Executive', 'Admin'];
                 } else {
-                    newPermissions[p.route] = ['Executive', 'Admin', 'Manager'];
+                    newPermissions[p.route] = ['Executive', 'Admin', 'Purchase Officer'];
                 }
             });
         }

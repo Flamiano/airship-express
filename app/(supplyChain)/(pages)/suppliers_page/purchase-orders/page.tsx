@@ -21,23 +21,31 @@ import {
     Check, 
     MessageSquare, 
     ChevronRight, 
-    ArrowUpDown,
-    Inbox,
-    ShieldAlert,
-    Download,
-    FileSpreadsheet
+    ArrowUpDown, 
+    Inbox, 
+    ShieldAlert, 
+    Download, 
+    FileSpreadsheet,
+    AlertTriangle,
+    Image as ImageIcon
 } from "lucide-react";
 import Link from "next/link";
 import { user } from "../../../lib/services/Class/user";
 import { supabase } from "../../../lib/services/client/supabase";
 import { useDebounce } from "../../../hooks/useDebounce";
 import { Pagination } from "../../../components/global/pagination";
-import { StatusBadge, getPOStatusTone } from "../../../components/ui/StatusBadge";
+import { StatusBadge, getPOStatusTone, BadgeTone } from "../../../components/ui/StatusBadge";
 import { AppButton } from "../../../components/ui/AppButton";
 import { CardsSkeleton, TableSkeleton } from "../../../components/ui/SkeletonLoader";
 import Cards from "../../../components/global/Cards";
 import { toast } from "sonner";
 import Portal from "../../../components/client/Portal";
+import { processDeliveredPurchaseOrdersAction } from "../../purchase-orders/server/actions/delivery-inventory";
+import { SupplierReturnModal } from "./components/SupplierReturnModal";
+import { 
+    fetchSupplierReturnRequestsForSupplierAction, 
+    SupplierReturnRequestRecord 
+} from "../../warehousing/server/supplier-returns-actions";
 
 interface PurchaseOrderItem {
     item_name?: string;
@@ -54,13 +62,45 @@ interface PurchaseOrder {
     supplier_id: string;
     supplier_name?: string;
     total_amount: number;
+    subtotal?: number;
+    discount?: number;
+    shipping_fee?: number;
+    tax_rate?: number;
+    tax_amount?: number;
+    category?: string;
     status: string;
     delivery_date?: string;
+    delivery_location?: string;
+    admin_approval?: string;
+    admin_approved_at?: string;
+    financial_approval?: string;
+    financial_approved_at?: string;
     notes?: string;
     items?: PurchaseOrderItem[] | any;
     paid?: boolean;
     created_at?: string;
     updated_at?: string;
+}
+
+// Helper to check if a Purchase Order is approved by both Admin and Finance, and officially Issued
+export function isApprovedAndIssuedPO(po: any): boolean {
+    if (!po) return false;
+    
+    // 1. Admin Approval must be Approved
+    const admApproved = String(po.admin_approval || "").trim().toLowerCase() === "approved";
+    if (!admApproved) return false;
+
+    // 2. Financial Approval must be Approved
+    const finApproved = String(po.financial_approval || "").trim().toLowerCase() === "approved";
+    if (!finApproved) return false;
+
+    // 3. Must be an issued order (not an internal draft or pending internal review)
+    const st = String(po.status || "").trim().toLowerCase();
+    if (st === "draft" || st === "pending approval" || st === "pending_approval") {
+        return false;
+    }
+
+    return true;
 }
 
 function EmptyState({
@@ -122,10 +162,56 @@ export default function SupplierPurchaseOrdersPage() {
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [confirmModal, setConfirmModal] = useState<StatusConfirmState | null>(null);
 
+    // Defective Items & Return Claims State
+    const [activeMainTab, setActiveMainTab] = useState<"orders" | "defects">("orders");
+    const [supplierReturnRequests, setSupplierReturnRequests] = useState<SupplierReturnRequestRecord[]>([]);
+    const [isLoadingReturns, setIsLoadingReturns] = useState(false);
+    const [selectedReturnForModal, setSelectedReturnForModal] = useState<SupplierReturnRequestRecord | null>(null);
+    const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+    const [defectsSearchQuery, setDefectsSearchQuery] = useState("");
+    const [defectsStatusFilter, setDefectsStatusFilter] = useState("ALL");
+    const [defectsCurrentPage, setDefectsCurrentPage] = useState(1);
+    const [defectsPageSize, setDefectsPageSize] = useState(10);
+
     const debouncedSearch = useDebounce(searchQuery, 300);
     const currentUserEmail = user.getEmail();
 
-    // Fetch Supplier POs
+    // Check URL tab parameter on mount
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("tab") === "defects") {
+                setActiveMainTab("defects");
+            }
+        }
+    }, []);
+
+    // Fetch Supplier Return Requests
+    const fetchReturnRequests = async (accOverride?: any) => {
+        setIsLoadingReturns(true);
+        try {
+            const acc = accOverride || supplierAccount;
+            const supId = acc?.supplier_id;
+            const supEmail = acc?.email || currentUserEmail;
+            const supName = acc?.suppliers?.name || acc?.company_name;
+
+            const res = await fetchSupplierReturnRequestsForSupplierAction({
+                supplierId: supId,
+                supplierEmail: supEmail,
+                supplierName: supName,
+            });
+
+            if (res.success && res.data) {
+                setSupplierReturnRequests(res.data);
+            }
+        } catch (err) {
+            console.error("Error fetching supplier return requests:", err);
+        } finally {
+            setIsLoadingReturns(false);
+        }
+    };
+
+    // Fetch Supplier POs (Only show issued and approved by Admin and Financial Approval)
     const fetchOrders = async () => {
         setIsLoading(true);
         try {
@@ -138,10 +224,13 @@ export default function SupplierPurchaseOrdersPage() {
 
             if (acc) {
                 setSupplierAccount(acc);
+                fetchReturnRequests(acc);
 
                 let query = supabase
                     .from("purchase_orders")
                     .select("*")
+                    .ilike("admin_approval", "approved")
+                    .ilike("financial_approval", "approved")
                     .order("created_at", { ascending: false });
 
                 if (acc.supplier_id) {
@@ -151,18 +240,21 @@ export default function SupplierPurchaseOrdersPage() {
                 const { data: pos, error } = await query;
                 if (!error && pos) {
                     const uniqueMap = new Map();
-                    pos.forEach((p: any) => uniqueMap.set(p.id, p));
+                    pos.filter(isApprovedAndIssuedPO).forEach((p: any) => uniqueMap.set(p.id, p));
                     setPurchaseOrders(Array.from(uniqueMap.values()));
                 }
             } else {
-                // If logged in as internal staff viewing this portal, show all
+                // If logged in as internal staff viewing this portal, show all issued & approved
+                fetchReturnRequests();
                 const { data: pos } = await supabase
                     .from("purchase_orders")
                     .select("*")
+                    .ilike("admin_approval", "approved")
+                    .ilike("financial_approval", "approved")
                     .order("created_at", { ascending: false });
                 if (pos) {
                     const uniqueMap = new Map();
-                    pos.forEach((p: any) => uniqueMap.set(p.id, p));
+                    pos.filter(isApprovedAndIssuedPO).forEach((p: any) => uniqueMap.set(p.id, p));
                     setPurchaseOrders(Array.from(uniqueMap.values()));
                 }
             }
@@ -189,6 +281,8 @@ export default function SupplierPurchaseOrdersPage() {
                 (payload: any) => {
                     if (payload.eventType === "INSERT") {
                         const newPo = payload.new;
+                        // Only add if approved by admin, approved by finance, and issued
+                        if (!isApprovedAndIssuedPO(newPo)) return;
                         setPurchaseOrders((prev) => {
                             if (prev.some((p) => p.id === newPo.id)) return prev;
                             if (supplierAccount?.supplier_id && newPo.supplier_id && String(newPo.supplier_id) !== String(supplierAccount.supplier_id)) {
@@ -199,11 +293,28 @@ export default function SupplierPurchaseOrdersPage() {
                         toast.info(`New purchase order received: #${newPo.po_number || ""}`);
                     } else if (payload.eventType === "UPDATE") {
                         const updatedPo = payload.new;
-                        setPurchaseOrders((prev) =>
-                            prev.map((p) => (p.id === updatedPo.id ? { ...p, ...updatedPo } : p))
-                        );
+                        setPurchaseOrders((prev) => {
+                            const isEligible = isApprovedAndIssuedPO(updatedPo);
+                            const exists = prev.some((p) => p.id === updatedPo.id);
+
+                            if (!isEligible) {
+                                // If approval was revoked or draft, remove from supplier view
+                                return prev.filter((p) => p.id !== updatedPo.id);
+                            }
+
+                            if (exists) {
+                                return prev.map((p) => (p.id === updatedPo.id ? { ...p, ...updatedPo } : p));
+                            }
+
+                            // If freshly approved and belongs to this supplier, insert it
+                            if (supplierAccount?.supplier_id && updatedPo.supplier_id && String(updatedPo.supplier_id) !== String(supplierAccount.supplier_id)) {
+                                return prev;
+                            }
+                            return [updatedPo, ...prev];
+                        });
                         setSelectedPo((prevSelected) => {
                             if (prevSelected && prevSelected.id === updatedPo.id) {
+                                if (!isApprovedAndIssuedPO(updatedPo)) return null;
                                 return { ...prevSelected, ...updatedPo };
                             }
                             return prevSelected;
@@ -222,8 +333,35 @@ export default function SupplierPurchaseOrdersPage() {
             )
             .subscribe();
 
+        const returnChannel = supabase
+            .channel(`supplier_returns_realtime_${Date.now()}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "supplier_return_requests",
+                },
+                () => {
+                    fetchReturnRequests();
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "supplier_return_messages",
+                },
+                () => {
+                    fetchReturnRequests();
+                }
+            )
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(returnChannel);
         };
     }, [currentUserEmail, supplierAccount?.supplier_id]);
 
@@ -457,15 +595,26 @@ export default function SupplierPurchaseOrdersPage() {
     const handleUpdatePoStatus = async (poId: string, newStatus: string) => {
         setIsUpdatingStatus(true);
         try {
-            const { error } = await supabase
-                .from("purchase_orders")
-                .update({ 
-                    status: newStatus,
-                    updated_at: new Date().toISOString()
-                })
-                .eq("id", poId);
+            if (newStatus === "Delivered") {
+                const deliveryRes = await processDeliveredPurchaseOrdersAction([poId], {
+                    name: supplierAccount?.suppliers?.name || supplierAccount?.company_name || user.getName() || "Supplier",
+                    role: "Supplier",
+                    id: user.getId() || undefined,
+                });
+                if (!deliveryRes.success) {
+                    throw new Error(deliveryRes.error || 'Failed to update inventory for delivered order');
+                }
+            } else {
+                const { error } = await supabase
+                    .from("purchase_orders")
+                    .update({ 
+                        status: newStatus,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq("id", poId);
 
-            if (error) throw error;
+                if (error) throw error;
+            }
 
             const currentPo = purchaseOrders.find((p) => p.id === poId) || selectedPo;
             const supplierName = supplierAccount?.suppliers?.name || supplierAccount?.company_name || user.getName() || "Supplier";
@@ -505,7 +654,7 @@ export default function SupplierPurchaseOrdersPage() {
                         message: notifMessage,
                         type: 'alert',
                         link: `/purchase-orders?search=${encodeURIComponent(poNumber)}`,
-                        role: ['Manager', 'Admin', 'Executive'],
+                        role: ['Purchase Officer', 'Admin', 'Executive'],
                         is_read: false,
                         reference_type: 'purchase_order',
                         reference_id: poId,
@@ -578,6 +727,167 @@ export default function SupplierPurchaseOrdersPage() {
         return counts;
     }, [purchaseOrders]);
 
+    // Computed Metrics & Filtering for Defective Items & Claims
+    const activeDefectsCount = useMemo(() => {
+        return supplierReturnRequests.filter(
+            (r) =>
+                (r.status as string) === "Awaiting Supplier Response" ||
+                r.supplier_responsibility === "Pending Supplier Confirmation"
+        ).length;
+    }, [supplierReturnRequests]);
+
+    const defectMetrics = useMemo(() => {
+        let actionNeeded = 0;
+        let inTransit = 0;
+        let resolved = 0;
+
+        supplierReturnRequests.forEach((req) => {
+            const st = req.status as string;
+            if (
+                st === "Awaiting Supplier Response" ||
+                req.supplier_responsibility === "Pending Supplier Confirmation"
+            ) {
+                actionNeeded++;
+            } else if (
+                st === "Approved for Return" ||
+                st === "Return in Transit"
+            ) {
+                inTransit++;
+            } else if (
+                st === "Resolved" ||
+                st === "Claim Closed" ||
+                st === "Replacement Dispatched"
+            ) {
+                resolved++;
+            }
+        });
+
+        return {
+            total: supplierReturnRequests.length,
+            actionNeeded,
+            inTransit,
+            resolved,
+        };
+    }, [supplierReturnRequests]);
+
+    const defectStatusCounts = useMemo(() => {
+        const counts: Record<string, number> = {
+            ALL: supplierReturnRequests.length,
+            ACTION_NEEDED: 0,
+            INVESTIGATION: 0,
+            IN_TRANSIT: 0,
+            DISPATCHED: 0,
+            RESOLVED: 0,
+        };
+        supplierReturnRequests.forEach((r) => {
+            const st = r.status as string;
+            if (
+                st === "Awaiting Supplier Response" ||
+                r.supplier_responsibility === "Pending Supplier Confirmation"
+            ) {
+                counts.ACTION_NEEDED++;
+            }
+            if (st === "Under Investigation") {
+                counts.INVESTIGATION++;
+            }
+            if (st === "Approved for Return" || st === "Return in Transit") {
+                counts.IN_TRANSIT++;
+            }
+            if (st === "Replacement Dispatched") {
+                counts.DISPATCHED++;
+            }
+            if (st === "Resolved" || st === "Claim Closed") {
+                counts.RESOLVED++;
+            }
+        });
+        return counts;
+    }, [supplierReturnRequests]);
+
+    const debouncedDefectsSearch = useDebounce(defectsSearchQuery, 300);
+
+    const filteredDefectRequests = useMemo(() => {
+        return supplierReturnRequests.filter((req) => {
+            const st = req.status as string;
+            if (defectsStatusFilter === "ACTION_NEEDED") {
+                if (
+                    st !== "Awaiting Supplier Response" &&
+                    req.supplier_responsibility !== "Pending Supplier Confirmation"
+                ) {
+                    return false;
+                }
+            } else if (defectsStatusFilter === "INVESTIGATION") {
+                if (st !== "Under Investigation") return false;
+            } else if (defectsStatusFilter === "IN_TRANSIT") {
+                if (st !== "Approved for Return" && st !== "Return in Transit") {
+                    return false;
+                }
+            } else if (defectsStatusFilter === "DISPATCHED") {
+                if (st !== "Replacement Dispatched") return false;
+            } else if (defectsStatusFilter === "RESOLVED") {
+                if (st !== "Resolved" && st !== "Claim Closed") return false;
+            }
+
+            if (debouncedDefectsSearch) {
+                const q = debouncedDefectsSearch.toLowerCase();
+                const matchReq = req.return_request_number?.toLowerCase().includes(q);
+                const matchPo = req.po_number?.toLowerCase().includes(q);
+                const matchItem =
+                    req.item_name?.toLowerCase().includes(q) ||
+                    req.item_code?.toLowerCase().includes(q);
+                const matchDefect =
+                    req.defect_type?.toLowerCase().includes(q) ||
+                    req.defect_description?.toLowerCase().includes(q);
+                const matchStatus = req.status?.toLowerCase().includes(q);
+                if (!matchReq && !matchPo && !matchItem && !matchDefect && !matchStatus) return false;
+            }
+
+            return true;
+        });
+    }, [supplierReturnRequests, defectsStatusFilter, debouncedDefectsSearch]);
+
+    const paginatedDefectRequests = useMemo(() => {
+        const start = (defectsCurrentPage - 1) * defectsPageSize;
+        return filteredDefectRequests.slice(start, start + defectsPageSize);
+    }, [filteredDefectRequests, defectsCurrentPage, defectsPageSize]);
+
+    const defectsTotalPages = Math.ceil(filteredDefectRequests.length / defectsPageSize) || 1;
+
+    const getReturnStatusTone = (status: string): BadgeTone => {
+        switch (status) {
+            case "Awaiting Supplier Response":
+            case "Pending Review":
+                return "amber";
+            case "Under Investigation":
+            case "Approved for Return":
+            case "Return in Transit":
+                return "blue";
+            case "Replacement Dispatched":
+            case "Resolved":
+            case "Claim Closed":
+                return "emerald";
+            case "Rejected by Vendor":
+            case "Claim Rejected":
+            case "Rejected":
+                return "rose";
+            default:
+                return "neutral";
+        }
+    };
+
+    const getResponsibilityTone = (resp?: string): BadgeTone => {
+        switch (resp) {
+            case "Supplier Responsible":
+                return "emerald";
+            case "Pending Supplier Confirmation":
+                return "amber";
+            case "Supplier Not Responsible":
+            case "Disputed / Further Investigation Required":
+                return "rose";
+            default:
+                return "neutral";
+        }
+    };
+
     return (
         <div className="w-full space-y-5 sm:space-y-6 animate-fade-in bgCard">
             {/* Page Header */}
@@ -585,7 +895,7 @@ export default function SupplierPurchaseOrdersPage() {
                 <div>
                     <div className="flex items-center gap-2.5">
                         <h2 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                            Purchase Orders
+                            Purchase Orders & Returns
                         </h2>
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -593,7 +903,7 @@ export default function SupplierPurchaseOrdersPage() {
                         </span>
                     </div>
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium mt-0.5 sm:mt-1">
-                        View orders, review line items, manage fulfillment stages, and acknowledge orders in real time.
+                        View orders, review line items, manage fulfillment stages, and review official defect claims & return workflows.
                     </p>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
@@ -601,14 +911,63 @@ export default function SupplierPurchaseOrdersPage() {
                         variant="neutral"
                         size="sm"
                         icon={RefreshCw}
-                        iconClassName={isLoading ? "animate-spin text-pink-500" : "text-pink-500"}
-                        onClick={fetchOrders}
-                        disabled={isLoading}
+                        iconClassName={(isLoading || isLoadingReturns) ? "animate-spin text-pink-500" : "text-pink-500"}
+                        onClick={() => {
+                            fetchOrders();
+                            fetchReturnRequests();
+                        }}
+                        disabled={isLoading || isLoadingReturns}
                     >
                         Refresh
                     </AppButton>
                 </div>
             </div>
+
+            {/* Top-Level Main Tab Switcher */}
+            <div className="flex items-center gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-2 overflow-x-auto scrollbar-none">
+                <button
+                    onClick={() => setActiveMainTab("orders")}
+                    className={`pb-2 px-3 text-xs sm:text-sm font-black flex items-center gap-2 transition-all border-b-2 cursor-pointer active:scale-95 ${
+                        activeMainTab === "orders"
+                            ? "border-pink-500 text-pink-600 dark:text-pink-400"
+                            : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300"
+                    }`}
+                >
+                    <FileText className="w-4 h-4" />
+                    <span>Purchase Orders</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        activeMainTab === "orders"
+                            ? "bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/20"
+                            : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}>
+                        {purchaseOrders.length}
+                    </span>
+                </button>
+
+                <button
+                    onClick={() => setActiveMainTab("defects")}
+                    className={`pb-2 px-3 text-xs sm:text-sm font-black flex items-center gap-2 transition-all border-b-2 cursor-pointer active:scale-95 ${
+                        activeMainTab === "defects"
+                            ? "border-pink-500 text-pink-600 dark:text-pink-400"
+                            : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300"
+                    }`}
+                >
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>Defective Items & Return Claims</span>
+                    {activeDefectsCount > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse shadow-[0_0_10px_rgba(244,63,94,0.5)]">
+                            {activeDefectsCount} Action Required
+                        </span>
+                    ) : supplierReturnRequests.length > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            {supplierReturnRequests.length}
+                        </span>
+                    ) : null}
+                </button>
+            </div>
+
+            {activeMainTab === "orders" ? (
+                <>
 
             {/* KPI Stat Cards */}
             {isLoading ? (
@@ -662,7 +1021,7 @@ export default function SupplierPurchaseOrdersPage() {
             <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none">
                 {[
                     { id: "ALL", label: "All Orders", count: statusCounts.ALL },
-                    { id: "PENDING", label: "Pending", count: statusCounts.PENDING },
+                    { id: "PENDING", label: "Pending / Issued", count: statusCounts.PENDING },
                     { id: "CONFIRMED", label: "Confirmed", count: statusCounts.CONFIRMED },
                     { id: "DELIVERED", label: "Delivered", count: statusCounts.DELIVERED },
                     { id: "REJECTED", label: "Rejected", count: statusCounts.REJECTED },
@@ -1082,6 +1441,311 @@ export default function SupplierPurchaseOrdersPage() {
                     </div>
                 </div>
             )}
+                </>
+            ) : (
+                /* Defective Claims View */
+                <div className="space-y-5 animate-fade-in">
+                    {/* Defect KPI Cards */}
+                    {isLoadingReturns ? (
+                        <CardsSkeleton count={4} />
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                            <Cards
+                                frontIcon="fas fa-triangle-exclamation"
+                                header="Total Defect Claims"
+                                data={defectMetrics.total.toString()}
+                                arrow="fas fa-boxes-stacked"
+                                description="Inspection reports"
+                                frontTextColor="text-pink-500"
+                                backHeader="Claims Summary"
+                                backDescription="Total defective item return claims reported by warehouse quality inspection."
+                            />
+                            <Cards
+                                frontIcon="fas fa-bell"
+                                header="Action Required"
+                                data={defectMetrics.actionNeeded.toString()}
+                                arrow="fas fa-exclamation"
+                                description="Awaiting response"
+                                frontTextColor="text-rose-500"
+                                backHeader="Action Needed"
+                                backDescription="Defective claims awaiting supplier acknowledgment, RMA assignment, or response."
+                            />
+                            <Cards
+                                frontIcon="fas fa-truck-fast"
+                                header="Returns In Transit"
+                                data={defectMetrics.inTransit.toString()}
+                                arrow="fas fa-arrow-right-arrow-left"
+                                description="Approved / Dispatch"
+                                frontTextColor="text-pink-500"
+                                backHeader="Return Logistics"
+                                backDescription="Defective items approved for return or currently in transit back to supplier."
+                            />
+                            <Cards
+                                frontIcon="fas fa-circle-check"
+                                header="Resolved & Closed"
+                                data={defectMetrics.resolved.toString()}
+                                arrow="fas fa-check-double"
+                                description="Replaced / Credited"
+                                frontTextColor="text-emerald-500"
+                                backHeader="Resolved Claims"
+                                backDescription="Defective items replaced, restocked, or settled through vendor credit."
+                            />
+                        </div>
+                    )}
+
+                    {/* Defect Quick Status Tabs */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none">
+                        {[
+                            { id: "ALL", label: "All Claims", count: defectStatusCounts.ALL },
+                            { id: "ACTION_NEEDED", label: "Action Needed", count: defectStatusCounts.ACTION_NEEDED, highlight: true },
+                            { id: "INVESTIGATION", label: "Under Investigation", count: defectStatusCounts.INVESTIGATION },
+                            { id: "IN_TRANSIT", label: "Approved / In Transit", count: defectStatusCounts.IN_TRANSIT },
+                            { id: "DISPATCHED", label: "Replacement Dispatched", count: defectStatusCounts.DISPATCHED },
+                            { id: "RESOLVED", label: "Resolved & Closed", count: defectStatusCounts.RESOLVED },
+                        ].map((tab) => {
+                            const active = defectsStatusFilter === tab.id;
+                            return (
+                                <button
+                                    key={`def_tab_${tab.id}`}
+                                    onClick={() => {
+                                        setDefectsStatusFilter(tab.id);
+                                        setDefectsCurrentPage(1);
+                                    }}
+                                    className={`px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer active:scale-95 ${
+                                        active
+                                            ? "text-white bg-gradient-to-b from-pink-500 to-pink-600 border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5)] font-bold"
+                                            : "text-slate-700 dark:text-slate-200 bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)]"
+                                    }`}
+                                >
+                                    <span>{tab.label}</span>
+                                    <span
+                                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                                            active
+                                                ? "bg-white/20 text-white"
+                                                : tab.highlight && tab.count > 0
+                                                ? "bg-rose-500 text-white"
+                                                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                                        }`}
+                                    >
+                                        {tab.count}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Defect Claims Table & Search Card */}
+                    {isLoadingReturns ? (
+                        <TableSkeleton
+                            cols={7}
+                            rows={5}
+                            hasHeader={true}
+                            hasSearch={true}
+                            hasPagination={true}
+                        />
+                    ) : (
+                        <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl p-3.5 sm:p-5 border border-white/80 dark:border-white/[0.08] shadow-[10px_10px_28px_rgba(166,175,195,0.35),-10px_-10px_28px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.7)] space-y-4">
+                            {/* Toolbar */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+                                <div className="relative max-w-md w-full">
+                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search by Request #, PO #, item, defect reason..."
+                                        value={defectsSearchQuery}
+                                        onChange={(e) => {
+                                            setDefectsSearchQuery(e.target.value);
+                                            setDefectsCurrentPage(1);
+                                        }}
+                                        className="w-full pl-10 pr-4 py-2.5 rounded-2xl text-xs font-medium bg-[#ebf0f7] dark:bg-[#13141c] text-slate-800 dark:text-slate-200 border border-white/60 dark:border-white/[0.04] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] focus:outline-hidden focus:ring-2 focus:ring-pink-500/50 transition-all"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 self-end sm:self-auto">
+                                    {defectsSearchQuery && (
+                                        <button
+                                            onClick={() => setDefectsSearchQuery("")}
+                                            className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:underline cursor-pointer"
+                                        >
+                                            Clear search
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Claims Table */}
+                            <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800">
+                                <table className="w-full text-left border-collapse min-w-[900px]">
+                                    <thead>
+                                        <tr className="border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-400 bg-slate-100/50 dark:bg-slate-900/40">
+                                            <th className="py-3 px-3 sm:px-4">Return Request & Date</th>
+                                            <th className="py-3 px-3 sm:px-4">PO & Line Item</th>
+                                            <th className="py-3 px-3 sm:px-4">Defect Issue & Evidence</th>
+                                            <th className="py-3 px-3 sm:px-4">Resolution Type</th>
+                                            <th className="py-3 px-3 sm:px-4">Return Status</th>
+                                            <th className="py-3 px-3 sm:px-4">Responsibility</th>
+                                            <th className="py-3 px-3 sm:px-4 text-right">Official Review</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 text-xs font-medium text-slate-700 dark:text-slate-300">
+                                        {paginatedDefectRequests.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="py-12 text-center">
+                                                    <EmptyState
+                                                        title="No Defect Claims Found"
+                                                        description="There are currently no return requests or defect notices matching your filter."
+                                                        icon="fas fa-shield-check"
+                                                        isFilterActive={Boolean(defectsSearchQuery || defectsStatusFilter !== "ALL")}
+                                                        onClearSearch={() => {
+                                                            setDefectsSearchQuery("");
+                                                            setDefectsStatusFilter("ALL");
+                                                        }}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            paginatedDefectRequests.map((req) => {
+                                                const hasActionNeeded =
+                                                    req.status === "Awaiting Supplier Response" ||
+                                                    req.supplier_responsibility === "Pending Supplier Confirmation";
+
+                                                return (
+                                                    <tr
+                                                        key={`req_${req.id}`}
+                                                        className={`transition-colors hover:bg-slate-100/50 dark:hover:bg-slate-800/40 ${
+                                                            hasActionNeeded ? "bg-rose-50/40 dark:bg-rose-950/10" : ""
+                                                        }`}
+                                                    >
+                                                        <td className="py-3.5 px-3 sm:px-4">
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <span className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                                                    {req.return_request_number}
+                                                                    {hasActionNeeded && (
+                                                                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                                                                    )}
+                                                                </span>
+                                                                <span className="text-[11px] text-slate-400">
+                                                                    {formatDate(req.inspection_date || req.created_at)}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-sans">
+                                                                    By: {req.reported_by || "QC Inspector"}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3.5 px-3 sm:px-4">
+                                                            <div className="flex flex-col gap-0.5 max-w-[200px]">
+                                                                <span className="font-mono text-pink-600 dark:text-pink-400 font-bold">
+                                                                    #{req.po_number}
+                                                                </span>
+                                                                <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                                                                    {req.item_name}
+                                                                </span>
+                                                                <span className="text-[11px] text-slate-500">
+                                                                    Defective:{" "}
+                                                                    <strong className="text-rose-600 dark:text-rose-400 font-mono">
+                                                                        {req.defective_quantity}
+                                                                    </strong>{" "}
+                                                                    / {req.quantity_received} {req.unit}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3.5 px-3 sm:px-4">
+                                                            <div className="flex flex-col gap-1 max-w-[240px]">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                                                        {req.defect_type || "Damaged"}
+                                                                    </span>
+                                                                    {req.evidence_urls && req.evidence_urls.length > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                                            <ImageIcon className="w-3 h-3 text-pink-500" />
+                                                                            {req.evidence_urls.length} photo{req.evidence_urls.length > 1 ? "s" : ""}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                                                                    {req.defect_description || "Inspection discrepancy reported."}
+                                                                </p>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3.5 px-3 sm:px-4">
+                                                            <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-800 dark:text-slate-200 inline-block">
+                                                                {req.requested_resolution || "Replacement"}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3.5 px-3 sm:px-4">
+                                                            <StatusBadge
+                                                                tone={getReturnStatusTone(req.status)}
+                                                                size="sm"
+                                                            >
+                                                                {req.status}
+                                                            </StatusBadge>
+                                                        </td>
+                                                        <td className="py-3.5 px-3 sm:px-4">
+                                                            <StatusBadge
+                                                                tone={getResponsibilityTone(req.supplier_responsibility)}
+                                                                size="sm"
+                                                            >
+                                                                {req.supplier_responsibility || "Pending Confirmation"}
+                                                            </StatusBadge>
+                                                        </td>
+                                                        <td className="py-3.5 px-3 sm:px-4 text-right">
+                                                            <AppButton
+                                                                variant="pink"
+                                                                size="xs"
+                                                                icon={ShieldAlert}
+                                                                onClick={() => {
+                                                                    setSelectedReturnForModal(req);
+                                                                    setIsReturnModalOpen(true);
+                                                                }}
+                                                            >
+                                                                Review & Respond
+                                                            </AppButton>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Defect Pagination */}
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200/80 dark:border-slate-800">
+                                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+                                    <span>
+                                        Showing{" "}
+                                        {filteredDefectRequests.length > 0
+                                            ? (defectsCurrentPage - 1) * defectsPageSize + 1
+                                            : 0}{" "}
+                                        to {Math.min(defectsCurrentPage * defectsPageSize, filteredDefectRequests.length)}{" "}
+                                        of {filteredDefectRequests.length} claims
+                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] text-slate-400">Per page:</span>
+                                        <select
+                                            value={defectsPageSize}
+                                            onChange={(e) => {
+                                                setDefectsPageSize(Number(e.target.value));
+                                                setDefectsCurrentPage(1);
+                                            }}
+                                            className="px-2 py-1 rounded-xl text-xs font-semibold bg-[#ebf0f7] dark:bg-[#14151c] text-slate-700 dark:text-slate-300 border border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)] focus:outline-hidden cursor-pointer"
+                                        >
+                                            <option value={5}>5</option>
+                                            <option value={10}>10</option>
+                                            <option value={20}>20</option>
+                                            <option value={50}>50</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <Pagination
+                                    currentPage={defectsCurrentPage}
+                                    totalPages={defectsTotalPages}
+                                    onPageChange={(p) => setDefectsCurrentPage(p)}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Purchase Order Details Modal */}
             {selectedPo && (
@@ -1098,9 +1762,17 @@ export default function SupplierPurchaseOrdersPage() {
                                         <h3 className="text-base font-black text-slate-900 dark:text-white">
                                             PO Ref: {selectedPo.po_number}
                                         </h3>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                                            Created: {formatDate(selectedPo.created_at)}
-                                        </p>
+                                        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                Issue Date: {((selectedPo.admin_approval === 'Approved' || (selectedPo as any).financial_approval === 'Approved') && selectedPo.admin_approval !== 'Pending' && (selectedPo as any).financial_approval !== 'Pending') 
+                                                    ? formatDate((selectedPo as any).financial_approved_at || selectedPo.admin_approved_at || selectedPo.created_at) 
+                                                    : 'Pending'}
+                                            </p>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                <span>Admin & Finance Approved</span>
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1135,6 +1807,14 @@ export default function SupplierPurchaseOrdersPage() {
                                         <span className="text-[10px] uppercase font-bold text-slate-400 block">Payment</span>
                                         <span className="text-xs font-bold text-pink-600 dark:text-pink-400">{selectedPo.paid ? "Paid" : "Unpaid"}</span>
                                     </div>
+                                </div>
+
+                                {/* Delivery & Logistics Info */}
+                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04] text-xs">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Delivery Destination</span>
+                                    <p className="font-semibold text-slate-800 dark:text-slate-200">
+                                        {selectedPo.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila (Airship Express Central Hub)'}
+                                    </p>
                                 </div>
 
                                 {/* Items Breakdown */}
@@ -1356,6 +2036,21 @@ export default function SupplierPurchaseOrdersPage() {
                     </div>
                 </Portal>
             )}
+
+            {/* Supplier Return Details & Resolution Modal */}
+            <SupplierReturnModal
+                isOpen={isReturnModalOpen}
+                onClose={() => {
+                    setIsReturnModalOpen(false);
+                    setSelectedReturnForModal(null);
+                }}
+                returnRequest={selectedReturnForModal}
+                supplierAccount={supplierAccount}
+                onUpdated={() => {
+                    fetchReturnRequests();
+                    fetchOrders();
+                }}
+            />
         </div>
     );
 }

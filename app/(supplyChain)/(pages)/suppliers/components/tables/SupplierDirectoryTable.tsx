@@ -125,7 +125,7 @@ export function SupplierDirectoryTable({
             {selectedSuppliers.size > 0 && (
                 <div className="px-4 py-2.5 mb-3 bg-[#ebf0f7] dark:bg-[#14151c] rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className="flex items-center gap-2.5">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-xl bg-gradient-to-b from-pink-500 to-pink-600 text-white font-bold text-xs border border-pink-400/80 shadow-[0_2px_6px_rgba(236,72,153,0.3)]">
+                        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-xl bg-pink-600 text-white font-bold text-xs border border-pink-400/80 shadow-[0_2px_6px_rgba(236,72,153,0.3)]">
                             {selectedSuppliers.size}
                         </span>
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-200">

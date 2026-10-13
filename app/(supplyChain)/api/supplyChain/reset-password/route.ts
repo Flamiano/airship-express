@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 
         // action 1: request otp for password reset
         if (action === 'request_otp') {
-            // lookup user across users, mock_employees, and role_based_accounts
+            // lookup user across users and mock_employees
             const { data: existingUser } = await supabase
                 .from('users')
                 .select('id, display_name')
@@ -325,18 +325,6 @@ export async function POST(request: Request) {
                 // non-critical
             }
 
-            // update role_based_accounts password_hash
-            try {
-                await supabase
-                    .from('role_based_accounts')
-                    .update({
-                        password_hash: newPassword,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('email', normalizedEmail);
-            } catch (e) {
-                // non-critical
-            }
 
             // update users updated_at
             try {

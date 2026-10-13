@@ -161,8 +161,8 @@ export default function EmployeeSelectionModal({
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
-    const userRole = (loggedInUser?.role || '').toLowerCase();
-    const isSupplier = userRole === 'supplier';
+    const userRole = (loggedInUser?.role || selectedEmployee?.role || '').toLowerCase();
+    const isSupplier = userRole === 'supplier' || (selectedEmployee?.role || '').toLowerCase() === 'supplier';
     const isAdmin = userRole === 'admin';
     const isExec = userRole === 'executive';
     const isAdminOrExec = isAdmin || isExec || isSupplier;
@@ -674,25 +674,6 @@ export default function EmployeeSelectionModal({
                                                 autoFocus={index === 0}
                                             />
                                         ))}
-                                    </div>
-
-                                    {/* Remember Me Card */}
-                                    <div className="flex items-center justify-between mb-4 bg-[#EAF0F6] dark:bg-[#13161F] shadow-[inset_3px_3px_6px_#cbd6e4,inset_-3px_-3px_6px_#ffffff] dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.6),inset_-2px_-2px_6px_rgba(255,255,255,0.02)] p-3.5 rounded-2xl border border-white/40 dark:border-white/[0.06]">
-                                        <label className="flex items-center gap-2.5 text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 cursor-pointer select-none">
-                                            <input
-                                                type="checkbox"
-                                                checked={rememberMe}
-                                                onChange={(e) => setRememberMe(e.target.checked)}
-                                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-accent focus:ring-accent cursor-pointer"
-                                                disabled={isVerifying}
-                                            />
-                                            <span>Remember me on this device</span>
-                                        </label>
-                                        {rememberMe && (
-                                            <span className="text-[10px] sm:text-xs font-bold text-accent dark:text-pink-400 bg-[#EEF2F6] dark:bg-[#1A1F2B] px-2.5 py-0.5 rounded-lg border border-accent/30 dark:border-pink-500/30 shadow-[2px_2px_4px_rgba(0,0,0,0.05)] shrink-0 animate-in fade-in zoom-in duration-150">
-                                                15 days
-                                            </span>
-                                        )}
                                     </div>
 
                                     {otpExpiresIn > 0 ? (

@@ -21,6 +21,10 @@ export function PurchaseOrderDetailModal({
 }: PurchaseOrderDetailModalProps) {
     if (!isOpen || !purchaseOrder) return null;
 
+    const isFinancialApproved = ((purchaseOrder as any).financial_approval === 'Approved' || purchaseOrder.admin_approval === 'Approved') && 
+                                (purchaseOrder as any).financial_approval !== 'Pending' && 
+                                purchaseOrder.admin_approval !== 'Pending';
+
     return (
         <Portal>
             <div
@@ -28,7 +32,7 @@ export function PurchaseOrderDetailModal({
                 onClick={onClose}
             >
                 <div
-                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-white/90 dark:border-white/[0.08] overflow-hidden animate-in zoom-in-95 duration-200"
+                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-white/[0.08] shadow-none overflow-hidden animate-in zoom-in-95 duration-200"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="px-6 py-4.5 border-b border-slate-200/60 dark:border-white/[0.06] flex items-start justify-between bg-[#ebf0f7]/50 dark:bg-[#14151e]/50">
@@ -97,15 +101,22 @@ export function PurchaseOrderDetailModal({
                                 </div>
                                 <div className="min-w-0">
                                     <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                                        Date Created
+                                        Issue Date
                                     </span>
-                                    <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
-                                        {new Date(purchaseOrder.created_at).toLocaleDateString(undefined, {
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric',
-                                        })}
-                                    </p>
+                                    {isFinancialApproved ? (
+                                        <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+                                            {new Date((purchaseOrder as any).financial_approved_at || purchaseOrder.admin_approved_at || purchaseOrder.created_at).toLocaleDateString(undefined, {
+                                                year: 'numeric',
+                                                month: 'long',
+                                                day: 'numeric',
+                                            })}
+                                        </p>
+                                    ) : (
+                                        <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-950/40 px-2 py-0.5 rounded-full text-[10px] border border-amber-300 dark:border-amber-700/60 inline-flex items-center gap-1">
+                                            <i className="fas fa-hourglass-half text-[9px]" />
+                                            Pending
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
@@ -156,6 +167,90 @@ export function PurchaseOrderDetailModal({
                             </div>
                         </div>
 
+                        {/* Delivery Location, Category & Commercial Terms */}
+                        {(purchaseOrder.delivery_location || purchaseOrder.payment_terms || purchaseOrder.category) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)]">
+                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                                        Payment Terms &amp; Method
+                                    </span>
+                                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                        {purchaseOrder.payment_terms || 'Net 30 Days (Standard B2B)'}
+                                    </p>
+                                </div>
+
+                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)]">
+                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                                        Procurement Category
+                                    </span>
+                                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                        {purchaseOrder.category || (purchaseOrder.items?.[0] as any)?.category || 'General Procurement'}
+                                    </p>
+                                </div>
+
+                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)]">
+                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                                        Delivery Location
+                                    </span>
+                                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed line-clamp-2" title={purchaseOrder.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila'}>
+                                        {purchaseOrder.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Financial Breakdown if recorded */}
+                        {(purchaseOrder.subtotal || Number(purchaseOrder.discount || 0) > 0 || Number(purchaseOrder.shipping_fee || 0) > 0 || Number(purchaseOrder.tax_amount || 0) > 0) && (
+                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)] space-y-1.5">
+                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                                    Financial Summary
+                                </span>
+                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">Subtotal</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                            ₱{Number(purchaseOrder.subtotal || purchaseOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">Discount</span>
+                                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                            {Number(purchaseOrder.discount || 0) > 0 ? `-₱${Number(purchaseOrder.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "₱0.00"}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">Shipping Fee</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                            {Number(purchaseOrder.shipping_fee || 0) > 0 ? `+₱${Number(purchaseOrder.shipping_fee).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "₱0.00"}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">Tax ({purchaseOrder.tax_rate ?? 12}%)</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                            +₱{Number(purchaseOrder.tax_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                    <div className="col-span-2 sm:col-span-1">
+                                        <span className="text-[10px] text-pink-600 dark:text-pink-400 font-bold block">Total Amount</span>
+                                        <span className="font-mono font-extrabold text-pink-600 dark:text-pink-400 text-sm">
+                                            ₱{Number(purchaseOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {purchaseOrder.terms_and_conditions && (
+                            <div>
+                                <h3 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                                    Terms &amp; Conditions
+                                </h3>
+                                <p className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-[#ebf0f7] dark:bg-[#14151e] p-3.5 rounded-2xl border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)] leading-relaxed whitespace-pre-wrap">
+                                    {purchaseOrder.terms_and_conditions}
+                                </p>
+                            </div>
+                        )}
+
                         {purchaseOrder.notes && (
                             <div>
                                 <h3 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
@@ -186,20 +281,20 @@ export function PurchaseOrderDetailModal({
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                                                    {item.name || `Item ${idx + 1}`}
+                                                    {item.name || item.item_name || `Item ${idx + 1}`}
                                                 </span>
                                                 {item.quantity && (
                                                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                                        × {item.quantity}
+                                                        × {item.quantity} {item.unit || "units"}
                                                     </span>
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-3.5">
-                                                {item.price && (
+                                                {item.price || item.unit_price ? (
                                                     <span className="text-xs font-medium text-slate-600 dark:text-slate-400 font-mono">
-                                                        @₱{item.price.toLocaleString()}
+                                                        @₱{Number(item.unit_price || item.price).toLocaleString()}
                                                     </span>
-                                                )}
+                                                ) : null}
                                                 {item.total && (
                                                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono">
                                                         ₱{item.total.toLocaleString()}

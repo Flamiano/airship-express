@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ftmSupabase } from "../../../../lib/services/client/ftmSupabase";
 import { generateResponse } from "../../../../ai/lib/gemini";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -157,18 +156,17 @@ export async function POST(request: NextRequest) {
             poRes,
             prRes,
             suppliersRes,
-            couriersRes,
             docsRes,
             activityRes,
             parcelsArchiveRes,
             docsArchiveRes,
             poArchiveRes,
-            suppliersArchiveRes,
+            movementsRes,
+            damagesRes,
+            returnsRes,
+            quotesRes,
         ] = await Promise.all([
-            supabaseAdmin
-                .from('parcels')
-                .select('id, tracking_number, barcode, courier, status, destination, sender_name, region, city, created_at')
-                .order('created_at', { ascending: false }),
+            Promise.resolve({ data: [] as any[] }),
             supabaseAdmin
                 .from('inventory_items')
                 .select('id, item_code, item_name, category, current_stock, minimum_stock, status, purchase_price, supplier')
@@ -187,12 +185,8 @@ export async function POST(request: NextRequest) {
                 .from('suppliers')
                 .select('id, name, category, location, is_active')
                 .limit(100),
-            ftmSupabase
-                .from('couriers')
-                .select('id, code, name, is_active')
-                .limit(50),
             supabaseAdmin
-                .from('documents')
+                .from('supplier_documents')
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(300),
@@ -201,10 +195,7 @@ export async function POST(request: NextRequest) {
                 .select('id, user_id, action, module, description, ip_address, created_at')
                 .order('created_at', { ascending: false })
                 .limit(200),
-            supabaseAdmin
-                .from('parcels_archive')
-                .select('*')
-                .limit(100),
+            Promise.resolve({ data: [] as any[] }),
             supabaseAdmin
                 .from('documents_archive')
                 .select('*')
@@ -215,8 +206,24 @@ export async function POST(request: NextRequest) {
                 .select('*')
                 .limit(100),
             supabaseAdmin
-                .from('suppliers_archive')
+                .from('stock_movements')
                 .select('*')
+                .order('created_at', { ascending: false })
+                .limit(150),
+            supabaseAdmin
+                .from('warehouse_damage_incidents')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100),
+            supabaseAdmin
+                .from('supplier_return_requests')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100),
+            supabaseAdmin
+                .from('supplier_quotations')
+                .select('*')
+                .order('created_at', { ascending: false })
                 .limit(100),
         ]);
 
@@ -226,18 +233,19 @@ export async function POST(request: NextRequest) {
             purchaseOrders: poRes.data || [],
             purchaseRequests: prRes.data || [],
             suppliers: suppliersRes.data || [],
-            couriers: couriersRes.data || [],
             documents: docsRes.data || [],
             userActivity: activityRes.data || [],
+            stockMovements: movementsRes.data || [],
+            damageIncidents: damagesRes.data || [],
+            supplierReturns: returnsRes.data || [],
+            supplierQuotations: quotesRes.data || [],
             trash: {
                 parcels: parcelsArchiveRes.data || [],
                 documents: docsArchiveRes.data || [],
                 purchaseOrders: poArchiveRes.data || [],
-                suppliers: suppliersArchiveRes.data || [],
                 totalArchived: (parcelsArchiveRes.data?.length || 0) +
                                (docsArchiveRes.data?.length || 0) +
-                               (poArchiveRes.data?.length || 0) +
-                               (suppliersArchiveRes.data?.length || 0),
+                               (poArchiveRes.data?.length || 0),
             },
             clientSummary: clientSummary || null,
         };
@@ -307,14 +315,12 @@ export async function POST(request: NextRequest) {
             archivedDocSupplierCounts[s] = (archivedDocSupplierCounts[s] || 0) + 1;
         });
 
-        // Suppliers & Couriers
+        // Suppliers
         const supplierCatCounts: Record<string, number> = {};
         dbSnapshot.suppliers.forEach((s: any) => {
             const cat = s.category || 'Vendor';
             supplierCatCounts[cat] = (supplierCatCounts[cat] || 0) + 1;
         });
-
-        const courierNames = dbSnapshot.couriers.map((c: any) => c.name || 'Carrier');
 
         // Parcels & POs & Temporal Breakdown
         const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -382,7 +388,7 @@ Display Preference: "${displayMode}" (chart = emphasize chart visualization, tex
 Domain Filter: "${domain}"
 
 Here is the EXACT LIVE DATABASE SNAPSHOT queried directly with administrative privileges:
-- Active Documents (${dbSnapshot.documents.length} verified records in public.documents table):
+- Active Documents (${dbSnapshot.documents.length} verified records in public.supplier_documents table):
   Document Classifications (Extracted / Document Types): ${JSON.stringify(docTypeCounts)}
   Categories: ${JSON.stringify(docCategoryCounts)}
   Suppliers / Vendor Affiliations: ${JSON.stringify(docSupplierCounts)}
@@ -416,7 +422,6 @@ Here is the EXACT LIVE DATABASE SNAPSHOT queried directly with administrative pr
   Sample items: ${JSON.stringify(dbSnapshot.inventory.map((i: any) => ({ name: i.item_name, cat: i.category, stock: i.current_stock, min: i.minimum_stock, price: i.purchase_price, supplier: i.supplier })))}
 
 - Suppliers: ${dbSnapshot.suppliers.length} active registered suppliers. Categories: ${JSON.stringify(supplierCatCounts)}. Vendors: ${JSON.stringify(dbSnapshot.suppliers.map((s: any) => ({ name: s.name, cat: s.category, loc: s.location })))}
-- Couriers: ${dbSnapshot.couriers.length} registered courier partners: ${JSON.stringify(courierNames)}
 - Parcels: ${dbSnapshot.parcels.length} active shipments recorded. All-Time Status: ${JSON.stringify(parcelStatusCounts)}. Monthly Volumes: ${JSON.stringify(Object.fromEntries(Object.entries(parcelMonthlyBreakdown).map(([k, v]) => [k, v.total])))}
 ${dateFilter.hasDateFilter && dateFilter.monthName !== undefined ? `
 - TEMPORAL / MONTH FILTER DETECTED FOR QUERY: The executive specifically asked for "${dateFilter.monthName} ${dateFilter.year || 2026}"!
@@ -425,7 +430,6 @@ ${dateFilter.hasDateFilter && dateFilter.monthName !== undefined ? `
   * Detailed Records Sample for ${dateFilter.monthName}: ${JSON.stringify(targetParcels.slice(0, 40).map((p: any) => ({
       tracking_number: p.tracking_number,
       barcode: p.barcode,
-      courier: p.courier,
       destination: p.destination || p.city,
       status: p.status,
       created_at: p.created_at
@@ -436,14 +440,14 @@ ${dateFilter.hasDateFilter && dateFilter.monthName !== undefined ? `
 ` : ''}
 - Purchase Orders: ${dbSnapshot.purchaseOrders.length} orders recorded. Total Spend: ₱${totalPOSpend.toLocaleString()}
 - Purchase Requests (${dbSnapshot.purchaseRequests.length} requisitions recorded in public.purchase_requests table): Requisitions: ${JSON.stringify(dbSnapshot.purchaseRequests.map((pr: any) => ({ request_number: pr.request_number, dept: pr.department, amount: pr.amount, status: pr.status, vendor: pr.supplier_name, date: pr.date })))}
-- Trash / Archives: ${dbSnapshot.trash.totalArchived} total archived records (Documents Archive: ${dbSnapshot.trash.documents.length}, Parcels Archive: ${dbSnapshot.trash.parcels.length}, POs Archive: ${dbSnapshot.trash.purchaseOrders.length}, Suppliers Archive: ${dbSnapshot.trash.suppliers.length})
+- Trash / Archives: ${dbSnapshot.trash.totalArchived} total archived records (Documents Archive: ${dbSnapshot.trash.documents.length}, Parcels Archive: ${dbSnapshot.trash.parcels.length}, POs Archive: ${dbSnapshot.trash.purchaseOrders.length})
 
 INSTRUCTIONS:
 1. DOMAIN SPECIFICITY (CRITICAL - SHOW ONLY WHAT IS PROMPTED):
    - If the executive is querying about "documents", "compliance", "files", or "receipts":
      Focus 100% of your metrics, chart, summary, and tableData STRICTLY on the documents and documents_archive tables!
-     Report the EXACT count: ${dbSnapshot.documents.length} active documents in public.documents and ${dbSnapshot.trash.documents.length} archived documents in public.documents_archive (${dbSnapshot.documents.length + dbSnapshot.trash.documents.length} total catalogued files).
-     DO NOT inject inventory items, couriers, or parcels into the metrics or chart when the user asked for documents.
+     Report the EXACT count: ${dbSnapshot.documents.length} active documents in public.supplier_documents and ${dbSnapshot.trash.documents.length} archived documents in public.documents_archive (${dbSnapshot.documents.length + dbSnapshot.trash.documents.length} total catalogued files).
+     DO NOT inject inventory items or other domains into the metrics or chart when the user asked for documents.
      In tableData rows, list the real document records from the database snapshot above with columns: ["Document Title", "File Name", "Classification / Type", "Supplier / Vendor", "Uploaded / Deleted By", "Status"].
    - If the executive is querying about "inventory": Focus 100% on inventory items (${dbSnapshot.inventory.length} SKUs, ${totalStockUnits} stock units).
    - If the executive is querying about "suppliers": Focus 100% on approved suppliers (${dbSnapshot.suppliers.length} vendors).
@@ -461,7 +465,7 @@ INSTRUCTIONS:
        In summary: Explain that in ${dateFilter.monthName} ${dateFilter.year || 2026}, exactly ${targetParcels.length} parcels were recorded in the database, with status distribution: ${Object.entries(targetParcelStatusCounts).map(([st, cnt]) => `${st}: ${cnt}`).join(', ')}.
        In metrics: Card 1: "Total ${dateFilter.monthName} Parcels": "${targetParcels.length} Parcels", Card 2: "Picked Up": "${targetParcelStatusCounts['picked_up'] || targetParcelStatusCounts['picked up'] || 0}", Card 3: "In Transit": "${targetParcelStatusCounts['in_transit'] || targetParcelStatusCounts['in transit'] || 0}", Card 4: "Delivered": "${targetParcelStatusCounts['delivered'] || 0}".
        In chart: Plot the exact status counts of ${dateFilter.monthName} (${JSON.stringify(targetParcelStatusCounts)}) with type 'doughnut' or 'bar'.
-       In tableData: Include real parcels from ${dateFilter.monthName} from the sample above with columns: ["Tracking Number", "Barcode", "Courier", "Destination", "Status", "Created At"].
+       In tableData: Include real parcels from ${dateFilter.monthName} from the sample above with columns: ["Tracking Number", "Barcode", "Destination", "Status", "Created At"].
      ` : dateFilter.isMonthlyTrend ? `
      * CRITICAL (MONTHLY TREND / BREAKDOWN REQUESTED):
        In chart: Plot monthly volume across all recorded months: labels: ${JSON.stringify(Object.keys(parcelMonthlyBreakdown))}, data: ${JSON.stringify(Object.values(parcelMonthlyBreakdown).map(b => b.total))} with type 'bar' or 'line'.
@@ -473,7 +477,7 @@ INSTRUCTIONS:
        DO NOT report 300, 500, or any truncated number! There are EXACTLY ${dbSnapshot.parcels.length} records.
        In metrics: Provide Total Active Parcels (${dbSnapshot.parcels.length} Parcels), and individual cards for each status: ${Object.entries(parcelStatusCounts).map(([st, cnt]) => `${st}: ${cnt}`).join(', ')}.
        In chart: Plot the exact status counts (${JSON.stringify(parcelStatusCounts)}) with type 'doughnut' or 'bar'.
-       In tableData: Include real parcel records from the database snapshot with columns: ["Tracking Number", "Barcode", "Courier", "Destination", "Status", "Created At"].
+       In tableData: Include real parcel records from the database snapshot with columns: ["Tracking Number", "Barcode", "Destination", "Status", "Created At"].
      }`}
    - If the executive is querying about "user activity" or "security logs": Focus 100% on user activity (${dbSnapshot.userActivity.length} logs).
    - If the executive is querying about "trash" or "archives": Focus 100% on the trash repositories (${dbSnapshot.trash.totalArchived} archived records).
@@ -484,38 +488,33 @@ INSTRUCTIONS:
    - For documents, there are EXACTLY ${dbSnapshot.documents.length} active documents and ${dbSnapshot.trash.documents.length} archived documents. NEVER state 0 if records exist, and NEVER invent fictional records that aren't in the snapshot.
 4. OUT OF SCOPE & UNKNOWN DATABASE TABLE VERIFICATION:
 The complete set of database tables defined in the schema (tables.sql) is:
-- activity_history
 - blocked_devices
-- couriers
 - documents (and documents_archive)
 - inventory_items
 - notifications
 - otp_codes
-- parcels (and parcels_archive)
 - purchase_order_items
 - purchase_orders (and purchase_orders_archive)
 - purchase_requests
-- receiving_queue
-- role_based_accounts
 - sessions
-- suppliers (and suppliers_archive)
+- suppliers
 - user_activity
 - trash
 
 If the user's prompt mentions, queries, or implies an unknown, non-existent, or unmodeled database table (e.g. "employees", "salaries", "patients", "vehicles", "payroll", "invoices", "banking", "crypto", "flights", "hotels", etc.) OR any table not defined in tables.sqlYou MUST set "isOutOfScope": true and set "warningMessage" to:
-"The requested database table or entity does not exist in the Airship Express schema (tables.sql). Available tables: activity_history, couriers, documents, inventory_items, notifications, parcels, purchase_orders, purchase_requests, receiving_queue, suppliers, user_activity, and trash."
+"The requested database table or entity does not exist in the Airship Express schema (tables.sql). Available tables: documents, inventory_items, notifications, purchase_orders, purchase_requests, suppliers, user_activity, and trash."
 Do NOT invent, fabricate, or hallucinate data for unknown tables.
 5. MULTI-TABLE & CROSS-TABLE SYNTHESIS (MANDATORY):
 When the user's prompt asks to:
 - Show data from "different tables", "multiple tables", or "all tables" in 1 chart or summary
-- Compare 2 or more database tables (e.g. "inventory and suppliers", "couriers vs parcels", "compare records across tables", "combine inventory_items, suppliers, and documents in one chart")
+- Compare 2 or more database tables (e.g. "inventory and suppliers", "compare records across tables", "combine inventory_items, suppliers, and documents in one chart")
 - Cross-correlate operational metrics between different tables:
 YOU MUST:
 - Seamlessly combine and synthesize the multiple database tables into ONE single unified chart and ONE unified executive summary narrative.
 - For the chart: Combine the queried tables as either:
-  * A multi-category comparison (e.g. labels: ["inventory_items", "suppliers", "couriers", "documents", "user_activity"], with data being their respective active row counts, SKUs, or spend)
-  * OR a multi-dataset chart (where each dataset represents a different table, e.g. Dataset 1: "Inventory Units", Dataset 2: "Supplier Partners", Dataset 3: "Courier Carriers").
-- For the summary & insights: Explicitly cross-reference how the entities in each table interact (e.g., approved supplier coverage directly stocking warehouse inventory SKUs, courier partner capacity fulfilling logistics shipments, user activity logs tracking operations across modules).
+  * A multi-category comparison (e.g. labels: ["inventory_items", "suppliers", "purchase_orders", "documents", "user_activity"], with data being their respective active row counts, SKUs, or spend)
+  * OR a multi-dataset chart (where each dataset represents a different table, e.g. Dataset 1: "Inventory Units", Dataset 2: "Supplier Partners", Dataset 3: "Purchase Orders").
+- For the summary & insights: Explicitly cross-reference how the entities in each table interact (e.g., approved supplier coverage directly stocking warehouse inventory SKUs, procurement POs fulfilling stock replenishment, user activity logs tracking operations across modules).
 - For tableData: Present a multi-table matrix comparing each table's active rows, primary entities, key metric, and operational status.
 6. Return ONLY valid, raw JSON (no markdown formatting, no \`\`\`json):
 {
@@ -661,12 +660,19 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
     // 2. Exact known schema tables from tables.sql & valid domain aliases in Airship Express
     const KNOWN_TABLE_ALIASES = new Set([
         // Exact table names from tables.sql
-        'activity_history',
+        'appeals', 'appeal',
         'blocked_devices',
-        'couriers', 'courier', 'carrier', 'carriers',
         'documents', 'document', 'compliance', 'contracts', 'contract', 'sop', 'sops', 'certification', 'license', 'files',
         'documents_archive',
         'inventory_items', 'inventory', 'stock', 'item', 'items', 'sku', 'skus', 'warehouse', 'storage',
+        'stock_movements', 'stock_movement', 'movements', 'stock_in', 'stock_out', 'adjustment', 'adjustments',
+        'stock_in_logs',
+        'warehouse_damage_incidents', 'damage_incidents', 'damage', 'damages', 'defects', 'defect', 'incident', 'incidents',
+        'supplier_return_requests', 'supplier_returns', 'return_requests', 'returns', 'rma',
+        'supplier_return_messages',
+        'supplier_quotations', 'quotations', 'quotation', 'quotes', 'quote', 'bids', 'bid',
+        'supplier_meetings', 'meetings', 'meeting',
+        'suppliers_account',
         'notifications', 'notification', 'alerts', 'alert',
         'otp_codes', 'otp',
         'parcels', 'parcel', 'shipments', 'shipment', 'packages', 'package', 'tracking', 'dispatch',
@@ -675,18 +681,15 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         'purchase_orders', 'purchase_order', 'po', 'pos', 'orders', 'order',
         'purchase_orders_archive',
         'purchase_requests', 'purchase_request', 'pr', 'prs', 'procurement',
-        'receiving_queue', 'receiving', 'inbound',
-        'role_based_accounts', 'accounts',
         'sessions', 'session',
         'suppliers', 'supplier', 'vendors', 'vendor',
-        'suppliers_archive',
         'user_activity', 'activity', 'activities', 'activity_logs', 'audit_logs', 'security_logs', 'logs', 'log',
         'users', 'user',
         'document_verifications', 'verifications',
         'trash', 'archive', 'archives'
     ]);
 
-    const AVAILABLE_TABLES_MSG = "Available schema tables (tables.sql): activity_history, couriers, documents, inventory_items, notifications, parcels, purchase_orders, purchase_requests, receiving_queue, suppliers, user_activity, and trash.";
+    const AVAILABLE_TABLES_MSG = "Available schema tables (table.sql): inventory_items, stock_movements, stock_in_logs, warehouse_damage_incidents, supplier_return_requests, purchase_orders, purchase_requests, supplier_quotations, supplier_meetings, suppliers, supplier_documents, user_activity, sessions, blocked_devices, appeals, and trash.";
 
     // 2.5 Early pass: Check if this is an explicit cross-table, schema, or database-wide inquiry
     const isDbOverviewQuery =
@@ -788,11 +791,8 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         }
     }
 
-    // 5. Check if query matches specific valid database entities (supplier names, courier names, item names)
+    // 5. Check if query matches specific valid database entities (supplier names, item names)
     if (db.suppliers?.some((s: any) => s.name && q.includes(s.name.toLowerCase()))) {
-        return { isOutOfScope: false, reason: "" };
-    }
-    if (db.couriers?.some((c: any) => c.name && q.includes(c.name.toLowerCase()))) {
         return { isOutOfScope: false, reason: "" };
     }
     if (db.inventory?.some((i: any) => i.item_name && q.includes(i.item_name.toLowerCase()))) {
@@ -801,7 +801,7 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
 
     // 6. Check for valid supply chain domain keywords (excluding generic words like 'table' or 'database')
     const validDomainKeywords = [
-        'parcel', 'package', 'tracking', 'courier', 'carrier', 'delivery', 'dispatch', 'transit', 'route', 'destination', 'cargo', 'shipping', 'consignee', 'sender', 'barcode',
+        'parcel', 'package', 'tracking', 'carrier', 'delivery', 'dispatch', 'transit', 'route', 'destination', 'cargo', 'shipping', 'consignee', 'sender', 'barcode',
         'inventory', 'stock', 'sku', 'warehouse', 'item', 'storage', 'bin', 'reorder', 'packaging', 'box', 'material', 'unit', 'threshold', 'reserve',
         'procurement', 'purchase', 'po', 'supplier', 'vendor', 'spend', 'budget', 'cost', 'approval', 'commitment', 'price', 'financial',
         'user', 'activity', 'log', 'audit', 'event', 'security', 'login', 'action', 'session', 'role',
@@ -833,7 +833,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         const totalItemsCount = db.inventory?.length || 9;
         const totalActivityCount = db.userActivity?.length || 45;
         const totalSuppliersCount = db.suppliers?.length || 10;
-        const totalCouriersCount = db.couriers?.length || 7;
+        const totalPOCount = db.purchaseOrders?.length || 5;
         const totalDocsCount = db.documents?.length || 4;
 
         return {
@@ -844,23 +844,23 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             title: "Out of Scope: Unknown Database Table / Domain",
             isOutOfScope: true,
             warningMessage: scopeCheck.reason,
-            summary: `Warning: The prompt "${prompt}" references an unknown database table or entity outside the operational schema of the Airship Express database. No matching tables, records, or columns exist for this request. Available database tables: parcels, inventory_items, purchase_orders, purchase_requests, suppliers, couriers, documents, user_activity, and trash.`,
+            summary: `Warning: The prompt "${prompt}" references an unknown database table or entity outside the operational schema of the Airship Express database. No matching tables, records, or columns exist for this request. Available database tables: documents, inventory_items, purchase_orders, purchase_requests, suppliers, user_activity, and trash.`,
             insights: [
                 "Scope Alert: This query refers to entities or topics not recorded in the database.",
-                "Supported Domains: Parcels & Logistics, Warehouse Inventory SKUs, Procurement POs, Suppliers, Compliance Documents, and User Activity Logs.",
+                "Supported Domains: Warehouse Inventory SKUs, Procurement POs, Suppliers, Compliance Documents, and User Activity Logs.",
                 "Action: Try selecting one of the suggested query templates below to visualize actual database records."
             ],
             metrics: [
                 { label: "Query Status", value: "Out of Scope", change: "Unmatched", changeType: "down" },
                 { label: "Search Relevance", value: "0% match", change: "No records", changeType: "down" },
-                { label: "Active Domains", value: "6 Available", change: "Ready", changeType: "neutral" }
+                { label: "Active Domains", value: "5 Available", change: "Ready", changeType: "neutral" }
             ],
             chart: {
                 type: 'bar',
-                labels: ['Inventory SKUs', 'Activity Logs', 'Suppliers', 'Couriers', 'Documents'],
+                labels: ['Inventory SKUs', 'Activity Logs', 'Suppliers', 'Purchase Orders', 'Documents'],
                 datasets: [{
                     label: 'Available Database Domain Records',
-                    data: [totalItemsCount, totalActivityCount, totalSuppliersCount, totalCouriersCount, totalDocsCount],
+                    data: [totalItemsCount, totalActivityCount, totalSuppliersCount, totalPOCount, totalDocsCount],
                     backgroundColor: ['#EC4899', '#8B5CF6', '#10B981', '#6366F1', '#06B6D4']
                 }]
             },
@@ -870,7 +870,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                     ["Inventory", totalItemsCount, "Ready", "Show stock levels and low-stock alerts"],
                     ["User Activity", totalActivityCount, "Ready", "Analyze recent security and action logs"],
                     ["Documents", totalDocsCount, "Ready", "Audit compliance files by type"],
-                    ["Couriers", totalCouriersCount, "Ready", "Show carrier partner allocation"],
+                    ["Purchase Orders", totalPOCount, "Ready", "Show procurement spending and orders"],
                     ["Suppliers", totalSuppliersCount, "Ready", "List approved suppliers by category"]
                 ]
             },
@@ -878,7 +878,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                 "Show inventory stock breakdown by category",
                 "Analyze recent user activity logs",
                 "Audit compliance documents by type",
-                "Show registered courier partners"
+                "List approved suppliers by category"
             ]
         };
     }
@@ -918,37 +918,34 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         q.includes('entire database') ||
         q.includes('whole database') ||
         q.includes('every table') ||
-        (q.includes('compare') && (q.includes('inventory') || q.includes('parcels') || q.includes('documents')) && (q.includes('suppliers') || q.includes('couriers')));
+        (q.includes('compare') && (q.includes('inventory') || q.includes('documents')) && q.includes('suppliers'));
 
     if (isMultiTableQuery) {
         const inventoryCount = db.inventory?.length || 0;
         const suppliersCount = db.suppliers?.length || 0;
-        const couriersCount = db.couriers?.length || 0;
         const documentsCount = db.documents?.length || 0;
         const userActivityCount = db.userActivity?.length || 0;
         const poCount = db.purchaseOrders?.length || 0;
-        const parcelsCount = db.parcels?.length || 0;
+        const prCount = db.purchaseRequests?.length || 0;
         const trashCount = db.trash?.totalArchived || 0;
 
         const tableLabels = [
             'inventory_items',
             'suppliers',
-            'couriers',
+            'purchase_orders',
+            'purchase_requests',
             'user_activity',
             'documents',
-            'purchase_orders',
-            'parcels',
             'trash (archive)'
         ];
 
         const recordCounts = [
             inventoryCount,
             suppliersCount,
-            couriersCount,
+            poCount,
+            prCount,
             userActivityCount,
             documentsCount,
-            poCount,
-            parcelsCount,
             trashCount
         ];
 
@@ -960,10 +957,10 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             displayMode,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             title: "Multi-Table Cross-Domain Synthesis & Comparison",
-            summary: `Integrated cross-table analysis correlating records across ${tableLabels.length} distinct database tables (${tableLabels.join(', ')}). The system currently synchronizes ${totalActiveRecords} total recorded entries with primary density across security audit logs (${userActivityCount} operations), active logistics shipments (${parcelsCount} parcels), approved supplier directory (${suppliersCount} vendors), warehouse inventory stock (${inventoryCount} active SKUs), certified courier distribution channels (${couriersCount} carriers), and ${documentsCount} active verified documents (${trashCount} archived records).`,
+            summary: `Integrated cross-table analysis correlating records across ${tableLabels.length} distinct database tables (${tableLabels.join(', ')}). The system currently synchronizes ${totalActiveRecords} total recorded entries with primary density across security audit logs (${userActivityCount} operations), approved supplier directory (${suppliersCount} vendors), warehouse inventory stock (${inventoryCount} active SKUs), procurement purchase orders (${poCount} orders), purchase requests (${prCount} requisitions), and ${documentsCount} active verified documents (${trashCount} archived records).`,
             insights: [
-                `Active Table Record Distribution: ${userActivityCount} audit logs, ${parcelsCount} parcels, ${suppliersCount} suppliers, ${inventoryCount} inventory SKUs, ${couriersCount} courier carriers, and ${documentsCount} compliance files.`,
-                `Cross-Table Continuity: Verified suppliers directly correlate with warehouse inventory categories, and registered carriers fulfill inbound/outbound logistics.`,
+                `Active Table Record Distribution: ${userActivityCount} audit logs, ${suppliersCount} suppliers, ${inventoryCount} inventory SKUs, ${poCount} purchase orders, and ${documentsCount} compliance files.`,
+                `Cross-Table Continuity: Verified suppliers directly correlate with warehouse inventory categories and procurement purchase orders.`,
                 "Strategic Recommendation: Connect purchase order automation with inventory minimum-stock thresholds to automate reorder triggers directly with primary suppliers."
             ],
             metrics: [
@@ -977,7 +974,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                 datasets: [{
                     label: 'Live Record Count per Table',
                     data: recordCounts,
-                    backgroundColor: ['#EC4899', '#6366F1', '#10B981', '#F59E0B', '#8B5CF6', '#06B6D4', '#F43F5E', '#64748B']
+                    backgroundColor: ['#EC4899', '#6366F1', '#10B981', '#F59E0B', '#8B5CF6', '#06B6D4', '#64748B']
                 }]
             },
             tableData: {
@@ -985,18 +982,17 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                 rows: [
                     ["inventory_items", inventoryCount, "Warehouse SKUs", "Stock Levels & Reorder Thresholds", inventoryCount > 0 ? "Populated & Active" : "Empty"],
                     ["suppliers", suppliersCount, "Vendor Directory", "Procurement & Raw Material Sourcing", suppliersCount > 0 ? "Verified" : "Empty"],
-                    ["couriers", couriersCount, "Carrier Partners", "Logistical Delivery Network", couriersCount > 0 ? "Active" : "Empty"],
+                    ["purchase_orders", poCount, "Procurement POs", "Financial Commitments & Vendor Orders", poCount > 0 ? "Active" : "Awaiting New Orders"],
+                    ["purchase_requests", prCount, "Requisitions", "Material Requests & Approvals", prCount > 0 ? "Active" : "Empty"],
                     ["user_activity", userActivityCount, "Security Logs", "Audit Trail & System Monitoring", userActivityCount > 0 ? "Continuous Sync" : "Empty"],
                     ["documents", documentsCount, "Compliance Files", "Vendor Contracts & Official Receipts", documentsCount > 0 ? "Catalogued & Active" : "Empty"],
-                    ["purchase_orders", poCount, "Procurement POs", "Financial Commitments & Vendor Orders", poCount > 0 ? "Active" : "Awaiting New Orders"],
-                    ["parcels", parcelsCount, "Shipments", "Barcode Tracking & Package Routing", parcelsCount > 0 ? "Active Shipments" : "Empty Queue"],
                     ["trash (archives)", trashCount, "Archived Records", "Soft-Deleted Data & Restore Bin", trashCount > 0 ? "Archived Items Staged" : "Clean"]
                 ]
             },
             suggestedFollowUps: [
                 "Audit compliance documents by type and supplier",
                 "Show inventory stock levels correlated with suppliers",
-                "Compare couriers vs user activity logs"
+                "Analyze recent user activity logs"
             ]
         };
     }
@@ -1034,7 +1030,6 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             const tableRows: (string | number)[][] = monthParcels.slice(0, 50).map((p: any) => [
                 p.tracking_number || `AX-TRK-${p.id}`,
                 p.barcode || 'N/A',
-                p.courier || 'Airship Express',
                 p.destination || p.city || 'Central Hub',
                 (p.status || 'RECEIVED').replace(/_/g, ' ').toUpperCase(),
                 p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Recent'
@@ -1068,11 +1063,11 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                     }]
                 },
                 tableData: {
-                    headers: ["Tracking Number", "Barcode", "Courier", "Destination / Hub", "Status", "Date Created"],
-                    rows: tableRows.length > 0 ? tableRows : [["N/A", "N/A", "N/A", "N/A", "No records", "N/A"]]
+                    headers: ["Tracking Number", "Barcode", "Destination / Hub", "Status", "Date Created"],
+                    rows: tableRows.length > 0 ? tableRows : [["N/A", "N/A", "N/A", "No records", "N/A"]]
                 },
                 suggestedFollowUps: [
-                    `Show parcels breakdown by courier for ${dateFilter.monthName}`,
+                    `Show parcels delivery status for ${dateFilter.monthName}`,
                     "Show parcels monthly trend across the entire year",
                     "Audit compliance documents recorded in system"
                 ]
@@ -1121,7 +1116,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                 insights: [
                     `Recorded Time Span: ${monthLabels.length} active operational months (${monthLabels[0]} to ${monthLabels[monthLabels.length - 1]}).`,
                     `Peak Shipment Volume: ${Math.max(...totalVals)} parcels in ${monthLabels[totalVals.indexOf(Math.max(...totalVals))]}.`,
-                    "Recommendation: Maintain steady linehaul courier capacity across months to sustain delivery SLA thresholds."
+                    "Recommendation: Maintain steady linehaul transport capacity across months to sustain delivery SLA thresholds."
                 ],
                 metrics: [
                     { label: "Total Parcels", value: `${db.parcels.length.toLocaleString()} Parcels`, change: `${monthLabels.length} Months`, changeType: "up" },
@@ -1145,7 +1140,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                 suggestedFollowUps: [
                     "Show parcels in the month of July",
                     "Show parcels in the month of August",
-                    "Audit courier partner performance"
+                    "Audit approved suppliers and vendor performance"
                 ]
             };
         }
@@ -1178,7 +1173,6 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         const tableRows: (string | number)[][] = db.parcels.slice(0, 50).map((p: any) => [
             p.tracking_number || `AX-TRK-${p.id?.slice(0, 8) || 'N/A'}`,
             p.barcode || 'N/A',
-            p.courier || 'Airship Express',
             p.destination || p.city || 'Central Hub',
             (p.status || 'RECEIVED').replace(/_/g, ' ').toUpperCase(),
             p.created_at ? new Date(p.created_at).toLocaleDateString() : 'Recent'
@@ -1194,7 +1188,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             insights: [
                 `Exact Database Total: ${totalParcels.toLocaleString()} verified parcel records catalogued in public.parcels.`,
                 `Fulfillment Breakdown: ${deliveredCount.toLocaleString()} delivered, ${inTransitCount.toLocaleString()} in transit, ${pickedUpCount.toLocaleString()} picked up.`,
-                "Recommendation: Maintain automated courier handoff tracking and monitor delivery SLA windows across regional delivery hubs."
+                "Recommendation: Maintain automated transit tracking and monitor delivery SLA windows across regional delivery hubs."
             ],
             metrics: [
                 { label: "Total Active Parcels", value: `${totalParcels.toLocaleString()} Parcels`, change: "100% Live DB", changeType: "up" },
@@ -1212,11 +1206,11 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
                 }]
             },
             tableData: {
-                headers: ["Tracking Number", "Barcode", "Courier", "Destination / Hub", "Status", "Date Scanned"],
-                rows: tableRows.length > 0 ? tableRows : [["TRK-SAMPLE", "BC-SAMPLE", "Airship Express", "Metro Manila", "DELIVERED", "Recent"]]
+                headers: ["Tracking Number", "Barcode", "Destination / Hub", "Status", "Date Scanned"],
+                rows: tableRows.length > 0 ? tableRows : [["TRK-SAMPLE", "BC-SAMPLE", "Metro Manila", "DELIVERED", "Recent"]]
             },
             suggestedFollowUps: [
-                "Show parcels breakdown by courier carrier",
+                "Audit inventory stock replenishment levels",
                 "Audit recent user activity logs",
                 "Show compliance documents recorded in system"
             ]
@@ -1294,7 +1288,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             ? Object.values(classificationCounts)
             : [2, 1, 1, 1];
 
-        // Format real rows from public.documents and public.documents_archive
+        // Format real rows from public.supplier_documents and public.documents_archive
         const tableRows: (string | number)[][] = [
             ...activeDocs.map((d: any) => [
                 d.title || d.file_name || 'Untitled Document',
@@ -1320,9 +1314,9 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             displayMode,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             title: "Compliance & Operational Documents Repository Audit",
-            summary: `Audit of the digital documents repository catalogs ${totalActive} active verified documents in public.documents alongside ${totalArchived} soft-deleted records in public.documents_archive (${totalAll} total tracked files). Active digital records include verified parcel tracking manifests (LBC TRK20260522000014), corporate vendor contracts and confidentiality agreements (Alab Solutions Inc.), intermodal fleet and container yard operations imagery, and administrative documentation.`,
+            summary: `Audit of the digital documents repository catalogs ${totalActive} active verified documents in public.supplier_documents alongside ${totalArchived} soft-deleted records in public.documents_archive (${totalAll} total tracked files). Active digital records include verified parcel tracking manifests (LBC TRK20260522000014), corporate vendor contracts and confidentiality agreements (Alab Solutions Inc.), intermodal fleet and container yard operations imagery, and administrative documentation.`,
             insights: [
-                `${totalActive} active verified documents are currently catalogued and active in public.documents.`,
+                `${totalActive} active verified documents are currently catalogued and active in public.supplier_documents.`,
                 `${totalArchived} archived compliance records are staged in the trash repository and available for restoration.`,
                 `Active classifications include: ${labels.join(', ')}.`,
                 "Recommendation: Maintain automated OCR extraction and classification for all uploaded supplier receipts to streamline vendor audits."
@@ -1423,7 +1417,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         });
 
         // If inventory_items was loaded
-        const labels = Object.keys(catStock).length > 0 ? Object.keys(catStock) : ['Airship Boxes', 'Bubble Wrap', 'Courier Pouches', 'Thermal Labels'];
+        const labels = Object.keys(catStock).length > 0 ? Object.keys(catStock) : ['Airship Boxes', 'Bubble Wrap', 'Shipping Pouches', 'Thermal Labels'];
         const dataVals = Object.keys(catStock).length > 0 ? Object.values(catStock) : [250, 480, 720, 310];
         const totalItemsCount = db.inventory.length || labels.length;
 
@@ -1578,61 +1572,15 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         };
     }
 
-    // 6. COURIERS & CARRIER LOGISTICS FOCUS
-    if (q.includes('courier') || q.includes('carrier') || q.includes('freight') || q.includes('shipping partner')) {
-        const couriersList = db.couriers.length > 0
-            ? db.couriers.map((c: any) => c.name || 'Airship Express')
-            : ['Airship Express Hub', 'J&T Express', 'Lalamove', 'Ninja Van', 'Flash Express', 'Transportify', 'DHL Logistics'];
-
-        const labels = couriersList;
-        const dataVals = labels.map((_: any, i: number) => [35, 28, 22, 18, 14, 10, 8][i] || 12);
-
-        return {
-            id: `ai-query-${Date.now()}`,
-            prompt,
-            displayMode,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            title: "Courier Partner Network & Carrier Capacity",
-            summary: `Logistical audit identifies ${labels.length} registered carrier partners integrated with Airship Express dispatch channels. Active route handoffs ensure redundant multi-courier coverage across regional hubs.`,
-            insights: [
-                `${labels.length} certified courier services are configured in the system.`,
-                "Carrier redundancy safeguards against regional capacity bottlenecks during peak intake windows.",
-                "Recommendation: Prioritize automated courier selection based on dynamic route SLA performance."
-            ],
-            metrics: [
-                { label: "Integrated Carriers", value: labels.length, change: "Active", changeType: "up" },
-                { label: "Dispatch Channels", value: "Multi-Carrier", change: "Redundant", changeType: "neutral" },
-                { label: "Network Coverage", value: "Nationwide", change: "Verified", changeType: "up" }
-            ],
-            chart: {
-                type: 'doughnut',
-                labels,
-                datasets: [{
-                    label: 'Carrier Allocation Ratio',
-                    data: dataVals,
-                    backgroundColor: PALETTE.slice(0, labels.length),
-                }]
-            },
-            tableData: {
-                headers: ["Carrier Name", "Service Status", "Integration", "SLA Standard"],
-                rows: labels.map((c: any, i: number) => [c, "Active Channel", "Direct API / Hub", "Same Day / Next Day"])
-            },
-            suggestedFollowUps: [
-                "Audit recent courier activity logs",
-                "Show inventory stock levels"
-            ]
-        };
-    }
-
-    // DEFAULT: SYSTEM-WIDE EXECUTIVE OVERVIEW (When table has 0 parcels or generic query)
+    // DEFAULT: SYSTEM-WIDE EXECUTIVE OVERVIEW
     const totalInventoryCount = db.inventory.length || 9;
     const totalSuppliersCount = db.suppliers.length || 10;
-    const totalCouriersCount = db.couriers.length || 7;
+    const totalPOCount = db.purchaseOrders?.length || 5;
     const totalDocsCount = db.documents.length || 4;
     const totalActivityCount = db.userActivity.length || 45;
 
-    const labels = ['User Activity Logs', 'Registered Suppliers', 'Inventory SKUs', 'Courier Partners', 'Compliance Documents'];
-    const dataVals = [totalActivityCount, totalSuppliersCount, totalInventoryCount, totalCouriersCount, totalDocsCount];
+    const labels = ['User Activity Logs', 'Registered Suppliers', 'Inventory SKUs', 'Purchase Orders', 'Compliance Documents'];
+    const dataVals = [totalActivityCount, totalSuppliersCount, totalInventoryCount, totalPOCount, totalDocsCount];
 
     return {
         id: `ai-query-${Date.now()}`,
@@ -1640,16 +1588,16 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         displayMode,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         title: "Supply Chain System Data Asset Distribution",
-        summary: `Audit of the Airship Express database reflects active operations across core tables: ${totalActivityCount} system activity logs, ${totalInventoryCount} catalogued inventory SKUs, ${totalSuppliersCount} commercial suppliers, ${totalCouriersCount} courier partners, and ${totalDocsCount} compliance documents. Active parcel intake queue currently has 0 staging records, indicating all historical queue entries are cleared.`,
+        summary: `Audit of the Airship Express database reflects active operations across core tables: ${totalActivityCount} system activity logs, ${totalInventoryCount} catalogued inventory SKUs, ${totalSuppliersCount} commercial suppliers, ${totalPOCount} purchase orders, and ${totalDocsCount} compliance documents.`,
         insights: [
             `${totalActivityCount} user interactions and operational events are audited in user_activity.`,
             `${totalInventoryCount} inventory SKUs are catalogued with active safety thresholds.`,
-            `${totalSuppliersCount} vetted vendors and ${totalCouriersCount} carriers provide logistical and procurement infrastructure.`
+            `${totalSuppliersCount} vetted vendors provide procurement infrastructure.`
         ],
         metrics: [
             { label: "User Activity Logs", value: totalActivityCount, change: "Active", changeType: "up" },
             { label: "Inventory SKUs", value: totalInventoryCount, change: "Catalogued", changeType: "neutral" },
-            { label: "Suppliers & Couriers", value: totalSuppliersCount + totalCouriersCount, change: "Approved", changeType: "up" }
+            { label: "Approved Suppliers", value: totalSuppliersCount, change: "Verified", changeType: "up" }
         ],
         chart: {
             type: 'bar',
@@ -1667,7 +1615,7 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
         suggestedFollowUps: [
             "Show inventory stock breakdown by category",
             "Audit recent user activity logs",
-            "Show registered courier partners"
+            "List approved suppliers by category"
         ]
     };
 }

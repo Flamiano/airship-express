@@ -20,12 +20,12 @@ const CHART_COLORS = {
 };
 
 export default function OperationsTab({ data, onOpenModal }: OperationsTabProps) {
-    const courierCanvasRef = useRef<HTMLCanvasElement>(null);
+    const inventoryCategoryCanvasRef = useRef<HTMLCanvasElement>(null);
     const statusCanvasRef = useRef<HTMLCanvasElement>(null);
     const documentCanvasRef = useRef<HTMLCanvasElement>(null);
     const supplierCanvasRef = useRef<HTMLCanvasElement>(null);
 
-    const courierInstance = useRef<Chart | null>(null);
+    const inventoryCategoryInstance = useRef<Chart | null>(null);
     const statusInstance = useRef<Chart | null>(null);
     const documentInstance = useRef<Chart | null>(null);
     const supplierInstance = useRef<Chart | null>(null);
@@ -37,20 +37,20 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
         const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
         const cardBgColor = isDark ? '#191a24' : '#f0f3f8';
 
-        // 1. courier volume
-        if (courierCanvasRef.current) {
-            if (courierInstance.current) courierInstance.current.destroy();
-            const ctx = courierCanvasRef.current.getContext('2d');
+        // 1. inventory category volume
+        if (inventoryCategoryCanvasRef.current) {
+            if (inventoryCategoryInstance.current) inventoryCategoryInstance.current.destroy();
+            const ctx = inventoryCategoryCanvasRef.current.getContext('2d');
             if (ctx) {
-                const labels = Object.keys(data.courierBreakdown);
-                const values = Object.values(data.courierBreakdown);
+                const labels = Object.keys(data.inventoryCategoryBreakdown || {});
+                const values = Object.values(data.inventoryCategoryBreakdown || {});
 
-                courierInstance.current = new Chart(ctx, {
+                inventoryCategoryInstance.current = new Chart(ctx, {
                     type: 'bar',
                     data: {
-                        labels: labels.length > 0 ? labels : ['No Couriers'],
+                        labels: labels.length > 0 ? labels : ['No Categories'],
                         datasets: [{
-                            label: 'Parcels Handled',
+                            label: 'SKUs Count',
                             data: values.length > 0 ? values : [0],
                             backgroundColor: CHART_COLORS.secondary,
                             borderRadius: 6,
@@ -84,11 +84,12 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
             }
         }
 
-        // 2. parcel fulfillment
+        // 2. purchase order fulfillment
         if (statusCanvasRef.current) {
             if (statusInstance.current) statusInstance.current.destroy();
-            const labels = Object.keys(data.statusBreakdown);
-            const values = Object.values(data.statusBreakdown);
+            const poData = data.poStatusBreakdown || data.procurementStatusBreakdown || {};
+            const labels = Object.keys(poData);
+            const values = Object.values(poData);
             const hasData = values.some(v => (typeof v === 'number' && v > 0));
 
             if (hasData) {
@@ -96,13 +97,14 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                 if (ctx) {
                     const statusColorMap: Record<string, string> = {
                         delivered: CHART_COLORS.success,
-                        picked_up: CHART_COLORS.purple,
-                        in_transit: CHART_COLORS.secondary,
-                        sorting: CHART_COLORS.warning,
-                        received: CHART_COLORS.cyan,
-                        ready: CHART_COLORS.primary,
+                        completed: CHART_COLORS.success,
+                        approved: CHART_COLORS.purple,
+                        ordered: CHART_COLORS.secondary,
+                        pending: CHART_COLORS.warning,
+                        processing: CHART_COLORS.cyan,
+                        draft: CHART_COLORS.primary,
                         cancelled: CHART_COLORS.danger,
-                        returned: CHART_COLORS.danger,
+                        rejected: CHART_COLORS.danger,
                     };
                     const bgColors = labels.map(l => statusColorMap[l.toLowerCase()] || CHART_COLORS.secondary);
 
@@ -262,7 +264,7 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
 
         return () => {
             observer.disconnect();
-            if (courierInstance.current) courierInstance.current.destroy();
+            if (inventoryCategoryInstance.current) inventoryCategoryInstance.current.destroy();
             if (statusInstance.current) statusInstance.current.destroy();
             if (documentInstance.current) documentInstance.current.destroy();
             if (supplierInstance.current) supplierInstance.current.destroy();
@@ -272,15 +274,15 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. courier volume */}
+                {/* 1. inventory category distribution */}
                 <div
-                    onClick={() => onOpenModal('couriers')}
+                    onClick={() => onOpenModal('inventory')}
                     className="p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[6px_6px_18px_rgba(166,175,195,0.35),-6px_-6px_18px_rgba(255,255,255,0.9)] dark:shadow-[8px_8px_24px_rgba(0,0,0,0.65)] hover:border-indigo-300 dark:hover:border-indigo-800 transition-all cursor-pointer group"
                 >
                     <div className="flex items-center justify-between mb-4">
                         <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
-                            <i className="fas fa-truck text-indigo-500"></i>
-                            <span>Courier Parcel Volume Breakdown</span>
+                            <i className="fas fa-boxes text-indigo-500"></i>
+                            <span>Inventory Stock Categories</span>
                             {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
@@ -292,42 +294,42 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                                 </button>
                                 <div className="tooltip-popover">
                                     <p className="font-bold text-indigo-400">Chart Details</p>
-                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Measures parcel volume distributed across active courier linehaul partners. Sourced from parcels table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Distribution of active catalogued warehouse inventory SKUs grouped by operational category.</p>
                                 </div>
                             </div>
                         </div>
                         <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onOpenModal('couriers'); }}
+                            onClick={(e) => { e.stopPropagation(); onOpenModal('inventory'); }}
                             className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                         >
                             Inspect Modal
                         </button>
                     </div>
                     <div className="h-60 relative">
-                        {Object.values(data.courierBreakdown).some(v => (typeof v === 'number' && v > 0)) ? (
-                            <canvas ref={courierCanvasRef} />
+                        {Object.values(data.inventoryCategoryBreakdown || {}).some(v => (typeof v === 'number' && v > 0)) ? (
+                            <canvas ref={inventoryCategoryCanvasRef} />
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-center p-4">
                                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-2.5">
-                                    <i className="fas fa-truck text-base"></i>
+                                    <i className="fas fa-boxes text-base"></i>
                                 </div>
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Courier Volume Data</span>
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No parcel volume logged for active couriers</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Inventory Category Data</span>
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No inventory items logged in database</span>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* 2. parcel fulfillment */}
+                {/* 2. purchase order fulfillment */}
                 <div
-                    onClick={() => onOpenModal('parcels')}
+                    onClick={() => onOpenModal('procurement')}
                     className="p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[6px_6px_18px_rgba(166,175,195,0.35),-6px_-6px_18px_rgba(255,255,255,0.9)] dark:shadow-[8px_8px_24px_rgba(0,0,0,0.65)] hover:border-emerald-300 dark:hover:border-emerald-800 transition-all cursor-pointer group"
                 >
                     <div className="flex items-center justify-between mb-4">
                         <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
-                            <i className="fas fa-tasks text-emerald-500"></i>
-                            <span>Parcel Fulfillment Status</span>
+                            <i className="fas fa-file-invoice-dollar text-emerald-500"></i>
+                            <span>Purchase Order Fulfillment Status</span>
                             {/* info badge */}
                             <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                                 <button
@@ -339,28 +341,28 @@ export default function OperationsTab({ data, onOpenModal }: OperationsTabProps)
                                 </button>
                                 <div className="tooltip-popover">
                                     <p className="font-bold text-emerald-400">Chart Details</p>
-                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Shows status distribution (received, sorting, ready, delivered). Sourced directly from parcels table.</p>
+                                    <p className="text-slate-200 dark:text-slate-300 mt-1">Shows status distribution (pending, ordered, approved, completed, cancelled) across purchase orders.</p>
                                 </div>
                             </div>
                         </div>
                         <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onOpenModal('parcels'); }}
+                            onClick={(e) => { e.stopPropagation(); onOpenModal('procurement'); }}
                             className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
                         >
                             Inspect Modal
                         </button>
                     </div>
                     <div className="h-60 relative">
-                        {Object.values(data.statusBreakdown).some(v => (typeof v === 'number' && v > 0)) ? (
+                        {Object.values(data.poStatusBreakdown || data.procurementStatusBreakdown || {}).some(v => (typeof v === 'number' && v > 0)) ? (
                             <canvas ref={statusCanvasRef} />
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-center p-4">
                                 <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800/50 flex items-center justify-center text-emerald-500 dark:text-emerald-400 mb-2.5">
-                                    <i className="fas fa-tasks text-base"></i>
+                                    <i className="fas fa-file-invoice text-base"></i>
                                 </div>
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Fulfillment Status Data</span>
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No parcel fulfillment statuses recorded in the database</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Purchase Order Data</span>
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-[220px] mt-0.5 leading-tight">No purchase order fulfillment statuses recorded in the database</span>
                             </div>
                         )}
                     </div>

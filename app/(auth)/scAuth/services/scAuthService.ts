@@ -91,6 +91,19 @@ export async function clearUserSession(): Promise<void> {
     }
 }
 
+// validate currently active session
+export async function validateSessionApi(sessionToken: string): Promise<any> {
+    try {
+        const res = await fetch('/api/supplyChain/validate-session', {
+            headers: { 'x-session-token': sessionToken },
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, status: res.status, data };
+    } catch (error) {
+        return { ok: false, status: 500, data: null };
+    }
+}
+
 // check if there is an active remembered session
 export async function checkRememberedSessionApi(sessionToken: string): Promise<any> {
     const res = await fetch('/api/supplyChain/check-remembered-session', {
@@ -145,11 +158,11 @@ export async function checkEmployeeSessionApi(email: string, sessionToken?: stri
 }
 
 // sign in with email and password
-export async function loginSupplyChainApi(email: string, password: string): Promise<any> {
+export async function loginSupplyChainApi(email: string, password: string, rememberMe: boolean = false): Promise<any> {
     const res = await fetch('/api/auth/supplyChain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, rememberMe }),
     });
     const data = await res.json();
     return { ok: res.ok, status: res.status, data };

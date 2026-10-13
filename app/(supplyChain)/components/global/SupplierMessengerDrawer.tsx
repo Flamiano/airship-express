@@ -96,6 +96,58 @@ export function SupplierMessengerDrawer({
     useEffect(() => {
         if (!isOpen || !selectedSupplier) return;
 
+        // Filter messages to private thread between current logged-in staff and supplier
+        const isMessageInMyThread = (msg: any, allMsgs?: any[]) => {
+            if (!msg) return false;
+            const myId = currentUserId?.trim();
+            const myEmail = currentUserEmail?.toLowerCase().trim();
+            const myName = currentUserName?.toLowerCase().trim();
+
+            if (msg.sender_type === "internal") {
+                return Boolean(
+                    (myId && msg.sender_id === myId) ||
+                    (myEmail && msg.sender_email?.toLowerCase().trim() === myEmail) ||
+                    (myName && msg.sender_name?.toLowerCase().trim() === myName)
+                );
+            }
+
+            if (msg.sender_type === "supplier") {
+                if (Array.isArray(msg.attachments)) {
+                    const target = msg.attachments.find(
+                        (a: any) => a && (a.type === "target_recipient" || a.recipient_id || a.recipient_email || a.staff_id || a.staff_email)
+                    );
+                    if (target) {
+                        const targetId = target.recipient_id || target.staff_id;
+                        const targetEmail = (target.recipient_email || target.staff_email || "").toLowerCase().trim();
+                        const targetName = (target.recipient_name || target.staff_name || "").toLowerCase().trim();
+
+                        return Boolean(
+                            (myId && targetId === myId) ||
+                            (myEmail && targetEmail === myEmail) ||
+                            (myName && targetName === myName)
+                        );
+                    }
+                }
+
+                // Fallback for legacy messages
+                const pool = allMsgs || messages;
+                if (pool && pool.length > 0) {
+                    const internalSenders = pool
+                        .filter((m: any) => m.sender_type === "internal")
+                        .map((m: any) => m.sender_email?.toLowerCase().trim() || m.sender_name?.toLowerCase().trim());
+                    const uniqueInternalSenders = Array.from(new Set(internalSenders));
+                    if (uniqueInternalSenders.length <= 1) {
+                        if (uniqueInternalSenders.length === 0) return true;
+                        const sender = uniqueInternalSenders[0];
+                        return Boolean((myEmail && sender === myEmail) || (myName && sender === myName));
+                    }
+                }
+                return false;
+            }
+
+            return false;
+        };
+
         const loadChat = async () => {
             setIsLoadingMessages(true);
             try {
@@ -115,7 +167,12 @@ export function SupplierMessengerDrawer({
                     .eq("supplier_id", selectedSupplier.id)
                     .order("created_at", { ascending: true });
 
-                setMessages(msgs || []);
+                if (msgs) {
+                    const threadMsgs = msgs.filter((m: any) => isMessageInMyThread(m, msgs));
+                    setMessages(threadMsgs);
+                } else {
+                    setMessages([]);
+                }
             } catch (err) {
                 console.error("Error loading chat:", err);
                 setMessages([]);
@@ -140,6 +197,8 @@ export function SupplierMessengerDrawer({
                 },
                 (payload) => {
                     if (!payload.new?.id) return;
+                    if (!isMessageInMyThread(payload.new)) return;
+
                     if (payload.new.sender_type === "supplier" && !payload.new.is_read) {
                         supabase
                             .from("messages")
@@ -186,7 +245,7 @@ export function SupplierMessengerDrawer({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [isOpen, selectedSupplier]);
+    }, [isOpen, selectedSupplier, currentUserEmail, currentUserId]);
 
     // Send Message
     const handleSend = async (e: React.FormEvent) => {
@@ -198,6 +257,17 @@ export function SupplierMessengerDrawer({
         setInputText("");
 
         try {
+            const recipientMetadata = {
+                type: "target_recipient",
+                recipient_id: selectedSupplier.id,
+                recipient_name: selectedSupplier.name,
+                recipient_email: selectedSupplier.email,
+                staff_id: currentUserId || null,
+                staff_email: currentUserEmail || null,
+                staff_name: currentUserName || null,
+                staff_role: currentUserRole || null,
+            };
+
             const newMsg = {
                 supplier_id: selectedSupplier.id,
                 purchase_order_id: selectedPo || null,
@@ -209,7 +279,7 @@ export function SupplierMessengerDrawer({
                 role: currentUserRole || "Manager",
                 message: text,
                 is_read: false,
-                attachments: [],
+                attachments: [recipientMetadata],
                 created_at: new Date().toISOString(),
             };
 

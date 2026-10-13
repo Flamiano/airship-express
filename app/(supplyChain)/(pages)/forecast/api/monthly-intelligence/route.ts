@@ -31,11 +31,7 @@ export async function GET() {
     try {
         // Query recent parcels and purchase orders to discover active months
         const [{ data: parcelDates }, { data: poDates }] = await Promise.all([
-            supabase
-                .from("parcels")
-                .select("created_at")
-                .order("created_at", { ascending: false })
-                .limit(2000),
+            Promise.resolve({ data: [] as any[] }),
             supabase
                 .from("purchase_orders")
                 .select("created_at")
@@ -144,12 +140,7 @@ export async function POST(request: NextRequest) {
             appealsRes
         ] = await Promise.all([
             // Parcels
-            supabase
-                .from("parcels")
-                .select("id, barcode, tracking_number, courier, status, created_at")
-                .gte("created_at", startDate)
-                .lte("created_at", lastDay)
-                .order("created_at", { ascending: true }),
+            Promise.resolve({ data: [] as any[] }),
 
             // Purchase Orders
             supabase
@@ -167,7 +158,7 @@ export async function POST(request: NextRequest) {
 
             // Documents
             supabase
-                .from("documents")
+                .from("supplier_documents")
                 .select("id, title, file_name, file_type, category, created_at, file_size")
                 .gte("created_at", startDate)
                 .lte("created_at", lastDay)
@@ -176,7 +167,7 @@ export async function POST(request: NextRequest) {
             // Archived / Trash Parcels
             supabase
                 .from("archived_parcels")
-                .select("id, barcode, courier, deleted_at, deletion_reason, deleted_by")
+                .select("id, barcode, deleted_at, deletion_reason, deleted_by")
                 .gte("deleted_at", startDate)
                 .lte("deleted_at", lastDay),
 
@@ -251,13 +242,9 @@ export async function POST(request: NextRequest) {
         const hourMap: Record<number, number> = {};
         for (let h = 0; h < 24; h++) hourMap[h] = 0;
 
-        const courierCounts: Record<string, number> = {};
         const parcelStatusCounts: Record<string, number> = {};
 
         parcels.forEach((p: any) => {
-            const courier = (p.courier || "Unknown").trim();
-            courierCounts[courier] = (courierCounts[courier] || 0) + 1;
-
             const status = (p.status || "Unknown").trim();
             parcelStatusCounts[status] = (parcelStatusCounts[status] || 0) + 1;
 
@@ -455,7 +442,6 @@ export async function POST(request: NextRequest) {
                 peakDay,
                 busiestDayOfWeek,
                 busiestHourWindow,
-                courierCounts,
                 statusCounts: parcelStatusCounts,
                 projectedNextMonthVolume: projectedNextMonthParcelVolume,
             },
@@ -501,7 +487,7 @@ export async function POST(request: NextRequest) {
 
             const prompt = hasSpecificQuery
                 ? `
-You are the Chief Supply Chain & Predictive Intelligence Officer for Airship Express Courier Services.
+You are the Chief Supply Chain & Predictive Intelligence Officer for Airship Express Supply Chain Logistics.
 The executive user is specifically asking you about ${monthName}:
 "${userQuery}"
 Scope Filter: ${scope || "All System Modules"}
@@ -511,7 +497,7 @@ ${JSON.stringify(structuredMetrics, null, 2)}
 
 CRITICAL INSTRUCTIONS:
 - You must DIRECTLY, SPECIFICALLY, and THOROUGHLY answer the user's inquiry: "${userQuery}".
-- Focus directly on the exact metrics, equipment items, stock quantities, courier counts, dates, supplier spend, documents, or trash records they asked about.
+- Focus directly on the exact metrics, equipment items, stock quantities, dates, supplier spend, documents, or trash records they asked about.
 - DO NOT give generic or evasive responses. Cite the exact data points and numbers from the dataset above.
 - If asked about equipment stock velocity, name the exact fast-depleting equipment items, their current stock vs minimum stock, and risk level.
 - If asked about peak day or volume, give the exact peak date, day of week, and busiest hour range.
@@ -530,7 +516,7 @@ PREDICTIVE IMPACT & STRATEGIC RECOMMENDATIONS
 Future operational forecasts, stockout projections, risk mitigations, and immediate action items based on this analysis.
 `
                 : `
-You are the Chief Supply Chain & Predictive Intelligence Officer for Airship Express Courier Services.
+You are the Chief Supply Chain & Predictive Intelligence Officer for Airship Express Supply Chain Logistics.
 Analyze the following operational metrics for ${monthName} collected from all system pages (Parcels & Warehousing, Procurement & Purchase Orders, Inventory & Equipment Stock Velocity, Documents, Trash/Archival, and User Operations).
 
 Operational Data for ${monthName}:
@@ -547,7 +533,7 @@ EXECUTIVE MONTHLY SYNTHESIS & PREDICTIVE OVERVIEW
 A 2-3 sentence high-level executive synthesis of the month's overall operational health, parcel velocity, procurement outlay, and forecast trajectory.
 
 PARCEL INTAKE, PEAK VELOCITY & LOGISTICS TRAJECTORY
-Detailed evaluation of parcel volume (${parcels.length} total), the peak volume day (${peakDay.date} with ${peakDay.count} parcels), busiest day of week (${busiestDayOfWeek.day}), peak hour window (${busiestHourWindow.timeRange}), courier market share distribution, and 7-day future volume outlook.
+Detailed evaluation of parcel volume (${parcels.length} total), the peak volume day (${peakDay.date} with ${peakDay.count} parcels), busiest day of week (${busiestDayOfWeek.day}), peak hour window (${busiestHourWindow.timeRange}), status distribution, and 7-day future volume outlook.
 
 PROCUREMENT OUTLAY & SPEND FORECAST
 Evaluation of purchase orders (${purchaseOrders.length} orders totaling ₱${totalSpend.toLocaleString()}), paid vs unpaid payment ratios, supplier concentrations, largest expenditures, and next-month estimated cashflow requirements.
@@ -620,7 +606,6 @@ function generateDeterministicMonthlySynthesis(monthName: string, metrics: any):
     const eq = metrics.equipment || {};
     const ops = metrics.systemOperations || {};
 
-    const topCourier = p.courierDistribution?.[0] ? `${p.courierDistribution[0].name} (${p.courierDistribution[0].share})` : 'Standard Logistics';
     const topSupplier = po.topSuppliers?.[0] ? `${po.topSuppliers[0].supplier} (₱${po.topSuppliers[0].amount.toLocaleString()})` : 'General Procurement';
 
     return `EXECUTIVE MONTHLY SYNTHESIS & PREDICTIVE OVERVIEW
@@ -630,7 +615,7 @@ PARCEL INTAKE, PEAK VELOCITY & LOGISTICS TRAJECTORY
 1. Total Monthly Intake: ${p.totalIntake || 0} registered parcels handled through the central sorting grid.
 2. Velocity Peaks: The highest daily intake occurred on ${p.peakDay?.date || 'N/A'} with ${p.peakDay?.count || 0} units, while the busiest recurring day of the week was ${p.busiestDayOfWeek?.day || 'N/A'}.
 3. Operational Window: Primary intake density clustered between ${p.busiestHourWindow?.timeRange || 'standard operating hours'}.
-4. Courier Distribution: Primary logistics carrier volume was led by ${topCourier}.
+4. Fulfillment Status: Parcels actively processed through sorting and delivery pipelines.
 
 PROCUREMENT OUTLAY & SPEND FORECAST
 1. Total Procurement Outlay: ₱${(po.totalExpenditure || 0).toLocaleString()} across ${po.totalPurchaseOrders || 0} verified purchase orders.

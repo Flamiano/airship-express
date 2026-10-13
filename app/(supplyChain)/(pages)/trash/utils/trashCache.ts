@@ -1,4 +1,4 @@
-export type TrashTabKey = 'documents' | 'purchase_orders' | 'suppliers' | 'parcels';
+export type TrashTabKey = 'documents' | 'purchase_orders';
 
 export interface TrashCacheEntry<T = any> {
     data: T[];

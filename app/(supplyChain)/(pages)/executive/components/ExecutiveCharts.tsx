@@ -12,6 +12,9 @@ import { ExecutiveDataPayload } from "../hooks/useExecutiveData";
 import { buildExecutiveModalConfig, ModalConfig } from "../lib/executiveModalConfig";
 import { ChartsSkeleton } from "../../../components/ui/SkeletonLoader";
 
+import IssuedPurchaseOrdersSection from "./IssuedPurchaseOrdersSection";
+import DefectiveAndReplacementSection from "./DefectiveAndReplacementSection";
+
 // Lazy-load heavy tabs with Chart.js / WASM / Prompt logic on-demand
 const ForecastTab = dynamic(() => import("./tabs/ForecastTab"), {
     loading: () => <ChartsSkeleton layout="dual-line-doughnut" />,
@@ -23,11 +26,13 @@ const AiChartGeneratorTab = dynamic(() => import("./tabs/AiChartGeneratorTab"), 
     ssr: false,
 });
 
-export type TabType = 'overview' | 'operations' | 'kpis' | 'forecast' | 'reports' | 'ai-charts';
+export type TabType = 'overview' | 'issued-pos' | 'defects-replacements' | 'operations' | 'kpis' | 'forecast' | 'reports' | 'ai-charts';
 
 export const TABS: { readonly key: TabType; readonly label: string; readonly icon: string }[] = [
     { key: 'overview', label: 'Overview', icon: 'fa-chart-pie' },
-    { key: 'operations', label: 'Operations', icon: 'fa-truck' },
+    { key: 'issued-pos', label: 'Issued POs', icon: 'fa-file-invoice-dollar' },
+    { key: 'defects-replacements', label: 'Defects & Replacements', icon: 'fa-shield-halved' },
+    { key: 'operations', label: 'Operations', icon: 'fa-boxes-stacked' },
     { key: 'kpis', label: 'KPI Deep Dive', icon: 'fa-tachometer-alt' },
     { key: 'ai-charts', label: 'AI Custom Charts', icon: 'fa-wand-magic-sparkles' },
     { key: 'forecast', label: 'Forecast', icon: 'fa-chart-line' },
@@ -77,31 +82,60 @@ export default function ExecutiveCharts({ data }: ExecutiveChartsProps) {
 
     return (
         <div className="space-y-6">
-            {/* Tab Navigation */}
-            <div className="flex items-center gap-2 overflow-x-auto max-w-full sm:w-fit p-1.5 rounded-2xl bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-slate-200/50 dark:border-slate-800/60 no-scrollbar touch-pan-x">
-                {TABS.map((tab) => {
-                    const isActive = activeTab === tab.key;
-                    return (
-                        <button
-                            key={tab.key}
-                            type="button"
-                            onClick={() => handleTabChange(tab.key)}
-                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
-                                isActive
-                                    ? 'bg-gradient-to-b from-pink-500 to-pink-600 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)]'
-                                    : 'bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.5),-1px_-1px_3px_rgba(255,255,255,0.9)]'
-                            }`}
-                        >
-                            <i className={`fas ${tab.icon} text-xs ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                            <span>{tab.label}</span>
-                        </button>
-                    );
-                })}
+            {/* Tab Navigation & AI Summary Shortcut */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 overflow-x-auto max-w-full sm:w-fit p-1.5 rounded-2xl bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-slate-200/50 dark:border-slate-800/60 no-scrollbar touch-pan-x">
+                    {TABS.map((tab) => {
+                        const isActive = activeTab === tab.key;
+                        return (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => handleTabChange(tab.key)}
+                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+                                    isActive
+                                        ? 'bg-gradient-to-b from-pink-500 to-pink-600 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)]'
+                                        : 'bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.5),-1px_-1px_3px_rgba(255,255,255,0.9)]'
+                                }`}
+                            >
+                                <i className={`fas ${tab.icon} text-xs ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                                <span>{tab.label}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => {
+                        const el = document.getElementById('executive-ai-summary-panel');
+                        if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            el.classList.add('ring-2', 'ring-pink-500', 'ring-offset-2');
+                            setTimeout(() => {
+                                el.classList.remove('ring-2', 'ring-pink-500', 'ring-offset-2');
+                            }, 2000);
+                        }
+                    }}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors cursor-pointer"
+                    title="Jump to Cross-Tab AI Summary Matrix"
+                >
+                    <i className="fas fa-wand-magic-sparkles text-xs" />
+                    <span>AI Tab Summary Matrix</span>
+                </button>
             </div>
 
             {/* Tab Views */}
             {activeTab === 'overview' && (
                 <OverviewTab data={data} onOpenModal={openReportModal} />
+            )}
+
+            {activeTab === 'issued-pos' && (
+                <IssuedPurchaseOrdersSection data={data.issuedPOsAnalytics} />
+            )}
+
+            {activeTab === 'defects-replacements' && (
+                <DefectiveAndReplacementSection data={data} />
             )}
 
             {activeTab === 'operations' && (

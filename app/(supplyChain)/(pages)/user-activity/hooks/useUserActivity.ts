@@ -7,6 +7,7 @@ import { user } from '../../../lib/services/Class/user';
 import { supabase } from '../../../lib/services/client/supabase';
 import { Session, BlockedDevice, Appeal, UserActivity } from '../types';
 import { isRateLimited, sanitizeText } from '../utils/formatters';
+import { DEFAULT_ALLOWED_DAYS, DEFAULT_TIME_START, DEFAULT_TIME_END } from '../../../lib/services/userAccessService';
 
 const ITEMS_PER_PAGE = 30;
 
@@ -174,18 +175,18 @@ export function useUserActivity() {
 
                 const isAllowValue = session.is_allow !== null && session.is_allow !== undefined
                     ? Boolean(session.is_allow)
-                    : (accessRule !== undefined ? Boolean(accessRule.is_allow) : isManagement);
+                    : (accessRule !== undefined ? Boolean(accessRule.is_allow) : true);
                 
                 let allowedDaysValue = session.allowed_days;
                 if (typeof allowedDaysValue === 'string') {
                     try { allowedDaysValue = JSON.parse(allowedDaysValue); } catch { allowedDaysValue = allowedDaysValue.split(',').map((d: string) => d.trim()); }
                 }
                 if (!Array.isArray(allowedDaysValue) || allowedDaysValue.length === 0) {
-                    allowedDaysValue = accessRule?.allowed_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                    allowedDaysValue = accessRule?.allowed_days || DEFAULT_ALLOWED_DAYS;
                 }
 
-                const startTimeValue = session.allowed_time_start || accessRule?.allowed_time_start || '07:00';
-                const endTimeValue = session.allowed_time_end || accessRule?.allowed_time_end || '17:00';
+                const startTimeValue = session.allowed_time_start || accessRule?.allowed_time_start || DEFAULT_TIME_START;
+                const endTimeValue = session.allowed_time_end || accessRule?.allowed_time_end || DEFAULT_TIME_END;
                 const authReqValue = session.auth_requested !== null && session.auth_requested !== undefined
                     ? Boolean(session.auth_requested)
                     : Boolean(accessRule?.auth_requested);
@@ -252,10 +253,10 @@ export function useUserActivity() {
                             role: u.role,
                             department: u.department,
                         },
-                        is_allow: accessRule !== undefined ? Boolean(accessRule.is_allow) : isAdmin,
-                        allowed_days: accessRule?.allowed_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-                        allowed_time_start: accessRule?.allowed_time_start || '07:00',
-                        allowed_time_end: accessRule?.allowed_time_end || '17:00',
+                        is_allow: accessRule !== undefined ? Boolean(accessRule.is_allow) : true,
+                        allowed_days: accessRule?.allowed_days || DEFAULT_ALLOWED_DAYS,
+                        allowed_time_start: accessRule?.allowed_time_start || DEFAULT_TIME_START,
+                        allowed_time_end: accessRule?.allowed_time_end || DEFAULT_TIME_END,
                         auth_requested: Boolean(accessRule?.auth_requested),
                         auth_requested_at: accessRule?.auth_requested_at || null,
                         auth_request_message: accessRule?.auth_request_message || null,

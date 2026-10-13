@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../../../lib/services/client/supabase';
 import { toast } from 'sonner';
 import { InventoryItem, Supplier, AddItemFormData, EditItemFormData } from '../types';
+import { logStockMovement } from '../server/stock-movements';
 
 let useInventoryCache: { items: InventoryItem[]; timestamp: number } | null = null;
 const CACHE_TTL = 3 * 60 * 1000;
@@ -91,6 +92,20 @@ export function useInventory() {
             if (formData.current_stock <= 0) status = 'out-of-stock';
             else if (formData.current_stock < formData.minimum_stock) status = 'low-stock';
 
+            let oldItem = items.find(i => String(i.id) === String(formData.id));
+            if (!oldItem && formData.id) {
+                const { data: dbItem } = await supabase
+                    .from('inventory_items')
+                    .select('*')
+                    .eq('id', formData.id)
+                    .maybeSingle();
+                if (dbItem) oldItem = dbItem as InventoryItem;
+            }
+
+            const oldStock = oldItem ? Number(oldItem.current_stock ?? 0) : 0;
+            const newStock = Number(formData.current_stock ?? 0);
+            const diff = newStock - oldStock;
+
             const { error } = await supabase
                 .from('inventory_items')
                 .update({
@@ -110,17 +125,59 @@ export function useInventory() {
                 .eq('id', formData.id);
 
             if (error) throw error;
+
+            // Retrieve current user info for audit trail
+            let performedByName = 'Warehouse Staff';
+            let performedById: string | null = null;
+            try {
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user) {
+                    performedById = authData.user.id;
+                    performedByName = authData.user.user_metadata?.full_name 
+                        || authData.user.user_metadata?.name 
+                        || authData.user.email 
+                        || 'Warehouse Staff';
+                }
+            } catch (_) {}
+
+            // Strictly log into public.stock_movements as Adjustment
+            await logStockMovement({
+                item_id: formData.id,
+                item_code: formData.item_code,
+                item_name: formData.item_name,
+                movement_type: 'Adjustment',
+                quantity: diff,
+                previous_stock: oldStock,
+                new_stock: newStock,
+                reference_number: `ADJ-${Date.now().toString().slice(-6)}`,
+                reason: diff !== 0
+                    ? (formData.description?.trim() || (diff > 0 ? `Stock increased by ${diff} via manual edit` : `Stock decreased by ${Math.abs(diff)} via manual edit`))
+                    : (formData.description?.trim() || 'Item specifications updated via manual edit'),
+                department: 'Warehouse / Inventory',
+                performed_by: performedByName,
+                performed_by_id: performedById,
+                metadata: {
+                    action: 'ITEM_EDIT_ADJUSTMENT',
+                    supplier: formData.supplier || undefined,
+                    storage_location: formData.storage_location || undefined,
+                    previous_stock: oldStock,
+                    new_stock: newStock,
+                    diff: diff,
+                }
+            });
+
             toast.success('Item updated successfully!', { id: toastId });
             useInventoryCache = null;
             await fetchInventory(true);
             return { success: true };
         } catch (error) {
+            console.error('Error updating item:', error);
             toast.error('Failed to update item', { id: toastId });
             return { success: false, error };
         } finally {
             setSaving(false);
         }
-    }, [fetchInventory]);
+    }, [items, fetchInventory]);
 
     // delete single
     const deleteItem = useCallback(async (id: string, itemName: string) => {
@@ -128,23 +185,73 @@ export function useInventory() {
         const toastId = toast.loading(`Deleting ${itemName}...`);
 
         try {
+            let targetItem = items.find(i => String(i.id) === String(id));
+            if (!targetItem) {
+                const { data: dbItem } = await supabase
+                    .from('inventory_items')
+                    .select('*')
+                    .eq('id', id)
+                    .maybeSingle();
+                if (dbItem) targetItem = dbItem as InventoryItem;
+            }
+
             const { error } = await supabase
                 .from('inventory_items')
                 .delete()
                 .eq('id', id);
 
             if (error) throw error;
+
+            // Retrieve current user info for audit trail
+            let performedByName = 'Warehouse Staff';
+            let performedById: string | null = null;
+            try {
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user) {
+                    performedById = authData.user.id;
+                    performedByName = authData.user.user_metadata?.full_name 
+                        || authData.user.user_metadata?.name 
+                        || authData.user.email 
+                        || 'Warehouse Staff';
+                }
+            } catch (_) {}
+
+            const prevStock = Number(targetItem?.current_stock ?? 0);
+            await logStockMovement({
+                item_id: id,
+                item_code: targetItem?.item_code || 'N/A',
+                item_name: targetItem?.item_name || itemName,
+                movement_type: 'Adjustment',
+                quantity: -prevStock,
+                previous_stock: prevStock,
+                new_stock: 0,
+                reference_number: `DEL-${Date.now().toString().slice(-6)}`,
+                reason: `Item deleted from inventory catalog (Stock cleared from ${prevStock} to 0)`,
+                department: 'Warehouse / Inventory',
+                performed_by: performedByName,
+                performed_by_id: performedById,
+                metadata: {
+                    action: 'ITEM_DELETED',
+                    deleted_item_code: targetItem?.item_code,
+                    deleted_item_name: targetItem?.item_name || itemName,
+                    supplier: targetItem?.supplier || undefined,
+                    previous_stock: prevStock,
+                    cleared_stock: prevStock
+                }
+            });
+
             toast.success(`"${itemName}" deleted successfully!`, { id: toastId });
             useInventoryCache = null;
             await fetchInventory(true);
             return { success: true };
         } catch (error) {
+            console.error('Error deleting item:', error);
             toast.error('Failed to delete item', { id: toastId });
             return { success: false, error };
         } finally {
             setDeleting(false);
         }
-    }, [fetchInventory]);
+    }, [items, fetchInventory]);
 
     // delete bulk
     const deleteMultipleItems = useCallback(async (ids: string[]) => {
@@ -152,23 +259,77 @@ export function useInventory() {
         const toastId = toast.loading(`Deleting ${ids.length} items...`);
 
         try {
+            const itemsToDelete = items.filter(i => ids.map(String).includes(String(i.id)));
+            const foundIds = new Set(itemsToDelete.map(i => String(i.id)));
+            const missingIds = ids.filter(id => !foundIds.has(String(id)));
+            if (missingIds.length > 0) {
+                const { data: extraItems } = await supabase
+                    .from('inventory_items')
+                    .select('*')
+                    .in('id', missingIds);
+                if (extraItems) itemsToDelete.push(...(extraItems as InventoryItem[]));
+            }
+
             const { error } = await supabase
                 .from('inventory_items')
                 .delete()
                 .in('id', ids);
 
             if (error) throw error;
+
+            let performedByName = 'Warehouse Staff';
+            let performedById: string | null = null;
+            try {
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user) {
+                    performedById = authData.user.id;
+                    performedByName = authData.user.user_metadata?.full_name 
+                        || authData.user.user_metadata?.name 
+                        || authData.user.email 
+                        || 'Warehouse Staff';
+                }
+            } catch (_) {}
+
+            await Promise.all(
+                itemsToDelete.map(async (itm) => {
+                    const prevStock = Number(itm.current_stock ?? 0);
+                    return logStockMovement({
+                        item_id: itm.id,
+                        item_code: itm.item_code || 'N/A',
+                        item_name: itm.item_name,
+                        movement_type: 'Adjustment',
+                        quantity: -prevStock,
+                        previous_stock: prevStock,
+                        new_stock: 0,
+                        reference_number: `DEL-${Date.now().toString().slice(-6)}`,
+                        reason: `Bulk item deletion from inventory catalog (Stock cleared from ${prevStock} to 0)`,
+                        department: 'Warehouse / Inventory',
+                        performed_by: performedByName,
+                        performed_by_id: performedById,
+                        metadata: {
+                            action: 'ITEM_DELETED_BULK',
+                            deleted_item_code: itm.item_code,
+                            deleted_item_name: itm.item_name,
+                            supplier: itm.supplier || undefined,
+                            previous_stock: prevStock,
+                            cleared_stock: prevStock
+                        }
+                    });
+                })
+            );
+
             toast.success(`Successfully deleted ${ids.length} items!`, { id: toastId });
             useInventoryCache = null;
             await fetchInventory(true);
             return { success: true };
         } catch (error) {
+            console.error('Error deleting items:', error);
             toast.error('Failed to delete items', { id: toastId });
             return { success: false, error };
         } finally {
             setDeleting(false);
         }
-    }, [fetchInventory]);
+    }, [items, fetchInventory]);
 
     // stock in
     const stockIn = useCallback(async (itemName: string, quantity: number, supplier?: string, reference?: string, remarks?: string) => {
@@ -225,6 +386,22 @@ export function useInventory() {
                 .eq('id', item.id);
 
             if (error) throw error;
+
+            // Audit record for direct stock out
+            logStockMovement({
+                item_id: item.id,
+                item_code: item.item_code || 'N/A',
+                item_name: item.item_name,
+                movement_type: 'Stock Out',
+                quantity: -quantity,
+                previous_stock: item.current_stock,
+                new_stock: newStock,
+                reference_number: `SO-${Date.now().toString().slice(-6)}`,
+                reason: purpose || remarks || 'Direct stock issuance',
+                department: department || 'General Operations',
+                performed_by: 'Warehouse Staff',
+            }).catch(e => console.warn('Stock out movement log error:', e));
+
             toast.success(`Removed ${quantity} ${item.unit} from ${item.item_name}`, { id: toastId });
             useInventoryCache = null;
             await fetchInventory(true);

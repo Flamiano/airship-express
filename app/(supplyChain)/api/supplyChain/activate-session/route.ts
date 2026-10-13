@@ -130,7 +130,7 @@ export async function POST(request: Request) {
         activeList.forEach((s) => {
             const r = userRolesMap[s.user_id] || 'employee';
             if (r === 'executive' || r === 'admin') activeExecAdmin++;
-            else if (r === 'manager') activeManager++;
+            else if (r === 'manager' || r === 'purchase officer' || r === 'purchase_officer') activeManager++;
             else if (r === 'supplier') activeSupplier++;
             else activeEmployee++;
         });
@@ -146,8 +146,8 @@ export async function POST(request: Request) {
             tierSlots = executiveSlots;
             tierActive = activeExecAdmin;
             isAdmitted = activeExecAdmin < executiveSlots;
-        } else if (normRole === 'manager') {
-            tierName = 'Manager';
+        } else if (normRole === 'manager' || normRole === 'purchase officer' || normRole === 'purchase_officer') {
+            tierName = 'Purchase Officer';
             tierSlots = managerSlots;
             tierActive = activeManager;
             isAdmitted = activeManager < managerSlots;

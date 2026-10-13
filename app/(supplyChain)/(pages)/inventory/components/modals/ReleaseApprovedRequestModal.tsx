@@ -172,7 +172,7 @@ export function ReleaseApprovedRequestModal({
                                 </span>
                             </div>
                             <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                                Managers can release up to the approved quantity of <strong>{maxApprovedQty}</strong> units.
+                                Purchase Officers can release up to the approved quantity of <strong>{maxApprovedQty}</strong> units.
                             </p>
                         </div>
 

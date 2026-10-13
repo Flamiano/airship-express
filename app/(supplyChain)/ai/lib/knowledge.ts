@@ -60,33 +60,29 @@ export function loadAllKnowledge(): Map<string, KnowledgeFile> {
  * Fallback knowledge
  */
 function loadFallbackKnowledge(): void {
-
     if (!knowledgeCache) {
         knowledgeCache = new Map();
     }
 
-    const fallback = {
+    const fallback: Record<string, string> = {
         'warehousing': `
 # Warehouse Operations
 
-## Inbound Receiving
-- Scan barcodes or enter manually
-- System checks for duplicates
-- Parcels enter receiving queue
-- Status: Pending → Verified → Rejected
+## Inbound Stocking
+- Stock received from approved suppliers
+- Quantity and condition verification against Purchase Orders
+- Putaway into assigned warehouse racks and bins
+- Status: Received → Inspected → Stocked
 
-## Courier Sorting
-- Sort parcels by destination
-- Assign to couriers
-- Group by region
+## Storage Layout
+- Categorized by equipment type and hazard rating
+- Racks, bays, and aisles tracked in system
+- Real-time stock movement audits
 
-## Outgoing Dispatch
-- Scan to mark parcels as ready
-- Batch dispatch to couriers
-- Driver assignment
-
-## Status Flow
-Received → Sorting → Ready for Pickup → Picked Up → In Transit → Delivered
+## Outgoing Issue
+- Department requisitions approved
+- Items picked and logged with purpose and recipient
+- Inventory balance updated automatically
         `,
         'inventory': `
 # Inventory Management
@@ -106,16 +102,16 @@ Received → Sorting → Ready for Pickup → Picked Up → In Transit → Deliv
 
 ## Key Metrics
 - Peak Hours: 10 AM - 12 PM
-- Sorting Areas: 4/4 active
-- Average Dwell Time: 3h 12m
-- Scans per day: ~2,146
+- Active Storage Zones: 4/4 active
+- Average Stock Processing Time: 1h 15m
+- Requisitions per day: ~150
 
 ## Processes
-1. Receive parcels from suppliers
-2. Scan and verify
-3. Sort by destination
-4. Assign to couriers
-5. Dispatch for delivery
+1. Receive goods from suppliers
+2. Inspect and verify against PO
+3. Put away into assigned bin/rack
+4. Issue materials upon approved request
+5. Log stock movement
         `
     };
 

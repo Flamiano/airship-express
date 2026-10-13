@@ -110,6 +110,7 @@ class UserService {
         document.cookie = `session_token=${data.sessionToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
         document.cookie = `sc_session_token=${data.sessionToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
         document.cookie = `session_backup=${encodeURIComponent(backupStr)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+        document.cookie = `user_role=${encodeURIComponent(data.role || '')}; path=/; max-age=${maxAge}; SameSite=Lax`;
     }
 
     getRememberToken(email?: string): string | null {
@@ -327,6 +328,7 @@ class UserService {
         document.cookie = 'session_token=; path=/; max-age=0';
         document.cookie = 'sc_session_token=; path=/; max-age=0';
         document.cookie = 'session_backup=; path=/; max-age=0';
+        document.cookie = 'user_role=; path=/; max-age=0';
     }
 
     updateUser(data: Partial<{
@@ -343,7 +345,10 @@ class UserService {
         if (typeof window === 'undefined') return;
 
         if (data.name) localStorage.setItem('user_name', data.name);
-        if (data.role) localStorage.setItem('user_role', data.role);
+        if (data.role) {
+            localStorage.setItem('user_role', data.role);
+            document.cookie = `user_role=${encodeURIComponent(data.role)}; path=/; max-age=86400; SameSite=Lax`;
+        }
         if (data.email) localStorage.setItem('user_email', data.email);
         if (data.userAgent) localStorage.setItem('user_agent', data.userAgent);
         if (data.ipAddress) localStorage.setItem('user_ip', data.ipAddress);

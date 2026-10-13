@@ -193,7 +193,7 @@ export async function GET(request: Request) {
 
                         usersList.forEach(u => {
                             u.is_active = activeEmails.includes(u.email);
-                            u.remembered = rememberedEmails.includes(u.email);
+                            u.remembered = false;
                         });
                     }
                 }
@@ -223,7 +223,7 @@ export async function GET(request: Request) {
             return 5;
         };
 
-        const getRoleForPosition = (pos?: string | null): 'Admin' | 'Manager' | 'Operator' | 'Staff' | 'Employee' | null => {
+        const getRoleForPosition = (pos?: string | null): 'Admin' | 'Purchase Officer' | 'Operator' | 'Staff' | 'Employee' | null => {
             const p = normalizePosition(pos);
             
             // ADMIN: ADMIN STAFF, MARKETING/ADMIN STAFF, ADMIN ASSISTANT, ADMIN, ADMINISTRATOR
@@ -242,14 +242,16 @@ export async function GET(request: Request) {
                 return 'Admin';
             }
 
-            // MANAGER: OFFICE-IN-CHARGE, PROJECT COORDINATOR, MANAGER
+            // PURCHASE OFFICER: OFFICE-IN-CHARGE, PROJECT COORDINATOR, MANAGER, PURCHASE OFFICER, PURCHASING OFFICER
             if (
                 p === 'OFFICE-IN-CHARGE' ||
                 p === 'OFFICE IN CHARGE' ||
                 p === 'PROJECT COORDINATOR' ||
-                p === 'MANAGER'
+                p === 'MANAGER' ||
+                p === 'PURCHASE OFFICER' ||
+                p === 'PURCHASING OFFICER'
             ) {
-                return 'Manager';
+                return 'Purchase Officer';
             }
 
             // OPERATOR: APPRAISER
@@ -280,7 +282,7 @@ export async function GET(request: Request) {
             return null;
         };
 
-        // For Admin / Staff / Employee / Manager / Operator, fetch mock_employees filtered strictly by position
+        // For Admin / Staff / Employee / Purchase Officer / Operator, fetch mock_employees filtered strictly by position
         const { data: dbEmployees, error: dbError } = await supabaseAdmin
             .from('mock_employees')
             .select('*')
@@ -377,7 +379,7 @@ export async function GET(request: Request) {
         const employeesWithStatus = employees.map(emp => ({
             ...emp,
             has_hr_password: !!emp.password_hash,
-            remembered: rememberedEmails.includes(emp.email),
+            remembered: false,
             is_active: activeEmails.includes(emp.email)
         }));
 

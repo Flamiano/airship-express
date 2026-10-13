@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo, useCallback } from 'react';
+import { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { InventoryRequest, InventoryItem } from '../../types';
 import { sanitizeSearch } from '../../../../components/global/sanitize';
 import { Pagination } from '../../../../components/global/pagination';
@@ -18,7 +18,6 @@ import {
     CheckCircle2, 
     XCircle, 
     PackageCheck, 
-    ArrowUpRight, 
     AlertTriangle, 
     Plus, 
     Building2, 
@@ -30,11 +29,19 @@ import {
     X,
     FileText,
     ChevronDown,
+    Boxes,
+    Sparkles,
     Bell,
-    RotateCw
+    Compass,
+    MapPin,
+    Loader2
 } from 'lucide-react';
 import Portal from '../../../../components/client/Portal';
 import { approveInventoryRequest, rejectInventoryRequest } from '../../server/query';
+import { RequestedItemStockModal } from '../modals/RequestedItemStockModal';
+import { PurchaseRequestFormModal } from '../modals/PurchaseRequestFormModal';
+import { SupplierMessageModal } from '../../../suppliers/components/modals/SupplierMessageModal';
+import { evaluateItemMatch } from '../../utils/itemMatching';
 
 interface RequestsTabProps {
     requests: InventoryRequest[];
@@ -54,12 +61,13 @@ interface RequestsTabProps {
     searchTerm: string;
     statusFilter: string;
     typeFilter: 'all' | 'internal' | 'external';
+    suppliers?: any[];
     onSearchChange: (value: string) => void;
     onStatusChange: (value: string) => void;
     onTypeChange: (value: 'all' | 'internal' | 'external') => void;
     onPageChange: (page: number) => void;
     onOpenInternalRequestModal: () => void;
-    onOpenReleaseModal: (req: InventoryRequest) => void;
+    onOpenPOModal?: (item: any, selectedSupplier?: any) => void;
     onRefresh: () => void;
 }
 
@@ -75,12 +83,13 @@ export const RequestsTab = memo(function RequestsTab({
     searchTerm,
     statusFilter,
     typeFilter,
+    suppliers = [],
     onSearchChange,
     onStatusChange,
     onTypeChange,
     onPageChange,
     onOpenInternalRequestModal,
-    onOpenReleaseModal,
+    onOpenPOModal,
     onRefresh,
 }: RequestsTabProps) {
     const { confirm } = useConfirm();
@@ -90,45 +99,172 @@ export const RequestsTab = memo(function RequestsTab({
     const [showBulkRejectModal, setShowBulkRejectModal] = useState<boolean>(false);
     const [bulkRejectReason, setBulkRejectReason] = useState<string>('');
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-    const [notifiedRequestIds, setNotifiedRequestIds] = useState<Set<string>>(() => new Set());
+    const [optimisticApprovedIds, setOptimisticApprovedIds] = useState<Set<string>>(new Set());
+    const [optimisticRejectedIds, setOptimisticRejectedIds] = useState<Set<string>>(new Set());
+    const [selectedRequestForStock, setSelectedRequestForStock] = useState<InventoryRequest | null>(null);
+    const [selectedRequestForForm, setSelectedRequestForForm] = useState<InventoryRequest | null>(null);
+    const [selectedRequestForSupplierModal, setSelectedRequestForSupplierModal] = useState<InventoryRequest | null>(null);
+    const [selectedSupplierForMessage, setSelectedSupplierForMessage] = useState<any | null>(null);
+    const [awardedBids, setAwardedBids] = useState<Set<string>>(new Set());
 
-    // Load notified request IDs from localStorage and Supabase notifications
+    // Clear optimistic states when server requests prop updates
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem('notified_inventory_request_ids');
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed)) {
-                    setNotifiedRequestIds(prev => new Set([...prev, ...parsed]));
-                }
-            }
-        } catch (e) {}
-
-        if (requests.length > 0) {
-            const ids = requests.map(r => r.id).filter(Boolean);
-            supabase
-                .from('notifications')
-                .select('reference_id')
-                .eq('reference_type', 'inventory_request')
-                .in('reference_id', ids)
-                .then(({ data, error }) => {
-                    if (!error && data && data.length > 0) {
-                        const foundIds = data.map((d: any) => d.reference_id).filter(Boolean);
-                        setNotifiedRequestIds(prev => {
-                            const next = new Set(prev);
-                            foundIds.forEach((id: string) => next.add(id));
-                            try {
-                                localStorage.setItem('notified_inventory_request_ids', JSON.stringify(Array.from(next)));
-                            } catch (e) {}
-                            return next;
-                        });
-                    }
+        if (optimisticApprovedIds.size > 0 || optimisticRejectedIds.size > 0) {
+            setOptimisticApprovedIds(prev => {
+                const next = new Set(prev);
+                requests.forEach(r => {
+                    const st = (r.status || '').toLowerCase();
+                    if (st === 'approved' || st === 'completed') next.delete(r.id);
                 });
+                return next.size === prev.size ? prev : next;
+            });
+            setOptimisticRejectedIds(prev => {
+                const next = new Set(prev);
+                requests.forEach(r => {
+                    const st = (r.status || '').toLowerCase();
+                    if (st === 'rejected') next.delete(r.id);
+                });
+                return next.size === prev.size ? prev : next;
+            });
         }
     }, [requests]);
 
+    // Compute set of categories that have active registered suppliers
+    const activeSupplierCategories = useMemo(() => {
+        const set = new Set<string>();
+        (suppliers || []).forEach((s: any) => {
+            if (!s) return;
+            const isActive = s.is_active !== false && s.status !== 'inactive';
+            if (isActive && s.category) {
+                set.add(s.category.toLowerCase().trim());
+            }
+        });
+        return set;
+    }, [suppliers]);
+
+    // Fetch and sync accepted quotations in real-time from supplier_quotations table
+    const fetchAwardedBids = useCallback(async () => {
+        try {
+            const set = new Set<string>();
+
+            // Check supplier_quotations table for accepted/awarded status
+            const { data: quoteData, error: qErr } = await supabase
+                .from("supplier_quotations")
+                .select("request_number, status, notes, item_name, supplier_id")
+                .ilike("status", "%accept%");
+
+            if (quoteData && !qErr) {
+                quoteData.forEach((q: any) => {
+                    if (q.request_number) {
+                        const raw = String(q.request_number).trim().toLowerCase();
+                        const clean = raw.replace(/[^a-z0-9]/g, '');
+                        const withoutPr = raw.replace(/^pr-?/i, '').replace(/[^a-z0-9]/g, '');
+                        set.add(raw);
+                        set.add(clean);
+                        if (withoutPr) set.add(withoutPr);
+                    }
+                });
+            }
+
+            // Also check suppliers table for selected bid winners or purchase_request_id
+            const { data: winnerSuppliers } = await supabase
+                .from("suppliers")
+                .select("purchase_request_id, notes")
+                .or("notes.ilike.%selected bid winner%,notes.ilike.%awarded bid%");
+
+            if (winnerSuppliers) {
+                winnerSuppliers.forEach((s: any) => {
+                    if (s.purchase_request_id) {
+                        const raw = String(s.purchase_request_id).trim().toLowerCase();
+                        set.add(raw);
+                        set.add(raw.replace(/[^a-z0-9]/g, ''));
+                    }
+                    if (s.notes) {
+                        const prMatch = s.notes.match(/Requisition\s*#?([A-Za-z0-9-]+)/i);
+                        if (prMatch && prMatch[1]) {
+                            const raw = prMatch[1].trim().toLowerCase();
+                            set.add(raw);
+                            set.add(raw.replace(/[^a-z0-9]/g, ''));
+                        }
+                    }
+                });
+            }
+
+            // Also check purchase_orders table for linked request_ids
+            const { data: poList } = await supabase
+                .from("purchase_orders")
+                .select("request_id, notes");
+
+            if (poList) {
+                poList.forEach((po: any) => {
+                    if (po.request_id) {
+                        const raw = String(po.request_id).trim().toLowerCase();
+                        set.add(raw);
+                        set.add(raw.replace(/[^a-z0-9]/g, ''));
+                    }
+                    if (po.notes) {
+                        const prMatch = po.notes.match(/Requisition\s*#?([A-Za-z0-9-]+)/i);
+                        if (prMatch && prMatch[1]) {
+                            const raw = prMatch[1].trim().toLowerCase();
+                            set.add(raw);
+                            set.add(raw.replace(/[^a-z0-9]/g, ''));
+                        }
+                    }
+                });
+            }
+
+            setAwardedBids(set);
+        } catch (err) {
+            console.error("Error fetching awarded bids from supplier_quotations:", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchAwardedBids();
+
+        const channel = supabase
+            .channel(`quotes_awarded_status_${Date.now()}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "supplier_quotations",
+                },
+                () => {
+                    fetchAwardedBids();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchAwardedBids]);
+
+    // Sort requests by Priority (Critical -> Urgent -> Normal) and Created At (newest first)
+    const sortedRequests = useMemo(() => {
+        const getPriorityRank = (p?: string) => {
+            const low = (p || '').toLowerCase().trim();
+            if (low === 'critical') return 1;
+            if (low === 'urgent' || low === 'high') return 2;
+            return 3;
+        };
+
+        return [...requests].sort((a, b) => {
+            const rankA = getPriorityRank(a.priority);
+            const rankB = getPriorityRank(b.priority);
+            if (rankA !== rankB) {
+                return rankA - rankB;
+            }
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [requests]);
+
     const currentRole = userRole || user.getRole();
-    const canManageRequests = currentRole === 'Admin' || currentRole === 'Executive';
+    const canManageRequests = true; // Always show and allow approve on requests tab
 
     const allSelected = requests.length > 0 && requests.every(r => selectedIds.has(r.id));
     const someSelected = requests.some(r => selectedIds.has(r.id)) && !allSelected;
@@ -159,24 +295,47 @@ export const RequestsTab = memo(function RequestsTab({
         }
 
         const confirmed = await confirm({
-            title: 'Approve Inventory Request',
-            message: `Are you sure you want to approve request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')} for ${req.quantity_requested || 1} unit(s) of "${req.item_name}"? This will allocate stock for export/release.`,
-            confirmText: 'Approve Request',
+            title: 'Approve & Route Request',
+            message: `Are you sure you want to approve request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')} for ${req.quantity_requested || 1} unit(s) of "${req.item_name}"? Available items will NOT be deducted immediately, but queued to Warehousing (/warehousing?tab=issue) for issuing. Any lacking or new items will be routed to Procurement Stage 1.`,
+            confirmText: 'Approve & Route',
             confirmVariant: 'success'
         });
         if (!confirmed) return;
 
         setActionLoadingId(req.id);
+        setOptimisticApprovedIds(prev => new Set(prev).add(req.id));
         const toastId = toast.loading(`Approving request #${req.request_number || req.id.slice(0, 8)}...`);
         try {
-            const res = await approveInventoryRequest(req.id, userRole || 'Executive');
+            const userName = user.getName();
+            const userEmail = user.getEmail();
+            const effectiveRole = currentRole || userRole || 'Executive';
+            const performerDisplayName = userName && userName !== 'User'
+                ? `${userName} (${effectiveRole})`
+                : (userEmail || effectiveRole);
+
+            const res = await approveInventoryRequest(
+                req.id, 
+                user.getId() || effectiveRole, 
+                undefined, 
+                performerDisplayName
+            );
             if (res.success) {
-                toast.success(res.message || 'Request approved successfully! Stock allocated for export.', { id: toastId });
+                toast.success(res.message || 'Request approved successfully! Available items routed to Warehousing, lacking items to Procurement.', { id: toastId });
                 onRefresh();
             } else {
+                setOptimisticApprovedIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(req.id);
+                    return next;
+                });
                 toast.error(res.error || 'Failed to approve request', { id: toastId });
             }
         } catch (err: any) {
+            setOptimisticApprovedIds(prev => {
+                const next = new Set(prev);
+                next.delete(req.id);
+                return next;
+            });
             console.error('Error approving request:', err);
             toast.error(err?.message || 'Failed to approve request', { id: toastId });
         } finally {
@@ -198,17 +357,34 @@ export const RequestsTab = memo(function RequestsTab({
 
         const confirmed = await confirm({
             title: `Approve ${pendingSelected.length} Requests`,
-            message: `Are you sure you want to approve ${pendingSelected.length} pending request(s)? This will allocate stock for export/release.`,
+            message: `Are you sure you want to approve ${pendingSelected.length} pending request(s)? Available items will be queued to Warehousing (/warehousing?tab=issue) for issuing (no immediate deduction), while lacking or new items will be routed to Procurement Stage 1.`,
             confirmText: `Approve (${pendingSelected.length})`,
             confirmVariant: 'success'
         });
         if (!confirmed) return;
 
         setActionLoadingId('bulk-approve');
+        setOptimisticApprovedIds(prev => {
+            const next = new Set(prev);
+            pendingSelected.forEach(p => next.add(p.id));
+            return next;
+        });
         const toastId = toast.loading(`Approving ${pendingSelected.length} requests...`);
         try {
+            const userName = user.getName();
+            const userEmail = user.getEmail();
+            const effectiveRole = currentRole || userRole || 'Executive';
+            const performerDisplayName = userName && userName !== 'User'
+                ? `${userName} (${effectiveRole})`
+                : (userEmail || effectiveRole);
+
             const results = await Promise.all(
-                pendingSelected.map(r => approveInventoryRequest(r.id, userRole || 'Executive'))
+                pendingSelected.map(r => approveInventoryRequest(
+                    r.id, 
+                    user.getId() || effectiveRole, 
+                    undefined, 
+                    performerDisplayName
+                ))
             );
             const successCount = results.filter(r => r.success).length;
             if (successCount > 0) {
@@ -216,9 +392,19 @@ export const RequestsTab = memo(function RequestsTab({
                 setSelectedIds(new Set());
                 onRefresh();
             } else {
+                setOptimisticApprovedIds(prev => {
+                    const next = new Set(prev);
+                    pendingSelected.forEach(p => next.delete(p.id));
+                    return next;
+                });
                 toast.error('Failed to approve selected requests', { id: toastId });
             }
         } catch (err: any) {
+            setOptimisticApprovedIds(prev => {
+                const next = new Set(prev);
+                pendingSelected.forEach(p => next.delete(p.id));
+                return next;
+            });
             console.error('Bulk approve error:', err);
             toast.error(err?.message || 'Failed to approve requests', { id: toastId });
         } finally {
@@ -241,12 +427,17 @@ export const RequestsTab = memo(function RequestsTab({
         }
 
         setActionLoadingId('bulk-reject');
+        setOptimisticRejectedIds(prev => {
+            const next = new Set(prev);
+            pendingSelected.forEach(p => next.add(p.id));
+            return next;
+        });
         const toastId = toast.loading(`Rejecting ${pendingSelected.length} requests...`);
-        const trimmedReason = bulkRejectReason.trim() || 'Declined in bulk by inventory manager';
+        const trimmedReason = bulkRejectReason.trim() || 'Declined in bulk by Purchase Officer';
 
         try {
             const results = await Promise.all(
-                pendingSelected.map(r => rejectInventoryRequest(r.id, trimmedReason, userRole || 'Manager'))
+                pendingSelected.map(r => rejectInventoryRequest(r.id, trimmedReason, userRole || 'Purchase Officer'))
             );
             const successCount = results.filter(r => r.success).length;
 
@@ -270,141 +461,19 @@ export const RequestsTab = memo(function RequestsTab({
                 console.error('Auto notification error on bulk reject:', notifErr);
             }
 
-            toast.success(`Rejected ${successCount} request(s) & Admin notified!`, { id: toastId });
+            toast.success(`Rejected ${successCount} request(s)!`, { id: toastId });
             setShowBulkRejectModal(false);
             setBulkRejectReason('');
             setSelectedIds(new Set());
             onRefresh();
         } catch (err: any) {
+            setOptimisticRejectedIds(prev => {
+                const next = new Set(prev);
+                pendingSelected.forEach(p => next.delete(p.id));
+                return next;
+            });
             console.error('Bulk reject error:', err);
             toast.error(err?.message || 'Failed to reject requests', { id: toastId });
-        } finally {
-            setActionLoadingId(null);
-        }
-    };
-
-    const handleNotifyAdminExecutive = async (req: InventoryRequest, customReason?: string) => {
-        const notifyKey = `notify-${req.id}`;
-        const isFollowUp = notifiedRequestIds.has(req.id);
-        setActionLoadingId(notifyKey);
-        const toastId = toast.loading(`${isFollowUp ? 'Sending follow-up to' : 'Notifying'} Admin & Executive about request #${req.request_number || req.id.slice(0, 8)}...`);
-
-        try {
-            const currentName = user.getName() || user.getEmail() || 'Inventory Staff';
-            const currentEmail = user.getEmail() || 'system@airship.com';
-            const isReqPending = (req.status || 'pending').toLowerCase() === 'pending';
-            const reasonText = customReason || req.rejection_reason || (isReqPending ? 'Review requested by inventory staff' : 'Declined by inventory manager');
-
-            const prefix = isFollowUp ? '[Follow Up] ' : '';
-            const title = isReqPending
-                ? `${prefix}Requisition Pending Review: #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`
-                : `${prefix}Requisition Rejected: #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`;
-
-            const message = isFollowUp
-                ? `Follow-up reminder: Inventory request #${req.request_number || req.id.slice(0, 8)} for ${req.quantity_requested || 1} unit(s) of "${req.item_name}" is awaiting review/action. Requester: ${req.requested_by || 'Staff'} (${req.department || 'General'}).`
-                : (isReqPending
-                    ? `Inventory request #${req.request_number || req.id.slice(0, 8)} for ${req.quantity_requested || 1} unit(s) of "${req.item_name}" requires review & approval. Requester: ${req.requested_by || 'Staff'} (${req.department || 'General'}).`
-                    : `Inventory request #${req.request_number || req.id.slice(0, 8)} for ${req.quantity_requested || 1} unit(s) of "${req.item_name}" was rejected. Reason: "${reasonText}". Requester: ${req.requested_by || 'Staff'} (${req.department || 'General'}).`);
-
-            const { error } = await supabase
-                .from('notifications')
-                .insert({
-                    creator_name: currentName,
-                    creator_email: currentEmail,
-                    title,
-                    message,
-                    type: 'alert',
-                    link: `/inventory?tab=requests&search=${encodeURIComponent(req.request_number || req.item_name)}`,
-                    role: ['Admin', 'Executive'],
-                    is_read: false,
-                    reference_type: 'inventory_request',
-                    reference_id: req.id
-                });
-
-            if (error) throw error;
-
-            // Mark as notified in state & localStorage
-            setNotifiedRequestIds(prev => {
-                const next = new Set(prev);
-                next.add(req.id);
-                try {
-                    localStorage.setItem('notified_inventory_request_ids', JSON.stringify(Array.from(next)));
-                } catch (e) {}
-                return next;
-            });
-
-            toast.success(isFollowUp ? 'Follow-up sent to Admin & Executive!' : 'Admin & Executive have been notified!', { id: toastId });
-        } catch (err: any) {
-            console.error('Error notifying Admin & Executive:', err);
-            toast.error(err?.message || 'Failed to send notification', { id: toastId });
-        } finally {
-            setActionLoadingId(null);
-        }
-    };
-
-    const handleBulkNotifyAdmin = async () => {
-        const selectedList = requests.filter(r => selectedIds.has(r.id));
-        if (selectedList.length === 0) {
-            toast.warning('Please select at least one request');
-            return;
-        }
-
-        const rejectedSelected = selectedList.filter(r => (r.status || '').toLowerCase() === 'rejected');
-        const targetList = rejectedSelected.length > 0 ? rejectedSelected : selectedList;
-        const allAlreadyNotified = targetList.length > 0 && targetList.every(r => notifiedRequestIds.has(r.id));
-        const isFollowUp = allAlreadyNotified;
-
-        const confirmed = await confirm({
-            title: isFollowUp ? `Send Follow-up (${targetList.length})` : `Notify Admin & Executive (${targetList.length})`,
-            message: `${isFollowUp ? 'Send a follow-up reminder' : 'Send an alert notification'} to Admin and Executive for the ${targetList.length} selected request(s)?`,
-            confirmText: isFollowUp ? `Send Follow-up` : `Notify Admin & Executive`,
-            confirmVariant: 'info'
-        });
-        if (!confirmed) return;
-
-        setActionLoadingId('bulk-notify');
-        const toastId = toast.loading(`${isFollowUp ? 'Sending follow-up to' : 'Notifying'} Admin & Executive about ${targetList.length} request(s)...`);
-
-        try {
-            const currentName = user.getName() || user.getEmail() || 'Inventory Staff';
-            const currentEmail = user.getEmail() || 'system@airship.com';
-
-            const summaryText = targetList
-                .map(r => `#${r.request_number || r.id.slice(0, 8)} (${r.item_name})`)
-                .slice(0, 4)
-                .join(', ') + (targetList.length > 4 ? ` and ${targetList.length - 4} more` : '');
-
-            const prefix = isFollowUp ? '[Follow Up] ' : '';
-            const { error } = await supabase
-                .from('notifications')
-                .insert({
-                    creator_name: currentName,
-                    creator_email: currentEmail,
-                    title: `${prefix}Requisitions Notification (${targetList.length} items)`,
-                    message: `${isFollowUp ? 'Follow-up reminder for' : 'Requisition alert for'} ${targetList.length} item(s): ${summaryText}.`,
-                    type: 'alert',
-                    link: `/inventory?tab=requests`,
-                    role: ['Admin', 'Executive'],
-                    is_read: false
-                });
-
-            if (error) throw error;
-
-            // Mark target list as notified
-            setNotifiedRequestIds(prev => {
-                const next = new Set(prev);
-                targetList.forEach(r => next.add(r.id));
-                try {
-                    localStorage.setItem('notified_inventory_request_ids', JSON.stringify(Array.from(next)));
-                } catch (e) {}
-                return next;
-            });
-
-            toast.success(isFollowUp ? `Follow-up sent for ${targetList.length} request(s)!` : `Admin & Executive notified about ${targetList.length} request(s)!`, { id: toastId });
-            setSelectedIds(new Set());
-        } catch (err: any) {
-            console.error('Bulk notify error:', err);
-            toast.error(err?.message || 'Failed to send bulk notification', { id: toastId });
         } finally {
             setActionLoadingId(null);
         }
@@ -419,15 +488,17 @@ export const RequestsTab = memo(function RequestsTab({
             return;
         }
 
-        setActionLoadingId(rejectingRequest.id);
-        const toastId = toast.loading(`Rejecting request #${rejectingRequest.request_number}...`);
-        const trimmedReason = rejectionReason.trim() || 'Declined by inventory manager';
+        const targetRejectReq = rejectingRequest;
+        setActionLoadingId(targetRejectReq.id);
+        setOptimisticRejectedIds(prev => new Set(prev).add(targetRejectReq.id));
+        const toastId = toast.loading(`Rejecting request #${targetRejectReq.request_number}...`);
+        const trimmedReason = rejectionReason.trim() || 'Declined by Purchase Officer';
 
         try {
             const res = await rejectInventoryRequest(
-                rejectingRequest.id,
+                targetRejectReq.id,
                 trimmedReason,
-                userRole || 'Manager'
+                userRole || 'Purchase Officer'
             );
             if (res.success) {
                 // Automatically send notification to Admin & Executive
@@ -439,10 +510,10 @@ export const RequestsTab = memo(function RequestsTab({
                         .insert({
                             creator_name: currentName,
                             creator_email: currentEmail,
-                            title: `Requisition Rejected: #${rejectingRequest.request_number || (rejectingRequest.id ? rejectingRequest.id.slice(0, 8) : '')}`,
-                            message: `Inventory request #${rejectingRequest.request_number || rejectingRequest.id.slice(0, 8)} for ${rejectingRequest.quantity_requested || 1} unit(s) of "${rejectingRequest.item_name}" has been rejected. Reason: "${trimmedReason}". Requester: ${rejectingRequest.requested_by || 'Staff'} (${rejectingRequest.department || 'General'}).`,
+                            title: `Requisition Rejected: #${targetRejectReq.request_number || (targetRejectReq.id ? targetRejectReq.id.slice(0, 8) : '')}`,
+                            message: `Inventory request #${targetRejectReq.request_number || targetRejectReq.id.slice(0, 8)} for ${targetRejectReq.quantity_requested || 1} unit(s) of "${targetRejectReq.item_name}" has been rejected. Reason: "${trimmedReason}". Requester: ${targetRejectReq.requested_by || 'Staff'} (${targetRejectReq.department || 'General'}).`,
                             type: 'alert',
-                            link: `/inventory?tab=requests&search=${encodeURIComponent(rejectingRequest.request_number || rejectingRequest.item_name)}`,
+                            link: `/inventory?tab=requests&search=${encodeURIComponent(targetRejectReq.request_number || targetRejectReq.item_name)}`,
                             role: ['Admin', 'Executive'],
                             is_read: false
                         });
@@ -455,9 +526,19 @@ export const RequestsTab = memo(function RequestsTab({
                 setRejectionReason('');
                 onRefresh();
             } else {
+                setOptimisticRejectedIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(targetRejectReq.id);
+                    return next;
+                });
                 toast.error(res.error || 'Failed to reject request', { id: toastId });
             }
         } catch (err: any) {
+            setOptimisticRejectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(targetRejectReq.id);
+                return next;
+            });
             console.error('Error rejecting request:', err);
             toast.error(err?.message || 'Failed to reject request', { id: toastId });
         } finally {
@@ -468,6 +549,32 @@ export const RequestsTab = memo(function RequestsTab({
     const itemsPerPage = 20;
     const startIndex = totalRequests === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
     const endIndex = Math.min(currentPage * itemsPerPage, totalRequests);
+
+    // Memoize active selected request for unified Purchase Request & Inventory Stock Modal to prevent null reference issues
+    const activeSelectedRequest = useMemo((): InventoryRequest | null => {
+        const req = selectedRequestForForm || selectedRequestForStock;
+        if (!req) return null;
+        return {
+            ...req,
+            status: (optimisticApprovedIds.has(req.id)
+                ? 'Approved'
+                : optimisticRejectedIds.has(req.id)
+                ? 'Rejected'
+                : req.status) as InventoryRequest['status'],
+            is_released: Boolean(req.is_released || (req.status || '').toLowerCase() === 'delivered' || (req.status || '').toLowerCase() === 'received' || req.fulfilled_at),
+            is_issued: Boolean(req.is_issued || (req.status || '').toLowerCase() === 'delivered' || (req.status || '').toLowerCase() === 'received' || req.fulfilled_at),
+        };
+    }, [selectedRequestForForm, selectedRequestForStock, optimisticApprovedIds, optimisticRejectedIds]);
+
+    const isSelectedRequestBidAwarded = useMemo((): boolean => {
+        const req = selectedRequestForForm || selectedRequestForStock;
+        if (!req) return false;
+        return Boolean(
+            awardedBids.has(req.request_number || '') ||
+            awardedBids.has(req.id) ||
+            ((req as any).bidding_status === 'awarded')
+        );
+    }, [selectedRequestForForm, selectedRequestForStock, awardedBids]);
 
     return (
         <div className="space-y-6">
@@ -491,11 +598,11 @@ export const RequestsTab = memo(function RequestsTab({
                     </div>
                 </div>
 
-                {/* Pending Review */}
+                {/* Pending */}
                 <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] flex items-center justify-between transition-all">
                     <div className="space-y-0.5">
                         <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            Pending Review
+                            Pending
                         </span>
                         <h4 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                             {stats?.pending || 0}
@@ -572,32 +679,20 @@ export const RequestsTab = memo(function RequestsTab({
                                 <option value="all">All Statuses</option>
                                 <option value="pending">Pending</option>
                                 <option value="approved">Approved</option>
-                                <option value="received">Received / Outed</option>
+                                <option value="received">Supplies Released / Delivered</option>
                                 <option value="rejected">Rejected</option>
                             </select>
                             <ChevronDown className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" />
                         </div>
 
-                        {/* Origin Filter */}
-                        <div className="relative min-w-[170px] group">
-                            <select
-                                className="w-full appearance-none bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] rounded-2xl px-3.5 py-2.5 pl-4 pr-8 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer"
-                                value={typeFilter}
-                                onChange={(e) => onTypeChange(e.target.value as any)}
-                            >
-                                <option value="all">All Requisition Sources</option>
-                                <option value="internal">Internal Requisitions</option>
-                                <option value="external">External Systems</option>
-                            </select>
-                            <ChevronDown className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" />
-                        </div>
+
                     </div>
 
                     {/* New Internal Request Action */}
                     <div className="flex items-center gap-2">
                         <AppButton type="button" variant="primary" size="md" onClick={onOpenInternalRequestModal}>
                             <Plus className="w-4 h-4 mr-1.5" />
-                            <span>New Internal Request</span>
+                            <span>New Item Request</span>
                         </AppButton>
                     </div>
                 </div>
@@ -654,28 +749,6 @@ export const RequestsTab = memo(function RequestsTab({
                             </>
                         )}
 
-                        {/* Bulk Notify / Follow Up Admin */}
-                        <button
-                            type="button"
-                            onClick={handleBulkNotifyAdmin}
-                            disabled={actionLoadingId === 'bulk-notify'}
-                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs shadow-amber-500/20 active:scale-95"
-                            title="Notify or follow up with Admin & Executive about selected requests"
-                        >
-                            {actionLoadingId === 'bulk-notify' ? (
-                                <i className="fas fa-spinner fa-spin text-xs" />
-                            ) : requests.filter(r => selectedIds.has(r.id)).length > 0 && requests.filter(r => selectedIds.has(r.id)).every(r => notifiedRequestIds.has(r.id)) ? (
-                                <RotateCw className="w-3.5 h-3.5" />
-                            ) : (
-                                <Bell className="w-3.5 h-3.5" />
-                            )}
-                            <span>
-                                {requests.filter(r => selectedIds.has(r.id)).length > 0 && requests.filter(r => selectedIds.has(r.id)).every(r => notifiedRequestIds.has(r.id))
-                                    ? 'Follow Up Admin & Exec'
-                                    : 'Notify Admin & Exec'}
-                            </span>
-                        </button>
-
                         <button
                             type="button"
                             onClick={() => setSelectedIds(new Set())}
@@ -688,10 +761,10 @@ export const RequestsTab = memo(function RequestsTab({
 
                 {/* Table Content */}
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="min-w-[1380px] w-full text-left border-collapse table-fixed">
                         <thead>
                             <tr className="border-b border-slate-200/60 dark:border-white/[0.06] text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider bg-[#ebf0f7]/40 dark:bg-[#12131b]/40">
-                                <th className="w-10 px-3.5 py-3.5 text-center">
+                                <th className="w-12 min-w-[48px] px-3.5 py-3.5 text-center">
                                     <input
                                         type="checkbox"
                                         checked={allSelected}
@@ -705,16 +778,16 @@ export const RequestsTab = memo(function RequestsTab({
                                         className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 transition-colors"
                                     />
                                 </th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Request #</th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Source</th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Date</th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Department</th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Requester</th>
-                                <th className="px-4 py-3.5">Requested Item</th>
-                                <th className="px-4 py-3.5 text-center whitespace-nowrap">Qty</th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Stock Feasibility</th>
-                                <th className="px-4 py-3.5 whitespace-nowrap">Status</th>
-                                <th className="px-4 py-3.5 text-right whitespace-nowrap">Actions</th>
+                                <th className="px-4 py-3.5 w-36 min-w-[130px] whitespace-nowrap">Request #</th>
+                                <th className="px-4 py-3.5 w-28 min-w-[110px] whitespace-nowrap">Date</th>
+                                <th className="px-4 py-3.5 w-28 min-w-[100px] whitespace-nowrap">Priority</th>
+                                <th className="px-4 py-3.5 w-36 min-w-[140px] whitespace-nowrap">Department</th>
+                                <th className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">Requester</th>
+                                <th className="px-4 py-3.5 w-60 min-w-[220px]">Requested Item</th>
+                                <th className="px-4 py-3.5 w-24 min-w-[90px] text-center whitespace-nowrap">Qty</th>
+                                <th className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">Stock Feasibility</th>
+                                <th className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">Status</th>
+                                <th className="px-4 py-3.5 w-40 min-w-[150px] text-right whitespace-nowrap">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04] text-xs">
@@ -722,17 +795,17 @@ export const RequestsTab = memo(function RequestsTab({
                                 <TableRowsSkeleton
                                     rows={8}
                                     columns={[
-                                        { type: 'checkbox', width: 'w-10' },
-                                        { type: 'mono', width: 'w-24' },
-                                        { type: 'badge', width: 'w-16' },
-                                        { type: 'text', width: 'w-24' },
+                                        { type: 'checkbox', width: 'w-12' },
+                                        { type: 'mono', width: 'w-36' },
                                         { type: 'text', width: 'w-28' },
-                                        { type: 'text', width: 'w-32' },
-                                        { type: 'text', width: 'w-40' },
-                                        { type: 'mono', width: 'w-10', align: 'center' },
-                                        { type: 'badge', width: 'w-32' },
-                                        { type: 'badge', width: 'w-24' },
-                                        { type: 'actions', align: 'right', width: 'w-24' },
+                                        { type: 'badge', width: 'w-28' },
+                                        { type: 'text', width: 'w-36' },
+                                        { type: 'text', width: 'w-44' },
+                                        { type: 'text', width: 'w-60' },
+                                        { type: 'mono', width: 'w-24', align: 'center' },
+                                        { type: 'badge', width: 'w-44' },
+                                        { type: 'badge', width: 'w-44' },
+                                        { type: 'actions', align: 'right', width: 'w-40' },
                                     ]}
                                 />
                             ) : requests.length === 0 ? (
@@ -745,29 +818,114 @@ export const RequestsTab = memo(function RequestsTab({
                                             <div>
                                                 <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">No inventory requests found</p>
                                                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                                                    Incoming requests from external systems or internal staff will show up here.
+                                                     Incoming requests from external systems or internal staff will show up here.
                                                 </p>
                                             </div>
                                         </div>
                                     </td>
                                 </tr>
                             ) : (
-                                requests.map((req) => {
-                                    const status = (req.status || 'pending').toLowerCase();
-                                    const isPending = status === 'pending';
-                                    const isApproved = status === 'approved';
-                                    const isReceived = status === 'received' || status === 'fulfilled';
-                                    const isRejected = status === 'rejected';
+                                sortedRequests.map((req) => {
+                                    const isRowLoading = actionLoadingId === req.id || actionLoadingId === 'bulk-approve' || actionLoadingId === 'bulk-reject';
+                                    const isOptimisticallyApproved = optimisticApprovedIds.has(req.id);
+                                    const isOptimisticallyRejected = optimisticRejectedIds.has(req.id);
+
+                                    const rawStatus = (
+                                        isOptimisticallyApproved
+                                            ? 'approved'
+                                            : isOptimisticallyRejected
+                                            ? 'rejected'
+                                            : (req.status || 'pending')
+                                    ).toLowerCase();
+
+                                    const reqItems: any[] = Array.isArray(req.items) && req.items.length > 0 ? req.items : [];
+                                    const hasMultipleItems = reqItems.length > 1;
+                                    const approvedItemsCount = reqItems.filter((it) => it.status === 'Approved' || it.is_approved === true || it.is_approve === true).length;
+                                    const rejectedItemsCount = reqItems.filter((it) => it.status === 'Rejected').length;
+                                    const pendingItemsCount = reqItems.filter((it) => (!it.status || it.status === 'Pending') && !it.is_approved && !it.is_approve).length;
+                                    const isPartiallyReviewed = hasMultipleItems && pendingItemsCount > 0 && (approvedItemsCount > 0 || rejectedItemsCount > 0);
+
+                                    const requestedQty = Number(req.quantity_requested || (reqItems.length > 0 ? reqItems.reduce((acc, it) => acc + Number(it.quantity || it.quantity_requested || 0), 0) : 1));
+                                    const approvedQty = req.quantity_approved !== undefined ? Number(req.quantity_approved) : (rawStatus === 'approved' ? requestedQty : 0);
+                                    const remainingQty = req.quantity_remaining !== undefined ? Number(req.quantity_remaining) : Math.max(0, requestedQty - approvedQty);
+
+                                    const issuedQty = req.issued_quantity !== undefined 
+                                        ? Number(req.issued_quantity)
+                                        : reqItems.length > 0
+                                        ? reqItems.reduce((acc, it) => {
+                                              const isItemReleased = it.is_released === true || it.is_issued === true || (it.status || '').toLowerCase() === 'released';
+                                              const qty = it.issued_quantity !== undefined ? Number(it.issued_quantity) : isItemReleased ? Number(it.approved_quantity ?? it.quantity) : 0;
+                                              return acc + qty;
+                                          }, 0)
+                                        : (req.is_released || req.is_issued ? requestedQty : 0);
+
+                                    const deficitQty = req.deficit_quantity !== undefined
+                                        ? Number(req.deficit_quantity)
+                                        : reqItems.length > 0
+                                        ? reqItems.reduce((acc, it) => {
+                                              const reqQ = Number(it.quantity || it.quantity_requested || 0);
+                                              const isItemReleased = it.is_released === true || it.is_issued === true || (it.status || '').toLowerCase() === 'released';
+                                              const qty = it.issued_quantity !== undefined ? Number(it.issued_quantity) : isItemReleased ? Number(it.approved_quantity ?? it.quantity) : 0;
+                                              const def = it.deficit_quantity !== undefined ? Number(it.deficit_quantity) : Math.max(0, reqQ - qty);
+                                              return acc + def;
+                                          }, 0)
+                                        : Math.max(0, requestedQty - issuedQty);
+
+                                    const hasItemReleased = reqItems.length > 0 && reqItems.some((it: any) => it.is_released === true || it.is_issued === true || (it.status || '').toLowerCase() === 'released' || (it.status || '').toLowerCase() === 'delivered');
+                                    const isReceived = rawStatus === 'received' || rawStatus === 'fulfilled' || rawStatus === 'delivered' || rawStatus === 'completed' || Boolean(req.completed_at) || Boolean(req.fulfilled_at) || req.is_released === true || req.is_issued === true || hasItemReleased;
+                                    const isPartialHandover = isReceived && (deficitQty > 0 || (issuedQty > 0 && issuedQty < requestedQty));
+                                    const isApproved = !isReceived && !isPartiallyReviewed && (rawStatus === 'approved');
+                                    const isPartiallyApproved = isApproved && approvedQty < requestedQty && approvedQty > 0;
+                                    const isRoutedToProcurement = isApproved && approvedQty === 0;
+                                    const isPending = !isReceived && (isPartiallyReviewed || rawStatus === 'pending') && !isOptimisticallyApproved && !isOptimisticallyRejected;
+                                    const isRejected = !isReceived && !isPartiallyReviewed && rawStatus === 'rejected';
 
                                     const isInternal = req.Internal_request === true || req.internal_request === true || req.is_internal === true || Boolean(req.requested_by);
                                     
-                                    // Matched item stock data
-                                    const item = (req as any).inventory_item;
-                                    const currentStock = (req as any).current_stock ?? item?.current_stock ?? 0;
-                                    const availableStock = (req as any).available_stock ?? item?.available_stock ?? currentStock;
-                                    const requestedQty = Number(req.quantity_requested || 1);
-                                    const isStockFeasible = availableStock >= requestedQty && currentStock > 0;
-                                    const isOutOfStock = currentStock <= 0;
+                                    // Live item match evaluation
+                                    const matchEval = evaluateItemMatch(req.item_name, requestedQty, inventoryItems);
+                                    const item = matchEval.matchedItem || (req as any).inventory_item;
+                                    const currentStock = matchEval.currentStock;
+                                    const availableStock = currentStock;
+                                    const isStockFeasible = matchEval.isStockSufficient;
+                                    const isOutOfStock = matchEval.isOutOfStock;
+
+                                    const priorityLower = (req.priority || 'normal').toLowerCase().trim();
+
+                                    const isOthersCategory =
+                                        ((req as any).category || (req.items && req.items[0]?.category) || '')
+                                            .trim()
+                                            .toLowerCase() === 'others';
+                                    const isPossible = matchEval.matchType === 'partial';
+                                    const isNewItem = matchEval.matchType === 'none';
+                                    const isExactMatch = matchEval.matchType === 'exact';
+                                    const isAvailable = isExactMatch && isStockFeasible;
+                                    const isLowStock = isExactMatch && !isStockFeasible && !isOutOfStock;
+
+                                    const reqNumKey = (req.request_number || '').toLowerCase().trim();
+                                    const reqNumClean = reqNumKey.replace(/[^a-z0-9]/g, '');
+                                    const reqNumWithoutPr = reqNumKey.replace(/^pr-?/i, '').replace(/[^a-z0-9]/g, '');
+                                    const reqIdKey = (req.id || '').toLowerCase().trim();
+                                    const reqIdClean = reqIdKey.replace(/[^a-z0-9]/g, '');
+
+                                    // Disabled if there is an accepted supplier quotation, awarded supplier, or PO for this request
+                                    const isBidAwarded = Boolean(
+                                        (reqNumKey && awardedBids.has(reqNumKey)) ||
+                                        (reqNumClean && awardedBids.has(reqNumClean)) ||
+                                        (reqNumWithoutPr && awardedBids.has(reqNumWithoutPr)) ||
+                                        (reqIdKey && awardedBids.has(reqIdKey)) ||
+                                        (reqIdClean && awardedBids.has(reqIdClean))
+                                    );
+
+                                    const reqCategory = ((req as any).category || (req.items && req.items[0]?.category) || '').trim().toLowerCase();
+                                    const isCategoryWithoutActiveSupplier = Boolean(reqCategory && !activeSupplierCategories.has(reqCategory));
+
+                                    // Button visibility:
+                                    // 1. Available or Low Stock with active supplier: hide Find Supplier, show Approve
+                                    // 2. Possible (partial match): show BOTH Find Supplier and Approve
+                                    // 3. New Item, Out of Stock, or Category not in Active Suppliers: show Find Supplier
+                                    const showFindSupplierBtn = isPossible || isNewItem || isOutOfStock || isCategoryWithoutActiveSupplier || isOthersCategory;
+                                    const showApproveBtn = true; // Always show approve button
 
                                     return (
                                         <tr
@@ -775,7 +933,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors duration-150 ${selectedIds.has(req.id) ? 'bg-pink-50/30 dark:bg-pink-950/10' : ''}`}
                                         >
                                             {/* 0. Checkbox */}
-                                            <td className="w-10 px-3.5 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                            <td className="w-12 min-w-[48px] px-3.5 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                                                 <input
                                                     type="checkbox"
                                                     checked={selectedIds.has(req.id)}
@@ -786,24 +944,20 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 1. Request # */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
-                                                <span className="font-mono font-bold text-slate-900 dark:text-slate-100 bg-[#ebf0f7] dark:bg-[#12131b] px-2.5 py-1 rounded-lg border border-white/80 dark:border-white/[0.05] shadow-inner text-[11px]">
-                                                    {req.request_number || `#${req.id.slice(0, 8)}`}
-                                                </span>
-                                            </td>
-
-                                            {/* 2. Source */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
-                                                <StatusBadge
-                                                    tone="neutral"
-                                                    size="xs"
+                                            <td className="px-4 py-3.5 w-36 min-w-[130px] whitespace-nowrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedRequestForForm(req)}
+                                                    className="font-mono font-bold text-slate-900 dark:text-slate-100 bg-[#ebf0f7] dark:bg-[#12131b] px-2.5 py-1 rounded-lg border border-white/80 dark:border-white/[0.05] shadow-inner text-[11px] hover:border-pink-400 hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer text-left inline-flex items-center gap-1.5"
+                                                    title="Click to view purchase request document"
                                                 >
-                                                    {isInternal ? 'Internal' : 'External'}
-                                                </StatusBadge>
+                                                    <FileText className="w-3 h-3 text-pink-500 shrink-0" />
+                                                    <span>{req.request_number || `#${req.id.slice(0, 8)}`}</span>
+                                                </button>
                                             </td>
 
-                                            {/* 3. Date */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                                            {/* 2. Date */}
+                                            <td className="px-4 py-3.5 w-28 min-w-[110px] whitespace-nowrap text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                                                 {req.created_at ? (
                                                     new Date(req.created_at).toLocaleDateString(undefined, {
                                                         month: 'short',
@@ -815,16 +969,33 @@ export const RequestsTab = memo(function RequestsTab({
                                                 )}
                                             </td>
 
+                                            {/* 3. Priority */}
+                                            <td className="px-4 py-3.5 w-28 min-w-[100px] whitespace-nowrap">
+                                                <StatusBadge
+                                                    tone={
+                                                        priorityLower === 'critical'
+                                                            ? 'rose'
+                                                            : priorityLower === 'urgent' || priorityLower === 'high'
+                                                            ? 'amber'
+                                                            : 'neutral'
+                                                    }
+                                                    size="xs"
+                                                    dot
+                                                >
+                                                    {req.priority || 'Normal'}
+                                                </StatusBadge>
+                                            </td>
+
                                             {/* 4. Department */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-36 min-w-[140px] whitespace-nowrap">
                                                 <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
                                                     <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                                    <span>{req.department || 'General'}</span>
+                                                    <span className="truncate" title={req.department || 'General'}>{req.department || 'General'}</span>
                                                 </div>
                                             </td>
 
                                             {/* 5. Requester */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">
                                                 <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
                                                     <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                                                     <span className="truncate max-w-[140px]" title={(req as any).requester_name || (isInternal ? 'Internal Staff' : (req.requester_system || 'External System'))}>
@@ -834,49 +1005,161 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 6. Requested Item */}
-                                            <td className="px-4 py-3.5">
-                                                <span className="font-extrabold text-slate-900 dark:text-slate-100 block truncate max-w-[200px]" title={req.item_name}>
+                                            <td className="px-4 py-3.5 w-60 min-w-[220px]">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedRequestForStock(req)}
+                                                    className="font-extrabold text-slate-900 dark:text-slate-100 block break-words whitespace-normal leading-snug text-left hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer"
+                                                    title={`Click to check warehouse stock for ${req.item_name}`}
+                                                >
                                                     {req.item_name}
-                                                </span>
+                                                </button>
                                             </td>
 
                                             {/* 7. Quantity */}
-                                            <td className="px-4 py-3.5 text-center font-mono font-extrabold text-slate-900 dark:text-slate-100 text-sm whitespace-nowrap">
-                                                {requestedQty}
-                                            </td>
-
-                                            {/* 8. Stock Feasibility */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
-                                                {isOutOfStock ? (
-                                                    <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium inline-flex items-center gap-1.5">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
-                                                        Out of stock
-                                                    </span>
-                                                ) : !isStockFeasible ? (
-                                                    <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium inline-flex items-center gap-1.5">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
-                                                        Insufficient ({availableStock})
-                                                    </span>
+                                            <td className="px-4 py-3.5 w-24 min-w-[90px] text-center whitespace-nowrap">
+                                                {isReceived && isPartialHandover ? (
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="font-mono font-extrabold text-sm whitespace-nowrap" title={`${issuedQty} of ${requestedQty} given`}>
+                                                            <span className="text-amber-600 dark:text-amber-400">{issuedQty}</span>
+                                                            <span className="text-slate-400 dark:text-slate-500 font-normal"> / {requestedQty}</span>
+                                                        </span>
+                                                        <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap mt-0.5">
+                                                            {issuedQty} given ({deficitQty} deficit)
+                                                        </span>
+                                                    </div>
+                                                ) : isPartiallyApproved ? (
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="font-mono font-extrabold text-sm whitespace-nowrap" title={`${approvedQty} of ${requestedQty} in warehouse`}>
+                                                            <span className="text-amber-600 dark:text-amber-400">{approvedQty}</span>
+                                                            <span className="text-slate-400 dark:text-slate-500 font-normal"> / {requestedQty}</span>
+                                                        </span>
+                                                        <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap mt-0.5">
+                                                            {remainingQty} to procurement
+                                                        </span>
+                                                    </div>
                                                 ) : (
-                                                    <span className="text-slate-600 dark:text-slate-300 text-[11px] font-medium inline-flex items-center gap-1.5">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                                                        Ready ({availableStock})
-                                                    </span>
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="font-mono font-extrabold text-slate-900 dark:text-slate-100 text-sm whitespace-nowrap">
+                                                            {requestedQty} <span className="text-xs font-normal text-slate-500 dark:text-slate-400 font-sans">{req.unit || (req.items && req.items[0]?.unit) || 'units'}</span>
+                                                        </span>
+                                                        {isRoutedToProcurement && (
+                                                            <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap mt-0.5">
+                                                                in procurement
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </td>
 
-                                            {/* 9. Status Badge */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
-                                                <StatusBadge
-                                                    tone={
-                                                        isApproved ? 'pink' : isReceived ? 'emerald' : isRejected ? 'rose' : 'amber'
-                                                    }
-                                                    dot
-                                                    size="xs"
+                                            {/* 8. Stock Feasibility */}
+                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedRequestForStock(req)}
+                                                    className="cursor-pointer hover:opacity-80 transition-opacity"
+                                                    title="Click to view detailed item stock comparison"
                                                 >
-                                                    {isApproved ? 'Approved (Exporting)' : isReceived ? 'Received / Fulfilled' : isRejected ? 'Rejected' : 'Pending Review'}
-                                                </StatusBadge>
-                                                {isRejected && req.rejection_reason && (
+                                                    {matchEval.matchType === 'partial' ? (
+                                                        <span className="text-amber-600 dark:text-amber-400 text-xs font-bold inline-flex items-center gap-1.5">
+                                                            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                                            Possible ({matchEval.candidates.length})
+                                                        </span>
+                                                    ) : matchEval.matchType === 'none' ? (
+                                                        <span className="text-blue-600 dark:text-blue-400 text-xs font-bold inline-flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                                                            New Item
+                                                        </span>
+                                                    ) : isOutOfStock ? (
+                                                        <span className="text-rose-600 dark:text-rose-400 text-xs font-bold inline-flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                                            Out of stock (0)
+                                                        </span>
+                                                    ) : !isStockFeasible ? (
+                                                        <span className="text-amber-600 dark:text-amber-400 text-xs font-bold inline-flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                                                            Low Stock ({availableStock})
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold inline-flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                                            Available ({availableStock})
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            </td>
+
+                                            {/* 9. Status Badge */}
+                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">
+                                                {isRowLoading ? (
+                                                    <StatusBadge tone="amber" dot size="xs">
+                                                        <span className="inline-flex items-center gap-1.5 font-bold">
+                                                            <Loader2 className="w-3 h-3 animate-spin text-amber-500 inline" />
+                                                            {actionLoadingId === 'bulk-reject' ? 'Rejecting...' : 'Approving...'}
+                                                        </span>
+                                                    </StatusBadge>
+                                                ) : (
+                                                    <StatusBadge
+                                                        tone={
+                                                            isReceived
+                                                                ? isPartialHandover ? 'amber' : 'emerald'
+                                                                : isPartiallyReviewed
+                                                                ? 'amber'
+                                                                : isPartiallyApproved 
+                                                                ? 'amber' 
+                                                                : isApproved 
+                                                                ? 'emerald' 
+                                                                : isRejected 
+                                                                ? 'rose' 
+                                                                : 'amber'
+                                                        }
+                                                        dot
+                                                        size="xs"
+                                                    >
+                                                        {isReceived
+                                                            ? isPartialHandover
+                                                                ? `Partially Released (${issuedQty}/${requestedQty})`
+                                                                : 'Supplies Released'
+                                                            : isPartiallyReviewed
+                                                            ? `Partially Reviewed (${approvedItemsCount}/${reqItems.length})`
+                                                            : isPartiallyApproved
+                                                            ? `Partially Approved (${approvedQty}/${requestedQty})`
+                                                            : isApproved
+                                                            ? 'Approved'
+                                                            : isRejected
+                                                            ? 'Rejected'
+                                                            : 'Pending'}
+                                                    </StatusBadge>
+                                                )}
+                                                {isReceived && !isRowLoading && (
+                                                    isPartialHandover ? (
+                                                        <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-1 truncate max-w-[140px] flex items-center gap-1" title={`${issuedQty} of ${requestedQty} given, Deficit: ${deficitQty}`}>
+                                                            <AlertTriangle className="w-2.5 h-2.5 text-amber-500 inline shrink-0" />
+                                                            <span>{issuedQty}/{requestedQty} Given ({deficitQty} Deficit)</span>
+                                                        </p>
+                                                    ) : (
+                                                        <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-1 truncate max-w-[140px] flex items-center gap-1">
+                                                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 inline shrink-0" />
+                                                            <span>Handover Fulfilled</span>
+                                                        </p>
+                                                    )
+                                                )}
+                                                {isPartiallyReviewed && !isReceived && !isRowLoading && (
+                                                    <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400 mt-1 truncate max-w-[140px]" title={`${approvedItemsCount} approved, ${rejectedItemsCount} rejected, ${pendingItemsCount} pending`}>
+                                                        {approvedItemsCount} approved • {pendingItemsCount} pending
+                                                    </p>
+                                                )}
+                                                {isPartiallyApproved && !isReceived && !isPartiallyReviewed && !isRowLoading && (
+                                                    <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400 mt-1 truncate max-w-[140px]" title={`${approvedQty} in warehouse • ${remainingQty} in procurement`}>
+                                                        {approvedQty} warehousing • {remainingQty} procurement
+                                                    </p>
+                                                )}
+                                                {isApproved && !isReceived && !isPartiallyApproved && !isPartiallyReviewed && !isRowLoading && (
+                                                    <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[140px]">
+                                                        {isRoutedToProcurement ? 'Routed to Procurement' : 'Routed to Warehousing'}
+                                                    </p>
+                                                )}
+                                                {isRejected && !isReceived && !isPartiallyReviewed && req.rejection_reason && !isRowLoading && (
                                                     <p className="text-[10px] text-rose-500 dark:text-rose-400 mt-1 truncate max-w-[130px]" title={req.rejection_reason}>
                                                         {req.rejection_reason}
                                                     </p>
@@ -884,74 +1167,68 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 10. Actions */}
-                                            <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-40 min-w-[150px] text-right whitespace-nowrap">
                                                 <div className="flex items-center justify-end gap-1.5">
-                                                    {isPending && (
-                                                        canManageRequests ? (
-                                                            <>
-                                                                <CrudActionButton
-                                                                    action="approve"
-                                                                    variant="neutral"
-                                                                    onClick={() => handleApprove(req)}
-                                                                    disabled={actionLoadingId === req.id}
-                                                                    ariaLabel={`Approve request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
-                                                                    title="Approve request and allocate stock for export"
-                                                                />
+                                                    {/* View Request Form / Review */}
+                                                    <CrudActionButton
+                                                        action="custom"
+                                                        label="Review Request"
+                                                        icon={FileText}
+                                                        variant="neutral"
+                                                        onClick={() => setSelectedRequestForForm(req)}
+                                                        ariaLabel={`Review request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
+                                                        title="Open purchase request document and check items"
+                                                    />
 
-                                                                <CrudActionButton
-                                                                    action="reject"
-                                                                    variant="pink"
-                                                                    onClick={() => setRejectingRequest(req)}
-                                                                    disabled={actionLoadingId === req.id}
-                                                                    ariaLabel={`Reject request #${req.request_number || req.id.slice(0, 8)}`}
-                                                                    title="Decline request"
-                                                                />
-                                                            </>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleNotifyAdminExecutive(req)}
-                                                                disabled={actionLoadingId === `notify-${req.id}`}
-                                                                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 border active:scale-95 transition-all cursor-pointer ${
-                                                                    notifiedRequestIds.has(req.id)
-                                                                        ? 'bg-amber-500/15 dark:bg-amber-500/25 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 shadow-xs'
-                                                                        : 'bg-[#ebf0f7] dark:bg-[#14151e] border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.8)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-slate-600 dark:text-slate-400 hover:text-amber-600 hover:border-amber-300 dark:hover:border-amber-700'
-                                                                }`}
-                                                                aria-label={notifiedRequestIds.has(req.id) ? `Send follow-up to Admin and Executive about request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}` : `Notify Admin and Executive about request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
-                                                                title={notifiedRequestIds.has(req.id) ? "Already notified. Click to send a follow-up reminder to Admin & Executive." : "Notify Admin & Executive to review and take action on this request"}
-                                                            >
-                                                                {actionLoadingId === `notify-${req.id}` ? (
-                                                                    <i className="fas fa-spinner fa-spin text-[10px]" />
-                                                                ) : notifiedRequestIds.has(req.id) ? (
-                                                                    <RotateCw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                                                                ) : (
-                                                                    <Bell className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                                                                )}
-                                                                <span>{notifiedRequestIds.has(req.id) ? 'Follow Up' : 'Notify Admin'}</span>
-                                                            </button>
-                                                        )
+                                                    {/* Check Item Stock */}
+                                                    <CrudActionButton
+                                                        action="custom"
+                                                        label="Check Item"
+                                                        icon={Boxes}
+                                                        variant="neutral"
+                                                        onClick={() => setSelectedRequestForStock(req)}
+                                                        ariaLabel={`Check item stock for #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
+                                                        title="Inspect matching warehouse stock for requested items"
+                                                    />
+
+                                                    {isPending && !isRowLoading && (
+                                                        <>
+                                                            <CrudActionButton
+                                                                action="approve"
+                                                                variant="neutral"
+                                                                onClick={() => handleApprove(req)}
+                                                                disabled={Boolean(actionLoadingId)}
+                                                                loading={actionLoadingId === req.id}
+                                                                ariaLabel={`Approve & process request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
+                                                                title="Approve request and route to Warehousing / Procurement"
+                                                            />
+
+                                                            <CrudActionButton
+                                                                action="reject"
+                                                                variant="pink"
+                                                                onClick={() => setRejectingRequest(req)}
+                                                                disabled={Boolean(actionLoadingId)}
+                                                                ariaLabel={`Reject request #${req.request_number || req.id.slice(0, 8)}`}
+                                                                title="Decline request"
+                                                            />
+                                                        </>
                                                     )}
 
-                                                    {isApproved && (
-                                                        isInternal ? (
-                                                            <CrudActionButton
-                                                                action="custom"
-                                                                label="Stock Out"
-                                                                icon={ArrowUpRight}
-                                                                variant="pink"
-                                                                onClick={() => onOpenReleaseModal(req)}
-                                                                ariaLabel={`Stock Out ${requestedQty} units`}
-                                                                title={`Release and Stock Out up to ${requestedQty} units`}
-                                                            />
-                                                        ) : (
-                                                            <span 
-                                                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-[#ebf0f7] dark:bg-[#12131b] px-2.5 py-1 rounded-xl border border-white/80 dark:border-white/[0.06] shadow-inner"
-                                                                title="Stock is committed for export. Waiting for external system confirmation."
-                                                            >
-                                                                <PackageCheck className="w-3.5 h-3.5 text-slate-400" />
-                                                                <span>Awaiting Receipt</span>
-                                                            </span>
-                                                        )
+                                                    {isRowLoading && (
+                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/20 shadow-inner">
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
+                                                            <span>Processing...</span>
+                                                        </span>
+                                                    )}
+
+                                                    {isApproved && !isRowLoading && (
+                                                        <span 
+                                                            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20 shadow-inner"
+                                                            title={isRoutedToProcurement ? "Approved and routed to Procurement Stage 1" : "Approved and routed to Warehousing"}
+                                                        >
+                                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                            <span>Approved</span>
+                                                        </span>
                                                     )}
 
                                                     {isReceived && (
@@ -961,32 +1238,9 @@ export const RequestsTab = memo(function RequestsTab({
                                                     )}
 
                                                     {isRejected && (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-                                                                <XCircle className="w-3.5 h-3.5 text-slate-400" /> Declined
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleNotifyAdminExecutive(req)}
-                                                                disabled={actionLoadingId === `notify-${req.id}`}
-                                                                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 border active:scale-95 transition-all cursor-pointer ${
-                                                                    notifiedRequestIds.has(req.id)
-                                                                        ? 'bg-amber-500/15 dark:bg-amber-500/25 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 shadow-xs'
-                                                                        : 'bg-[#ebf0f7] dark:bg-[#14151e] border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.8)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-slate-600 dark:text-slate-400 hover:text-amber-600 hover:border-amber-300 dark:hover:border-amber-700'
-                                                                }`}
-                                                                aria-label={notifiedRequestIds.has(req.id) ? `Send follow-up to Admin and Executive about rejected request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}` : `Notify Admin and Executive about rejected request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
-                                                                title={notifiedRequestIds.has(req.id) ? "Already notified. Click to send a follow-up reminder to Admin & Executive." : "Notify Admin & Executive about this rejected request"}
-                                                            >
-                                                                {actionLoadingId === `notify-${req.id}` ? (
-                                                                    <i className="fas fa-spinner fa-spin text-[10px]" />
-                                                                ) : notifiedRequestIds.has(req.id) ? (
-                                                                    <RotateCw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                                                                ) : (
-                                                                    <Bell className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                                                                )}
-                                                                <span>{notifiedRequestIds.has(req.id) ? 'Follow Up' : 'Notify Admin'}</span>
-                                                            </button>
-                                                        </div>
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+                                                            <XCircle className="w-3.5 h-3.5 text-slate-400" /> Declined
+                                                        </span>
                                                     )}
                                                 </div>
                                             </td>
@@ -1142,6 +1396,49 @@ export const RequestsTab = memo(function RequestsTab({
                     </div>
                 </Portal>
             )}
+
+            {/* Unified Side-by-Side Purchase Request & Live Inventory Stock Modal */}
+            <PurchaseRequestFormModal
+                isOpen={Boolean(activeSelectedRequest)}
+                onClose={() => {
+                    setSelectedRequestForForm(null);
+                    setSelectedRequestForStock(null);
+                }}
+                request={activeSelectedRequest}
+                inventoryItems={inventoryItems}
+                suppliers={suppliers}
+                canManageRequests={canManageRequests}
+                userRole={currentRole}
+                isBidAwarded={isSelectedRequestBidAwarded}
+                onSuccess={(updatedRecord) => {
+                    onRefresh();
+                    if (updatedRecord && Array.isArray(updatedRecord.items)) {
+                        const hasPending = updatedRecord.items.some((it: any) => (!it.status || it.status === 'Pending') && !it.is_approved && !it.is_approve);
+                        if (hasPending) {
+                            setSelectedRequestForForm(updatedRecord);
+                            return;
+                        }
+                    }
+                    setSelectedRequestForForm(null);
+                    setSelectedRequestForStock(null);
+                }}
+                onOpenSupplierModal={(req) => {
+                    setSelectedRequestForForm(null);
+                    setSelectedRequestForStock(null);
+                    setSelectedRequestForSupplierModal(req);
+                }}
+                onOpenMessageSupplier={(supplier) => {
+                    setSelectedSupplierForMessage(supplier);
+                }}
+            />
+
+
+            {/* Modal 4: Direct Supplier Messaging & Live Chat */}
+            <SupplierMessageModal
+                isOpen={Boolean(selectedSupplierForMessage)}
+                onClose={() => setSelectedSupplierForMessage(null)}
+                supplier={selectedSupplierForMessage}
+            />
         </div>
     );
 });

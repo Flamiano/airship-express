@@ -13,7 +13,6 @@ export default function HRAdminLogin() {
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [remember, setRemember] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
@@ -151,16 +150,6 @@ export default function HRAdminLogin() {
                                 {error}
                             </div>
                         )}
-
-                        <label className="flex items-center gap-2 mt-1 cursor-pointer select-none">
-                            <input
-                                type="checkbox"
-                                checked={remember}
-                                onChange={(e) => setRemember(e.target.checked)}
-                                className="h-4 w-4 rounded border-[#EAEAEA] text-[#E5167E] focus:ring-[#E5167E]/30 accent-[#E5167E]"
-                            />
-                            <span className="text-xs text-[#6B6B76]">Keep me signed in on this device</span>
-                        </label>
 
                         <button
                             type="submit"

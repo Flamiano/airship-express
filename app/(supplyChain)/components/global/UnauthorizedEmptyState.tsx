@@ -7,7 +7,7 @@ import { user } from '../../lib/services/Class/user';
 export const isPrivilegedRole = (role?: string | null): boolean => {
     if (!role) return false;
     const normalized = role.trim().toLowerCase();
-    return normalized === 'admin' || normalized === 'manager' || normalized === 'executive';
+    return normalized === 'admin' || normalized === 'purchase officer' || normalized === 'executive' || normalized === 'operator';
 };
 
 export function useUserRole() {
@@ -82,7 +82,7 @@ export default function UnauthorizedEmptyState({
     title = "Access Forbidden",
     description = "You do not have the required permissions to view this content. This section is restricted to authorized personnel only.",
     currentRole,
-    requiredRoles = ["Admin", "Manager", "Executive"],
+    requiredRoles = ["Admin", "Purchase Officer", "Executive"],
     className = "",
     statusCode = 403,
     statusText = "Forbidden",

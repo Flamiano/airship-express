@@ -87,96 +87,96 @@ export const SYSTEM_MODULES: ModuleAccessRule[] = [
         label: 'Executive Overview & KPIs',
         description: 'Executive KPIs, business intelligence, executive financial summaries, macro metrics, leadership overview',
         keywords: ['executive', 'executive overview', 'kpi', 'kpis', 'macro metric', 'financial summary', 'executive analytics', 'executive metrics', 'leadership report'],
-        actions: [],
-        knowledgeFiles: ['executive-overview.md'],
+        actions: ['get_inventory_summary', 'get_purchase_orders_summary', 'get_damage_and_returns_summary', 'get_user_activity_summary'],
+        knowledgeFiles: ['executive-overview.md', 'database-schema.md'],
     },
     {
         route: '/procurement',
         label: 'Procurement',
-        description: 'Purchase requests, requisitions, supplier requisitions, procurement budgeting, RFQs',
-        keywords: ['procurement', 'purchase request', 'purchase requests', 'requisition', 'requisitions', 'rfq', 'procurement budget'],
-        actions: [],
-        knowledgeFiles: ['procurement.md'],
+        description: 'Purchase requests, requisitions, supplier requisitions, procurement budgeting, RFQs, vendor bidding',
+        keywords: ['procurement', 'purchase request', 'purchase requests', 'requisition', 'requisitions', 'rfq', 'procurement budget', 'quotation', 'vendor bid'],
+        actions: ['get_pending_purchase_requests', 'get_supplier_quotations', 'get_supplier_meetings', 'get_quotations_and_meetings_summary'],
+        knowledgeFiles: ['procurement.md', 'database-schema.md'],
     },
     {
         route: '/suppliers',
         label: 'Suppliers',
-        description: 'Vendor directory, partner ratings, supplier agreements, vendor profiles',
-        keywords: ['supplier', 'suppliers', 'vendor', 'vendors', 'contractor', 'partner', 'supply agreement'],
-        actions: ['get_suppliers', 'get_suppliers_summary'],
-        knowledgeFiles: ['procurement.md'],
+        description: 'Vendor directory, partner ratings, supplier agreements, vendor profiles, meetings, and portal accounts',
+        keywords: ['supplier', 'suppliers', 'vendor', 'vendors', 'contractor', 'partner', 'supply agreement', 'vendor meeting', 'supplier portal'],
+        actions: ['get_suppliers', 'get_suppliers_summary', 'get_supplier_quotations', 'get_supplier_meetings', 'get_quotations_and_meetings_summary'],
+        knowledgeFiles: ['procurement.md', 'database-schema.md'],
     },
     {
         route: '/purchase-orders',
         label: 'Purchase Orders',
-        description: 'Purchase orders, order fulfillment, invoicing, purchase authorization, PO costs, PO spend',
-        keywords: ['purchase order', 'purchase orders', 'po', 'pos', 'po spend', 'create purchase order', 'create po', 'generate po', 'pending purchase request', 'unfulfilled request'],
-        actions: ['get_purchase_orders', 'get_purchase_orders_summary', 'get_pending_purchase_requests'],
-        knowledgeFiles: ['procurement.md'],
+        description: 'Purchase orders, order fulfillment, receipt OCR verification, purchase authorization, PO costs, PO spend, supplier return claims',
+        keywords: ['purchase order', 'purchase orders', 'po', 'pos', 'po spend', 'create purchase order', 'create po', 'generate po', 'pending purchase request', 'unfulfilled request', 'ocr receipt', 'receipt matching', 'document verification'],
+        actions: ['get_purchase_orders', 'get_purchase_orders_summary', 'get_pending_purchase_requests', 'get_document_verifications', 'get_document_verifications_summary', 'get_supplier_returns'],
+        knowledgeFiles: ['procurement.md', 'defects-and-returns.md', 'database-schema.md'],
     },
     {
         route: '/warehousing',
         label: 'Warehousing Operations',
-        description: 'Facility management, bays, racks, storage layouts, receiving queue, sorting, outgoing dispatch, dwell times',
-        keywords: ['warehousing', 'warehouse', 'receiving', 'receiving queue', 'sorting', 'dispatch', 'bays', 'racks', 'dwell time'],
-        actions: ['get_receiving_queue', 'get_receiving_queue_summary'],
-        knowledgeFiles: ['warehousing.md', 'operations.md'],
+        description: 'Facility management, bays, racks, storage layouts, sorting, outgoing dispatch, damaged goods, defective supplies, receiving and issue requests',
+        keywords: ['warehousing', 'warehouse', 'sorting', 'dispatch', 'bays', 'racks', 'dwell time', 'damaged supplies', 'missing supplies', 'damage incident', 'defect report', 'quarantine stock', 'receive supplies', 'issue requests'],
+        actions: ['get_damage_incidents', 'get_supplier_returns', 'get_damage_and_returns_summary', 'get_stock_movements', 'get_stock_movements_summary'],
+        knowledgeFiles: ['warehousing.md', 'operations.md', 'defects-and-returns.md', 'database-schema.md'],
     },
     {
         route: '/inventory',
-        label: 'Parcel & Stock Inventory',
-        description: 'Parcel tracking, couriers, item classifications, stock counts, low stock items, out of stock alerts',
-        keywords: ['inventory', 'parcel', 'parcels', 'shipment', 'shipments', 'stock', 'stock level', 'low stock', 'out of stock', 'courier', 'item count'],
-        actions: ['get_parcels', 'get_parcel_stats', 'get_today_parcels', 'get_low_stock', 'get_low_stock_items', 'get_out_of_stock_items', 'get_inventory', 'get_inventory_summary', 'get_inventory_items'],
-        knowledgeFiles: ['inventory.md'],
+        label: 'Warehouse Inventory',
+        description: 'Item classifications, stock levels, low stock items, out of stock alerts, storage locations, stock movements, and stock in logs',
+        keywords: ['inventory', 'stock', 'stock level', 'low stock', 'out of stock', 'item count', 'storage', 'stock movement', 'stock movements', 'stock in', 'stock out', 'adjustment'],
+        actions: ['get_low_stock', 'get_low_stock_items', 'get_out_of_stock_items', 'get_inventory', 'get_inventory_summary', 'get_inventory_items', 'get_stock_movements', 'get_stock_movements_summary'],
+        knowledgeFiles: ['inventory.md', 'database-schema.md'],
     },
     {
         route: '/documents',
         label: 'Documents',
-        description: 'Compliance files, shipping docs, records archive, uploaded files',
-        keywords: ['document', 'documents', 'receipt', 'compliance file', 'shipping doc', 'document tracking'],
-        actions: [],
-        knowledgeFiles: ['document-tracking.md'],
+        description: 'Compliance files, shipping docs, records archive, uploaded files, and OCR receipt verification audits',
+        keywords: ['document', 'documents', 'receipt', 'compliance file', 'shipping doc', 'document tracking', 'ocr verification'],
+        actions: ['get_document_verifications', 'get_document_verifications_summary'],
+        knowledgeFiles: ['document-tracking.md', 'database-schema.md'],
     },
     {
         route: '/forecast',
         label: 'Forecast',
         description: 'Demand forecasting and algorithmic predictive models',
         keywords: ['forecast', 'forecasting', 'predictive model', 'predictive demand', 'demand forecast'],
-        actions: [],
-        knowledgeFiles: [],
+        actions: ['get_inventory_summary', 'get_purchase_orders_summary'],
+        knowledgeFiles: ['database-schema.md'],
     },
     {
         route: '/gallery',
         label: 'Gallery',
-        description: 'Media archive, logistics photos, inspection snapshots',
-        keywords: ['gallery', 'logistics photo', 'inspection snapshot', 'media archive'],
-        actions: [],
+        description: 'Media archive, logistics photos, inspection snapshots, defect evidence photos',
+        keywords: ['gallery', 'logistics photo', 'inspection snapshot', 'media archive', 'evidence photo'],
+        actions: ['get_damage_incidents'],
         knowledgeFiles: ['gallery.md'],
     },
     {
         route: '/trash',
         label: 'Trash & Recycle Bin',
-        description: 'Deleted records recovery and permanent purge controls',
-        keywords: ['trash', 'recycle bin', 'deleted records', 'purge'],
+        description: 'Deleted records recovery and permanent purge controls for POs and documents',
+        keywords: ['trash', 'recycle bin', 'deleted records', 'purge', 'archived orders'],
         actions: [],
-        knowledgeFiles: ['archive-management.md'],
+        knowledgeFiles: ['archive-management.md', 'database-schema.md'],
     },
     {
         route: '/user-activity',
         label: 'User Activities & Security Audits',
-        description: 'Audit logs, active sessions, blocked device management, security controls',
-        keywords: ['user activity', 'user activities', 'audit log', 'audit logs', 'active sessions', 'blocked device', 'security log'],
-        actions: [],
-        knowledgeFiles: [],
+        description: 'Audit logs, active sessions, blocked device management, security controls, and reinstatement appeals',
+        keywords: ['user activity', 'user activities', 'audit log', 'audit logs', 'active sessions', 'blocked device', 'security log', 'appeal', 'appeals', 'access control'],
+        actions: ['get_user_activity_logs', 'get_user_activity_summary'],
+        knowledgeFiles: ['user-activity-and-security.md', 'database-schema.md'],
     },
     {
         route: '/settings',
         label: 'System Settings',
-        description: 'Inactivity timeouts, role access policies, system preferences',
-        keywords: ['settings', 'system settings', 'inactivity timeout', 'role access policy', 'role permissions'],
-        actions: [],
-        knowledgeFiles: [],
+        description: 'Inactivity timeouts, role access policies, system preferences, sc_system_settings',
+        keywords: ['settings', 'system settings', 'inactivity timeout', 'role access policy', 'role permissions', 'system configuration'],
+        actions: ['get_user_activity_summary'],
+        knowledgeFiles: ['user-activity-and-security.md', 'database-schema.md'],
     },
 ];
 
@@ -270,7 +270,12 @@ ${JSON.stringify(actionResults, null, 2)}
 **Interactive Actions Guidance:**
 - When 'get_pending_purchase_requests' is returned, provide an organized overview of the purchase requests awaiting purchase order creation (mentioning request numbers, supplier name, and items). The system UI will automatically render interactive selectable cards for Manager, Admin, and Executive users so they can select requests, create draft purchase orders, review them, and choose to send via Gmail.
 - When 'get_low_stock' or low stock/out-of-stock items are returned, provide a concise summary of the items requiring replenishment (highlighting out-of-stock vs low-stock). Inform the user that the system UI displays interactive reordering cards below where Admin, Executive, and Manager users can select all or specific items, customize reorder quantities, and generate Purchase Requests, which will automatically send notifications to Admin and Executive dashboards for review and approval.
-- Remind users that once generated, the purchase requests are saved as Pending and can be reviewed in the Procurement module.
+- When 'get_damage_and_returns_summary', 'get_damage_incidents', or 'get_supplier_returns' are returned, report the total estimated financial loss, open vs resolved incidents, defect types, and supplier return status (e.g. replacement vs credit note).
+- When 'get_stock_movements_summary' or 'get_stock_movements' are returned, provide a clear breakdown of recent Stock In, Stock Out, and Inventory Adjustments with department attributions and reference numbers.
+- When 'get_document_verifications_summary' or 'get_document_verifications' are returned, report receipt verification matching metrics (matched, mismatched, pending, or forced verifications).
+- When 'get_user_activity_summary' or 'get_user_activity_logs' are returned, summarize system audit events, active user sessions, blocked devices, and pending reinstatement appeals.
+- When 'get_supplier_quotations' or 'get_supplier_meetings' are returned, outline vendor proposals, unit pricing, lead times, and scheduled negotiation meetings.
+- Remind users that once generated, purchase requests are saved as Pending and can be reviewed in the Procurement module.
 
 `;
     }
@@ -385,11 +390,6 @@ function generateSuggestions(query: string, analysis: QueryAnalysis, hasData: bo
     const lower = query.toLowerCase();
     switch (analysis.type) {
         case 'data':
-            if (lower.includes('parcel') || lower.includes('shipment')) {
-                suggestions.push('Show me parcel trends over time');
-                suggestions.push('What\'s the best performing courier?');
-                suggestions.push('Compare parcel volumes by destination');
-            }
             if (lower.includes('stock') || lower.includes('inventory')) {
                 suggestions.push('Show me items that need reordering');
                 suggestions.push('What\'s the total inventory value?');
@@ -461,9 +461,8 @@ function handleSystemQuestion(query: string): string | null {
         'what can you help with',
     ];
     const dataPatterns = [
-        'parcel', 'parcels', 'shipment', 'shipments', 'delivery',
-        'stock', 'inventory', 'courier', 'performance',
-        'receiving', 'queue', 'history', 'historical',
+        'stock', 'inventory', 'performance',
+        'history', 'historical',
         'list', 'show me', 'give me', 'all the',
         'total', 'count', 'how many', 'status', 'current',
         'find', 'search', 'lookup', 'display',
@@ -489,11 +488,9 @@ function handleSystemQuestion(query: string): string | null {
 - Google Gemini AI
 
 **Key Features:**
-1. **Parcel Management** - Track, receive, sort, and dispatch parcels
-2. **Inventory Management** - Monitor stock levels, low stock alerts
-3. **Courier Performance** - Track on-time delivery and metrics
-4. **Warehouse Operations** - Manage daily processes and procedures
-5. **Procurement** - Supplier management and purchase orders
+1. **Inventory Management** - Monitor stock levels, low stock alerts
+2. **Warehouse Operations** - Manage daily processes and procedures
+3. **Procurement** - Supplier management and purchase orders
 
 **Available Tools:**
 ${actions.map(a => `- ${a}`).join('\n')}
@@ -539,9 +536,7 @@ export async function buildSystemPrompt(
             prompt: null,
             isRelated: false,
             response: "I'm a warehouse management assistant. I can only help with topics like:\n\n" +
-                "Parcel Management - Tracking, receiving, sorting, dispatch\n" +
                 "Inventory - Stock levels, low stock alerts\n" +
-                "Courier Performance - On-time delivery, metrics\n" +
                 "Warehouse Operations - Processes, procedures\n" +
                 "Procurement - Suppliers, purchase orders\n\n" +
                 "Please ask about these topics!",
@@ -658,7 +653,7 @@ export async function orchestrator(
                 actionResults: null,
                 knowledgeUsed: [],
                 thinking: `Moderation triggered (Strike ${moderation.strikeCount}/${moderation.maxStrikes}, LockedOut: ${moderation.isLockedOut})`,
-                suggestions: ['Ask about parcel tracking', 'Ask about inventory stock', 'Ask about procurement procedures'],
+                suggestions: ['Ask about inventory stock', 'Ask about procurement procedures'],
                 moderation: {
                     isViolation: true,
                     violationType: moderation.violationType,
@@ -731,7 +726,7 @@ Response:`;
                 actionResults: null,
                 knowledgeUsed: [],
                 thinking: 'Query out of scope',
-                suggestions: ['Try asking about parcels', 'Try asking about inventory'],
+                suggestions: ['Try asking about inventory', 'Try asking about suppliers'],
             };
         }
         if (result.response && !result.prompt) {

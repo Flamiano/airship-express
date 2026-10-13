@@ -196,7 +196,7 @@ export function PurchaseRequestModal({
     return (
         <Portal>
             <div className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6  dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] border border-white/90 dark:border-white/[0.08] animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-none border border-slate-200/80 dark:border-white/[0.08] animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-200/60 dark:border-white/[0.06]">
                     <div className="flex items-center gap-3">
                         <span className="w-10 h-10 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] text-pink-500 dark:text-pink-400 flex items-center justify-center shrink-0 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)]">

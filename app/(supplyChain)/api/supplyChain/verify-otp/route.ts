@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { createHash, randomBytes } from 'crypto';
-import { validateUserLoginAuthorization } from '../../../lib/services/userAccessService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
@@ -15,36 +14,39 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     },
 });
 
-function generateTemporaryToken(): string {
-    return randomBytes(16).toString('hex');
-}
-
 function hashOTP(otp: string): string {
     return createHash('sha256').update(otp).digest('hex');
 }
 
+const roleRedirects: Record<string, string> = {
+    'Superadmin': '/executive',
+    'Executive': '/executive',
+    'Admin': '/procurement',
+    'Purchase Officer': '/purchase-orders',
+    'Operator': '/warehousing',
+    'Supplier': '/suppliers_page/purchase-orders',
+};
+
 export async function POST(request: Request) {
     try {
+        const body = await request.json();
         const {
             userId,
             otp,
-            targetUserId,
-            rememberMe,
             email,
-            employeeName,
-            employeeRole
-        } = await request.json();
+        } = body;
 
-        if (!/^\d{6}$/.test(otp)) {
+        if (!otp || !/^\d{6}$/.test(otp)) {
             return NextResponse.json(
-                { message: 'OTP must be 6 digits' },
+                { message: 'OTP must be a 6-digit code' },
                 { status: 400 }
             );
         }
 
+        const normalizedEmail = (email || '').trim().toLowerCase();
         const hashedInputOTP = hashOTP(otp);
 
-        // get latest valid otp by user_id or email
+        // 1. Find the latest valid OTP code for this email or userId
         let otpQuery = supabaseAdmin
             .from('otp_codes')
             .select('*')
@@ -53,21 +55,18 @@ export async function POST(request: Request) {
             .order('created_at', { ascending: false })
             .limit(1);
 
-        const isValidUuid = (str?: string | null) => !!str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
-        const validUserId = isValidUuid(userId) ? userId : null;
-
-        if (email && validUserId) {
-            otpQuery = otpQuery.or(`user_id.eq.${validUserId},email.eq.${email}`);
-        } else if (email) {
-            otpQuery = otpQuery.eq('email', email);
-        } else if (validUserId) {
-            otpQuery = otpQuery.eq('user_id', validUserId);
+        if (normalizedEmail && userId) {
+            otpQuery = otpQuery.or(`user_id.eq.${userId},email.ilike.${normalizedEmail}`);
+        } else if (normalizedEmail) {
+            otpQuery = otpQuery.ilike('email', normalizedEmail);
+        } else if (userId) {
+            otpQuery = otpQuery.eq('user_id', userId);
         }
 
         const { data: otpRecords, error: otpError } = await otpQuery;
 
         if (otpError || !otpRecords || otpRecords.length === 0) {
-            // check if the specific inputted OTP was already used and verified
+            // Check if OTP was already used
             let usedQuery = supabaseAdmin
                 .from('otp_codes')
                 .select('*')
@@ -76,522 +75,170 @@ export async function POST(request: Request) {
                 .order('created_at', { ascending: false })
                 .limit(1);
 
-            if (email && validUserId) {
-                usedQuery = usedQuery.or(`user_id.eq.${validUserId},email.eq.${email}`);
-            } else if (email) {
-                usedQuery = usedQuery.eq('email', email);
-            } else if (validUserId) {
-                usedQuery = usedQuery.eq('user_id', validUserId);
+            if (normalizedEmail) {
+                usedQuery = usedQuery.ilike('email', normalizedEmail);
             }
 
             const { data: matchingUsed } = await usedQuery;
-
             if (matchingUsed && matchingUsed.length > 0) {
                 return NextResponse.json(
                     {
                         used: true,
-                        message: 'This OTP has already been used and verified. Please request a new code if needed.'
+                        message: 'This security code has already been used. Please request a new code if needed.'
                     },
                     { status: 400 }
                 );
-            }
-
-            // check if the specific inputted OTP was issued and is now expired
-            let expiredQuery = supabaseAdmin
-                .from('otp_codes')
-                .select('*')
-                .eq('code_hash', hashedInputOTP)
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (email && validUserId) {
-                expiredQuery = expiredQuery.or(`user_id.eq.${validUserId},email.eq.${email}`);
-            } else if (email) {
-                expiredQuery = expiredQuery.eq('email', email);
-            } else if (validUserId) {
-                expiredQuery = expiredQuery.eq('user_id', validUserId);
-            }
-
-            const { data: matchingExpired } = await expiredQuery;
-
-            if (matchingExpired && matchingExpired.length > 0) {
-                return NextResponse.json(
-                    {
-                        expired: true,
-                        message: 'The inputted OTP is already expired. Please click Resend Code for a new OTP.'
-                    },
-                    { status: 400 }
-                );
-            }
-
-            // check if any recent unused OTP is expired
-            let recentQuery = supabaseAdmin
-                .from('otp_codes')
-                .select('*')
-                .is('used_at', null)
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (email && validUserId) {
-                recentQuery = recentQuery.or(`user_id.eq.${validUserId},email.eq.${email}`);
-            } else if (email) {
-                recentQuery = recentQuery.or(`email.eq.${email}`);
-            } else if (validUserId) {
-                recentQuery = recentQuery.eq('user_id', validUserId);
-            }
-
-            const { data: recentRecords } = await recentQuery;
-
-            if (recentRecords && recentRecords.length > 0) {
-                const latest = recentRecords[0];
-                if (new Date(latest.expires_at) < new Date()) {
-                    return NextResponse.json(
-                        {
-                            expired: true,
-                            message: 'The inputted OTP is already expired (5-minute limit reached). Please click Resend Code.'
-                        },
-                        { status: 400 }
-                    );
-                }
             }
 
             return NextResponse.json(
-                { message: 'Invalid or expired OTP. Please request a new code.' },
+                { message: 'Invalid or expired security code. Please click Resend Code.' },
                 { status: 400 }
             );
         }
 
         const otpRecord = otpRecords[0];
 
-        if (otpRecord.attempts >= 5) {
+        if ((otpRecord.attempts || 0) >= 5) {
             return NextResponse.json(
-                { message: 'Too many failed attempts' },
+                { message: 'Too many failed attempts. Please request a new verification code.' },
                 { status: 400 }
             );
         }
 
-        const isValid = otpRecord.code_hash === hashedInputOTP;
-
-        if (!isValid) {
+        // Validate hash
+        if (otpRecord.code_hash !== hashedInputOTP) {
             await supabaseAdmin
                 .from('otp_codes')
                 .update({ attempts: (otpRecord.attempts || 0) + 1 })
                 .eq('id', otpRecord.id);
 
+            const remaining = 5 - ((otpRecord.attempts || 0) + 1);
             return NextResponse.json(
-                { message: 'Invalid OTP code' },
+                { message: `Invalid security code. (${remaining} attempt${remaining === 1 ? '' : 's'} remaining)` },
                 { status: 400 }
             );
         }
 
-        // mark otp as used
+        // Mark OTP as used
         await supabaseAdmin
             .from('otp_codes')
             .update({ used_at: new Date().toISOString() })
             .eq('id', otpRecord.id);
 
-        // check if user exists
-        const { data: existingUser } = await supabaseAdmin
-            .from('users')
-            .select('id, email, role, display_name, position, department')
-            .eq('email', email)
-            .maybeSingle();
+        // 2. Fetch authenticated user from users table
+        let userQuery = supabaseAdmin.from('users').select('*');
+        if (userId) {
+            userQuery = userQuery.eq('id', userId);
+        } else if (normalizedEmail) {
+            userQuery = userQuery.ilike('email', normalizedEmail);
+        }
 
-        // get hr data from mock_employees table for password check
-        const { data: hrData } = await supabaseAdmin
-            .from('mock_employees')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
+        const { data: existingUser, error: userFetchError } = await userQuery.maybeSingle();
 
-        // get client info
+        if (userFetchError || !existingUser) {
+            return NextResponse.json(
+                { message: 'User record not found in system directory.' },
+                { status: 404 }
+            );
+        }
+
         const ipAddress = request.headers.get('x-forwarded-for') ||
             request.headers.get('x-real-ip') ||
             'Unknown';
         const userAgent = request.headers.get('user-agent') || 'Unknown';
 
-        // determine session expiry (15 days when rememberMe is checked, 24 hours for standard sessions)
-        const expiresAt = rememberMe
-            ? new Date(Date.now() + 15 * 24 * 3600000).toISOString()
-            : new Date(Date.now() + 24 * 3600000).toISOString();
-
-        if (existingUser) {
-            // resolve and synchronize accurate role and position in users table
-            const userPosition = (hrData?.position || existingUser.position || '').trim();
-            let effectiveRole = existingUser.role;
-
-            let isSupplier = existingUser.role === 'Supplier' || employeeRole === 'Supplier';
-            if (!isSupplier && !hrData) {
-                const { data: supplierAcc } = await supabaseAdmin
-                    .from('suppliers_account')
-                    .select('id')
-                    .eq('email', email)
-                    .maybeSingle();
-                if (supplierAcc) {
-                    isSupplier = true;
-                }
-            }
-
-            if (isSupplier) {
-                effectiveRole = 'Supplier';
-            } else if (userPosition && effectiveRole !== 'Executive' && effectiveRole !== 'Supplier') {
-                const p = userPosition.toUpperCase().replace(/\s+/g, ' ');
-                if (
-                    p === 'ADMIN STAFF' ||
-                    p === 'ADMIN' ||
-                    p === 'ADMINISTRATOR' ||
-                    p === 'MARKETING/ADMIN STAFF' ||
-                    p === 'MARKETING / ADMIN STAFF' ||
-                    p === 'MKTG/ADMIN STAFF' ||
-                    p === 'MKTG / ADMIN STAFF' ||
-                    p.includes('ADMIN STAFF') ||
-                    p === 'ADMIN ASSISTANT' ||
-                    p.includes('ADMIN ASSISTANT')
-                ) {
-                    effectiveRole = 'Admin';
-                } else if (
-                    p === 'OFFICE-IN-CHARGE' ||
-                    p === 'OFFICE IN CHARGE' ||
-                    p === 'PROJECT COORDINATOR' ||
-                    p === 'MANAGER'
-                ) {
-                    effectiveRole = 'Manager';
-                } else if (p === 'APPRAISER' || p === 'OPERATOR') {
-                    effectiveRole = 'Operator';
-                } else {
-                    effectiveRole = 'Staff';
-                }
-            } else if (employeeRole && ['Admin', 'Executive', 'Manager', 'Operator', 'Staff', 'Employee'].includes(employeeRole)) {
-                effectiveRole = employeeRole === 'Employee' ? 'Staff' : employeeRole;
-            }
-
-            try {
-                await supabaseAdmin
-                    .from('users')
-                    .update({
-                        role: effectiveRole,
-                        position: userPosition || null,
-                        department: hrData?.department || existingUser.department || null,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', existingUser.id);
-                (existingUser as any).role = effectiveRole;
-                (existingUser as any).position = userPosition || null;
-            } catch (updateRoleErr) {
-                console.error('Error synchronizing user role and position:', updateRoleErr);
-            }
-
-            // Check login authorization & schedule access rules
-            const authCheck = await validateUserLoginAuthorization({
-                email,
-                userId: existingUser.id,
-                role: effectiveRole,
-            });
-
-            if (!authCheck.allowed) {
-                return NextResponse.json(
-                    {
-                        message: authCheck.reason || 'You are not allowed to log in at this time. Please request authorization from an administrator.',
-                        notAllowed: true,
-                        reason: authCheck.reason,
-                        user: {
-                            id: existingUser.id,
-                            email,
-                            role: effectiveRole,
-                            display_name: existingUser.display_name,
-                        },
-                    },
-                    { status: 403 }
-                );
-            }
-
-            // Tiered Concurrency Slot Rate Limiter
-            const { data: settingsRow } = await supabaseAdmin
-                .from('sc_system_settings')
-                .select('concurrency_slots')
-                .eq('id', 'default_settings')
-                .maybeSingle();
-
-            const slots = settingsRow?.concurrency_slots || {
-                executiveSlots: 10,
-                managerSlots: 20,
-                employeeSlots: 70,
-                supplierSlots: 10,
-            };
-
-            const executiveSlots = slots.executiveSlots ?? 10;
-            const managerSlots = slots.managerSlots ?? 20;
-            const employeeSlots = slots.employeeSlots ?? 70;
-            const supplierSlots = slots.supplierSlots ?? 10;
-            const totalCapacity = executiveSlots + managerSlots + employeeSlots + supplierSlots;
-
-            // Fetch active sessions via supabaseAdmin
-            const { data: activeSessions } = await supabaseAdmin
-                .from('sessions')
-                .select('id, user_id, is_active, in_queue')
-                .eq('is_active', true);
-
-            // Exclude current user's existing session if re-authenticating
-            const activeList = (activeSessions || []).filter(s => s.user_id !== existingUser.id);
-            const userIds = activeList.map(s => s.user_id).filter(Boolean);
-
-            const userRolesMap: Record<string, string> = {};
-            if (userIds.length > 0) {
-                const { data: usersData } = await supabaseAdmin
-                    .from('users')
-                    .select('id, role')
-                    .in('id', userIds);
-
-                (usersData || []).forEach(u => {
-                    userRolesMap[u.id] = (u.role || 'Employee').toLowerCase();
-                });
-            }
-
-            const totalActive = activeList.length;
-
-            let activeExecAdmin = 0;
-            let activeManager = 0;
-            let activeEmployee = 0;
-            let activeSupplier = 0;
-
-            activeList.forEach((s) => {
-                const r = userRolesMap[s.user_id] || 'employee';
-                if (r === 'executive' || r === 'admin') activeExecAdmin++;
-                else if (r === 'manager') activeManager++;
-                else if (r === 'supplier') activeSupplier++;
-                else activeEmployee++;
-            });
-
-            const normEffectiveRole = effectiveRole.toLowerCase();
-            let isAdmitted = false;
-            let tierName = 'Staff & Operator';
-            let tierSlots = employeeSlots;
-            let tierActive = activeEmployee;
-
-            if (normEffectiveRole === 'executive' || normEffectiveRole === 'admin') {
-                tierName = 'Executive/Admin';
-                tierSlots = executiveSlots;
-                tierActive = activeExecAdmin;
-                isAdmitted = activeExecAdmin < executiveSlots;
-            } else if (normEffectiveRole === 'manager') {
-                tierName = 'Manager';
-                tierSlots = managerSlots;
-                tierActive = activeManager;
-                isAdmitted = activeManager < managerSlots;
-            } else if (normEffectiveRole === 'supplier') {
-                tierName = 'Supplier';
-                tierSlots = supplierSlots;
-                tierActive = activeSupplier;
-                isAdmitted = activeSupplier < supplierSlots;
-            } else {
-                tierName = 'Staff & Operator';
-                tierSlots = employeeSlots;
-                tierActive = activeEmployee;
-                isAdmitted = activeEmployee < employeeSlots;
-            }
-
-            if (!isAdmitted) {
-                // Record queued presence in sessions table
-                await supabaseAdmin
-                    .from('sessions')
-                    .upsert({
-                        user_id: existingUser.id,
-                        session_token: randomBytes(32).toString('hex'),
-                        expires_at: expiresAt,
-                        expires_at_remember: expiresAt,
-                        email: email,
-                        hr_employee_name: existingUser.display_name,
-                        is_active: false,
-                        in_queue: true,
-                        remember_me: rememberMe || false,
-                        user_agent: userAgent,
-                        ip_address: ipAddress,
-                        updated_at: new Date().toISOString(),
-                    }, { onConflict: 'email' });
-
-                const { count: inQueueCount } = await supabaseAdmin
-                    .from('sessions')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('in_queue', true);
-
-                return NextResponse.json(
-                    {
-                        queued: true,
-                        position: inQueueCount || 1,
-                        activeUsers: totalActive,
-                        maxCapacity: totalCapacity,
-                        tierName,
-                        tierActive,
-                        tierSlots,
-                        message: `The ${tierName} tier (${tierActive}/${tierSlots} slots occupied) is currently at capacity. You have been placed in the waiting queue.`
-                    },
-                    { status: 429 }
-                );
-            }
-
-            const sessionToken = randomBytes(32).toString('hex');
-
-            // deactivate existing sessions
-            await supabaseAdmin
-                .from('sessions')
-                .update({
-                    is_active: false,
-                    in_queue: false,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', existingUser.id)
-                .eq('is_active', true);
-
-            const { data: existingSession } = await supabaseAdmin
-                .from('sessions')
-                .select('id')
-                .eq('email', email)
-                .maybeSingle();
-
-            if (existingSession) {
-                const { error: updateError } = await supabaseAdmin
-                    .from('sessions')
-                    .update({
-                        session_token: sessionToken,
-                        expires_at: expiresAt,
-                        expires_at_remember: expiresAt,
-                        ip_address: ipAddress,
-                        user_agent: userAgent,
-                        is_active: true,
-                        in_queue: false,
-                        remember_me: rememberMe || false,
-                        hr_employee_name: existingUser.display_name,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', existingSession.id);
-
-                if (updateError) {
-                    return NextResponse.json(
-                        { message: 'Failed to update session' },
-                        { status: 500 }
-                    );
-                }
-
-            } else {
-                const { error: insertError } = await supabaseAdmin
-                    .from('sessions')
-                    .insert({
-                        user_id: existingUser.id,
-                        session_token: sessionToken,
-                        expires_at: expiresAt,
-                        expires_at_remember: expiresAt,
-                        email: email,
-                        hr_employee_name: existingUser.display_name,
-                        is_active: true,
-                        in_queue: false,
-                        remember_me: rememberMe || false,
-                        user_agent: userAgent,
-                        ip_address: ipAddress,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                    });
-
-                if (insertError) {
-                    return NextResponse.json(
-                        { message: 'Failed to create session' },
-                        { status: 500 }
-                    );
-                }
-
-            }
-
-            const roleRedirects: Record<string, string> = {
-                'Admin': '/procurement',
-                'Manager': '/warehousing?tab=incoming',
-                'Staff': '/documents',
-                'Employee': '/documents',
-                'Operator': '/warehousing?tab=incoming',
-                'Executive': '/executive',
-                'Supplier': '/suppliers_page/purchase-orders',
-            };
-
-            return NextResponse.json({
-                verified: true,
-                userExists: true,
-                userId: existingUser.id,
-                session_token: sessionToken,
-                redirect_url: roleRedirects[existingUser.role] || '/suppliers_page/purchase-orders',
-                role: existingUser.role,
-                remember_me: rememberMe || false,
-                expires_at: expiresAt,
-                employee: {
-                    email: email,
-                    display_name: existingUser.display_name,
-                    role: existingUser.role
-                }
-            });
-        } else {
-            // Check if this is a Supplier account logging in
-            if (employeeRole === 'Supplier' || !hrData) {
-                const { data: supplierAcc } = await supabaseAdmin
-                    .from('suppliers_account')
-                    .select('*, suppliers(name)')
-                    .eq('email', email)
-                    .maybeSingle();
-
-                if (supplierAcc) {
-                    const tempToken = generateTemporaryToken();
-                    const companyName = supplierAcc.suppliers?.name || 'Supplier Company';
-                    const displayName = supplierAcc.contact_name || companyName;
-
-                    return NextResponse.json({
-                        verified: true,
-                        userExists: false,
-                        tempToken: tempToken,
-                        hrHasPassword: !!supplierAcc.password_hash,
-                        hrPassword: supplierAcc.password_hash || null,
-                        employee: {
-                            id: targetUserId || supplierAcc.id,
-                            email: email,
-                            display_name: displayName,
-                            role: 'Supplier',
-                            employee_id: `SUP-${supplierAcc.supplier_id || String(supplierAcc.id).slice(0, 5)}`,
-                            department: companyName,
-                            position: 'Authorized Supplier Representative',
-                        }
-                    });
-                }
-            }
-
-            // user doesn't exist - return temp token for password setup
-            const tempToken = generateTemporaryToken();
-
-            let effectiveRole = employeeRole || 'Staff';
-            if (hrData) {
-                const rawPos = (hrData.position || '').trim().toUpperCase().replace(/\s+/g, ' ');
-                const rawRole = (hrData.role || '').trim();
-                if (/admin/i.test(rawPos) || /admin/i.test(rawRole)) effectiveRole = 'Admin';
-                else if (/manager|office-in-charge|project coordinator/i.test(rawPos) || /manager/i.test(rawRole)) effectiveRole = 'Manager';
-                else if (/appraiser|operator/i.test(rawPos) || /operator/i.test(rawRole)) effectiveRole = 'Operator';
-                else if (rawRole) effectiveRole = rawRole === 'Employee' ? 'Staff' : rawRole;
-                else effectiveRole = 'Staff';
-            }
-
-            return NextResponse.json({
-                verified: true,
-                userExists: false,
-                tempToken: tempToken,
-                hrHasPassword: !!hrData?.password_hash,
-                hrPassword: hrData?.password_hash || null,
-                employee: {
-                    id: targetUserId,
-                    email: email,
-                    display_name: employeeName || 'User',
-                    role: effectiveRole,
-                    employee_id: hrData?.employee_id || null,
-                    department: hrData?.department || null,
-                    position: hrData?.position || null,
-                }
-            });
+        let effectiveRole = existingUser.role || 'Admin';
+        const normEffectiveRole = effectiveRole.toLowerCase().trim();
+        if (normEffectiveRole === 'superadmin' || normEffectiveRole === 'super_admin' || normEffectiveRole === 'executive') {
+            effectiveRole = 'Executive';
+        } else if (normEffectiveRole === 'supplier') {
+            effectiveRole = 'Supplier';
         }
+
+        // Only Supplier role is allowed to use Remember Me (15 days); all other roles are strictly disallowed (24h max)
+        const isSupplier = normEffectiveRole === 'supplier';
+        const isRememberAllowed = isSupplier && Boolean(body.rememberMe);
+
+        const sessionToken = randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 3600000).toISOString();
+        const expiresAtRemember = isRememberAllowed
+            ? new Date(Date.now() + 15 * 24 * 3600000).toISOString()
+            : expiresAt;
+
+        // Deactivate existing active sessions
+        await supabaseAdmin
+            .from('sessions')
+            .update({ is_active: false, in_queue: false, updated_at: new Date().toISOString() })
+            .eq('user_id', existingUser.id)
+            .eq('is_active', true);
+
+        // Upsert active session
+        const { error: sessionError } = await supabaseAdmin
+            .from('sessions')
+            .upsert({
+                user_id: existingUser.id,
+                session_token: sessionToken,
+                expires_at: expiresAt,
+                expires_at_remember: expiresAtRemember,
+                email: existingUser.email,
+                hr_employee_name: existingUser.display_name || existingUser.name || (isSupplier ? 'Supplier' : 'Admin User'),
+                is_active: true,
+                in_queue: false,
+                remember_me: isRememberAllowed,
+                user_agent: userAgent,
+                ip_address: ipAddress,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'email' });
+
+        if (sessionError) {
+            console.error('Session update error after OTP:', sessionError);
+            return NextResponse.json(
+                { message: 'Failed to establish session after OTP verification.' },
+                { status: 500 }
+            );
+        }
+
+        // Log OTP Login Success
+        await supabaseAdmin
+            .from('user_activity')
+            .insert({
+                user_id: existingUser.id,
+                action: 'MFA_LOGIN_SUCCESS',
+                module: 'Authentication',
+                description: `${effectiveRole} ${existingUser.email} logged in successfully via 2FA OTP verification.`,
+                ip_address: ipAddress,
+                user_agent: userAgent,
+            });
+
+        const redirectPath = roleRedirects[effectiveRole] || (effectiveRole === 'Executive' ? '/executive' : (effectiveRole === 'Supplier' ? '/suppliers_page/purchase-orders' : '/procurement'));
+
+        return NextResponse.json({
+            verified: true,
+            userExists: true,
+            userId: existingUser.id,
+            session_token: sessionToken,
+            redirect_url: redirectPath,
+            role: effectiveRole,
+            remember_me: isRememberAllowed,
+            expires_at: expiresAt,
+            user: {
+                id: existingUser.id,
+                email: existingUser.email,
+                display_name: existingUser.display_name || existingUser.name || (isSupplier ? 'Supplier' : 'User'),
+                role: effectiveRole,
+            },
+            employee: {
+                id: existingUser.id,
+                email: existingUser.email,
+                display_name: existingUser.display_name || existingUser.name || (isSupplier ? 'Supplier' : 'User'),
+                role: effectiveRole,
+            }
+        });
+
     } catch (error) {
+        console.error('Verify OTP error:', error);
         return NextResponse.json(
-            { message: 'Failed to verify OTP' },
+            { message: 'Failed to verify OTP. Please try again.' },
             { status: 500 }
         );
     }

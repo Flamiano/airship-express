@@ -1,2436 +1,1490 @@
+// app/(supplyChain)/(pages)/forecast/page.tsx
 "use client";
+
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Chart from "chart.js/auto";
 import { SessionGuard } from "../../components/server/SessionGuard";
 import Cards from "../../components/global/Cards";
 import { CardsSkeleton } from "../../components/ui/SkeletonLoader";
 import { AppButton } from "../../components/ui/AppButton";
-import { StatusBadge } from "../../components/ui/StatusBadge";
+import { StatusBadge, type BadgeTone } from "../../components/ui/StatusBadge";
 import { toast } from "sonner";
-import Portal from "../../components/client/Portal";
+import Link from "next/link";
 import ForecastExportModal from "./components/ForecastExportModal";
-import MonthlyIntelligencePanel from "./components/MonthlyIntelligencePanel";
+import ItemForecastModal from "./components/ItemForecastModal";
+import ItemHistoryModal from "./components/ItemHistoryModal";
+import ItemMovementSection, { type ItemMovementAnalyticsData } from "./components/ItemMovementSection";
+import ForecastAiSummaryPanel from "./components/ForecastAiSummaryPanel";
 
-interface ForecastData {
-    raw_db_stats: {
-        total_parcels_in_db: number;
-        total_pos_in_db: number;
-        total_paid_pos_in_db?: number;
-        total_blocked_devices_in_db?: number;
-        total_sessions_in_db?: number;
-        total_users_in_db?: number;
-        total_appeals_in_db?: number;
-        courier_breakdown: Record<string, number>;
-        status_breakdown: Record<string, number>;
-        positions_breakdown?: Record<string, number>;
-        roles_breakdown?: Record<string, number>;
+interface ForecastSummary {
+    total_items: number;
+    items_forecasted: number;
+    has_sufficient_data: boolean;
+    has_three_years_history?: boolean;
+    is_prediction_valid?: boolean;
+    history_span_days?: number;
+    required_history_days?: number;
+    earliest_record_date?: string | null;
+    total_predicted_demand: number;
+    primary_units_breakdown: Record<string, number>;
+    potential_shortages: number;
+    critical_count: number;
+    low_stock_count: number;
+    normal_count: number;
+    average_accuracy: number | null;
+    average_mae: number | null;
+    accuracy_label: string;
+    prediction_status?: string;
+    prediction_message?: string;
+}
+
+interface ForecastItem {
+    id: string | number;
+    item_code: string;
+    item_name: string;
+    category: string;
+    unit: string;
+    current_stock: number;
+    exporting_stock: number;
+    available_stock: number;
+    minimum_stock: number;
+    purchase_price: number;
+    supplier: string;
+
+    is_prediction_valid?: boolean;
+    prediction_message?: string;
+
+    total_consumed_period: number;
+    consumption_events_count: number;
+    average_daily_consumption: number;
+    zero_days_fraction: number;
+    demand_trend: "Increasing" | "Decreasing" | "Stable" | "Insufficient Data";
+    trend_percentage: number;
+
+    forecast_demand: number;
+    daily_predictions: number[];
+    prediction_dates: string[];
+    lower_bounds: number[];
+    upper_bounds: number[];
+    confidence: string;
+    model_used: string;
+
+    expected_incoming: number;
+    incoming_pos_details: {
+        po_number: string;
+        delivery_date: string;
+        quantity: number;
+    }[];
+
+    projected_stock: number;
+    risk_level: "Critical" | "Low Stock Risk" | "Normal";
+    recommended_action: string;
+    evaluation?: {
+        has_evaluation: boolean;
+        mae: number;
+        rmse: number;
+        wape: number;
+        accuracy_percentage: number;
+        actual_holdout_sum: number;
+        forecast_holdout_sum: number;
+        model_tested: string;
+    } | null;
+}
+
+interface ConsumptionAnalysis {
+    dates: string[];
+    daily_totals: number[];
+    weekly_labels: string[];
+    weekly_totals: number[];
+    monthly_labels: string[];
+    monthly_totals: number[];
+    department_breakdown: { department: string; count: number; total_quantity: number }[];
+    top_consumed_items: { item_code: string; item_name: string; unit: string; total_quantity: number; events: number }[];
+    increasing_items: { item_code: string; item_name: string; growth: number }[];
+    decreasing_items: { item_code: string; item_name: string; decline: number }[];
+    unmet_requests_summary: {
+        total_pending_qty: number;
+        pending_requests_count: number;
+        items_with_pending: number;
     };
-    parcel_7_day: {
-        predictions: number[];
-        confidence_interval: {
-            lower: number[];
-            upper: number[];
-        };
-        total_next_week: number;
-        confidence: string;
-        model_used?: string;
-        engine?: string;
-        explanation?: string;
-        dates: string[];
-        previous_week_evaluation?: {
-            has_evaluation: boolean;
-            date_range: string;
-            actual_volume: number;
-            predicted_volume: number;
-            met_percentage: number;
-            accuracy_percentage: number;
-            status: string;
-            status_tone: 'emerald' | 'pink' | 'amber' | 'neutral';
-            summary: string;
-        };
-        historical: {
-            dates: string[];
-            counts: number[];
-            display_dates?: string[];
-            display_counts?: number[];
-            aggregation_type?: string;
-            total_actual: number;
-        };
-        peak_insights?: {
-            busiestMonth: { month: string; count: number };
-            busiestDay: { day: string; count: number };
-            busiestHour: { timeRange: string; count: number };
-        };
-    };
-    expense_next_month: {
-        prediction: number;
-        confidence_interval: {
-            lower: number;
-            upper: number;
-        };
-        confidence: string;
-        model_used?: string;
-        engine?: string;
-        explanation?: string;
-        historical: {
-            months: string[];
-            amounts: number[];
-            total_actual: number;
-        };
-    };
-    blocked_devices_forecast: {
-        total_blocked: number;
-        active_blocked_count: number;
-        unblocked_count: number;
-        risk_level: 'Low' | 'Moderate' | 'Elevated' | 'Critical';
-        predictions: number[];
-        confidence_interval: {
-            lower: number[];
-            upper: number[];
-        };
-        total_next_week: number;
-        confidence: string;
-        model_used?: string;
-        engine?: string;
-        explanation?: string;
-        dates: string[];
-        historical: {
-            dates: string[];
-            counts: number[];
-            display_dates?: string[];
-            display_counts?: number[];
-            aggregation_type?: string;
-            total_actual: number;
-        };
-        reasons_breakdown?: Record<string, number>;
-        platform_breakdown?: { mobile: number; desktop: number; tablet: number; unknown: number };
-    };
-    active_users_forecast: {
-        current_active_users: number;
-        unique_active_users: number;
-        total_sessions: number;
-        busiest_hour?: { timeRange: string; count: number };
-        busiest_day?: { day: string; count: number };
-        capacity_utilization?: {
-            current_active: number;
-            max_capacity: number;
-            utilization_percentage: number;
-        };
-        predictions: number[];
-        confidence_interval: {
-            lower: number[];
-            upper: number[];
-        };
-        total_next_week: number;
-        avg_daily_projected: number;
-        confidence: string;
-        model_used?: string;
-        engine?: string;
-        explanation?: string;
-        dates: string[];
-        historical: {
-            dates: string[];
-            counts: number[];
-            display_dates?: string[];
-            display_counts?: number[];
-            aggregation_type?: string;
-            total_actual: number;
-        };
-        hourly_distribution?: Record<number, number>;
-    };
-    users_positions_analytics: {
-        total_users: number;
-        active_users_count: number;
-        positions_breakdown: Record<string, number>;
-        roles_breakdown: Record<string, number>;
-        departments_breakdown?: Record<string, number>;
-        predicted_next_month_users: number;
-        growth_rate_percentage: number;
-        confidence: string;
-        explanation?: string;
-        signup_history?: { months: string[]; counts: number[] };
-    };
-    appeals_forecast: {
-        total_appeals: number;
-        pending_count: number;
-        approved_count: number;
-        rejected_count: number;
-        resolution_rate: number;
-        role_breakdown?: Record<string, number>;
-        predictions: number[];
-        confidence_interval: {
-            lower: number[];
-            upper: number[];
-        };
-        total_next_week: number;
-        confidence: string;
-        model_used?: string;
-        engine?: string;
-        explanation?: string;
-        dates: string[];
-        historical: {
-            dates: string[];
-            counts: number[];
-            display_dates?: string[];
-            display_counts?: number[];
-            aggregation_type?: string;
-            total_actual: number;
-        };
-    };
+}
+
+interface ForecastApiResponse {
+    success: boolean;
     timestamp: string;
-}
-
-type ForecastModalType = 'parcels' | 'expense' | 'couriers' | 'active_users' | 'blocked_devices' | 'positions' | 'appeals';
-type ForecastDomainFilter = 'all' | 'logistics' | 'workforce' | 'security' | 'appeals' | 'procurement';
-
-interface ChartEmptyStateProps {
-    icon: string;
-    iconColor: string;
-    iconBg: string;
-    title: string;
-    description: string;
-    actionLabel?: string;
-    onAction?: () => void;
-}
-
-function ChartEmptyState({
-    icon,
-    iconColor,
-    iconBg,
-    title,
-    description,
-    actionLabel,
-    onAction,
-}: ChartEmptyStateProps) {
-    return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 rounded-2xl bg-[#ebf0f7]/85 dark:bg-[#14151c]/90 backdrop-blur-sm border border-slate-200/60 dark:border-slate-800/70 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.2)]">
-            <div className={`w-12 h-12 rounded-2xl ${iconBg} ${iconColor} flex items-center justify-center text-xl mb-2.5 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.4)] border border-white/40 dark:border-white/5`}>
-                <i className={icon} />
-            </div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
-                {title}
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mt-1 leading-relaxed">
-                {description}
-            </p>
-            {actionLabel && onAction && (
-                <button
-                    type="button"
-                    onClick={onAction}
-                    className="mt-3 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#f0f3f8] dark:bg-[#191a24] text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-800 shadow-[2px_2px_6px_rgba(166,175,195,0.35),-2px_-2px_6px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] hover:border-pink-500/40 transition cursor-pointer"
-                >
-                    {actionLabel}
-                </button>
-            )}
-        </div>
-    );
-}
-
-interface ParsedAiSection {
-    title?: string;
-    content: string;
-}
-
-function parseAiSummarySections(rawText: string | null): ParsedAiSection[] {
-    if (!rawText) return [];
-
-    const lines = rawText.split('\n');
-    const sections: ParsedAiSection[] = [];
-    let currentTitle = '';
-    let currentLines: string[] = [];
-
-    const isHeaderLine = (line: string) => {
-        const trimmed = line.trim();
-        if (!trimmed) return false;
-        const clean = trimmed.replace(/^\d+\.\s*/, '').replace(/:$/, '').trim();
-        return clean.length >= 3 && clean.length <= 80 && /^[A-Z\s&/–-]+$/.test(clean);
+    historical_period_days: number;
+    horizon_days: number;
+    summary: ForecastSummary;
+    chart_timeline: {
+        historical_dates: string[];
+        historical_demands: number[];
+        forecast_dates: string[];
+        forecast_demands: number[];
+        forecast_lower: number[];
+        forecast_upper: number[];
     };
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const trimmed = line.trim();
-
-        if (isHeaderLine(trimmed)) {
-            if (currentTitle || currentLines.length > 0) {
-                sections.push({
-                    title: currentTitle || undefined,
-                    content: currentLines.join('\n').trim(),
-                });
-            }
-            currentTitle = trimmed.replace(/^\d+\.\s*/, '').replace(/:$/, '').trim();
-            currentLines = [];
-        } else {
-            if (trimmed || currentLines.length > 0) {
-                currentLines.push(line);
-            }
-        }
-    }
-
-    if (currentTitle || currentLines.length > 0) {
-        sections.push({
-            title: currentTitle || undefined,
-            content: currentLines.join('\n').trim(),
-        });
-    }
-
-    // Fallback if no uppercase headers detected
-    if (sections.length === 0) {
-        return rawText.split('\n\n').filter(Boolean).map(chunk => ({
-            content: chunk.trim()
-        }));
-    }
-
-    return sections.filter(s => s.title || s.content);
+    items: ForecastItem[];
+    item_movement_analytics?: ItemMovementAnalyticsData;
+    consumption_analysis: ConsumptionAnalysis;
+    ai_insights: {
+        summary: string;
+        critical_shortages: string[];
+        trend_observations: string[];
+        procurement_actions: string[];
+        uncertainty_notes: string[];
+    };
+    persistence_info: {
+        is_persisted: boolean;
+        message: string;
+        required_schema?: string;
+    };
+    error?: string;
 }
 
-export default function Forecast() {
-    const [loading, setLoading] = useState(true);
-    const [retraining, setRetraining] = useState(false);
-    const [forecastData, setForecastData] = useState<ForecastData | null>(null);
-    const [activeDomain, setActiveDomain] = useState<ForecastDomainFilter>('all');
+interface SessionForecastRun {
+    id: string;
+    timestamp: string;
+    horizonDays: number;
+    periodDays: number;
+    itemsForecasted: number;
+    predictedDemand: number;
+    potentialShortages: number;
+    modelSummary: string;
+    accuracyLabel: string;
+}
 
-    // ai summary
-    const [aiSummary, setAiSummary] = useState<string | null>(null);
-    const [summarizing, setSummarizing] = useState(false);
-    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-    const [isAiMinimized, setIsAiMinimized] = useState(false);
+export default function ForecastPage() {
+    // 1. Controls State
+    const [periodDays, setPeriodDays] = useState<number>(30);
+    const [horizonDays, setHorizonDays] = useState<number>(7);
+    const [categoryFilter, setCategoryFilter] = useState<string>("all");
+    const [searchQuery, setSearchQuery] = useState<string>("");
+    const [riskFilter, setRiskFilter] = useState<string>("all");
 
-    // export modal state
-    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    // 2. Data State
+    const [forecastData, setForecastData] = useState<ForecastApiResponse | null>(null);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+    const [activeTab, setActiveTab] = useState<"dashboard" | "table" | "consumption" | "movement" | "history">("dashboard");
+    const [consumptionView, setConsumptionView] = useState<"daily" | "weekly" | "monthly">("daily");
+    const [selectedChartItem, setSelectedChartItem] = useState<string>("all");
+    const [customDateRange, setCustomDateRange] = useState<{ from: string; to: string } | null>(null);
 
-    // modal state
-    const [activeChartModal, setActiveChartModal] = useState<{
-        isOpen: boolean;
-        type: ForecastModalType;
-        title: string;
-        dataPointIndex?: number;
-    }>({
-        isOpen: false,
-        type: 'parcels',
-        title: '',
-    });
+    // 3. Modals State
+    const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+    const [detailModalItem, setDetailModalItem] = useState<ForecastItem | null>(null);
+    const [historyModalItem, setHistoryModalItem] = useState<ForecastItem | null>(null);
+    const [sessionHistory, setSessionHistory] = useState<SessionForecastRun[]>([]);
 
-    const parcelChartRef = useRef<HTMLCanvasElement>(null);
-    const expenseChartRef = useRef<HTMLCanvasElement>(null);
-    const courierPieRef = useRef<HTMLCanvasElement>(null);
-    const activeUsersChartRef = useRef<HTMLCanvasElement>(null);
-    const blockedDevicesChartRef = useRef<HTMLCanvasElement>(null);
-    const positionsChartRef = useRef<HTMLCanvasElement>(null);
-    const appealsChartRef = useRef<HTMLCanvasElement>(null);
+    // 4. Chart References
+    const demandChartRef = useRef<HTMLCanvasElement | null>(null);
+    const demandChartInstance = useRef<Chart | null>(null);
+    const consumptionChartRef = useRef<HTMLCanvasElement | null>(null);
+    const consumptionChartInstance = useRef<Chart | null>(null);
 
-    const parcelChartInstance = useRef<Chart | null>(null);
-    const expenseChartInstance = useRef<Chart | null>(null);
-    const courierPieInstance = useRef<Chart | null>(null);
-    const activeUsersChartInstance = useRef<Chart | null>(null);
-    const blockedDevicesChartInstance = useRef<Chart | null>(null);
-    const positionsChartInstance = useRef<Chart | null>(null);
-    const appealsChartInstance = useRef<Chart | null>(null);
+    // Fetch Forecast Data
+    const fetchForecast = useCallback(async (isManualRefresh = false) => {
+        if (isManualRefresh) setIsRefreshing(true);
+        else setLoading(true);
 
-    const generateAiSummary = async () => {
-        if (!forecastData) {
-            toast.error("Forecast data is still loading.");
-            return;
-        }
         try {
-            setSummarizing(true);
-            setIsAiModalOpen(true);
-            const res = await fetch("/forecast/api/summarize", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ forecastData })
+            const params = new URLSearchParams({
+                period: String(periodDays),
+                horizon: String(horizonDays),
+                category: categoryFilter,
+                search: searchQuery,
+                risk: riskFilter
             });
-            const data = await res.json();
-            if (data.success && data.summary) {
-                setAiSummary(data.summary);
-                setIsAiMinimized(false);
-            } else {
-                throw new Error(data.error || "Failed to generate AI summary");
-            }
-        } catch (err: any) {
-            console.error("AI Summary error:", err);
-            toast.error(err.message || "Failed to generate AI summary");
-        } finally {
-            setSummarizing(false);
-        }
-    };
 
-    const fetchForecast = useCallback(async (showNotification: boolean = false) => {
-        try {
-            if (showNotification) setRetraining(true);
-            const res = await fetch("/forecast/api", { cache: "no-store" });
-            const data = await res.json();
-            if (data.success) {
-                setForecastData(data);
-                if (showNotification) {
-                    toast.success("Forecast models synced with Supabase database!");
-                }
-            } else {
-                throw new Error(data.error || "Failed to load forecast data");
+            if (customDateRange?.from && customDateRange?.to) {
+                params.set("startDate", customDateRange.from);
+                params.set("endDate", customDateRange.to);
+            }
+
+            const res = await fetch(`/forecast/api?${params.toString()}`);
+            const data: ForecastApiResponse = await res.json();
+
+            if (!data.success) {
+                throw new Error(data.error || "Failed to fetch demand forecast");
+            }
+
+            setForecastData(data);
+
+            // Record in session history
+            const newRun: SessionForecastRun = {
+                id: `RUN-${Date.now().toString().slice(-6)}`,
+                timestamp: new Date().toLocaleTimeString(),
+                horizonDays: data.horizon_days,
+                periodDays: data.historical_period_days,
+                itemsForecasted: data.summary.items_forecasted,
+                predictedDemand: data.summary.total_predicted_demand,
+                potentialShortages: data.summary.potential_shortages,
+                modelSummary: data.summary.items_forecasted > 0 ? "Croston SBA / AutoTheta WASM" : "Zero-Demand Baseline",
+                accuracyLabel: data.summary.accuracy_label
+            };
+            setSessionHistory((prev) => [newRun, ...prev.slice(0, 9)]);
+
+            if (isManualRefresh) {
+                toast.success("Demand forecast refreshed with current inventory & movement logs!");
             }
         } catch (err: any) {
             console.error("Forecast fetch error:", err);
-            toast.error(err.message || "Failed to fetch forecasts");
+            toast.error(err?.message || "Error loading demand forecast data");
         } finally {
             setLoading(false);
-            setRetraining(false);
+            setIsRefreshing(false);
         }
-    }, []);
+    }, [periodDays, horizonDays, categoryFilter, searchQuery, riskFilter, customDateRange]);
 
     useEffect(() => {
-        fetchForecast();
+        fetchForecast(false);
     }, [fetchForecast]);
 
+    // Categories list dynamically derived from all items
+    const availableCategories = useMemo(() => {
+        if (!forecastData?.items) return [];
+        const cats = new Set<string>();
+        forecastData.items.forEach((i) => {
+            if (i.category) cats.add(i.category);
+        });
+        return Array.from(cats).sort();
+    }, [forecastData?.items]);
+
+    // Filtered items list for Table
+    const displayItems = useMemo(() => {
+        if (!forecastData?.items) return [];
+        let items = [...forecastData.items];
+
+        if (categoryFilter !== "all") {
+            items = items.filter((i) => i.category.toLowerCase() === categoryFilter.toLowerCase());
+        }
+
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            items = items.filter(
+                (i) => i.item_name.toLowerCase().includes(q) || i.item_code.toLowerCase().includes(q)
+            );
+        }
+
+        if (riskFilter !== "all") {
+            if (riskFilter === "critical") {
+                items = items.filter((i) => i.risk_level === "Critical");
+            } else if (riskFilter === "low_stock") {
+                items = items.filter((i) => i.risk_level === "Low Stock Risk");
+            } else if (riskFilter === "normal") {
+                items = items.filter((i) => i.risk_level === "Normal");
+            }
+        }
+
+        return items;
+    }, [forecastData?.items, categoryFilter, searchQuery, riskFilter]);
+
+    // 5. Theme change detection for high-contrast chart rendering
+    const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+
     useEffect(() => {
-        if (typeof window === "undefined" || !forecastData || loading) return;
+        const checkDark = () => {
+            if (typeof document !== "undefined") {
+                setIsDarkMode(document.documentElement.classList.contains("dark"));
+            }
+        };
+        checkDark();
+        const observer = new MutationObserver(checkDark);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
+
+    // 6. Render Demand Forecast Chart (Historical Actuals + Future Forecast with Bounds)
+    useEffect(() => {
+        if (activeTab !== "dashboard" || !forecastData || loading) return;
 
         const timer = setTimeout(() => {
-            const isDark = document.documentElement.classList.contains("dark");
-            const gridColor = isDark ? "rgba(255,255,255,0.06)" : "#F1F5F9";
-            const textColor = isDark ? "#8a8a8e" : "#64748B";
+            const canvas = demandChartRef.current;
+            if (!canvas) return;
 
-            // 1. 7D Parcel Volume
-            if (parcelChartRef.current && forecastData?.parcel_7_day?.historical?.counts?.length) {
-                if (parcelChartInstance.current) {
-                    parcelChartInstance.current.destroy();
-                    parcelChartInstance.current = null;
-                }
-                const ctx = parcelChartRef.current.getContext("2d");
-                if (ctx) {
-                    const histData = forecastData.parcel_7_day.historical;
-                    const histLabels = (histData.display_dates || histData.dates || []).map(d => {
-                        if (d.includes('-') && !d.includes('/')) {
-                            const parts = d.split('-');
-                            return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
-                        }
-                        return d;
-                    });
-                    const histCounts = histData.display_counts || histData.counts || [];
-                    const fcDates = forecastData.parcel_7_day.dates || [];
-                    const fcValues = forecastData.parcel_7_day.predictions || [];
-                    const fcUpper = forecastData.parcel_7_day.confidence_interval.upper || [];
-                    const fcLower = forecastData.parcel_7_day.confidence_interval.lower || [];
-                    const fcLabels = fcDates.map((d, i) => {
-                        const parts = d.split('-');
-                        return parts.length === 3 ? `${parts[1]}/${parts[2]} (D+${i + 1})` : `D+${i + 1}`;
-                    });
-                    const allLabels = [...histLabels, ...fcLabels];
-                    const actualSeries = [...histCounts, ...Array(fcValues.length).fill(null)];
-                    const lastHistValue = histCounts.length > 0 ? histCounts[histCounts.length - 1] : 0;
-                    const forecastSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastHistValue, ...fcValues];
-                    const upperSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastHistValue, ...fcUpper];
-                    const lowerSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastHistValue, ...fcLower];
+            if (demandChartInstance.current) {
+                demandChartInstance.current.destroy();
+                demandChartInstance.current = null;
+            }
+            const existing = Chart.getChart(canvas);
+            if (existing) {
+                existing.destroy();
+            }
 
-                    parcelChartInstance.current = new Chart(ctx, {
-                        type: "line",
-                        data: {
-                            labels: allLabels,
-                            datasets: [
-                                {
-                                    label: "Upper 95% Confidence Bound",
-                                    data: upperSeries,
-                                    borderColor: "transparent",
-                                    backgroundColor: isDark ? "rgba(229,22,126,0.15)" : "rgba(236,72,153,0.12)",
-                                    fill: "+1",
-                                    pointRadius: 0,
-                                    tension: 0.3,
-                                },
-                                {
-                                    label: "Lower 95% Confidence Bound",
-                                    data: lowerSeries,
-                                    borderColor: "transparent",
-                                    backgroundColor: "transparent",
-                                    fill: false,
-                                    pointRadius: 0,
-                                    tension: 0.3,
-                                },
-                                {
-                                    label: `Actual History (${histData.aggregation_type || 'Daily'})`,
-                                    data: actualSeries,
-                                    borderColor: isDark ? "#38bdf8" : "#0284C7",
-                                    backgroundColor: isDark ? "#38bdf8" : "#0284C7",
-                                    borderWidth: 3,
-                                    pointRadius: 4,
-                                    pointHoverRadius: 6,
-                                    tension: 0.25,
-                                },
-                                {
-                                    label: "Predicted (Next 7 Days)",
-                                    data: forecastSeries,
-                                    borderColor: isDark ? "#e5167e" : "#EC4899",
-                                    borderWidth: 2.5,
-                                    borderDash: [6, 4],
-                                    pointBackgroundColor: isDark ? "#e5167e" : "#EC4899",
-                                    pointRadius: 4,
-                                    tension: 0.25,
-                                },
-                            ],
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            interaction: { mode: "index", intersect: false },
-                            onClick: (event: any, elements: any) => {
-                                const index = elements && elements.length > 0 ? elements[0].index : undefined;
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'parcels',
-                                    title: '7-Day Parcel Volume Forecast Analysis',
-                                    dataPointIndex: index,
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "bottom",
-                                    labels: {
-                                        boxWidth: 12,
-                                        boxHeight: 12,
-                                        usePointStyle: true,
-                                        color: textColor,
-                                        filter: (item: any) => !/Bound/i.test(item.text),
-                                    },
-                                },
-                            },
-                            scales: {
-                                x: { grid: { display: false }, ticks: { color: textColor } },
-                                y: {
-                                    grid: { color: gridColor },
-                                    ticks: { color: textColor },
-                                    title: { display: true, text: "Parcel Volume", color: textColor }
-                                },
-                            },
-                        },
-                    });
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+
+            const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+            const textColor = isDark ? "#e2e8f0" : "#1e293b";
+            const mutedColor = isDark ? "#94a3b8" : "#64748b";
+            const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(166, 175, 195, 0.2)";
+
+            let histDates = forecastData.chart_timeline?.historical_dates || [];
+            let histValues = forecastData.chart_timeline?.historical_demands || [];
+            let fcDates = forecastData.chart_timeline?.forecast_dates || [];
+            let fcValues = forecastData.chart_timeline?.forecast_demands || [];
+            let fcLower = forecastData.chart_timeline?.forecast_lower || [];
+            let fcUpper = forecastData.chart_timeline?.forecast_upper || [];
+            let itemLabel = "Aggregate Inventory Demand";
+            let unitLabel = "units";
+
+            // If a specific item is selected from the dropdown
+            if (selectedChartItem !== "all") {
+                const item = forecastData.items?.find((i) => String(i.id) === selectedChartItem || i.item_code === selectedChartItem);
+                if (item) {
+                    itemLabel = `${item.item_name} (${item.item_code})`;
+                    unitLabel = item.unit || "units";
+                    fcValues = item.daily_predictions || [];
+                    fcLower = item.lower_bounds || [];
+                    fcUpper = item.upper_bounds || [];
                 }
             }
 
-            // 2. Active Users & Session Concurrency Forecast
-            if (activeUsersChartRef.current && forecastData?.active_users_forecast) {
-                if (activeUsersChartInstance.current) {
-                    activeUsersChartInstance.current.destroy();
-                    activeUsersChartInstance.current = null;
-                }
-                const ctx = activeUsersChartRef.current.getContext("2d");
-                if (ctx) {
-                    const uData = forecastData.active_users_forecast;
-                    const histLabels = (uData.historical.display_dates || uData.historical.dates || []).map(d => {
-                        if (d.includes('-') && !d.includes('/')) {
-                            const parts = d.split('-');
-                            return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
-                        }
-                        return d;
-                    });
-                    const histCounts = uData.historical.display_counts || uData.historical.counts || [];
-                    const fcDates = uData.dates || [];
-                    const fcValues = uData.predictions || [];
-                    const fcUpper = uData.confidence_interval.upper || [];
-                    const fcLower = uData.confidence_interval.lower || [];
-                    const fcLabels = fcDates.map((d, i) => `D+${i + 1}`);
+            // Downsample historical dates if long window (> 60 days) for clean x-axis readability
+            const displayLabels = [
+                ...histDates.map((d) => d.slice(5)),
+                ...fcDates.map((d) => `${d.slice(5)} (Fc)`)
+            ];
 
-                    const allLabels = [...histLabels, ...fcLabels];
-                    const actualSeries = [...histCounts, ...Array(fcValues.length).fill(null)];
-                    const lastVal = histCounts.length > 0 ? histCounts[histCounts.length - 1] : 0;
-                    const fcSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastVal, ...fcValues];
-                    const upperSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastVal, ...fcUpper];
-                    const lowerSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastVal, ...fcLower];
+            // Pad historical values with nulls for the forecast window
+            const historicalDataset = [...histValues, ...Array(fcDates.length).fill(null)];
 
-                    activeUsersChartInstance.current = new Chart(ctx, {
-                        type: "line",
-                        data: {
-                            labels: allLabels,
-                            datasets: [
-                                {
-                                    label: "Upper Bound",
-                                    data: upperSeries,
-                                    borderColor: "transparent",
-                                    backgroundColor: isDark ? "rgba(99,102,241,0.15)" : "rgba(99,102,241,0.12)",
-                                    fill: "+1",
-                                    pointRadius: 0,
-                                    tension: 0.3,
-                                },
-                                {
-                                    label: "Lower Bound",
-                                    data: lowerSeries,
-                                    borderColor: "transparent",
-                                    backgroundColor: "transparent",
-                                    fill: false,
-                                    pointRadius: 0,
-                                    tension: 0.3,
-                                },
-                                {
-                                    label: "Historical Sessions",
-                                    data: actualSeries,
-                                    borderColor: isDark ? "#60a5fa" : "#3b82f6",
-                                    backgroundColor: isDark ? "#60a5fa" : "#3b82f6",
-                                    borderWidth: 2.5,
-                                    pointRadius: 4,
-                                    tension: 0.25,
-                                },
-                                {
-                                    label: "Projected Active Traffic (7D)",
-                                    data: fcSeries,
-                                    borderColor: isDark ? "#818cf8" : "#6366f1",
-                                    borderWidth: 2.5,
-                                    borderDash: [5, 4],
-                                    pointBackgroundColor: isDark ? "#818cf8" : "#6366f1",
-                                    pointRadius: 4,
-                                    tension: 0.25,
-                                },
-                            ],
+            const isInvalidHistory = summary?.has_three_years_history === false;
+
+            // Connect the forecast line starting from the last historical point
+            const lastHistVal = histValues.length > 0 ? histValues[histValues.length - 1] : 0;
+            const forecastDataset = isInvalidHistory
+                ? [
+                    ...Array(Math.max(0, histValues.length - 1)).fill(null),
+                    0,
+                    ...Array(fcDates.length).fill(0)
+                ]
+                : [
+                    ...Array(Math.max(0, histValues.length - 1)).fill(null),
+                    lastHistVal,
+                    ...fcValues
+                ];
+            const lowerDataset = isInvalidHistory
+                ? Array(displayLabels.length).fill(null)
+                : [
+                    ...Array(Math.max(0, histValues.length - 1)).fill(null),
+                    lastHistVal,
+                    ...fcLower
+                ];
+            const upperDataset = isInvalidHistory
+                ? Array(displayLabels.length).fill(null)
+                : [
+                    ...Array(Math.max(0, histValues.length - 1)).fill(null),
+                    lastHistVal,
+                    ...fcUpper
+                ];
+
+            const forecastLineLabel = isInvalidHistory
+                ? "No Prediction (0% Confidence — Data < 3 Years)"
+                : (selectedChartItem === "all" ? "Forecasted Future Demand" : `Forecast: ${itemLabel}`);
+
+            demandChartInstance.current = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: displayLabels,
+                    datasets: [
+                        {
+                            label: "Historical Actual Demand",
+                            data: historicalDataset,
+                            borderColor: "#3b82f6",
+                            backgroundColor: "rgba(59, 130, 246, 0.08)",
+                            borderWidth: 2.5,
+                            pointRadius: 2,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: "#3b82f6",
+                            tension: 0.25,
+                            fill: true
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            interaction: { mode: "index", intersect: false },
-                            onClick: () => {
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'active_users',
-                                    title: 'Active Users & Session Concurrency Forecast',
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "bottom",
-                                    labels: {
-                                        boxWidth: 10,
-                                        boxHeight: 10,
-                                        usePointStyle: true,
-                                        color: textColor,
-                                        filter: (item: any) => !/Bound/i.test(item.text),
-                                    },
-                                },
-                            },
-                            scales: {
-                                x: { grid: { display: false }, ticks: { color: textColor } },
-                                y: {
-                                    beginAtZero: true,
-                                    grid: { color: gridColor },
-                                    ticks: { color: textColor },
-                                    title: { display: true, text: "Active User Sessions", color: textColor }
-                                },
-                            },
+                        {
+                            label: "Upper Confidence Bound",
+                            data: upperDataset,
+                            borderColor: "transparent",
+                            backgroundColor: isInvalidHistory ? "transparent" : "rgba(236, 72, 153, 0.12)",
+                            pointRadius: 0,
+                            fill: "+1",
+                            tension: 0.3
                         },
-                    });
-                }
-            }
-
-            // 3. Blocked Devices Threat Forecast
-            if (blockedDevicesChartRef.current && forecastData?.blocked_devices_forecast) {
-                if (blockedDevicesChartInstance.current) {
-                    blockedDevicesChartInstance.current.destroy();
-                    blockedDevicesChartInstance.current = null;
-                }
-                const ctx = blockedDevicesChartRef.current.getContext("2d");
-                if (ctx) {
-                    const bData = forecastData.blocked_devices_forecast;
-                    const histLabels = (bData.historical.display_dates || bData.historical.dates || []).map(d => {
-                        if (d.includes('-') && !d.includes('/')) {
-                            const parts = d.split('-');
-                            return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+                        {
+                            label: "Lower Confidence Bound",
+                            data: lowerDataset,
+                            borderColor: "transparent",
+                            backgroundColor: "transparent",
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            label: forecastLineLabel,
+                            data: forecastDataset,
+                            borderColor: isInvalidHistory ? "#94a3b8" : "#ec4899",
+                            backgroundColor: isInvalidHistory ? "transparent" : "rgba(236, 72, 153, 0.18)",
+                            borderWidth: 2.5,
+                            borderDash: [5, 4],
+                            pointRadius: isInvalidHistory ? 0 : 3,
+                            pointHoverRadius: isInvalidHistory ? 2 : 6,
+                            pointBackgroundColor: isInvalidHistory ? "#94a3b8" : "#ec4899",
+                            tension: 0.3,
+                            fill: false
                         }
-                        return d;
-                    });
-                    const histCounts = bData.historical.display_counts || bData.historical.counts || [];
-                    const fcDates = bData.dates || [];
-                    const fcValues = bData.predictions || [];
-                    const fcLabels = fcDates.map((d, i) => `D+${i + 1}`);
-
-                    const allLabels = [...histLabels, ...fcLabels];
-                    const actualSeries = [...histCounts, ...Array(fcValues.length).fill(null)];
-                    const lastVal = histCounts.length > 0 ? histCounts[histCounts.length - 1] : 0;
-                    const fcSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastVal, ...fcValues];
-
-                    blockedDevicesChartInstance.current = new Chart(ctx, {
-                        type: "bar",
-                        data: {
-                            labels: allLabels,
-                            datasets: [
-                                {
-                                    type: "bar" as const,
-                                    label: "Actual Lockouts",
-                                    data: actualSeries,
-                                    backgroundColor: isDark ? "rgba(244, 63, 94, 0.75)" : "rgba(225, 29, 72, 0.75)",
-                                    borderRadius: 4,
-                                },
-                                {
-                                    type: "line" as const,
-                                    label: "Projected Threat Rate (7D)",
-                                    data: fcSeries,
-                                    borderColor: isDark ? "#fb7185" : "#e11d48",
-                                    borderWidth: 2,
-                                    borderDash: [4, 4],
-                                    pointBackgroundColor: "#e11d48",
-                                    pointRadius: 4,
-                                    tension: 0.25,
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: "top",
+                            labels: {
+                                color: textColor,
+                                font: { size: 11, weight: "bold" },
+                                boxWidth: 12,
+                                padding: 14,
+                                filter: (legendItem) => {
+                                    return (
+                                        legendItem.text !== "Upper Confidence Bound" &&
+                                        legendItem.text !== "Lower Confidence Bound"
+                                    );
                                 }
-                            ],
+                            }
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            onClick: () => {
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'blocked_devices',
-                                    title: 'Blocked Devices & Threat Forecaster',
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "bottom",
-                                    labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: textColor },
-                                },
-                            },
-                            scales: {
-                                x: { grid: { display: false }, ticks: { color: textColor } },
-                                y: {
-                                    beginAtZero: true,
-                                    grid: { color: gridColor },
-                                    ticks: { color: textColor },
-                                    title: { display: true, text: "Device Lockouts", color: textColor }
-                                },
-                            },
-                        },
-                    });
-                }
-            }
-
-            // 4. Users Positions & Roles Distribution
-            if (positionsChartRef.current && forecastData?.users_positions_analytics?.positions_breakdown) {
-                if (positionsChartInstance.current) {
-                    positionsChartInstance.current.destroy();
-                    positionsChartInstance.current = null;
-                }
-                const ctx = positionsChartRef.current.getContext("2d");
-                if (ctx) {
-                    const posMap = forecastData.users_positions_analytics.positions_breakdown;
-                    const sortedEntries = Object.entries(posMap).sort((a, b) => b[1] - a[1]);
-                    const labels = sortedEntries.map(e => e[0]);
-                    const values = sortedEntries.map(e => e[1]);
-                    const palette = [
-                        '#e5167e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6',
-                        '#06b6d4', '#ec4899', '#84cc16', '#6366f1', '#f97316'
-                    ];
-
-                    positionsChartInstance.current = new Chart(ctx, {
-                        type: "doughnut",
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                data: values,
-                                backgroundColor: palette.slice(0, labels.length),
-                                borderWidth: 2,
-                                borderColor: isDark ? "#191a24" : "#ffffff",
-                                hoverOffset: 6
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            onClick: () => {
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'positions',
-                                    title: 'Workforce Positions & User Headcount Breakdown',
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "right",
-                                    labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: textColor, font: { size: 11 } }
-                                },
-                            },
-                            cutout: "55%"
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    if (ctx.raw === null || ctx.raw === undefined) return "";
+                                    const val = ctx.raw as number;
+                                    const dsLabel = ctx.dataset.label || "";
+                                    if (dsLabel.includes("Upper Confidence") || dsLabel.includes("Lower Confidence")) return `${dsLabel}: ${val}`;
+                                    if (dsLabel.includes("No Prediction")) return `${dsLabel}: 0 ${unitLabel} (Insufficient 3-year records)`;
+                                    return `${dsLabel}: ${val} ${unitLabel}`;
+                                }
+                            }
                         }
-                    });
-                }
-            }
-
-            // 5. Appeals Volume & Resolution Forecast
-            if (appealsChartRef.current && forecastData?.appeals_forecast) {
-                if (appealsChartInstance.current) {
-                    appealsChartInstance.current.destroy();
-                    appealsChartInstance.current = null;
-                }
-                const ctx = appealsChartRef.current.getContext("2d");
-                if (ctx) {
-                    const aData = forecastData.appeals_forecast;
-                    const histLabels = (aData.historical.display_dates || aData.historical.dates || []).map(d => {
-                        if (d.includes('-') && !d.includes('/')) {
-                            const parts = d.split('-');
-                            return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: mutedColor,
+                                font: { size: 10, weight: "bold" },
+                                maxRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 14
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: gridColor },
+                            ticks: {
+                                color: mutedColor,
+                                font: { size: 10, weight: "bold" },
+                                stepSize: 1
+                            }
                         }
-                        return d;
-                    });
-                    const histCounts = aData.historical.display_counts || aData.historical.counts || [];
-                    const fcDates = aData.dates || [];
-                    const fcValues = aData.predictions || [];
-                    const fcLabels = fcDates.map((d, i) => `D+${i + 1}`);
-
-                    const allLabels = [...histLabels, ...fcLabels];
-                    const actualSeries = [...histCounts, ...Array(fcValues.length).fill(null)];
-                    const lastVal = histCounts.length > 0 ? histCounts[histCounts.length - 1] : 0;
-                    const fcSeries = [...Array(Math.max(0, histCounts.length - 1)).fill(null), lastVal, ...fcValues];
-
-                    appealsChartInstance.current = new Chart(ctx, {
-                        type: "line",
-                        data: {
-                            labels: allLabels,
-                            datasets: [
-                                {
-                                    label: "Actual Filings",
-                                    data: actualSeries,
-                                    borderColor: isDark ? "#a855f7" : "#9333ea",
-                                    backgroundColor: isDark ? "rgba(168, 85, 247, 0.15)" : "rgba(147, 51, 234, 0.12)",
-                                    borderWidth: 2.5,
-                                    fill: true,
-                                    pointRadius: 4,
-                                    tension: 0.25,
-                                },
-                                {
-                                    label: "Projected Inflow (7D)",
-                                    data: fcSeries,
-                                    borderColor: isDark ? "#c084fc" : "#7e22ce",
-                                    borderWidth: 2.5,
-                                    borderDash: [5, 4],
-                                    pointBackgroundColor: "#7e22ce",
-                                    pointRadius: 4,
-                                    tension: 0.25,
-                                },
-                            ],
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            interaction: { mode: "index", intersect: false },
-                            onClick: () => {
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'appeals',
-                                    title: 'User Unblock Appeals Intake & Remediation Forecast',
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "bottom",
-                                    labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: textColor },
-                                },
-                            },
-                            scales: {
-                                x: { grid: { display: false }, ticks: { color: textColor } },
-                                y: {
-                                    beginAtZero: true,
-                                    grid: { color: gridColor },
-                                    ticks: { color: textColor },
-                                    title: { display: true, text: "Appeals Filed", color: textColor }
-                                },
-                            },
-                        },
-                    });
+                    }
                 }
-            }
-
-            // 6. Expense Forecast
-            if (expenseChartRef.current && (forecastData?.expense_next_month?.historical?.amounts?.length || forecastData?.expense_next_month?.prediction)) {
-                if (expenseChartInstance.current) {
-                    expenseChartInstance.current.destroy();
-                    expenseChartInstance.current = null;
-                }
-                const ctx = expenseChartRef.current.getContext("2d");
-                if (ctx) {
-                    const histMonths = forecastData.expense_next_month.historical.months || [];
-                    const histAmounts = forecastData.expense_next_month.historical.amounts || [];
-                    const nextExpense = forecastData.expense_next_month.prediction || 0;
-                    const lastMonthStr = histMonths[histMonths.length - 1] || new Date().toISOString().slice(0, 7);
-                    const [y, m] = lastMonthStr.split('-');
-                    const nextDate = new Date(parseInt(y), parseInt(m), 1);
-                    const nextMonthLabel = `${nextDate.toLocaleString('default', { month: 'short' })} ${nextDate.getFullYear()} (Predicted)`;
-                    const allMonths = [
-                        ...histMonths.map(mo => {
-                            const [yr, mon] = mo.split('-');
-                            const d = new Date(parseInt(yr), parseInt(mon) - 1, 1);
-                            return `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()} (Actual)`;
-                        }),
-                        nextMonthLabel
-                    ];
-                    const actualExpenseData = [...histAmounts, null];
-                    const fcExpenseData = [...Array(histAmounts.length).fill(null), nextExpense];
-                    expenseChartInstance.current = new Chart(ctx, {
-                        type: "bar",
-                        data: {
-                            labels: allMonths,
-                            datasets: [
-                                {
-                                    label: "Actual Paid PO Expenses (₱)",
-                                    data: actualExpenseData,
-                                    backgroundColor: isDark ? "rgba(56, 189, 248, 0.85)" : "rgba(2, 132, 199, 0.85)",
-                                    borderRadius: 6,
-                                },
-                                {
-                                    label: "Predicted Next Month (₱)",
-                                    data: fcExpenseData,
-                                    backgroundColor: isDark ? "rgba(229, 22, 126, 0.85)" : "rgba(236, 72, 153, 0.85)",
-                                    borderRadius: 6,
-                                },
-                            ],
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            onClick: () => {
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'expense',
-                                    title: 'Procurement Outlay & Budget Projections',
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "bottom",
-                                    labels: { boxWidth: 12, boxHeight: 12, usePointStyle: true, color: textColor },
-                                },
-                            },
-                            scales: {
-                                x: { grid: { display: false }, ticks: { color: textColor } },
-                                y: {
-                                    grid: { color: gridColor },
-                                    ticks: { color: textColor, callback: (val: any) => `₱${Number(val).toLocaleString()}` },
-                                },
-                            },
-                        },
-                    });
-                }
-            }
-
-            // 7. Courier Share
-            if (courierPieRef.current && forecastData?.raw_db_stats?.courier_breakdown && Object.keys(forecastData.raw_db_stats.courier_breakdown).length > 0) {
-                if (courierPieInstance.current) {
-                    courierPieInstance.current.destroy();
-                    courierPieInstance.current = null;
-                }
-                const ctx = courierPieRef.current.getContext("2d");
-                if (ctx) {
-                    const courierMap = forecastData.raw_db_stats.courier_breakdown;
-                    const labels = Object.keys(courierMap);
-                    const values = Object.values(courierMap);
-                    const palette = [
-                        '#e5167e', '#38bdf8', '#10b981', '#f59e0b', '#8b5cf6',
-                        '#ec4899', '#06b6d4', '#84cc16', '#ef4444', '#6366f1',
-                    ];
-                    courierPieInstance.current = new Chart(ctx, {
-                        type: "doughnut",
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                data: values,
-                                backgroundColor: palette.slice(0, labels.length),
-                                borderWidth: 2,
-                                borderColor: isDark ? "#1e293b" : "#ffffff",
-                                hoverOffset: 6
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            onClick: () => {
-                                setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'couriers',
-                                    title: 'Courier Partner Volume Breakdown & Dispatch Allocation',
-                                });
-                            },
-                            plugins: {
-                                legend: {
-                                    position: "right",
-                                    labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: textColor, font: { size: 11 } }
-                                },
-                            },
-                            cutout: "60%"
-                        }
-                    });
-                }
-            }
-        }, 120);
+            });
+        }, 40);
 
         return () => {
             clearTimeout(timer);
-            if (parcelChartInstance.current) { parcelChartInstance.current.destroy(); parcelChartInstance.current = null; }
-            if (activeUsersChartInstance.current) { activeUsersChartInstance.current.destroy(); activeUsersChartInstance.current = null; }
-            if (blockedDevicesChartInstance.current) { blockedDevicesChartInstance.current.destroy(); blockedDevicesChartInstance.current = null; }
-            if (positionsChartInstance.current) { positionsChartInstance.current.destroy(); positionsChartInstance.current = null; }
-            if (appealsChartInstance.current) { appealsChartInstance.current.destroy(); appealsChartInstance.current = null; }
-            if (expenseChartInstance.current) { expenseChartInstance.current.destroy(); expenseChartInstance.current = null; }
-            if (courierPieInstance.current) { courierPieInstance.current.destroy(); courierPieInstance.current = null; }
+            if (demandChartInstance.current) {
+                demandChartInstance.current.destroy();
+                demandChartInstance.current = null;
+            }
+            if (demandChartRef.current) {
+                const existing = Chart.getChart(demandChartRef.current);
+                if (existing) existing.destroy();
+            }
         };
-    }, [forecastData, loading, activeDomain]);
+    }, [forecastData, loading, selectedChartItem, activeTab, isDarkMode]);
 
-    const handleExport = () => {
-        if (!forecastData) {
-            toast.error("No forecast data available to export.");
-            return;
-        }
-        setIsExportModalOpen(true);
-    };
+    // 7. Render Consumption Overview Chart
+    useEffect(() => {
+        if (activeTab !== "consumption" || !forecastData || loading) return;
 
-    // Logistics stats
-    const totalDbParcels = forecastData?.raw_db_stats?.total_parcels_in_db || 0;
-    const weeklyTotal = forecastData?.parcel_7_day?.total_next_week || 0;
-    const prevEval = forecastData?.parcel_7_day?.previous_week_evaluation;
-    const courierMap = forecastData?.raw_db_stats?.courier_breakdown || {};
-    const sortedCouriers = useMemo(() => Object.entries(courierMap).sort((a, b) => b[1] - a[1]), [courierMap]);
-    const peakInsights = forecastData?.parcel_7_day?.peak_insights;
-    const aggregationType = forecastData?.parcel_7_day?.historical?.aggregation_type || 'Daily';
+        const timer = setTimeout(() => {
+            const canvas = consumptionChartRef.current;
+            if (!canvas) return;
 
-    // Expense stats
-    const expensePrediction = forecastData?.expense_next_month?.prediction || 0;
-    const expenseLower = forecastData?.expense_next_month?.confidence_interval?.lower || 0;
-    const expenseUpper = forecastData?.expense_next_month?.confidence_interval?.upper || 0;
+            if (consumptionChartInstance.current) {
+                consumptionChartInstance.current.destroy();
+                consumptionChartInstance.current = null;
+            }
+            const existing = Chart.getChart(canvas);
+            if (existing) {
+                existing.destroy();
+            }
 
-    // Security & Blocked stats
-    const blockedData = forecastData?.blocked_devices_forecast;
-    const totalBlocked = blockedData?.total_blocked || 0;
-    const activeBlocked = blockedData?.active_blocked_count || 0;
-    const blocked7dProjected = blockedData?.total_next_week || 0;
-    const riskLevel = blockedData?.risk_level || 'Low';
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
 
-    // Users & Concurrency stats
-    const activeUsersData = forecastData?.active_users_forecast;
-    const currentActiveUsers = activeUsersData?.current_active_users || 0;
-    const capacityPct = activeUsersData?.capacity_utilization?.utilization_percentage || 0;
-    const avgDailySessions = activeUsersData?.avg_daily_projected || 0;
+            const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+            const mutedColor = isDark ? "#94a3b8" : "#64748b";
+            const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(166, 175, 195, 0.2)";
 
-    // Positions & Roles stats
-    const usersPositionsData = forecastData?.users_positions_analytics;
-    const totalRegisteredUsers = usersPositionsData?.total_users || 0;
-    const positionsBreakdown = usersPositionsData?.positions_breakdown || {};
-    const sortedPositions = useMemo(() => Object.entries(positionsBreakdown).sort((a, b) => b[1] - a[1]), [positionsBreakdown]);
-    const projectedNextMonthUsers = usersPositionsData?.predicted_next_month_users || totalRegisteredUsers;
-    const userGrowthRate = usersPositionsData?.growth_rate_percentage || 0;
+            const analysis = forecastData.consumption_analysis;
+            let labels = analysis?.dates?.map((d) => d.slice(5)) || [];
+            let dataValues = analysis?.daily_totals || [];
 
-    // Appeals stats
-    const appealsData = forecastData?.appeals_forecast;
-    const totalAppeals = appealsData?.total_appeals || 0;
-    const pendingAppeals = appealsData?.pending_count || 0;
-    const resolutionRate = appealsData?.resolution_rate || 100;
-    const appeals7dProjected = appealsData?.total_next_week || 0;
+            if (consumptionView === "weekly") {
+                labels = analysis?.weekly_labels || [];
+                dataValues = analysis?.weekly_totals || [];
+            } else if (consumptionView === "monthly") {
+                labels = analysis?.monthly_labels || [];
+                dataValues = analysis?.monthly_totals || [];
+            }
+
+            consumptionChartInstance.current = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: `${consumptionView.toUpperCase()} Consumption Issuances`,
+                            data: dataValues,
+                            backgroundColor: "rgba(99, 102, 241, 0.65)",
+                            borderColor: "#6366f1",
+                            borderWidth: 1.5,
+                            borderRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `Issued Volume: ${ctx.parsed.y} units`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: mutedColor,
+                                font: { size: 10, weight: "bold" },
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: gridColor },
+                            ticks: {
+                                color: mutedColor,
+                                font: { size: 10, weight: "bold" }
+                            }
+                        }
+                    }
+                }
+            });
+        }, 40);
+
+        return () => {
+            clearTimeout(timer);
+            if (consumptionChartInstance.current) {
+                consumptionChartInstance.current.destroy();
+                consumptionChartInstance.current = null;
+            }
+            if (consumptionChartRef.current) {
+                const existing = Chart.getChart(consumptionChartRef.current);
+                if (existing) existing.destroy();
+            }
+        };
+    }, [forecastData, loading, consumptionView, activeTab, isDarkMode]);
+
+    const summary = forecastData?.summary;
+    const ai = forecastData?.ai_insights;
+
+    // Unit breakdown string
+    const unitsSummaryStr = useMemo(() => {
+        if (!summary?.primary_units_breakdown) return "";
+        return Object.entries(summary.primary_units_breakdown)
+            .map(([unit, qty]) => `${qty} ${unit}`)
+            .join(", ");
+    }, [summary?.primary_units_breakdown]);
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Operator', 'Executive']}>
-            <div className="p-3.5 sm:p-6 space-y-5 sm:space-y-6 bgCard dark:bg-ink/90 pb-16 max-w-full overflow-hidden">
-                {/* header */}
-                <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-ink/20 pb-5">
-                    <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5 max-w-full">
-                        <div className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center shrink-0 mt-0.5">
-                            <img
-                                src="/images/logo-remove-bg.png"
-                                alt="Airship Express Logo"
-                                className="w-full h-full object-contain"
-                            />
-                        </div>
-
-                        <div className="w-full min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] text-slate-600 dark:text-slate-300 text-[11px] font-bold border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)]">
-                                    <i className="fas fa-microchip text-pink-500 text-[10px]"/>
-                                    <span>Airship Express</span>
-                                    <span className="text-slate-300 dark:text-slate-600">•</span>
-                                    <span className="text-pink-600 dark:text-pink-400">Holt-Winters & AutoTheta WASM</span>
-                                </div>
-                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] text-emerald-600 dark:text-emerald-400 text-[11px] font-bold border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)]">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>
-                                    <span>Multi-Domain Forecast Engine</span>
-                                </div>
+        <SessionGuard>
+            <div className="min-h-screen bg-[#ebf0f7] dark:bg-[#14151c] text-slate-800 dark:text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6 bgCard">
+                {/* 1. Header & Quick Actions */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200/60 dark:border-slate-800/80">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 shrink-0">
+                                <i className="fas fa-brain text-xl" />
                             </div>
-                            <h1 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
-                                Demand, Workforce &amp; Security Forecasting Engine
-                            </h1>
-                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                                Automated time-series forecasting powered by high-performance in-memory WebAssembly. Analyzes historical Supabase parcels, procurement outlay, active user sessions, workforce positions, blocked devices, and lockout appeals.
-                            </p>
+                            <div>
+                                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                                    AI-Powered Demand Forecasting & Inventory Intelligence
+                                </h1>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Time-series predictions via WASM mathematical models, actual stock issuance history & PO pipeline integration
+                                </p>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="w-full sm:w-auto flex items-center gap-2 sm:gap-2.5 overflow-x-auto pb-1 max-w-full no-scrollbar flex-nowrap sm:flex-wrap">
-                        <AppButton type="button" variant="pink" size="md" className="shrink-0 whitespace-nowrap" onClick={() => {
-                            const el = document.getElementById("monthly-intelligence-section");
-                            if (el) el.scrollIntoView({ behavior: 'smooth' });
-                        }}>
-                            <i className="fa-solid fa-calendar-check text-xs" />
-                            <span>Monthly AI Audit</span>
+                    <div className="flex items-center gap-2.5">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const el = document.getElementById('forecast-ai-summary-panel');
+                                if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    el.classList.add('ring-2', 'ring-pink-500', 'ring-offset-2');
+                                    setTimeout(() => {
+                                        el.classList.remove('ring-2', 'ring-pink-500', 'ring-offset-2');
+                                    }, 2000);
+                                }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-[0_3px_10px_rgba(236,72,153,0.35)] transition-all cursor-pointer active:scale-95"
+                            title="Jump to Forecast AI Summary Matrix"
+                        >
+                            <i className="fas fa-wand-magic-sparkles text-xs" />
+                            <span>AI Forecast Summary</span>
+                        </button>
+
+                        <AppButton
+                            type="button"
+                            variant="neutral"
+                            size="sm"
+                            onClick={() => setIsExportModalOpen(true)}
+                            disabled={loading || !forecastData}
+                        >
+                            <i className="fas fa-file-export text-xs mr-1.5" />
+                            Export Report
                         </AppButton>
 
-                        <AppButton type="button" variant="primary" size="md" className="shrink-0 whitespace-nowrap" onClick={generateAiSummary} disabled={loading || summarizing || !forecastData}>
-                            <i className={`fas ${summarizing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} text-xs`}/>
-                            <span>{summarizing ? "Analyzing Models..." : "Summarize with AI"}</span>
-                        </AppButton>
-
-                        <AppButton type="button" variant="neutral" size="md" className="shrink-0 whitespace-nowrap" onClick={() => fetchForecast(true)} disabled={retraining || loading} title="Recalculate models from Supabase">
-                            <i className={`fas fa-rotate text-xs ${retraining ? "fa-spin text-pink-500" : "text-slate-400"}`}/>
-                            <span>{retraining ? "Recalculating..." : "Sync DB"}</span>
-                        </AppButton>
-
-                        <AppButton type="button" variant="neutral" size="md" className="shrink-0 whitespace-nowrap" onClick={handleExport} disabled={loading || !forecastData} title="Export Forecast Report">
-                            <i className="fas fa-download text-xs text-slate-400"/>
-                            <span>Export</span>
+                        <AppButton
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={() => fetchForecast(true)}
+                            disabled={isRefreshing}
+                        >
+                            <i className={`fas fa-rotate text-xs mr-1.5 ${isRefreshing ? "fa-spin" : ""}`} />
+                            Generate Forecast
                         </AppButton>
                     </div>
                 </div>
 
-                {/* Domain Filter Switcher */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0 mr-1">
-                        Domain View:
-                    </span>
-                    {[
-                        { id: 'all', label: 'All Forecasts', icon: 'fa-cubes' },
-                        { id: 'logistics', label: 'Parcels & Logistics', icon: 'fa-boxes-stacked' },
-                        { id: 'workforce', label: 'Active Users & Positions', icon: 'fa-users-gear' },
-                        { id: 'security', label: 'Blocked Devices & Threats', icon: 'fa-shield-halved' },
-                        { id: 'appeals', label: 'Appeals & Remediation', icon: 'fa-scale-balanced' },
-                        { id: 'procurement', label: 'Procurement Spend', icon: 'fa-money-bill-wave' },
-                    ].map(tab => (
+                {/* 2. Forecast Controls Toolbar (Neumorphic Card & Inset Inputs) */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] space-y-4">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
+                                <i className="fas fa-sliders" />
+                            </span>
+                            Forecast Horizon & Data Scope Controls
+                        </span>
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                            <i className="fas fa-database text-xs text-slate-400" />
+                            Audited Against Immutable Stock Movements
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                        {/* Control 1: Historical Period */}
+                        <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                                Historical Window
+                            </label>
+                            <select
+                                value={periodDays}
+                                onChange={(e) => setPeriodDays(Number(e.target.value))}
+                                className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
+                            >
+                                <option value={30}>Past 30 Days (Short-term)</option>
+                                <option value={90}>Past 90 Days (Quarterly)</option>
+                                <option value={180}>Past 6 Months (Multi-Season)</option>
+                                <option value={210}>Past 7 Months (Extended)</option>
+                            </select>
+                        </div>
+
+                        {/* Control 2: Forecast Horizon */}
+                        <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                                Forecast Horizon
+                            </label>
+                            <select
+                                value={horizonDays}
+                                onChange={(e) => setHorizonDays(Number(e.target.value))}
+                                className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
+                            >
+                                <option value={7}>Next 7 Days (Tactical)</option>
+                                <option value={14}>Next 14 Days (Bi-Weekly)</option>
+                                <option value={30}>Next 30 Days (Monthly Operational)</option>
+                            </select>
+                        </div>
+
+                        {/* Control 3: Category Filter */}
+                        <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                                Category
+                            </label>
+                            <select
+                                value={categoryFilter}
+                                onChange={(e) => setCategoryFilter(e.target.value)}
+                                className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
+                            >
+                                <option value="all">All Item Categories</option>
+                                {availableCategories.map((c) => (
+                                    <option key={c} value={c}>
+                                        {c}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Control 4: Risk Filter */}
+                        <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                                Stock Risk Filter
+                            </label>
+                            <select
+                                value={riskFilter}
+                                onChange={(e) => setRiskFilter(e.target.value)}
+                                className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
+                            >
+                                <option value="all">All Items</option>
+                                <option value="critical">Critical Deficit (Projected &lt; 0)</option>
+                                <option value="low_stock">Low Stock Risk (≤ Safety Buffer)</option>
+                                <option value="normal">Normal / Adequate Stock</option>
+                            </select>
+                        </div>
+
+                        {/* Control 5: Search Filter */}
+                        <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                                Search Supply
+                            </label>
+                            <div className="relative group">
+                                <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500 group-focus-within:text-pink-500 transition-colors pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search name or SKU..."
+                                    className="w-full text-xs font-semibold pl-9 pr-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 transition-all"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Dashboard KPI Overview Cards */}
+                {loading ? (
+                    <CardsSkeleton />
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Card 1: Items Forecasted */}
+                        <Cards
+                            frontIcon="fas fa-boxes-stacked"
+                            header="Items Forecasted"
+                            data={summary?.has_three_years_history === false ? "0" : String(summary?.items_forecasted || 0)}
+                            description={
+                                summary?.has_three_years_history === false
+                                    ? `Prediction disabled: Dataset spans only ${summary?.history_span_days || 0} days (< 1,095 days required)`
+                                    : summary?.has_sufficient_data
+                                    ? `Evaluated out of ${summary?.total_items || 0} inventory items with active consumption logs`
+                                    : "No historical consumption logs detected in selected window"
+                            }
+                            badge={summary?.has_three_years_history === false ? "Data < 3 Years" : `${summary?.items_forecasted || 0}/${summary?.total_items || 0} Tracked`}
+                            arrow="fas fa-layer-group"
+                            backBg="bg-blue-900"
+                            backHeader="Usable Data Criteria"
+                            backDescription="Requires at least 3 continuous years (1,095 days) of warehouse stock movements to evaluate valid time-series demand models."
+                        />
+
+                        {/* Card 2: Predicted Demand */}
+                        <Cards
+                            frontIcon="fas fa-chart-line-up"
+                            header="Predicted Demand"
+                            data={summary?.has_three_years_history === false ? "No Prediction" : String(summary?.total_predicted_demand || 0)}
+                            description={
+                                summary?.has_three_years_history === false
+                                    ? `Insufficient historical data (< 3 years) — 0% AI Confidence to forecast`
+                                    : unitsSummaryStr
+                                    ? `Total volume across horizon: ${unitsSummaryStr}`
+                                    : `Cumulative forecasted demand over next ${horizonDays} days`
+                            }
+                            badge={summary?.has_three_years_history === false ? "0% Confidence" : `${horizonDays}-Day Horizon`}
+                            arrow="fas fa-arrow-trend-up"
+                            backBg="bg-pink-900"
+                            backHeader="Demand Computation"
+                            backDescription="When data is under 3 years old, time-series predictions are invalidated with 0% confidence to prevent deceptive forecasts."
+                        />
+
+                        {/* Card 3: Potential Shortages */}
+                        <Cards
+                            frontIcon="fas fa-triangle-exclamation text-rose-500"
+                            header="Potential Shortages"
+                            data={String(summary?.potential_shortages || 0)}
+                            description={`${summary?.critical_count || 0} critical stockouts (< 0), ${summary?.low_stock_count || 0} below min threshold`}
+                            badge={summary?.potential_shortages ? "Action Required" : "Stock Healthy"}
+                            arrow="fas fa-exclamation"
+                            backBg="bg-rose-950"
+                            backHeader="Shortage Calculation"
+                            backDescription="Projected Stock = Available Stock + Eligible Incoming POs - Forecast Demand. Items projected to breach 0 or minimum buffer trigger an alert."
+                        />
+
+                        {/* Card 4: Forecast Accuracy */}
+                        <Cards
+                            frontIcon="fas fa-bullseye text-emerald-500"
+                            header="Forecast Accuracy"
+                            data={summary?.has_three_years_history === false ? "0%" : (summary?.average_accuracy !== null ? `${summary?.average_accuracy}%` : "Evaluating")}
+                            description={summary?.accuracy_label || "Evaluated via rolling holdout window"}
+                            badge={summary?.has_three_years_history === false ? "0% Confidence" : (summary?.average_mae !== null ? `MAE: ${summary?.average_mae}` : "Holdout Metric")}
+                            arrow="fas fa-check-double"
+                            backBg="bg-emerald-950"
+                            backHeader="Validation Methodology"
+                            backDescription="Calculated via out-of-sample holdout validation on the historical series. Requires 3-year baseline to yield non-zero confidence."
+                        />
+                    </div>
+                )}
+
+                {/* 4. Forecast AI Intelligence & Multi-Tab Summary Matrix Panel */}
+                {forecastData && !loading && (
+                    <ForecastAiSummaryPanel
+                        forecastData={forecastData}
+                        activeTab={activeTab}
+                        onSelectTab={(tab) => setActiveTab(tab)}
+                    />
+                )}
+
+                {/* 5. Navigation Tabs & AI Matrix Shortcut */}
+                <div className="w-full flex flex-wrap items-center justify-between gap-3 py-1">
+                    <div className="flex items-center gap-1.5 bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 p-1.5 rounded-full border border-slate-200/50 dark:border-slate-800/60 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] max-w-full overflow-x-auto no-scrollbar">
                         <button
-                            key={tab.id}
                             type="button"
-                            onClick={() => setActiveDomain(tab.id as ForecastDomainFilter)}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center gap-2 cursor-pointer border ${
-                                activeDomain === tab.id
-                                    ? 'bg-pink-500 text-white border-pink-600 shadow-sm'
-                                    : 'bg-[#ebf0f7] dark:bg-[#14151c] text-slate-600 dark:text-slate-300 border-slate-200/60 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                            onClick={() => setActiveTab("dashboard")}
+                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
+                                activeTab === "dashboard"
+                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
                             }`}
                         >
-                            <i className={`fas ${tab.icon} text-[11px]`}></i>
-                            <span>{tab.label}</span>
+                            <i className="fas fa-chart-line text-xs" />
+                            <span>Demand Forecast Visualizer</span>
                         </button>
-                    ))}
-                </div>
 
-                {/* KPI Stat Cards Grid */}
-                {loading && !forecastData ? (
-                    <CardsSkeleton count={6} className="grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4"/>
-                ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                        {/* 1. Parcels */}
-                        <Cards
-                            frontIcon="fa-solid fa-boxes-stacked"
-                            header="Actual Parcels in DB"
-                            data={String(totalDbParcels)}
-                            arrow="fa-solid fa-database"
-                            description={`7D Fcst: ${weeklyTotal} units`}
-                            backBg="bg-ink dark:bg-slate-900"
-                            backHeader="Parcels Breakdown"
-                            headerTextColor="text-muted dark:text-white/80"
-                            backDescription={`Total registered parcels: ${totalDbParcels}\n7-Day Projected Intake: ${weeklyTotal}\nConfidence: ${forecastData?.parcel_7_day?.confidence || "0%"}\nTop Courier: ${sortedCouriers[0]?.[0] || 'None'}`}
-                            tooltip="View parcel records"
-                            tooltipLink="/parcels"
-                            frontTextColor="text-blue-500 dark:text-blue-400"
-                            descriptionTextColor="text-slate-500 dark:text-slate-400"
-                        />
-
-                        {/* 2. Active Users & Traffic */}
-                        <Cards
-                            frontIcon="fa-solid fa-users"
-                            header="Active User Sessions"
-                            data={String(currentActiveUsers)}
-                            arrow="fa-solid fa-chart-simple"
-                            description={`${capacityPct}% Capacity · ~${avgDailySessions}/day`}
-                            backBg="bg-ink dark:bg-slate-900"
-                            backHeader="User Concurrency"
-                            headerTextColor="text-muted dark:text-white/80"
-                            backDescription={`Current Active Sessions: ${currentActiveUsers}\nUnique Active Accounts: ${activeUsersData?.unique_active_users || 0}\n7-Day Projected Volume: ${activeUsersData?.total_next_week || 0}\nPeak Concurrency Time: ${activeUsersData?.busiest_hour?.timeRange || 'N/A'}`}
-                            tooltip="View active user sessions"
-                            tooltipLink="/user-activity?tab=active_users"
-                            frontTextColor="text-indigo-500 dark:text-indigo-400"
-                            descriptionTextColor="text-slate-500 dark:text-slate-400"
-                        />
-
-                        {/* 3. Blocked Devices */}
-                        <Cards
-                            frontIcon="fa-solid fa-shield-halved"
-                            header="Blocked Devices"
-                            data={String(totalBlocked)}
-                            arrow="fa-solid fa-shield-virus"
-                            description={`${activeBlocked} Active · ${riskLevel} Threat`}
-                            backBg="bg-ink dark:bg-slate-900"
-                            backHeader="Security Outlook"
-                            headerTextColor="text-muted dark:text-white/80"
-                            backDescription={`Total Lockouts in DB: ${totalBlocked}\nActive Blocked Devices: ${activeBlocked}\n7-Day Projected Threat Interventions: ${blocked7dProjected}\nThreat Posture: ${riskLevel}`}
-                            tooltip="View blocked devices"
-                            tooltipLink="/user-activity?tab=blocked"
-                            frontTextColor={riskLevel === 'Critical' || riskLevel === 'Elevated' ? "text-rose-500 dark:text-rose-400" : "text-amber-500 dark:text-amber-400"}
-                            descriptionTextColor="text-slate-500 dark:text-slate-400"
-                        />
-
-                        {/* 4. Total Users & Positions */}
-                        <Cards
-                            frontIcon="fa-solid fa-id-badge"
-                            header="Workforce Users"
-                            data={String(totalRegisteredUsers)}
-                            arrow="fa-solid fa-arrow-trend-up"
-                            description={`+${userGrowthRate}% Projected Next Mo`}
-                            backBg="bg-ink dark:bg-slate-900"
-                            backHeader="Positions Summary"
-                            headerTextColor="text-muted dark:text-white/80"
-                            backDescription={`Registered User Accounts: ${totalRegisteredUsers}\nProjected Next Month Headcount: ${projectedNextMonthUsers}\nTop Position: ${sortedPositions[0]?.[0] || 'Office Staff'} (${sortedPositions[0]?.[1] || 0})\nDistinct Roles: ${Object.keys(positionsBreakdown).length}`}
-                            tooltip="View employees and roles"
-                            tooltipLink="/user-activity?tab=sessions"
-                            frontTextColor="text-pink-500 dark:text-pink-400"
-                            descriptionTextColor="text-slate-500 dark:text-slate-400"
-                        />
-
-                        {/* 5. Appeals & Remediation */}
-                        <Cards
-                            frontIcon="fa-solid fa-scale-balanced"
-                            header="Unblock Appeals"
-                            data={String(totalAppeals)}
-                            arrow="fa-solid fa-gavel"
-                            description={`${resolutionRate}% Resolved · ${pendingAppeals} Pend`}
-                            backBg="bg-ink dark:bg-slate-900"
-                            backHeader="Remediation Queue"
-                            headerTextColor="text-muted dark:text-white/80"
-                            backDescription={`Total Appeals Logged: ${totalAppeals}\nPending Review: ${pendingAppeals}\nResolution Rate: ${resolutionRate}%\n7-Day Inflow Forecast: ${appeals7dProjected} requests`}
-                            tooltip="View user appeals"
-                            tooltipLink="/user-activity?tab=appeals"
-                            frontTextColor="text-purple-500 dark:text-purple-400"
-                            descriptionTextColor="text-slate-500 dark:text-slate-400"
-                        />
-
-                        {/* 6. Procurement Expense */}
-                        <Cards
-                            frontIcon="fa-solid fa-money-bill-wave"
-                            header="Next Month PO Expense"
-                            data={`₱${expensePrediction.toLocaleString()}`}
-                            arrow="fa-solid fa-receipt"
-                            description={expensePrediction > 0 ? `${forecastData?.expense_next_month?.confidence || "0%"} CI: ₱${expenseLower.toLocaleString()}` : "No qualifying POs"}
-                            backBg="bg-ink dark:bg-slate-900"
-                            backHeader="Expense Projections"
-                            headerTextColor="text-muted dark:text-white/80"
-                            backDescription={`Projected expense: ₱${expensePrediction.toLocaleString()}\nEstimated Lower Bound: ₱${expenseLower.toLocaleString()}\nEstimated Upper Bound: ₱${expenseUpper.toLocaleString()}\nConfidence: ${forecastData?.expense_next_month?.confidence || "0%"}`}
-                            tooltip="View purchase orders"
-                            tooltipLink="/procurement?tab=all"
-                            frontTextColor="text-emerald-500 dark:text-emerald-400"
-                            descriptionTextColor="text-slate-500 dark:text-slate-400"
-                        />
-                    </div>
-                )}
-
-                {/* AI Insights Banner */}
-                {aiSummary && isAiMinimized && (
-                    <div className="p-3 px-4 rounded-2xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[6px_6px_18px_rgba(166,175,195,0.35),-6px_-6px_18px_rgba(255,255,255,0.9)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.7)] flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setIsAiMinimized(false)}>
-                            <div className="w-7 h-7 rounded-xl bg-gradient-to-b from-pink-500 to-pink-600 text-white flex items-center justify-center text-xs shadow-xs">
-                                <i className="fa-solid fa-wand-magic-sparkles"></i>
-                            </div>
-                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                                AI Operational &amp; Security Insights (Minimized)
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("table")}
+                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
+                                activeTab === "table"
+                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                            }`}
+                        >
+                            <i className="fas fa-table-list text-xs" />
+                            <span>Predicted Demand Table</span>
+                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold font-mono ${
+                                activeTab === "table" ? "bg-white text-pink-600 shadow-xs" : "bg-pink-500 text-white"
+                            }`}>
+                                {displayItems.length}
                             </span>
-                            <StatusBadge tone="pink" size="xs">
-                                Gemini Analyzed
-                            </StatusBadge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <AppButton type="button" variant="neutral" size="xs" onClick={() => setIsAiMinimized(false)}>
-                                <i className="fas fa-chevron-down text-[10px]"></i>
-                                <span>Restore Summary</span>
-                            </AppButton>
-                            <AppButton type="button" variant="pink" size="xs" onClick={() => setIsAiModalOpen(true)}>
-                                <i className="fas fa-expand text-[10px]"></i>
-                                <span>Pop-out Modal</span>
-                            </AppButton>
-                            <button
-                                type="button"
-                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 cursor-pointer"
-                                onClick={() => setAiSummary(null)}
-                                title="Dismiss"
-                            >
-                                <i className="fas fa-times"></i>
-                            </button>
-                        </div>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("consumption")}
+                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
+                                activeTab === "consumption"
+                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                            }`}
+                        >
+                            <i className="fas fa-dolly text-xs" />
+                            <span>Historical Consumption Analysis</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("movement")}
+                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
+                                activeTab === "movement"
+                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                            }`}
+                        >
+                            <i className="fas fa-arrows-up-down text-xs" />
+                            <span>Item Movement Velocity</span>
+                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold font-mono ${
+                                activeTab === "movement" ? "bg-white text-pink-600 shadow-xs" : "bg-pink-500 text-white"
+                            }`}>
+                                {(forecastData?.item_movement_analytics?.active_moving_items_count ?? 0) + (forecastData?.item_movement_analytics?.zero_issuance_items_count ?? 0)}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("history")}
+                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
+                                activeTab === "history"
+                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                            }`}
+                        >
+                            <i className="fas fa-clock-rotate-left text-xs" />
+                            <span>Forecast Run History</span>
+                        </button>
                     </div>
-                )}
 
-                {aiSummary && !isAiMinimized && (
-                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] relative overflow-hidden">
-                        <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-200/60 dark:border-slate-800/80 pb-3">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center text-xs">
-                                    <i className="fa-solid fa-wand-magic-sparkles"></i>
-                                </div>
-                                <h3 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
-                                    Airship AI Operational, Workforce &amp; Security Synthesis
-                                </h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <StatusBadge tone="pink" size="xs">
-                                    Gemini 2.5 Flash
-                                </StatusBadge>
-                                <AppButton type="button" variant="neutral" size="xs" onClick={() => setIsAiMinimized(true)} title="Minimize to top bar">
-                                    <i className="fas fa-minus text-[10px]"></i>
-                                    <span>Minimize</span>
-                                </AppButton>
-                                <AppButton type="button" variant="pink" size="xs" onClick={() => setIsAiModalOpen(true)} title="Expand into full-screen dialog">
-                                    <i className="fas fa-expand text-[10px]"></i>
-                                    <span>Pop-out Modal</span>
-                                </AppButton>
-                                <button
-                                    type="button"
-                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 cursor-pointer"
-                                    onClick={() => setAiSummary(null)}
-                                    title="Dismiss AI Insights"
-                                >
-                                    <i className="fas fa-times"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-2">
-                            {parseAiSummarySections(aiSummary).map((section, idx) => (
-                                <div key={idx} className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs">
-                                    {section.title && (
-                                        <div className="font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-1.5 text-[11px]">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0"></span>
-                                            {section.title}
-                                        </div>
-                                    )}
-                                    <div className={`text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed ${section.title ? 'pl-3 border-l-2 border-pink-500/40' : ''}`}>
-                                        {section.content}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Monthly Operational Intelligence Panel */}
-                <div id="monthly-intelligence-section">
-                    <MonthlyIntelligencePanel />
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const el = document.getElementById('forecast-ai-summary-panel');
+                            if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                el.classList.add('ring-2', 'ring-pink-500', 'ring-offset-2');
+                                setTimeout(() => {
+                                    el.classList.remove('ring-2', 'ring-pink-500', 'ring-offset-2');
+                                }, 2000);
+                            }
+                        }}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors cursor-pointer"
+                        title="Jump to Forecast AI Summary Matrix"
+                    >
+                        <i className="fas fa-wand-magic-sparkles text-xs" />
+                        <span>AI Forecast Matrix</span>
+                    </button>
                 </div>
 
-                {/* Peak Logistics & Workforce Temporal Insights Banner */}
-                {(activeDomain === 'all' || activeDomain === 'logistics' || activeDomain === 'workforce') && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                        <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex items-center gap-3.5 transition-all">
-                            <div className="w-11 h-11 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                                <i className="fa-solid fa-calendar-days"></i>
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Busiest Month</div>
-                                <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                    {loading ? "..." : (peakInsights?.busiestMonth?.month || "N/A")}
-                                </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {loading ? "" : `${peakInsights?.busiestMonth?.count || 0} parcels recorded`}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex items-center gap-3.5 transition-all">
-                            <div className="w-11 h-11 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                                <i className="fa-solid fa-calendar-day"></i>
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak Incoming Day</div>
-                                <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                    {loading ? "..." : (peakInsights?.busiestDay?.day || "N/A")}
-                                </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {loading ? "" : `${peakInsights?.busiestDay?.count || 0} parcels peak`}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex items-center gap-3.5 transition-all">
-                            <div className="w-11 h-11 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                                <i className="fa-solid fa-clock"></i>
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400">Peak User &amp; Parcel Hours</div>
-                                <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                    {loading ? "..." : (activeUsersData?.busiest_hour?.timeRange || peakInsights?.busiestHour?.timeRange || "N/A")}
-                                </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {loading ? "" : `Peak login & scanner concurrency`}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* 1. Parcels Forecast Section */}
-                {(activeDomain === 'all' || activeDomain === 'logistics') && (
-                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] transition-all">
-                        <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
+                {/* TAB 1: Demand Forecast Time-Series Chart */}
+                {activeTab === "dashboard" && (
+                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
-                                <div className="font-bold text-slate-900 dark:text-white text-sm sm:text-base flex items-center gap-2 flex-wrap">
-                                    <span>Parcel Volume: Actual Supabase Data → 7-Day Prediction</span>
-                                    <StatusBadge tone="pink" icon="fas fa-hand-pointer" size="xs">
-                                        Click chart to inspect
-                                    </StatusBadge>
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
+                                        <i className="fas fa-chart-spline" />
+                                    </span>
+                                    Demand Forecast Time-Series (Historical Actuals vs Future Projection)
+                                </h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Visual transition point demarcates historical recorded stock issuances and forward algorithmic projection
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs text-slate-500 font-bold uppercase tracking-wider">Inspect Item:</label>
+                                <select
+                                    value={selectedChartItem}
+                                    onChange={(e) => setSelectedChartItem(e.target.value)}
+                                    className="text-xs font-semibold px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer"
+                                >
+                                    <option value="all">All Aggregate Demand</option>
+                                    {forecastData?.items?.map((item) => (
+                                        <option key={item.id} value={String(item.id)}>
+                                            {item.item_name} ({item.item_code})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* 3-Year Historical Safeguard Banner */}
+                        {summary?.has_three_years_history === false && (
+                            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/[0.08] border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                                    <i className="fas fa-triangle-exclamation text-sm" />
                                 </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    {totalDbParcels} actual parcels recorded (Max 6 Months) · {forecastData?.parcel_7_day?.model_used || "Holt-Winters Seasonal"} WASM with {forecastData?.parcel_7_day?.confidence || "0%"} Confidence Interval
+                                <div className="space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                                            Data Is Not Enough For Prediction — 0% AI Confidence
+                                        </span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30">
+                                            Recorded Span: {summary.history_span_days || 0} / 1,095 Days (Requires 3+ Years)
+                                        </span>
+                                    </div>
+                                    <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                                        Time-series demand models require at least <b>3 years (1,095 days)</b> of continuous historical records to decouple seasonal shifts from noise. With <b>{summary.history_span_days || 0} days</b> recorded, <b>demand predictions are marked invalid with 0% AI confidence</b>. Actual historical warehouse issuances (blue line) are shown for auditing, with forward projections disabled.
+                                    </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                {prevEval?.has_evaluation && (
-                                    <StatusBadge tone={prevEval.status_tone || 'emerald'} icon="fas fa-bullseye" size="xs">
-                                        Prev Week: {prevEval.met_percentage}% Met ({prevEval.actual_volume}/{prevEval.predicted_volume})
-                                    </StatusBadge>
+                        )}
+
+                        {/* Debossed Inset Chart Canvas Well */}
+                        <div className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#12131b]/80 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                            {loading ? (
+                                <div className="h-72 sm:h-80 w-full flex flex-col items-center justify-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 animate-spin">
+                                        <i className="fas fa-circle-notch text-base" />
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                                        Calculating time-series demand models & confidence intervals...
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="h-72 sm:h-80 w-full relative">
+                                    <canvas ref={demandChartRef} className="w-full h-full block" />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-800 pt-3">
+                            <div className="flex items-center gap-4">
+                                <span className="flex items-center gap-1.5 font-medium">
+                                    <span className="w-3 h-0.5 bg-blue-500 rounded-full" />
+                                    Actual Historical Consumption
+                                </span>
+                                {summary?.has_three_years_history === false ? (
+                                    <span className="flex items-center gap-1.5 font-medium text-slate-500 font-semibold">
+                                        <span className="w-3 h-0.5 bg-slate-400 border-b border-dashed border-slate-400" />
+                                        No Prediction (0% Confidence — Data &lt; 3 Years)
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span className="flex items-center gap-1.5 font-medium">
+                                            <span className="w-3 h-0.5 bg-pink-500 border-b border-dashed border-pink-500" />
+                                            Algorithmically Projected Demand
+                                        </span>
+                                        <span className="flex items-center gap-1.5 font-medium">
+                                            <span className="w-3 h-3 bg-pink-500/20 rounded-xs" />
+                                            Confidence Interval Band (85%-90%)
+                                        </span>
+                                    </>
                                 )}
-                                <StatusBadge tone={(forecastData?.parcel_7_day?.confidence && forecastData.parcel_7_day.confidence !== '0%') ? 'pink' : 'neutral'} icon="fas fa-shield-halved" size="xs">
-                                    {forecastData?.parcel_7_day?.confidence || "0%"} Confidence
-                                </StatusBadge>
-                                <StatusBadge tone="neutral" size="xs">
-                                    {aggregationType} Resolution
-                                </StatusBadge>
-                                <AppButton type="button" variant="pink" size="xs" onClick={() => setActiveChartModal({
-                                    isOpen: true,
-                                    type: 'parcels',
-                                    title: '7-Day Parcel Volume Forecast Analysis',
-                                })}>
-                                    <i className="fas fa-chart-line text-[10px]"/>
-                                    <span>Inspect Model</span>
-                                </AppButton>
                             </div>
-                        </div>
-                        <div className="mt-4 relative h-80 w-full cursor-pointer">
-                            {loading && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                    <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
-                                </div>
-                            )}
-                            {!loading && totalDbParcels === 0 && (!forecastData?.parcel_7_day?.predictions?.length || forecastData.parcel_7_day.predictions.every((p: number) => p === 0)) && (
-                                <ChartEmptyState
-                                    icon="fas fa-box-open"
-                                    iconColor="text-pink-500"
-                                    iconBg="bg-pink-500/10 dark:bg-pink-500/20"
-                                    title="No Parcel Volume Records"
-                                    description="No historical parcel intake or dispatch records found to generate 7-day predictive curves."
-                                    actionLabel="Refresh Data"
-                                    onAction={() => fetchForecast(true)}
-                                />
-                            )}
-                            <canvas ref={parcelChartRef} className="block"></canvas>
+                            <span className="font-mono text-[10px]">
+                                {summary?.has_three_years_history === false ? "Status: Invalid Prediction (0% AI Confidence)" : "Models: Croston SBA, AutoTheta, Holt-Winters Additive"}
+                            </span>
                         </div>
                     </div>
                 )}
 
-                {/* 2. Active Users & Positions Forecasting Section */}
-                {(activeDomain === 'all' || activeDomain === 'workforce') && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Active Users Concurrency Chart */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col justify-between transition-all">
+                {/* TAB 2: Predicted Demand Table (Neumorphic Card & Table) */}
+                {activeTab === "table" && (
+                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-4">
+                        <div className="flex items-center justify-between">
                             <div>
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
-                                    <div>
-                                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                            <i className="fas fa-users-line text-indigo-500"></i>
-                                            <span>Active Users &amp; Session Concurrency (7D Forecast)</span>
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                            {currentActiveUsers} active sessions now · ~{avgDailySessions} projected/day · {capacityPct}% load
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <StatusBadge tone="indigo" size="xs">
-                                            {activeUsersData?.confidence || "85%"} Confidence
-                                        </StatusBadge>
-                                        <AppButton type="button" variant="neutral" size="xs" onClick={() => setActiveChartModal({
-                                            isOpen: true,
-                                            type: 'active_users',
-                                            title: 'Active Users & Session Concurrency Forecast',
-                                        })}>
-                                            <i className="fas fa-chart-line text-[10px]"/>
-                                            <span>Inspect</span>
-                                        </AppButton>
-                                    </div>
-                                </div>
-                                <div className="mt-4 relative h-70 w-full cursor-pointer">
-                                    {loading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                            <i className="fas fa-circle-notch fa-spin text-indigo-500 text-2xl"></i>
-                                        </div>
-                                    )}
-                                    {!loading && (activeUsersData?.total_sessions || 0) === 0 && (activeUsersData?.total_next_week || 0) === 0 && (!activeUsersData?.predictions?.length || activeUsersData.predictions.every((p: number) => p === 0)) && (
-                                        <ChartEmptyState
-                                            icon="fas fa-users-slash"
-                                            iconColor="text-indigo-500"
-                                            iconBg="bg-indigo-500/10 dark:bg-indigo-500/20"
-                                            title="No Active User Sessions"
-                                            description="No user login activity recorded yet. Concurrency forecast models will automatically initialize as employees log in."
-                                        />
-                                    )}
-                                    <canvas ref={activeUsersChartRef} className="block"></canvas>
-                                </div>
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
+                                        <i className="fas fa-table-list" />
+                                    </span>
+                                    Predicted Demand & Stock Projections Matrix
+                                </h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Projected Stock = Available Stock + Eligible Incoming POs - Forecast Demand
+                                </p>
                             </div>
-                            <div className="mt-3 p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs text-slate-600 dark:text-slate-300">
-                                <i className="fas fa-info-circle text-indigo-500 mr-1.5"></i>
-                                Peak operational sessions cluster at <b>{activeUsersData?.busiest_hour?.timeRange || '9:00 AM - 11:00 AM'}</b> on <b>{activeUsersData?.busiest_day?.day || 'Mondays'}</b>.
-                            </div>
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)] text-slate-500">
+                                Showing {displayItems.length} items
+                            </span>
                         </div>
 
-                        {/* User Positions Breakdown Chart */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col justify-between transition-all">
-                            <div>
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
-                                    <div>
-                                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                            <i className="fas fa-sitemap text-pink-500"></i>
-                                            <span>User Positions &amp; Workforce Structure</span>
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                            {totalRegisteredUsers} registered user accounts across {sortedPositions.length} positions
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <StatusBadge tone="pink" size="xs">
-                                            +{userGrowthRate}% Next Mo
-                                        </StatusBadge>
-                                        <AppButton type="button" variant="pink" size="xs" onClick={() => setActiveChartModal({
-                                            isOpen: true,
-                                            type: 'positions',
-                                            title: 'Workforce Positions & User Headcount Breakdown',
-                                        })}>
-                                            <i className="fas fa-pie-chart text-[10px]"/>
-                                            <span>Positions</span>
-                                        </AppButton>
-                                    </div>
+                        {/* 3-Year Historical Safeguard Banner in Table */}
+                        {summary?.has_three_years_history === false && (
+                            <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/[0.08] border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                    <i className="fas fa-triangle-exclamation text-amber-500 shrink-0 text-sm" />
+                                    <span className="text-xs font-bold">
+                                        Data is not enough for prediction: Historical dataset is under 3 years old ({summary.history_span_days || 0}/1,095 days). All predictions are marked 0% confidence and set to 0.
+                                    </span>
                                 </div>
-                                <div className="mt-4 relative h-70 w-full cursor-pointer">
-                                    {loading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                            <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
-                                        </div>
-                                    )}
-                                    {!loading && (sortedPositions.length === 0 || totalRegisteredUsers === 0) && (
-                                        <ChartEmptyState
-                                            icon="fas fa-sitemap"
-                                            iconColor="text-pink-500"
-                                            iconBg="bg-pink-500/10 dark:bg-pink-500/20"
-                                            title="No Workforce Positions Registered"
-                                            description="No registered user profiles found in the database to plot position and role hierarchy."
-                                        />
-                                    )}
-                                    <canvas ref={positionsChartRef} className="block"></canvas>
-                                </div>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200 shrink-0">
+                                    0% AI Confidence
+                                </span>
                             </div>
-                            <div className="mt-3 p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs text-slate-600 dark:text-slate-300">
-                                <i className="fas fa-lightbulb text-amber-500 mr-1.5"></i>
-                                <b>Growth Projection:</b> Next month headcount projects to expand to <b>{projectedNextMonthUsers} users</b> (+{userGrowthRate}% growth trajectory).
-                            </div>
-                        </div>
-                    </div>
-                )}
+                        )}
 
-                {/* 3. Blocked Devices & Appeals Forecasting Section */}
-                {(activeDomain === 'all' || activeDomain === 'security' || activeDomain === 'appeals') && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Blocked Devices Forecast */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col justify-between transition-all">
-                            <div>
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
-                                    <div>
-                                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                            <i className="fas fa-shield-halved text-rose-500"></i>
-                                            <span>Blocked Devices &amp; Threat Forecaster (7D)</span>
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                            {totalBlocked} total lockouts · {activeBlocked} active · {blocked7dProjected} projected 7D interventions
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <StatusBadge tone={riskLevel === 'Critical' || riskLevel === 'Elevated' ? 'pink' : 'neutral'} size="xs">
-                                            {riskLevel} Threat Level
-                                        </StatusBadge>
-                                        <AppButton type="button" variant="neutral" size="xs" onClick={() => setActiveChartModal({
-                                            isOpen: true,
-                                            type: 'blocked_devices',
-                                            title: 'Blocked Devices & Threat Forecaster',
-                                        })}>
-                                            <i className="fas fa-shield-virus text-[10px]"/>
-                                            <span>Inspect</span>
-                                        </AppButton>
-                                    </div>
-                                </div>
-                                <div className="mt-4 relative h-70 w-full cursor-pointer">
-                                    {loading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                            <i className="fas fa-circle-notch fa-spin text-rose-500 text-2xl"></i>
-                                        </div>
-                                    )}
-                                    {!loading && totalBlocked === 0 && (blockedData?.total_next_week || 0) === 0 && (!blockedData?.predictions?.length || blockedData.predictions.every((p: number) => p === 0)) && (
-                                        <ChartEmptyState
-                                            icon="fas fa-shield-check"
-                                            iconColor="text-emerald-500"
-                                            iconBg="bg-emerald-500/10 dark:bg-emerald-500/20"
-                                            title="No Security Threats / Zero Blocked Devices"
-                                            description="Baseline security posture is clean. Zero device lockouts or suspicious intrusion spikes detected."
-                                        />
-                                    )}
-                                    <canvas ref={blockedDevicesChartRef} className="block"></canvas>
-                                </div>
-                            </div>
-                            <div className="mt-3 p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs text-slate-600 dark:text-slate-300">
-                                <i className="fas fa-shield-check text-rose-500 mr-1.5"></i>
-                                Threat forecaster runs AutoTheta trend isolation to detect anomalous credential stuffing or suspicious authentication patterns.
-                            </div>
-                        </div>
-
-                        {/* Appeals Volume & Remediation Forecast */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col justify-between transition-all">
-                            <div>
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
-                                    <div>
-                                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                            <i className="fas fa-scale-balanced text-purple-500"></i>
-                                            <span>User Unblock Appeals Intake (7D Forecast)</span>
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                            {totalAppeals} appeals · {resolutionRate}% resolved · {pendingAppeals} pending review
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <StatusBadge tone="purple" size="xs">
-                                            {resolutionRate}% Resolved
-                                        </StatusBadge>
-                                        <AppButton type="button" variant="neutral" size="xs" onClick={() => setActiveChartModal({
-                                            isOpen: true,
-                                            type: 'appeals',
-                                            title: 'User Unblock Appeals Intake & Remediation Forecast',
-                                        })}>
-                                            <i className="fas fa-gavel text-[10px]"/>
-                                            <span>Inspect</span>
-                                        </AppButton>
-                                    </div>
-                                </div>
-                                <div className="mt-4 relative h-70 w-full cursor-pointer">
-                                    {loading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                            <i className="fas fa-circle-notch fa-spin text-purple-500 text-2xl"></i>
-                                        </div>
-                                    )}
-                                    {!loading && totalAppeals === 0 && (appealsData?.total_next_week || 0) === 0 && (!appealsData?.predictions?.length || appealsData.predictions.every((p: number) => p === 0)) && (
-                                        <ChartEmptyState
-                                            icon="fas fa-scale-balanced"
-                                            iconColor="text-purple-500"
-                                            iconBg="bg-purple-500/10 dark:bg-purple-500/20"
-                                            title="No Unblock Appeals Logged"
-                                            description="Lockout remediation queue is completely clear. No active appeals pending review."
-                                        />
-                                    )}
-                                    <canvas ref={appealsChartRef} className="block"></canvas>
-                                </div>
-                            </div>
-                            <div className="mt-3 p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs text-slate-600 dark:text-slate-300">
-                                <i className="fas fa-check-double text-purple-500 mr-1.5"></i>
-                                <b>Remediation Posture:</b> Projected incoming volume of <b>{appeals7dProjected} unblock appeals</b> next week with a healthy {resolutionRate}% clearance efficiency.
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* 4. Procurement Spend & Courier Share Section */}
-                {(activeDomain === 'all' || activeDomain === 'procurement' || activeDomain === 'logistics') && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* PO Expenses */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col justify-between transition-all">
-                            <div>
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
-                                    <div>
-                                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                            <i className="fas fa-money-bill-wave text-emerald-500"></i>
-                                            <span>Procurement Spend: Monthly Paid POs → Next Month Forecast</span>
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                            Tracked across confirmed and delivered purchase orders
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <StatusBadge tone={(forecastData?.expense_next_month?.confidence && forecastData.expense_next_month.confidence !== '0%') ? 'emerald' : 'neutral'} size="xs">
-                                            {forecastData?.expense_next_month?.confidence || "0%"} Confidence
-                                        </StatusBadge>
-                                        <AppButton type="button" variant="success" size="xs" onClick={() => setActiveChartModal({
-                                            isOpen: true,
-                                            type: 'expense',
-                                            title: 'Procurement Outlay & Budget Projections',
-                                        })}>
-                                            <i className="fas fa-calculator text-[10px]"/>
-                                            <span>Inspect</span>
-                                        </AppButton>
-                                    </div>
-                                </div>
-                                <div className="mt-4 relative h-70 w-full cursor-pointer">
-                                    {loading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                            <i className="fas fa-circle-notch fa-spin text-emerald-500 text-2xl"></i>
-                                        </div>
-                                    )}
-                                    {!loading && (forecastData?.expense_next_month?.prediction || 0) === 0 && (forecastData?.expense_next_month?.historical?.amounts || []).every((a: number) => a === 0) && (forecastData?.raw_db_stats?.total_paid_pos_in_db || 0) === 0 && (
-                                        <ChartEmptyState
-                                            icon="fas fa-file-invoice-dollar"
-                                            iconColor="text-emerald-500"
-                                            iconBg="bg-emerald-500/10 dark:bg-emerald-500/20"
-                                            title="No Paid Purchase Orders"
-                                            description="No confirmed or delivered purchase orders recorded. Expense forecast models will compute once PO spend occurs."
-                                        />
-                                    )}
-                                    <canvas ref={expenseChartRef} className="block"></canvas>
-                                </div>
-                            </div>
-                            <div className="mt-3 p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs text-slate-600 dark:text-slate-300">
-                                <i className="fas fa-chart-line text-emerald-500 mr-1.5"></i>
-                                Expense projections apply AutoTheta trend-fitting to paid purchase orders to assist procurement budgeting.
-                            </div>
-                        </div>
-
-                        {/* Courier Share */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col justify-between transition-all">
-                            <div>
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800/80 pb-3 flex-wrap">
-                                    <div>
-                                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                            <i className="fas fa-truck-fast text-pink-500"></i>
-                                            <span>Courier Volume Share Distribution</span>
-                                        </div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                            Distribution breakdown across courier partners from {totalDbParcels} parcels
-                                        </div>
-                                    </div>
-                                    <AppButton type="button" variant="pink" size="xs" onClick={() => setActiveChartModal({
-                                        isOpen: true,
-                                        type: 'couriers',
-                                        title: 'Courier Partner Volume Breakdown & Dispatch Allocation',
-                                    })}>
-                                        <i className="fas fa-pie-chart text-[10px]"/>
-                                        <span>Details</span>
-                                    </AppButton>
-                                </div>
-                                <div className="mt-4 relative h-70 w-full cursor-pointer">
-                                    {loading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#f0f3f8]/70 dark:bg-[#191a24]/70 z-10">
-                                            <i className="fas fa-circle-notch fa-spin text-pink-500 text-2xl"></i>
-                                        </div>
-                                    )}
-                                    {!loading && (sortedCouriers.length === 0 || sortedCouriers.every(([, count]) => count === 0)) && (
-                                        <ChartEmptyState
-                                            icon="fas fa-truck-fast"
-                                            iconColor="text-pink-500"
-                                            iconBg="bg-pink-500/10 dark:bg-pink-500/20"
-                                            title="No Courier Partner Allocation"
-                                            description="No courier provider assignments recorded across current parcel dispatches."
-                                        />
-                                    )}
-                                    <canvas ref={courierPieRef} className="block"></canvas>
-                                </div>
-                            </div>
-                            <div className="mt-3 p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs text-slate-600 dark:text-slate-300">
-                                <i className="fas fa-lightbulb text-amber-500 mr-1.5"></i>
-                                <b>Recommendation:</b> Focus dispatch sorting and dedicated staging areas for top couriers ({sortedCouriers.slice(0, 2).map(([name, count]) => `${name}: ${count}`).join(', ') || 'N/A'}) to optimize throughput.
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Detailed Inspection Modal */}
-                {activeChartModal.isOpen && forecastData && (
-                    <Portal>
-                        <div
-                            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
-                            onClick={(e) => {
-                                if (e.target === e.currentTarget) setActiveChartModal(prev => ({ ...prev, isOpen: false }));
-                            }}
-                        >
-                            <div
-                                className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75)] max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
-                                data-lenis-prevent
-                            >
-                                {/* Header */}
-                                <div className="p-5 border-b border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg text-white shadow-xs ${
-                                            activeChartModal.type === 'expense' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600' :
-                                            activeChartModal.type === 'active_users' ? 'bg-gradient-to-b from-indigo-500 to-indigo-600' :
-                                            activeChartModal.type === 'blocked_devices' ? 'bg-gradient-to-b from-rose-500 to-rose-600' :
-                                            activeChartModal.type === 'appeals' ? 'bg-gradient-to-b from-purple-500 to-purple-600' :
-                                            'bg-gradient-to-b from-pink-500 to-pink-600'
-                                        }`}>
-                                            <i className={`fas ${
-                                                activeChartModal.type === 'parcels' ? 'fa-boxes-stacked' :
-                                                activeChartModal.type === 'expense' ? 'fa-money-bill-wave' :
-                                                activeChartModal.type === 'active_users' ? 'fa-users' :
-                                                activeChartModal.type === 'blocked_devices' ? 'fa-shield-halved' :
-                                                activeChartModal.type === 'positions' ? 'fa-sitemap' :
-                                                activeChartModal.type === 'appeals' ? 'fa-scale-balanced' :
-                                                'fa-chart-pie'
-                                            }`}></i>
-                                        </div>
-                                        <div>
-                                            <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeChartModal.title}</h2>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">Statistical breakdown, algorithmic explanation, and underlying database metrics</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <AppButton type="button" variant="neutral" size="icon-sm" onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))} aria-label="Close modal">
-                                            <i className="fas fa-times text-xs"></i>
-                                        </AppButton>
-                                    </div>
-                                </div>
-
-                                {/* Body */}
-                                <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain" data-lenis-prevent>
-                                    {/* Parcels Inspection */}
-                                    {activeChartModal.type === 'parcels' && (
-                                        <>
-                                            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider">7-Day Projected Total</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        {forecastData.parcel_7_day.total_next_week.toLocaleString()} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">parcels</span>
-                                                    </div>
-                                                    <div className="text-xs text-pink-600 dark:text-pink-400 mt-1 font-semibold">
-                                                        {forecastData.parcel_7_day.confidence || "95%"} Confidence
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Prev Week Target Met</div>
-                                                    <div className="text-2xl font-bold text-pink-600 dark:text-pink-400 mt-1">
-                                                        {prevEval?.has_evaluation ? `${prevEval.met_percentage}%` : 'N/A'}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate font-medium">
-                                                        {prevEval?.has_evaluation ? `${prevEval.actual_volume} actual / ${prevEval.predicted_volume} pred` : 'No prior window'}
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Algorithm Used</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-                                                        {forecastData.parcel_7_day.model_used || "Holt-Winters Seasonal"}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        {forecastData.parcel_7_day.engine || "Rust/WASM Core"}
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data Sampling</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                                                        {forecastData.raw_db_stats.total_parcels_in_db.toLocaleString()} Parcels
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        {forecastData.parcel_7_day.historical.dates.length} Days Sampled
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
-                                                    <i className="fas fa-lightbulb text-amber-500"></i>
-                                                    How Did the System Compute This?
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    {forecastData.parcel_7_day.explanation || "The system collects logged parcels from Supabase over the past 6 months and feeds the daily intake volumes into an in-memory Rust/WASM Holt-Winters seasonality forecaster, decomposing past trends into weekly recurring cycles."}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                                                    <i className="fas fa-calendar-week text-pink-500"></i>
-                                                    Next 7 Days Day-by-Day Forecast Breakdown
-                                                </h4>
-                                                <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                                                    <table className="w-full text-xs text-left">
-                                                        <thead className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                                            <tr>
-                                                                <th className="py-2.5 px-4">Forecast Horizon</th>
-                                                                <th className="py-2.5 px-4">Projected Date</th>
-                                                                <th className="py-2.5 px-4 text-center">Lower Bound</th>
-                                                                <th className="py-2.5 px-4 text-right font-bold text-pink-600 dark:text-pink-400">Predicted Volume</th>
-                                                                <th className="py-2.5 px-4 text-center">Upper Bound</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                                                            {forecastData.parcel_7_day.dates.map((dateStr, idx) => {
-                                                                const pred = forecastData.parcel_7_day.predictions[idx] || 0;
-                                                                const lower = forecastData.parcel_7_day.confidence_interval.lower[idx] || 0;
-                                                                const upper = forecastData.parcel_7_day.confidence_interval.upper[idx] || 0;
-                                                                const dateObj = new Date(dateStr);
-                                                                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                                                                return (
-                                                                    <tr key={idx} className="hover:bg-white/60 dark:hover:bg-slate-800/40 transition">
-                                                                        <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">Day +{idx + 1}</td>
-                                                                        <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400">{dayName}, {dateStr}</td>
-                                                                        <td className="py-2.5 px-4 text-center text-slate-500 dark:text-slate-400 font-mono">{lower}</td>
-                                                                        <td className="py-2.5 px-4 text-right font-bold text-slate-900 dark:text-white font-mono text-sm">
-                                                                            {pred} <span className="text-[10px] font-normal text-slate-400">units</span>
-                                                                        </td>
-                                                                        <td className="py-2.5 px-4 text-center text-slate-500 dark:text-slate-400 font-mono">{upper}</td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {/* Active Users Inspection */}
-                                    {activeChartModal.type === 'active_users' && (
-                                        <>
-                                            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Current Active Users</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        {activeUsersData?.current_active_users || 0}
-                                                    </div>
-                                                    <div className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 font-semibold">
-                                                        {capacityPct}% Capacity Utilization
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Projected Daily Average</div>
-                                                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-                                                        ~{avgDailySessions}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Sessions per day next 7D
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Peak Operational Window</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                                                        {activeUsersData?.busiest_hour?.timeRange || 'N/A'}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Peak Day: {activeUsersData?.busiest_day?.day || 'Monday'}
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Algorithm</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-                                                        {activeUsersData?.model_used || "AutoTheta Forecaster"}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Confidence: {activeUsersData?.confidence || "85%"}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
-                                                    <i className="fas fa-lightbulb text-amber-500"></i>
-                                                    Workforce Concurrency &amp; Capacity Intelligence
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    {activeUsersData?.explanation || "Evaluates total historical session tokens and active heartbeats to project daily login concurrency, staff scanner load, and system capacity boundaries."}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                                                    <i className="fas fa-calendar-week text-indigo-500"></i>
-                                                    7-Day Active Session Projection
-                                                </h4>
-                                                <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                                                    <table className="w-full text-xs text-left">
-                                                        <thead className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                                            <tr>
-                                                                <th className="py-2.5 px-4">Day</th>
-                                                                <th className="py-2.5 px-4">Date</th>
-                                                                <th className="py-2.5 px-4 text-center">Lower 95% Bound</th>
-                                                                <th className="py-2.5 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">Projected Sessions</th>
-                                                                <th className="py-2.5 px-4 text-center">Upper 95% Bound</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                                                            {(activeUsersData?.dates || []).map((dateStr, idx) => {
-                                                                const pred = activeUsersData?.predictions[idx] || 0;
-                                                                const lower = activeUsersData?.confidence_interval.lower[idx] || 0;
-                                                                const upper = activeUsersData?.confidence_interval.upper[idx] || 0;
-                                                                const dateObj = new Date(dateStr);
-                                                                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                                                                return (
-                                                                    <tr key={idx} className="hover:bg-white/60 dark:hover:bg-slate-800/40 transition">
-                                                                        <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">Day +{idx + 1}</td>
-                                                                        <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400">{dayName}, {dateStr}</td>
-                                                                        <td className="py-2.5 px-4 text-center text-slate-500 dark:text-slate-400 font-mono">{lower}</td>
-                                                                        <td className="py-2.5 px-4 text-right font-bold text-slate-900 dark:text-white font-mono text-sm">
-                                                                            {pred} <span className="text-[10px] font-normal text-slate-400">sessions</span>
-                                                                        </td>
-                                                                        <td className="py-2.5 px-4 text-center text-slate-500 dark:text-slate-400 font-mono">{upper}</td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {/* Blocked Devices Inspection */}
-                                    {activeChartModal.type === 'blocked_devices' && (
-                                        <>
-                                            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Total Blocked Devices</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        {totalBlocked}
-                                                    </div>
-                                                    <div className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-semibold">
-                                                        {activeBlocked} Currently Active Lockouts
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Threat Risk Level</div>
-                                                    <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
-                                                        {riskLevel}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        {blocked7dProjected} projected interventions
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Platform Breakdown</div>
-                                                    <div className="text-xs font-bold text-slate-900 dark:text-white mt-1">
-                                                        Desktop: {blockedData?.platform_breakdown?.desktop || 0} · Mobile: {blockedData?.platform_breakdown?.mobile || 0}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Tablet: {blockedData?.platform_breakdown?.tablet || 0}
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Forecast Model</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-                                                        {blockedData?.model_used || "AutoTheta Forecaster"}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Confidence: {blockedData?.confidence || "85%"}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-2">
-                                                    <i className="fas fa-shield-halved text-rose-500"></i>
-                                                    Security Lockout Analysis &amp; Protective Rules
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    {blockedData?.explanation || "Analyzes security lockouts triggered across user devices. Protects against brute force and multi-device session tampering while projecting future remediation interventions."}
-                                                </p>
-                                                <div className="text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-800">
-                                                    <b>Executive &amp; Admin Protection Policy:</b> Executive and Admin accounts are strictly protected from blocking to ensure continuous supply chain command and governance.
-                                                </div>
-                                            </div>
-
-                                            {blockedData?.reasons_breakdown && Object.keys(blockedData.reasons_breakdown).length > 0 && (
-                                                <div>
-                                                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5">
-                                                        Top Block Reasons Distribution
-                                                    </h4>
-                                                    <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                                                        <table className="w-full text-xs text-left">
-                                                            <thead className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                                                <tr>
-                                                                    <th className="py-2.5 px-4">Reason / Threat Vector</th>
-                                                                    <th className="py-2.5 px-4 text-right">Lockout Count</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                                                                {Object.entries(blockedData.reasons_breakdown).map(([reason, cnt], idx) => (
-                                                                    <tr key={idx} className="hover:bg-white/60 dark:hover:bg-slate-800/40 transition">
-                                                                        <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">{reason}</td>
-                                                                        <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">{cnt}</td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-
-                                    {/* User Positions Inspection */}
-                                    {activeChartModal.type === 'positions' && (
-                                        <>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider">Total User Profiles</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        {totalRegisteredUsers}
-                                                    </div>
-                                                    <div className="text-xs text-pink-600 dark:text-pink-400 mt-1 font-semibold">
-                                                        {usersPositionsData?.active_users_count || totalRegisteredUsers} Active Accounts
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Projected Next Month Headcount</div>
-                                                    <div className="text-2xl font-bold text-pink-600 dark:text-pink-400 mt-1">
-                                                        {projectedNextMonthUsers}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        +{userGrowthRate}% Monthly Growth
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Top Positions Count</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-                                                        {sortedPositions[0]?.[0] || 'Office Staff'} ({sortedPositions[0]?.[1] || 0})
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        {sortedPositions.length} defined job positions
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
-                                                    <i className="fas fa-sitemap text-pink-500"></i>
-                                                    Workforce Positions Distribution Breakdown
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    {usersPositionsData?.explanation || "Classifies all registered supply chain users by their exact designated positions (Office-in-Charge, Project Coordinator, Appraiser, Admin Assistant, Office Staff, Sales Representative, CSR / Mktg Staff, HR Officer, HR Generalist, etc.)."}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5">
-                                                    Positions Headcount Leaderboard
-                                                </h4>
-                                                <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                                                    <table className="w-full text-xs text-left">
-                                                        <thead className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                                            <tr>
-                                                                <th className="py-2.5 px-4">Rank</th>
-                                                                <th className="py-2.5 px-4">Position Title</th>
-                                                                <th className="py-2.5 px-4 text-center">Assigned Users</th>
-                                                                <th className="py-2.5 px-4 text-right">Workforce Share</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                                                            {sortedPositions.map(([posName, count], idx) => {
-                                                                const pct = totalRegisteredUsers > 0 ? ((count / totalRegisteredUsers) * 100).toFixed(1) : '0';
-                                                                return (
-                                                                    <tr key={idx} className="hover:bg-white/60 dark:hover:bg-slate-800/40 transition">
-                                                                        <td className="py-2.5 px-4 font-bold text-slate-700 dark:text-slate-300">#{idx + 1}</td>
-                                                                        <td className="py-2.5 px-4 font-semibold text-slate-900 dark:text-white">{posName}</td>
-                                                                        <td className="py-2.5 px-4 text-center font-mono font-semibold">{count}</td>
-                                                                        <td className="py-2.5 px-4 text-right font-mono font-bold text-pink-600 dark:text-pink-400">{pct}%</td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {/* Appeals Inspection */}
-                                    {activeChartModal.type === 'appeals' && (
-                                        <>
-                                            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Total Appeals Logged</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        {totalAppeals}
-                                                    </div>
-                                                    <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold">
-                                                        {appealsData?.pending_count || 0} Pending Review
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Resolution Efficiency</div>
-                                                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-                                                        {resolutionRate}%
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        {appealsData?.approved_count || 0} approved / {appealsData?.rejected_count || 0} rejected
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">7D Inflow Forecast</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        {appeals7dProjected}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Projected appeals next week
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Forecasting Model</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-                                                        {appealsData?.model_used || "AutoTheta Forecaster"}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Confidence: {appealsData?.confidence || "85%"}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-2">
-                                                    <i className="fas fa-scale-balanced text-purple-500"></i>
-                                                    Appeals Remediation &amp; Governance Insight
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    {appealsData?.explanation || "Tracks lockouts appealed by users and models unblock queue turnaround efficiency, predicting incoming appeal volume to assist administrator triage."}
-                                                </p>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {/* Expenses Inspection */}
-                                    {activeChartModal.type === 'expense' && (
-                                        <>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Next Month Projected Outlay</div>
-                                                    <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                                        ₱{forecastData.expense_next_month.prediction.toLocaleString()}
-                                                    </div>
-                                                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">
-                                                        90% Confidence Boundary
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Algorithm Used</div>
-                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-                                                        {forecastData.expense_next_month.model_used || "AutoTheta Forecaster"}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Rust/WASM Engine
-                                                    </div>
-                                                </div>
-                                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Estimated Outlay Range</div>
-                                                    <div className="text-xs font-bold text-slate-900 dark:text-white mt-1">
-                                                        ₱{forecastData.expense_next_month.confidence_interval.lower.toLocaleString()} - ₱{forecastData.expense_next_month.confidence_interval.upper.toLocaleString()}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                        Based on paid PO history
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                                                    <i className="fas fa-lightbulb text-amber-500"></i>
-                                                    How Did the System Compute This?
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    {forecastData.expense_next_month.explanation || "Aggregates total expenditures strictly from paid purchase orders with status 'Confirmed' or 'Delivered' in Supabase, utilizing AutoTheta time-series forecasting."}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                                                    <i className="fas fa-history text-emerald-500"></i>
-                                                    Historical Outlay vs Forecasted Budget
-                                                </h4>
-                                                <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                                                    <table className="w-full text-xs text-left">
-                                                        <thead className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                                            <tr>
-                                                                <th className="py-2.5 px-4">Period</th>
-                                                                <th className="py-2.5 px-4">Type</th>
-                                                                <th className="py-2.5 px-4 text-right">Expenditure Amount (₱)</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                                                            {forecastData.expense_next_month.historical.months.map((monthStr, idx) => {
-                                                                const amt = forecastData.expense_next_month.historical.amounts[idx] || 0;
-                                                                return (
-                                                                    <tr key={idx} className="hover:bg-white/60 dark:hover:bg-slate-800/40 transition">
-                                                                        <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">{monthStr}</td>
-                                                                        <td className="py-2.5 px-4 text-slate-500 dark:text-slate-400">
-                                                                            <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold text-[10px]">
-                                                                                Actual Paid
-                                                                            </span>
-                                                                        </td>
-                                                                        <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                                                                            ₱{amt.toLocaleString()}
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                            <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold">
-                                                                <td className="py-3 px-4 text-emerald-700 dark:text-emerald-300">Next Month (Projected)</td>
-                                                                <td className="py-3 px-4">
-                                                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 font-bold text-[10px]">
-                                                                        WASM Forecast
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-3 px-4 text-right font-mono text-sm text-emerald-600 dark:text-emerald-400">
-                                                                    ₱{forecastData.expense_next_month.prediction.toLocaleString()}
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {/* Couriers Inspection */}
-                                    {activeChartModal.type === 'couriers' && (
-                                        <>
-                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
-                                                    <i className="fas fa-truck text-pink-500"></i>
-                                                    Carrier Network Distribution
-                                                </div>
-                                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                                                    Calculated from direct parcel records in the database. Courier share metrics indicate operational dependence on shipping partners and guide warehouse staging.
-                                                </p>
-                                            </div>
-
-                                            <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                                                <table className="w-full text-xs text-left">
-                                                    <thead className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
-                                                        <tr>
-                                                            <th className="py-2.5 px-4">Rank</th>
-                                                            <th className="py-2.5 px-4">Courier Partner</th>
-                                                            <th className="py-2.5 px-4 text-center">Dispatched Parcels</th>
-                                                            <th className="py-2.5 px-4 text-right">Volume Share</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                                                        {sortedCouriers.map(([name, count], idx) => {
-                                                            const pct = totalDbParcels > 0 ? ((count / totalDbParcels) * 100).toFixed(1) : '0';
-                                                            return (
-                                                                <tr key={idx} className="hover:bg-white/60 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-2.5 px-4 font-bold text-slate-700 dark:text-slate-300">#{idx + 1}</td>
-                                                                    <td className="py-2.5 px-4 font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                                                                        <i className="fas fa-truck text-slate-400"></i>
-                                                                        <span>{name}</span>
-                                                                    </td>
-                                                                    <td className="py-2.5 px-4 text-center font-mono font-semibold">{count.toLocaleString()}</td>
-                                                                    <td className="py-2.5 px-4 text-right font-mono font-bold text-pink-600 dark:text-pink-400">{pct}%</td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-
-                                {/* Footer */}
-                                <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0">
-                                    <div className="text-xs text-slate-400">
-                                        <i className="fas fa-microchip text-pink-500 mr-1"></i>
-                                        Powered by @sipemu/anofox-forecast (Rust/WASM)
-                                    </div>
-                                    <AppButton type="button" variant="primary" size="sm" onClick={() => setActiveChartModal(prev => ({ ...prev, isOpen: false }))}>
-                                        Close Inspection
-                                    </AppButton>
-                                </div>
-                            </div>
-                        </div>
-                    </Portal>
-                )}
-
-                {/* AI Modal */}
-                {isAiModalOpen && (
-                    <Portal>
-                        <div
-                            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
-                            onClick={(e) => {
-                                if (e.target === e.currentTarget) setIsAiModalOpen(false);
-                            }}
-                        >
-                            <div className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden" data-lenis-prevent>
-                                <div className="p-5 border-b border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-b from-pink-500 to-pink-600 text-white flex items-center justify-center text-lg">
-                                            <i className="fas fa-brain"></i>
-                                        </div>
-                                        <div>
-                                            <h2 className="text-base font-bold text-slate-900 dark:text-white">AI Forecasting &amp; Operational Interpretation</h2>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">Deep analysis of parcel volume, workforce concurrency, blocked device threats, and appeals</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <AppButton
-                                            type="button"
-                                            variant="neutral"
-                                            size="xs"
-                                            onClick={() => {
-                                                setIsAiModalOpen(false);
-                                                setIsAiMinimized(true);
-                                            }}
-                                            title="Minimize to compact bar"
-                                        >
-                                            <i className="fas fa-minus text-[10px]"></i>
-                                            <span>Minimize</span>
-                                        </AppButton>
-                                        <AppButton type="button" variant="neutral" size="icon-sm" onClick={() => setIsAiModalOpen(false)} aria-label="Close modal">
-                                            <i className="fas fa-times text-xs"></i>
-                                        </AppButton>
-                                    </div>
-                                </div>
-
-                                <div className="p-6 overflow-y-auto space-y-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed flex-1 overscroll-contain" data-lenis-prevent>
-                                    {summarizing ? (
-                                        <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                                            <div className="w-14 h-14 rounded-3xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-pink-500 dark:text-pink-400 flex items-center justify-center text-xl">
-                                                <i className="fas fa-wand-magic-sparkles fa-spin"></i>
-                                            </div>
-                                            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Synthesizing Models with Gemini AI...</h3>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
-                                                Evaluating 6-month historical counts, workforce concurrency, blocked device threat risks, and unblock appeals.
-                                            </p>
-                                        </div>
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.15)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
+                                    <tr>
+                                        <th className="p-3.5 font-bold">Item Code</th>
+                                        <th className="p-3.5 font-bold">Item Name</th>
+                                        <th className="p-3.5 font-bold">Category</th>
+                                        <th className="p-3.5 text-right font-bold">Available</th>
+                                        <th className="p-3.5 text-right font-bold">Forecast Demand</th>
+                                        <th className="p-3.5 text-right font-bold">Expected Incoming</th>
+                                        <th className="p-3.5 text-right font-bold">Projected Stock</th>
+                                        <th className="p-3.5 text-right font-bold">Min Stock</th>
+                                        <th className="p-3.5 text-center font-bold">Risk Level</th>
+                                        <th className="p-3.5 font-bold">Recommended Action</th>
+                                        <th className="p-3.5 text-center font-bold">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
+                                    {displayItems.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={11} className="p-10 text-center text-slate-400">
+                                                No inventory items match the current filter criteria.
+                                            </td>
+                                        </tr>
                                     ) : (
-                                        <div className="space-y-4">
-                                            {parseAiSummarySections(aiSummary).map((section, idx) => (
-                                                <div key={idx} className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
-                                                    {section.title && (
-                                                        <div className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-600 shrink-0"></span>
-                                                            {section.title}
+                                        displayItems.map((item) => {
+                                            const riskTone: BadgeTone =
+                                                item.risk_level === "Critical"
+                                                    ? "rose"
+                                                    : item.risk_level === "Low Stock Risk"
+                                                    ? "amber"
+                                                    : "emerald";
+
+                                            return (
+                                                <tr
+                                                    key={item.id}
+                                                    className="hover:bg-white/60 dark:hover:bg-[#1c1d28]/60 transition-colors"
+                                                >
+                                                    <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
+                                                        {item.item_code}
+                                                    </td>
+                                                    <td className="p-3.5 font-medium text-slate-800 dark:text-slate-200">
+                                                        {item.item_name}
+                                                    </td>
+                                                    <td className="p-3.5 text-slate-500 font-medium">
+                                                        {item.category}
+                                                    </td>
+                                                    <td className="p-3.5 text-right font-semibold">
+                                                        {item.available_stock} <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                    </td>
+                                                    <td className="p-3.5 text-right font-bold text-amber-600 dark:text-amber-400">
+                                                        {item.is_prediction_valid === false || summary?.has_three_years_history === false ? (
+                                                            <div>
+                                                                <span className="text-slate-500 dark:text-slate-400">0</span> <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                                <span className="block text-[9px] font-bold text-rose-500">0% Conf (&lt; 3 Yrs)</span>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                {item.forecast_demand} <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                            </>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3.5 text-right font-semibold text-sky-600 dark:text-sky-400">
+                                                        +{item.expected_incoming}
+                                                    </td>
+                                                    <td
+                                                        className={`p-3.5 text-right font-black ${
+                                                            item.risk_level === "Critical"
+                                                                ? "text-rose-600 dark:text-rose-400"
+                                                                : item.risk_level === "Low Stock Risk"
+                                                                ? "text-amber-600 dark:text-amber-400"
+                                                                : "text-emerald-600 dark:text-emerald-400"
+                                                        }`}
+                                                    >
+                                                        {item.projected_stock} <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                    </td>
+                                                    <td className="p-3.5 text-right text-slate-500 font-medium">
+                                                        {item.minimum_stock}
+                                                    </td>
+                                                    <td className="p-3.5 text-center">
+                                                        <StatusBadge tone={riskTone} dot>
+                                                            {item.risk_level}
+                                                        </StatusBadge>
+                                                    </td>
+                                                    <td className="p-3.5 text-[11px] text-slate-600 dark:text-slate-300 max-w-xs font-medium">
+                                                        {item.recommended_action}
+                                                    </td>
+                                                    <td className="p-3.5 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setDetailModalItem(item)}
+                                                                className="px-2.5 py-1 rounded-full bg-pink-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-pink-400 active:scale-95 transition-all cursor-pointer"
+                                                                title="View Forecast"
+                                                            >
+                                                                Forecast
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setHistoryModalItem(item)}
+                                                                className="px-2.5 py-1 rounded-full bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/80 dark:border-[#2a2b38] text-[10px] font-bold shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] hover:bg-slate-200 dark:hover:bg-[#252633] active:scale-95 transition-all cursor-pointer"
+                                                                title="View History"
+                                                            >
+                                                                History
+                                                            </button>
+                                                            <Link
+                                                                href={`/procurement?search=${encodeURIComponent(item.item_code)}`}
+                                                                className="px-2.5 py-1 rounded-full bg-sky-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(14,165,233,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-sky-400 active:scale-95 transition-all"
+                                                                title="Review in Procurement"
+                                                            >
+                                                                Procure
+                                                            </Link>
                                                         </div>
-                                                    )}
-                                                    <div className={`text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed ${section.title ? 'pl-3.5 border-l-2 border-pink-500' : ''}`}>
-                                                        {section.content}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* TAB 3: Historical Consumption Analysis */}
+                {activeTab === "consumption" && (
+                    <div className="space-y-6">
+                        {/* Periodic Issuance Trend */}
+                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                        <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
+                                            <i className="fas fa-chart-column" />
+                                        </span>
+                                        Historical Actual Consumption Volumes
+                                    </h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                        Aggregated strictly from completed stock-out issuances (excludes supplier receipts & damaged adjustments)
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-1 bg-[#ebf0f7] dark:bg-[#12131b] p-1 rounded-full border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConsumptionView("daily")}
+                                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                            consumptionView === "daily"
+                                                ? "bg-pink-500 text-white shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)]"
+                                                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                                        }`}
+                                    >
+                                        Daily
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConsumptionView("weekly")}
+                                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                            consumptionView === "weekly"
+                                                ? "bg-pink-500 text-white shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)]"
+                                                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                                        }`}
+                                    >
+                                        Weekly
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConsumptionView("monthly")}
+                                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                            consumptionView === "monthly"
+                                                ? "bg-pink-500 text-white shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)]"
+                                                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                                        }`}
+                                    >
+                                        Monthly
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Debossed Inset Chart Canvas Well */}
+                            <div className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#12131b]/80 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                                {loading ? (
+                                    <div className="h-64 sm:h-72 w-full flex flex-col items-center justify-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-indigo-500 animate-spin">
+                                            <i className="fas fa-circle-notch text-base" />
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                                            Aggregating historical warehouse consumption issuances...
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="h-64 sm:h-72 w-full relative">
+                                        <canvas ref={consumptionChartRef} className="w-full h-full block" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Top Consumed & Department Breakdown */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Top Consumed Items */}
+                            <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] space-y-4">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-amber-500 text-[11px]">
+                                        <i className="fas fa-ranking-star" />
+                                    </span>
+                                    Most Frequently Consumed Supplies
+                                </h4>
+                                <div className="space-y-2.5">
+                                    {forecastData?.consumption_analysis?.top_consumed_items?.length ? (
+                                        forecastData.consumption_analysis.top_consumed_items.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)] flex items-center justify-between text-xs"
+                                            >
+                                                <div>
+                                                    <span className="font-bold text-slate-900 dark:text-white">
+                                                        {item.item_name}
+                                                    </span>
+                                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                        {item.item_code} • {item.events} issuance events
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                                <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                    {item.total_quantity} {item.unit}
+                                                </span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-xs text-slate-400 py-6 text-center">No issuance records logged in this period.</p>
                                     )}
                                 </div>
+                            </div>
 
-                                <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0">
-                                    <div className="text-xs text-slate-400">
-                                        <i className="fas fa-shield-halved text-pink-500 mr-1"></i>
-                                        Grounded strictly in active Supabase records
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <AppButton type="button" variant="neutral" size="sm" onClick={generateAiSummary} disabled={summarizing}>
-                                            <i className={`fas fa-rotate text-xs ${summarizing ? 'fa-spin' : ''}`}></i>
-                                            <span>Regenerate</span>
-                                        </AppButton>
-                                        <AppButton type="button" variant="primary" size="sm" onClick={() => setIsAiModalOpen(false)}>
-                                            Done
-                                        </AppButton>
-                                    </div>
+                            {/* Department Breakdown */}
+                            <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] space-y-4">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-blue-500 text-[11px]">
+                                        <i className="fas fa-building" />
+                                    </span>
+                                    Consumption by Receiving Department
+                                </h4>
+                                <div className="space-y-2.5">
+                                    {forecastData?.consumption_analysis?.department_breakdown?.length ? (
+                                        forecastData.consumption_analysis.department_breakdown.map((dept, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)] flex items-center justify-between text-xs"
+                                            >
+                                                <div>
+                                                    <span className="font-bold text-slate-900 dark:text-white">
+                                                        {dept.department}
+                                                    </span>
+                                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                                        {dept.count} fulfillment requisitions
+                                                    </div>
+                                                </div>
+                                                <span className="font-bold text-blue-600 dark:text-blue-400">
+                                                    {dept.total_quantity} units
+                                                </span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-xs text-slate-400 py-6 text-center">No department issuance recorded.</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
-                    </Portal>
+                    </div>
                 )}
 
-                {/* Forecast Export Selection Modal */}
+                {/* TAB: Item Movement Velocity (Fast-Moving & Slowest-Moving Items) */}
+                {activeTab === "movement" && (
+                    <ItemMovementSection
+                        movementData={forecastData?.item_movement_analytics}
+                        periodDays={periodDays}
+                        onPeriodChange={(days) => {
+                            setCustomDateRange(null);
+                            setPeriodDays(days);
+                        }}
+                        onCustomRangeApply={(from, to) => {
+                            setCustomDateRange({ from, to });
+                        }}
+                        currentStartDate={customDateRange?.from || forecastData?.item_movement_analytics?.start_date}
+                        currentEndDate={customDateRange?.to || forecastData?.item_movement_analytics?.end_date}
+                        isLoading={loading || isRefreshing}
+                    />
+                )}
+
+                {/* TAB 4: Forecast Run History (Neumorphic Audit Trail) */}
+                {activeTab === "history" && (
+                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-5">
+                        <div>
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
+                                    <i className="fas fa-clock-rotate-left" />
+                                </span>
+                                Forecast Generation Audit Trail
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Real-time session executions evaluated against immutable stock movement records
+                            </p>
+                        </div>
+
+                        {/* Persistence Architecture Status Banner (Debossed Inset Well) */}
+                        <div className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                            <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-[11px]">
+                                <i className="fas fa-database text-amber-600 dark:text-amber-400" />
+                                Database Persistence Architecture Status
+                            </div>
+                            <p className="leading-relaxed">
+                                {forecastData?.persistence_info?.message}
+                            </p>
+                            {forecastData?.persistence_info?.required_schema && (
+                                <div className="mt-2 p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto shadow-inner">
+                                    {forecastData.persistence_info.required_schema}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Recent Session Runs */}
+                        <div className="space-y-3">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                                Current Active Session Runs ({sessionHistory.length})
+                            </span>
+                            <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.15)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
+                                        <tr>
+                                            <th className="p-3.5 font-bold">Run ID</th>
+                                            <th className="p-3.5 font-bold">Time</th>
+                                            <th className="p-3.5 font-bold">Window</th>
+                                            <th className="p-3.5 font-bold">Horizon</th>
+                                            <th className="p-3.5 font-bold">Forecasted Items</th>
+                                            <th className="p-3.5 font-bold">Predicted Demand</th>
+                                            <th className="p-3.5 font-bold">Model Engine</th>
+                                            <th className="p-3.5 font-bold">Accuracy</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
+                                        {sessionHistory.map((run) => (
+                                            <tr key={run.id} className="hover:bg-white/60 dark:hover:bg-[#1c1d28]/60 transition-colors">
+                                                <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">{run.id}</td>
+                                                <td className="p-3.5 text-slate-500 font-medium">{run.timestamp}</td>
+                                                <td className="p-3.5 font-medium">{run.periodDays} Days</td>
+                                                <td className="p-3.5 font-bold text-pink-600 dark:text-pink-400">{run.horizonDays} Days</td>
+                                                <td className="p-3.5 font-semibold">{run.itemsForecasted}</td>
+                                                <td className="p-3.5 font-bold">{run.predictedDemand} units</td>
+                                                <td className="p-3.5 text-slate-500 font-medium">{run.modelSummary}</td>
+                                                <td className="p-3.5 font-bold text-emerald-600 dark:text-emerald-400">{run.accuracyLabel}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modals */}
                 <ForecastExportModal
                     isOpen={isExportModalOpen}
                     onClose={() => setIsExportModalOpen(false)}
-                    forecastData={forecastData as any}
+                    forecastData={forecastData}
                     chartCanvases={{
-                        parcelChart: parcelChartRef.current,
-                        expenseChart: expenseChartRef.current,
-                        courierChart: courierPieRef.current,
+                        demandChart: demandChartRef.current,
+                        consumptionChart: consumptionChartRef.current
                     }}
+                />
+
+                <ItemForecastModal
+                    isOpen={!!detailModalItem}
+                    onClose={() => setDetailModalItem(null)}
+                    item={detailModalItem}
+                    horizonDays={horizonDays}
+                    historicalPeriodDays={periodDays}
+                />
+
+                <ItemHistoryModal
+                    isOpen={!!historyModalItem}
+                    onClose={() => setHistoryModalItem(null)}
+                    item={historyModalItem}
+                    historicalPeriodDays={periodDays}
                 />
             </div>
         </SessionGuard>

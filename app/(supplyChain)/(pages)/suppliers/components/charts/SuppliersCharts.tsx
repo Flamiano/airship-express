@@ -11,7 +11,8 @@ interface SuppliersChartsProps {
     purchaseOrdersCount: number;
     activityChartRef: React.RefObject<HTMLCanvasElement | null>;
     categoryChartRef: React.RefObject<HTMLCanvasElement | null>;
-    onAddSupplier: () => void;
+    onAddSupplier?: () => void;
+    onRedraw?: () => void;
 }
 
 export function SuppliersCharts({
@@ -20,8 +21,17 @@ export function SuppliersCharts({
     purchaseOrdersCount,
     activityChartRef,
     categoryChartRef,
-    onAddSupplier,
+    onRedraw,
 }: SuppliersChartsProps) {
+    React.useEffect(() => {
+        if (!isLoading && onRedraw) {
+            const timer = setTimeout(() => {
+                onRedraw();
+            }, 80);
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading, onRedraw]);
+
     if (isLoading) {
         return <SupplierChartsSkeleton />;
     }
@@ -45,8 +55,8 @@ export function SuppliersCharts({
                             <div className="w-12 h-12 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] flex items-center justify-center text-pink-500 dark:text-pink-400 mb-3">
                                 <i className="fas fa-building text-base"></i>
                             </div>
-                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No suppliers registered yet</span>
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Add a supplier to start tracking purchases</span>
+                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">No registered suppliers yet</span>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Approved suppliers will appear here</span>
                         </div>
                     ) : purchaseOrdersCount === 0 ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-6 text-center">
@@ -80,17 +90,9 @@ export function SuppliersCharts({
                                 <i className="fas fa-chart-pie text-base"></i>
                             </div>
                             <span className="text-xs font-bold text-slate-800 dark:text-slate-200">No Supplier Categories</span>
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5 mb-3 leading-tight">
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5 leading-tight">
                                 Category breakdown will display once suppliers are registered
                             </span>
-                            <button
-                                type="button"
-                                onClick={onAddSupplier}
-                                className="px-3.5 py-1.5 bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 text-white border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.4)] rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                            >
-                                <i className="fas fa-plus text-[10px]" />
-                                <span>Add Supplier</span>
-                            </button>
                         </div>
                     ) : (
                         <canvas ref={categoryChartRef} className="w-full h-full max-h-60"></canvas>

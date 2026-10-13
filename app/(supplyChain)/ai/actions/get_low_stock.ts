@@ -74,7 +74,7 @@ export async function getLowStockItems(): Promise<LowStockItem[]> {
         const minimumStock = Number(item.minimum_stock) || 0;
         const rawSupplier = item.supplier ? String(item.supplier).trim() : null;
 
-        let matchedSupplier = null;
+        let matchedSupplier: any = null;
         if (rawSupplier) {
             matchedSupplier = supplierMap.get(rawSupplier) || supplierMap.get(rawSupplier.toLowerCase());
         }

@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
                 // Check active documents
                 let query = supabaseAdmin
-                    .from('documents')
+                    .from('supplier_documents')
                     .select('id, title, file_name, file_size, supplier, po_number')
                     .ilike('file_name', fileName)
                     .eq('file_size', fileSize);
@@ -238,12 +238,12 @@ export async function POST(request: NextRequest) {
         const genAI = new GoogleGenAI({ apiKey });
 
         const promptText = `
-You are the Chief OCR & Compliance Intelligence Officer for Airship Express (a courier, logistics, and supply chain management enterprise).
+You are the Chief OCR & Compliance Intelligence Officer for Airship Express (a logistics and supply chain management enterprise).
 Your strict task is to inspect the attached document or image named "${fileName}" and determine if it represents a VALID supply chain/company operational document or photo, OR if it is UNRELATED out-of-scope media (such as an anime character like Itachi, cartoon, video game screenshot, internet meme, personal selfie, or random unrelated photo).
 
 VALID Supply Chain & Company Assets include:
 - Financial & Commercial documents: Official Receipts, Invoices, Delivery Receipts, Purchase Orders, Bills of Lading, Manifests, Quotations, Vendor Contracts, Tax Certificates, Customs Declarations.
-- Logistics & Operational media: Parcel photos, Damaged package condition, Courier handover, Barcode/Tracking labels, Packaging, Warehouse storage/racks, Fleet vehicles/trucks/vans, Vehicle maintenance, Official badges/IDs, Workplace equipment.
+- Logistics & Operational media: Parcel photos, Damaged package condition, Logistics handover, Barcode/Tracking labels, Packaging, Warehouse storage/racks, Fleet vehicles/trucks/vans, Vehicle maintenance, Official badges/IDs, Workplace equipment.
 
 INVALID / OUT-OF-SCOPE Media include:
 - Anime, manga, cartoon illustrations (e.g. Itachi Uchiha, Naruto, Dragon Ball, superheroes, fictional drawings).
@@ -337,7 +337,7 @@ Return ONLY a valid JSON object without markdown formatting, code fences, or bac
             };
         }
 
-        // Standardized extracted payload for public.documents "extracted" jsonb column
+        // Standardized extracted payload for public.supplier_documents "extracted" jsonb column
         const extractedPayload = {
             text: parsedResult.extracted_text || null,
             description: parsedResult.photo_description || parsedResult.summary || null,
@@ -400,7 +400,7 @@ Return ONLY a valid JSON object without markdown formatting, code fences, or bac
                 // B. If not in trash, check active documents
                 if (!isInTrash) {
                     const { data: existingExtractedDocs } = await supabaseAdmin
-                        .from('documents')
+                        .from('supplier_documents')
                         .select('id, title, file_name, file_size, supplier, po_number, extracted')
                         .not('extracted', 'is', null)
                         .order('created_at', { ascending: false })

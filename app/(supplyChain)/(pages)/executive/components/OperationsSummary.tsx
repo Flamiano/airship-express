@@ -13,55 +13,55 @@ interface OperationsSummaryProps {
 export default function OperationsSummary({ data }: OperationsSummaryProps) {
     const [selectedItem, setSelectedItem] = useState<ItemDetailRecord | null>(null);
 
-    const queuePending = data?.receivingQueuePending ?? 0;
-    const sortingCount = data?.sortingParcels ?? 0;
-    const deliveredCount = data?.deliveredParcels ?? 0;
+    const pendingInbound = data?.pendingInboundOrders ?? 0;
+    const totalUnits = data?.totalStockUnits ?? 0;
+    const activeSuppliers = data?.activeSuppliersCount ?? 0;
     const anomalies = data?.anomaliesCount ?? 0;
 
     const rows = [
         {
-            key: 'receiving',
-            label: 'Receiving Queue Pending',
-            valStr: `${queuePending.toLocaleString()} items`,
-            badgeText: `${queuePending} pending`,
+            key: 'inbound',
+            label: 'Pending Inbound Orders',
+            valStr: `${pendingInbound.toLocaleString()} orders`,
+            badgeText: `${pendingInbound} pending`,
             badgeStyle: 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] text-slate-700 dark:text-slate-300 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]',
-            infoText: 'Parcels scanned in receiving queue awaiting sort verification.',
+            infoText: 'Purchase orders awaiting fulfillment and warehouse receiving from suppliers.',
             modalDetail: {
-                title: 'Receiving Queue Inspection',
-                referenceId: 'RCV-QUEUE-STAGE',
-                status: 'Pending Verification',
-                locationOrArea: 'Inbound Dock Bay 1-3',
-                description: `Currently ${queuePending} items are held in the receiving queue. Pending automated line scan.`,
+                title: 'Inbound Orders Inspection',
+                referenceId: 'PO-INBOUND-STAGE',
+                status: 'Pending Fulfillment',
+                locationOrArea: 'Receiving Dock / Supplier Transit',
+                description: `Currently ${pendingInbound} purchase orders are awaiting delivery and verification at the warehouse.`,
             }
         },
         {
-            key: 'sorting',
-            label: 'Parcels Currently Sorting',
-            valStr: `${sortingCount.toLocaleString()} parcels`,
-            badgeText: `${sortingCount} in line`,
-            badgeStyle: 'bg-[#ebf0f7] dark:bg-[#12131b] border-amber-300/80 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25),0_1px_3px_rgba(245,158,11,0.1)]',
-            infoText: 'Parcels undergoing optical barcode classification in sorting lanes.',
+            key: 'stock_units',
+            label: 'Warehouse Stock In-Bin',
+            valStr: `${totalUnits.toLocaleString()} units`,
+            badgeText: `${totalUnits.toLocaleString()} units`,
+            badgeStyle: 'bg-[#ebf0f7] dark:bg-[#12131b] border-indigo-300/80 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25),0_1px_3px_rgba(99,102,241,0.1)]',
+            infoText: 'Physical stock units currently stored across warehouse bins and racks.',
             modalDetail: {
-                title: 'Sorting Stage Breakdown',
-                referenceId: 'SRT-STAGE-ACTIVE',
-                status: 'Active Sorting',
-                locationOrArea: 'Sorting Facility Hub',
-                description: `${sortingCount} parcels actively routing through conveyor belts to destination distribution bins.`,
+                title: 'Warehouse Storage Capacity Audit',
+                referenceId: 'WH-STORAGE-CAPACITY',
+                status: 'Active Warehousing',
+                locationOrArea: 'Warehouse Storage Bins & Racks',
+                description: `Currently ${totalUnits.toLocaleString()} total units across ${data?.activeInventorySkus ?? 0} SKUs are stocked and ready in warehouse facilities.`,
             }
         },
         {
-            key: 'delivered',
-            label: 'Parcels Successfully Delivered',
-            valStr: deliveredCount.toLocaleString(),
-            badgeText: `${deliveredCount} completed`,
+            key: 'suppliers',
+            label: 'Approved Vendor Partners',
+            valStr: `${activeSuppliers} vendors`,
+            badgeText: `${activeSuppliers} active`,
             badgeStyle: 'bg-[#ebf0f7] dark:bg-[#12131b] border-emerald-300/80 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25),0_1px_3px_rgba(16,185,129,0.1)]',
-            infoText: 'Total parcels delivered to destination consignees.',
+            infoText: 'Active verified suppliers available for procurement and inventory fulfillment.',
             modalDetail: {
-                title: 'Delivered Shipment Audit',
-                referenceId: 'DLV-STAGE-METRIC',
-                status: 'Fulfilled',
-                locationOrArea: 'Last Mile Carrier Handoff',
-                description: `${deliveredCount} parcels confirmed delivered with verified proof of receipt.`,
+                title: 'Approved Suppliers Network Audit',
+                referenceId: 'SUPPLIERS-ACTIVE-NET',
+                status: 'Verified Vendors',
+                locationOrArea: 'Supply Chain Registry',
+                description: `${activeSuppliers} active vendor partners are registered for purchase requisitions and stock replenishment.`,
             }
         },
         {

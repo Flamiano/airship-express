@@ -14,7 +14,6 @@ import { SessionGuard } from "../../components/server/SessionGuard";
 import { TableContentLoader } from "../../components/global/Loader";
 import Cards from "../../components/global/Cards";
 import dynamic from "next/dynamic";
-import { createPurchaseRequest } from "../procurement/utils/procurementApi";
 import AiQuestions from "../../components/global/AiQuestions";
 import { user } from "../../lib/services/Class/user";
 import { buildEmailTemplate } from "../procurement/api/send-email/template";
@@ -27,10 +26,11 @@ import {
     MAX_MISMATCH_ATTEMPTS,
 } from "../../components/modals/UploadReceiptModal";
 import { uploadReceiptAndVerifyAction } from "./server/actions/ocr-verify";
+import { processDeliveredPurchaseOrdersAction } from "./server/actions/delivery-inventory";
 import { ReceiptProcessingIndicator } from "../../components/global/ReceiptProcessingIndicator";
 import { CrudActionButton } from "../../components/ui/CrudActionButton";
 import { AppButton } from "../../components/ui/AppButton";
-import { FileText, MoreHorizontal, Receipt } from "lucide-react";
+import { FileText, MoreHorizontal, Receipt, Eye } from "lucide-react";
 import type { ViewDocumentData } from "../../components/modals/DocumentViewerModal";
 import { StatusBadge, getPOStatusTone } from "../../components/ui/StatusBadge";
 import Portal from "../../components/client/Portal";
@@ -38,14 +38,6 @@ import Portal from "../../components/client/Portal";
 // dynamic modal imports to reduce initial bundle size
 const PurchaseOrderModal = dynamic(
     () => import("../../components/modals/PurchaseOrderModal").then(m => m.PurchaseOrderModal),
-    { ssr: false }
-);
-const ApprovedRequestsModal = dynamic(
-    () => import("../../components/modals/ApprovedRequestsModal").then(m => m.ApprovedRequestsModal),
-    { ssr: false }
-);
-const PurchaseRequestModal = dynamic(
-    () => import("../../components/modals/PurchaseRequestModal").then(m => m.PurchaseRequestModal),
     { ssr: false }
 );
 const ChartDetailModal = dynamic(
@@ -71,12 +63,30 @@ interface PurchaseOrder {
     request_id: string;
     supplier_id: string;
     supplier_name: string;
+    supplier_location?: string;
+    supplier_address?: string;
+    category?: string | null;
+    subtotal?: number;
+    discount?: number;
+    shipping_fee?: number;
+    tax_rate?: number;
+    tax_amount?: number;
     total_amount: number;
     status: string;
     delivery_date: string;
+    delivery_location?: string;
+    payment_terms?: string;
+    payment_method?: string;
+    terms_and_conditions?: string;
     notes: string;
     items: any[];
     paid: boolean;
+    admin_approval?: string;
+    admin_approved_at?: string;
+    admin_approved_by?: string;
+    financial_approval?: string;
+    financial_approved_at?: string;
+    financial_approved_by?: string;
     created_at?: string;
     updated_at?: string;
     verification?: {
@@ -177,8 +187,6 @@ export default function PurchaseOrders() {
     const [totalItems, setTotalItems] = useState(0);
     const [activeStatusFilter, setActiveStatusFilter] = useState<string>(initialStatus);
     const [isPurchaseOrderModalOpen, setIsPurchaseOrderModalOpen] = useState(false);
-    const [isApprovedRequestsModalOpen, setIsApprovedRequestsModalOpen] = useState(false);
-    const [isPurchaseRequestModalOpen, setIsPurchaseRequestModalOpen] = useState(false);
     const [selectedRequestForPO, setSelectedRequestForPO] = useState<any>(null);
     const [approvedRequestsCount, setApprovedRequestsCount] = useState<number>(0);
     const [digitalReceiptPO, setDigitalReceiptPO] = useState<any | null>(null);
@@ -212,6 +220,13 @@ export default function PurchaseOrders() {
     const [isSelectAll, setIsSelectAll] = useState(false);
     // action modal
     const [actionModalOrder, setActionModalOrder] = useState<PurchaseOrder | null>(null);
+    const [actionModalTab, setActionModalTab] = useState<'details' | 'manage'>('details');
+
+    const openOrderModal = (order: PurchaseOrder, tab: 'details' | 'manage' = 'details') => {
+        setActionModalTab(tab);
+        setActionModalOrder(order);
+    };
+
     const [actionEmailMode, setActionEmailMode] = useState<'standard' | 'ai'>('standard');
     const [actionModalAiMessage, setActionModalAiMessage] = useState('');
     const [isGeneratingActionAI, setIsGeneratingActionAI] = useState(false);
@@ -452,7 +467,7 @@ export default function PurchaseOrders() {
     const rawRole = (currentUserRole || '').toLowerCase().trim();
     const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(rawRole);
     const isExecutive = ['executive'].includes(rawRole);
-    const canUpdateStatus = ['admin', 'super_admin', 'superadmin', 'manager', 'executive'].includes(rawRole);
+    const canUpdateStatus = ['admin', 'super_admin', 'superadmin', 'purchase officer', 'purchase_officer', 'executive'].includes(rawRole);
     const userRole = currentUserRole;
     const scrollToTable = useCallback(() => {
         if (tableContainerRef.current) {
@@ -640,7 +655,7 @@ export default function PurchaseOrders() {
                         });
 
                         const { data: linkedDocs } = await supabase
-                            .from('documents')
+                            .from('supplier_documents')
                             .select('id, title, file_name, storage_path, file_type, notes, uploaded_by, purchase_id')
                             .in('purchase_id', orderIds)
                             .order('created_at', { ascending: false });
@@ -837,6 +852,11 @@ export default function PurchaseOrders() {
             });
 
             const initialStatus = orderData.status || 'Draft';
+            const subtotal = Number(orderData.subtotal || orderData.total_amount || 0);
+            const discount = Number(orderData.discount || 0);
+            const shippingFee = Number(orderData.shipping_fee || 0);
+            const taxRate = Number(orderData.tax_rate || 0);
+            const taxAmount = Number(orderData.tax_amount || 0);
 
             const { data: insertedPO, error: orderError } = await supabase
                 .from('purchase_orders')
@@ -844,13 +864,25 @@ export default function PurchaseOrders() {
                     po_number: orderData.po_number,
                     request_id: orderData.request_id,
                     supplier_id: orderData.supplier_id,
+                    suppliers_qoutation_bid: orderData.suppliers_qoutation_bid || orderData.quotation_id || null,
                     supplier_name: orderData.supplier_name,
+                    subtotal: subtotal,
+                    discount: discount,
+                    shipping_fee: shippingFee,
+                    tax_rate: taxRate,
+                    tax_amount: taxAmount,
                     total_amount: orderData.total_amount,
                     status: initialStatus,
                     delivery_date: orderData.delivery_date,
+                    delivery_location: orderData.delivery_location || "352 Escolta St, Binondo, Manila, 1006 Metro Manila(Airship Express)",
+                    payment_terms: orderData.payment_terms || "Net 30 Days (Standard B2B)",
+                    terms_and_conditions: orderData.terms_and_conditions || "1. All goods supplied are guaranteed brand new and authentic.\n2. Official BIR Invoice and Receipt must be provided upon delivery.\n3. Defective items will be replaced free of charge within 48 hours.",
                     notes: orderData.notes || '',
                     items: sanitizedItems,
                     paid: false,
+                    fully_received: false,
+                    admin_approval: orderData.admin_approval || 'Approved',
+                    financial_approval: orderData.financial_approval || 'Pending',
                 })
                 .select()
                 .single();
@@ -866,11 +898,21 @@ export default function PurchaseOrders() {
                 created_at: new Date().toISOString(),
             };
 
-            // Auto-create digital receipt in documents tracking
+            // Auto-create digital receipt in supplier_documents tracking
             try {
-                await supabase.from('documents').insert({
+                let poSupplierId: number = Number(orderData.supplier_id) || 1;
+                if (!poSupplierId && suppliers?.length > 0) {
+                    const foundSup = suppliers.find((s: any) => s.name?.toLowerCase() === orderData.supplier_name?.toLowerCase());
+                    if (foundSup?.id) poSupplierId = Number(foundSup.id) || 1;
+                }
+                await supabase.from('supplier_documents').insert({
+                    supplier_id: poSupplierId,
+                    supplier: orderData.supplier_name || null,
+                    po_number: orderData.po_number || null,
+                    document_type: 'Digital Receipt',
                     title: `Digital Receipt - PO #${orderData.po_number}`,
                     file_name: `digital_receipt_${orderData.po_number}.pdf`,
+                    storage_path: `documents/digital_receipt_${orderData.po_number}.pdf`,
                     file_type: 'receipt',
                     purchase_id: newPoRecord.id,
                     notes: 'Official Digital Receipt generated at PO creation',
@@ -897,32 +939,6 @@ export default function PurchaseOrders() {
             toast.error('Failed to create purchase order');
         }
     }, [fetchApprovedRequestsCount]);
-    const handleRequestSubmitted = async (newRequest: any) => {
-        try {
-            const createPayload = {
-                type: newRequest.type || "New Request",
-                description: newRequest.description || "",
-                requested_by: newRequest.requested_by,
-                department: newRequest.department || "Fleet",
-                supplier_id: newRequest.supplier_id,
-                supplier_name: newRequest.supplier_name,
-                amount: newRequest.amount || 0,
-                priority: newRequest.priority || "Normal",
-                status: newRequest.status || "Pending",
-                date: newRequest.date || new Date().toISOString().split("T")[0],
-                items: newRequest.items || [],
-                reason: newRequest.reason,
-            };
-            await createPurchaseRequest(createPayload);
-            fetchApprovedRequestsCount();
-            toast.success("Purchase request submitted successfully!");
-            setIsPurchaseRequestModalOpen(false);
-        }
-        catch (error) {
-            console.error('Error submitting purchase request:', error);
-            toast.error('Failed to submit purchase request');
-        }
-    };
     const handleDeleteOrder = async (id: string) => {
         const targetOrder = purchaseOrders.find(p => p.id === id) || allOrders.find(p => p.id === id) || (actionModalOrder?.id === id ? actionModalOrder : null);
         const orderStatusLower = (targetOrder?.status || '').toLowerCase();
@@ -1029,7 +1045,7 @@ export default function PurchaseOrders() {
     };
     const handleBulkUpdateStatus = async (newStatus: string) => {
         if (!canUpdateStatus) {
-            toast.error("Permission denied: Only Managers, Executives, and Admins can update purchase order status.");
+            toast.error("Permission denied: Only Purchase Officers, Executives, and Admins can update purchase order status.");
             return;
         }
         if (newStatus === 'Confirmed' && !isAdmin && !isExecutive) {
@@ -1052,21 +1068,41 @@ export default function PurchaseOrders() {
         setPendingRowId("bulk");
         try {
             const idsToUpdate = Array.from(selectedIds);
-            const { error } = await supabase
-                .from('purchase_orders')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .in('id', idsToUpdate);
-            if (error)
-                throw error;
-            setPurchaseOrders(prev => prev.map(po => selectedIds.has(po.id) ? { ...po, status: newStatus } : po));
-            setAllOrders(prev => prev.map(po => selectedIds.has(po.id) ? { ...po, status: newStatus } : po));
-            setSelectedIds(new Set());
-            setIsSelectAll(false);
-            toast.success(`Updated ${idsToUpdate.length} order(s) to ${newStatus}`);
+            if (newStatus === 'Delivered' || newStatus === 'Completed') {
+                const deliveryRes = await processDeliveredPurchaseOrdersAction(idsToUpdate, {
+                    name: user.getName() || 'Warehouse Staff',
+                    role: user.getRole(),
+                    id: user.getId() || undefined,
+                });
+
+                if (!deliveryRes.success) {
+                    throw new Error(deliveryRes.error || 'Failed to process inventory stock-in for delivered orders');
+                }
+
+                setPurchaseOrders(prev => prev.map(po => selectedIds.has(po.id) ? { ...po, status: newStatus, fully_received: true } : po));
+                setAllOrders(prev => prev.map(po => selectedIds.has(po.id) ? { ...po, status: newStatus, fully_received: true } : po));
+                setSelectedIds(new Set());
+                setIsSelectAll(false);
+
+                const { totalUpdated, totalCreated } = deliveryRes.summary;
+                toast.success(`Updated ${idsToUpdate.length} order(s) to ${newStatus}! Inventory updated (${totalUpdated} stock updated, ${totalCreated} new items created) & stock movements recorded.`);
+            } else {
+                const { error } = await supabase
+                    .from('purchase_orders')
+                    .update({ status: newStatus, updated_at: new Date().toISOString() })
+                    .in('id', idsToUpdate);
+                if (error)
+                    throw error;
+                setPurchaseOrders(prev => prev.map(po => selectedIds.has(po.id) ? { ...po, status: newStatus } : po));
+                setAllOrders(prev => prev.map(po => selectedIds.has(po.id) ? { ...po, status: newStatus } : po));
+                setSelectedIds(new Set());
+                setIsSelectAll(false);
+                toast.success(`Updated ${idsToUpdate.length} order(s) to ${newStatus}`);
+            }
         }
-        catch (error) {
+        catch (error: any) {
             console.error('Error updating purchase orders status in bulk:', error);
-            toast.error('Failed to update purchase orders status');
+            toast.error(error?.message || 'Failed to update purchase orders status');
         }
         finally {
             setPendingRowId(null);
@@ -1099,7 +1135,7 @@ export default function PurchaseOrders() {
         skipConfirm?: boolean;
     }) => {
         if (!canUpdateStatus) {
-            toast.error("Permission denied: Only Managers, Executives, and Admins can update purchase order status.");
+            toast.error("Permission denied: Only Purchase Officers, Executives, and Admins can update purchase order status.");
             return;
         }
         const targetOrder = purchaseOrders.find(p => p.id === id) || allOrders.find(p => p.id === id) || (actionModalOrder?.id === id ? actionModalOrder : null);
@@ -1134,22 +1170,47 @@ export default function PurchaseOrders() {
         }
         setPendingRowId(id);
         try {
-            const { error } = await supabase
-                .from('purchase_orders')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .eq('id', id);
-            if (error)
-                throw error;
-            setPurchaseOrders(prev => prev.map(po => po.id === id ? { ...po, status: newStatus } : po));
-            setAllOrders(prev => prev.map(po => po.id === id ? { ...po, status: newStatus } : po));
-            if (actionModalOrder && actionModalOrder.id === id) {
-                setActionModalOrder(prev => prev ? { ...prev, status: newStatus } : null);
+            if (newStatus === 'Delivered' || (newStatus === 'Completed' && !(targetOrder as any)?.fully_received)) {
+                const deliveryRes = await processDeliveredPurchaseOrdersAction([id], {
+                    name: user.getName() || 'Warehouse Staff',
+                    role: user.getRole(),
+                    id: user.getId() || undefined,
+                });
+
+                if (!deliveryRes.success) {
+                    throw new Error(deliveryRes.error || deliveryRes.results[0]?.error || 'Failed to update inventory for delivered order');
+                }
+
+                const poRes = deliveryRes.results[0];
+                const parts: string[] = [];
+                if (poRes?.updatedCount) parts.push(`${poRes.updatedCount} stock updated`);
+                if (poRes?.createdCount) parts.push(`${poRes.createdCount} new item(s) created`);
+                const summaryInfo = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+
+                setPurchaseOrders(prev => prev.map(po => po.id === id ? { ...po, status: newStatus, fully_received: true } : po));
+                setAllOrders(prev => prev.map(po => po.id === id ? { ...po, status: newStatus, fully_received: true } : po));
+                if (actionModalOrder && actionModalOrder.id === id) {
+                    setActionModalOrder(prev => prev ? { ...prev, status: newStatus, fully_received: true } : null);
+                }
+                toast.success(`PO #${targetOrder?.po_number || id} marked ${newStatus}! Inventory & stock movements updated${summaryInfo}`);
+            } else {
+                const { error } = await supabase
+                    .from('purchase_orders')
+                    .update({ status: newStatus, updated_at: new Date().toISOString() })
+                    .eq('id', id);
+                if (error)
+                    throw error;
+                setPurchaseOrders(prev => prev.map(po => po.id === id ? { ...po, status: newStatus } : po));
+                setAllOrders(prev => prev.map(po => po.id === id ? { ...po, status: newStatus } : po));
+                if (actionModalOrder && actionModalOrder.id === id) {
+                    setActionModalOrder(prev => prev ? { ...prev, status: newStatus } : null);
+                }
+                toast.success(`PO #${targetOrder?.po_number || id} status updated to ${newStatus}`);
             }
-            toast.success(`PO #${targetOrder?.po_number || id} status updated to ${newStatus}`);
         }
-        catch (error) {
+        catch (error: any) {
             console.error('Error updating PO status:', error);
-            toast.error('Failed to update PO status');
+            toast.error(error?.message || 'Failed to update PO status');
         }
         finally {
             setPendingRowId(null);
@@ -1562,16 +1623,7 @@ export default function PurchaseOrders() {
             totalSpend: spend,
         };
     }, [allOrders, purchaseOrders]);
-    // create po handler
-    const handleOpenApprovedRequests = () => {
-        setIsApprovedRequestsModalOpen(true);
-    };
-    const handleSelectRequestForPO = (req: any) => {
-        setSelectedRequestForPO(req);
-        setIsApprovedRequestsModalOpen(false);
-        setIsPurchaseOrderModalOpen(true);
-    };
-    return (<SessionGuard requiredRole={['Admin', 'Manager', 'Executive']}>
+    return (<SessionGuard requiredRole={['Superadmin', 'Admin', 'Executive', 'Purchase Officer', 'Operator', 'Supervisor', 'Staff', 'Employee']}>
         <div className="p-6 space-y-6 fade-in bgCard">
             {/* header */}
             <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">
@@ -1598,20 +1650,18 @@ export default function PurchaseOrders() {
                     </div>
                 </div>
 
-                <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-                    <AppButton type="button" variant="neutral" size="md" onClick={() => setIsPurchaseRequestModalOpen(true)}>
-                        <i className="fas fa-plus text-pink-500 dark:text-pink-400 text-xs" />
-                        <span>Make Purchase Request</span>
-                    </AppButton>
-                    <AppButton type="button" variant="primary" size="md" onClick={handleOpenApprovedRequests}>
-                        <i className="fas fa-clipboard-check text-xs" />
-                        <span>Create PO from Request</span>
-                        {approvedRequestsCount > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-black leading-none text-pink-700 dark:text-pink-300 bg-white dark:bg-[#181924] border border-pink-200 dark:border-pink-800/80 rounded-full shadow-xs animate-pulse ml-0.5">
-                                {approvedRequestsCount}
-                            </span>
-                        )}
-                    </AppButton>
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedRequestForPO(null);
+                            setIsPurchaseOrderModalOpen(true);
+                        }}
+                        className="px-4 py-2.5 rounded-2xl text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 border border-pink-400/80 shadow-[0_4px_14px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.4)] flex items-center gap-2 cursor-pointer active:scale-95 transition-all"
+                    >
+                        <i className="fas fa-plus text-[11px]" />
+                        <span>Create Purchase Order</span>
+                    </button>
                 </div>
             </div>
 
@@ -1928,15 +1978,31 @@ export default function PurchaseOrders() {
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                                     {filteredOrders.length === 0 ? (<tr>
                                         <td colSpan={10} className="py-12">
-                                            <EmptyState title="No purchase orders found" description={activeStatusFilter !== 'all'
-                                                ? `There are no orders with status "${activeStatusFilter}".`
-                                                : "Select an approved purchase request to generate a purchase order."} icon="fas fa-file-invoice" actionText="Create PO from Request" badgeCount={approvedRequestsCount} onAction={handleOpenApprovedRequests} />
+                                            <EmptyState
+                                                title={activeStatusFilter !== 'all' || debouncedSearch ? "No Purchase Orders Found" : "No Purchase Orders Yet"}
+                                                description={activeStatusFilter !== 'all'
+                                                    ? `There are no orders with status "${activeStatusFilter}".`
+                                                    : debouncedSearch
+                                                        ? "Try adjusting your search terms or filter criteria."
+                                                        : "Create purchase orders to start managing supplier procurements and deliveries."}
+                                                icon="fas fa-file-invoice"
+                                                actionText={activeStatusFilter === 'all' && !debouncedSearch ? "Create Purchase Order" : undefined}
+                                                onAction={activeStatusFilter === 'all' && !debouncedSearch ? () => {
+                                                    setSelectedRequestForPO(null);
+                                                    setIsPurchaseOrderModalOpen(true);
+                                                } : undefined}
+                                                isFilterActive={activeStatusFilter !== 'all' || !!debouncedSearch}
+                                                onClearSearch={() => {
+                                                    setSearchTerm('');
+                                                    setActiveStatusFilter('all');
+                                                }}
+                                            />
                                         </td>
                                     </tr>) : (filteredOrders.map((order: PurchaseOrder) => {
                                         const isRowVerifying = verifyingPoIds.has(order.id);
                                         const rowBusy = pendingRowId === order.id || isRowVerifying;
                                         const isSelected = selectedIds.has(order.id);
-                                        return (<tr key={order.id} onClick={() => !rowBusy && setActionModalOrder(order)} className={`group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${rowBusy ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${isSelected ? "bg-pink-50/30 dark:bg-pink-950/20" : "bg-transparent"}`}>
+                                        return (<tr key={order.id} onClick={() => !rowBusy && openOrderModal(order, 'details')} className={`group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${rowBusy ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${isSelected ? "bg-pink-50/30 dark:bg-pink-950/20" : "bg-transparent"}`}>
                                             <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                                                 <input type="checkbox" disabled={rowBusy} className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600 disabled:opacity-50" checked={isSelected} onChange={() => handleSelectOne(order.id)} />
                                             </td>
@@ -2056,6 +2122,17 @@ export default function PurchaseOrders() {
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                     </svg>)}
 
+                                                    {/* view order details */}
+                                                    <CrudActionButton
+                                                        action="custom"
+                                                        label="View"
+                                                        icon={Eye}
+                                                        disabled={rowBusy}
+                                                        ariaLabel="View Purchase Order Details"
+                                                        title="View Purchase Order Details"
+                                                        onClick={() => openOrderModal(order, 'details')}
+                                                    />
+
                                                     {/* digital receipt */}
                                                     <CrudActionButton
                                                         action="custom"
@@ -2090,7 +2167,7 @@ export default function PurchaseOrders() {
                                                     }} />)}
 
                                                     {/* manage order */}
-                                                    <CrudActionButton action="custom" label="Manage" icon={MoreHorizontal} disabled={rowBusy} ariaLabel="Manage Purchase Order" title="Manage Purchase Order" onClick={() => setActionModalOrder(order)} />
+                                                    <CrudActionButton action="custom" label="Manage" icon={MoreHorizontal} disabled={rowBusy} ariaLabel="Manage Purchase Order" title="Manage Purchase Order" onClick={() => openOrderModal(order, 'manage')} />
                                                 </div>
                                             </td>
                                         </tr>);
@@ -2137,77 +2214,128 @@ export default function PurchaseOrders() {
                 </div>
             </div>)}
 
-            {/* selection modal */}
-            <ApprovedRequestsModal isOpen={isApprovedRequestsModalOpen} onClose={() => setIsApprovedRequestsModalOpen(false)} onSelectRequest={handleSelectRequestForPO} />
-
             {/* po modal */}
             <PurchaseOrderModal isOpen={isPurchaseOrderModalOpen} onClose={() => {
                 setIsPurchaseOrderModalOpen(false);
                 setSelectedRequestForPO(null);
             }} request={selectedRequestForPO} suppliers={suppliers} onOrderCreated={handleOrderCreated} />
-            {/* pr modal */}
-            <PurchaseRequestModal isOpen={isPurchaseRequestModalOpen} onClose={() => setIsPurchaseRequestModalOpen(false)} suppliers={suppliers} role={userRole} onRequestSubmitted={handleRequestSubmitted} />
 
             {/* chart detail */}
             <ChartDetailModal isOpen={chartDetailModal.isOpen} onClose={() => setChartDetailModal(prev => ({ ...prev, isOpen: false }))} month={chartDetailModal.month} monthIndex={chartDetailModal.monthIndex} orders={chartDetailModal.orders} totalAmount={chartDetailModal.totalAmount} />
 
-            {/* manage po */}
+            {/* Purchase Order Details Modal */}
             {actionModalOrder && (
                 <Portal>
-                    <div className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 backdrop-blur-md flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200" onClick={() => setActionModalOrder(null)}>
-                        <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-[12px_12px_36px_rgba(166,175,195,0.45),-12px_-12px_36px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] border border-white/90 dark:border-white/[0.08] overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 backdrop-blur-md flex items-center justify-center z-[99999] p-3 sm:p-4 animate-in fade-in duration-200" onClick={() => setActionModalOrder(null)}>
+                        <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-[12px_12px_36px_rgba(166,175,195,0.45),-12px_-12px_36px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] border border-white/90 dark:border-white/[0.08] overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
 
-                            {/* header */}
-                            <div className="px-6 py-4.5 border-b border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between shrink-0">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-11 h-11 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
-                                        <i className="fas fa-file-invoice" />
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
+                                <div className="flex items-center gap-3.5">
+                                    <div className="w-11 h-11 rounded-2xl bg-pink-600 border border-pink-400/80 text-white flex items-center justify-center text-lg shrink-0 shadow-[3px_3px_7px_rgba(219,39,119,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4)]">
+                                        <FileText className="h-5 w-5" />
                                     </div>
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-                                                Manage Order
+                                            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                                                Purchase Order Details
                                             </h2>
-                                            <span className="font-mono text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#14151e] px-2 py-0.5 rounded-lg border border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
-                                                {actionModalOrder.po_number}
+                                            <span className="font-mono text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#14151e] px-2.5 py-0.5 rounded-full border border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
+                                                #{actionModalOrder.po_number}
                                             </span>
                                         </div>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-                                            {actionModalOrder.supplier_name} • <span className="font-bold text-slate-800 dark:text-slate-200">₱{actionModalOrder.total_amount.toLocaleString()}</span>
+                                            {actionModalOrder.supplier_name} • <span className="font-bold text-slate-800 dark:text-slate-200">₱{Number(actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </p>
                                     </div>
                                 </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDigitalReceiptPO(actionModalOrder);
+                                            setIsDigitalReceiptModalOpen(true);
+                                        }}
+                                        className="hidden sm:inline-flex px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] hover:bg-[#e4ebf5] dark:bg-[#1e1f2c] dark:hover:bg-[#252738] border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                                        title="View & Print Digital Receipt"
+                                    >
+                                        <Receipt className="h-3.5 w-3.5 text-pink-500" />
+                                        <span>Digital Receipt</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isSendingActionComm}
+                                        onClick={() => setActionModalOrder(null)}
+                                        className="w-8 h-8 rounded-full bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                                        aria-label="Close modal"
+                                    >
+                                        <i className="fas fa-times text-xs" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Segmented Tabs Bar */}
+                            <div className="px-6 pt-3 pb-0 bg-slate-100/60 dark:bg-slate-900/40 border-b border-slate-200/70 dark:border-slate-800 flex gap-2 shrink-0">
                                 <button
                                     type="button"
-                                    disabled={isSendingActionComm}
-                                    onClick={() => setActionModalOrder(null)}
-                                    className="w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-                                    aria-label="Close modal"
+                                    onClick={() => setActionModalTab('details')}
+                                    className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all flex items-center gap-2 cursor-pointer ${
+                                        actionModalTab === 'details'
+                                            ? 'bg-[#f0f3f8] dark:bg-[#161722] text-pink-600 dark:text-pink-400 border-white/90 dark:border-white/[0.08] border-b-transparent shadow-[0_-2px_6px_rgba(166,175,195,0.2)]'
+                                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent'
+                                    }`}
                                 >
-                                    <i className="fas fa-times text-xs" />
+                                    <i className="fas fa-file-lines text-xs" />
+                                    <span>Overview & Line Items</span>
+                                    {actionModalOrder.items && actionModalOrder.items.length > 0 && (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 font-mono">
+                                            {actionModalOrder.items.length}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActionModalTab('manage')}
+                                    className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all flex items-center gap-2 cursor-pointer ${
+                                        actionModalTab === 'manage'
+                                            ? 'bg-[#f0f3f8] dark:bg-[#161722] text-pink-600 dark:text-pink-400 border-white/90 dark:border-white/[0.08] border-b-transparent shadow-[0_-2px_6px_rgba(166,175,195,0.2)]'
+                                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent'
+                                    }`}
+                                >
+                                    <i className="fas fa-sliders text-xs" />
+                                    <span>Status & Management</span>
+                                    <StatusBadge tone={getPOStatusTone(actionModalOrder.status)} size="xs">
+                                        {actionModalOrder.status}
+                                    </StatusBadge>
                                 </button>
                             </div>
 
-                            {/* content body */}
-                            <div className="p-6 space-y-5 overflow-y-auto flex-1">
-                                {/* quick overview card */}
-                                <div className="bg-[#ebf0f7] dark:bg-[#14151e] rounded-2xl p-4 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)]">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 tracking-wider">
-                                                Current Status
-                                            </span>
-                                            <div className="mt-1.5 flex items-center gap-1.5">
-                                                <StatusBadge tone={getPOStatusTone(actionModalOrder.status)} dot size="xs">
+                            {/* Content Body */}
+                            <div className="p-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
+                                {actionModalTab === 'details' ? (
+                                    <>
+                                        {/* 4 Summary Metric Cards */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider">Total Amount</span>
+                                                <span className="text-sm font-black text-slate-900 dark:text-white font-mono mt-0.5 block">
+                                                    ₱{Number(actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider">Due / Delivery</span>
+                                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1 block">
+                                                    {actionModalOrder.delivery_date ? new Date(actionModalOrder.delivery_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Standard Schedule'}
+                                                </span>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider mb-1">Status</span>
+                                                <StatusBadge tone={getPOStatusTone(actionModalOrder.status)} size="xs">
                                                     {actionModalOrder.status}
                                                 </StatusBadge>
                                             </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 tracking-wider">
-                                                Payment Status
-                                            </span>
-                                            <div className="mt-1.5 flex items-center gap-1.5">
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider mb-1">Payment</span>
                                                 {(actionModalOrder.paid || actionModalOrder.verification?.match_result === 'matched' || actionModalOrder.verification?.match_result === 'forced') ? (
                                                     <StatusBadge tone="purple" icon="fas fa-check-circle" size="xs">
                                                         Paid ✓
@@ -2219,392 +2347,631 @@ export default function PurchaseOrders() {
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* items preview if available */}
-                                    {actionModalOrder.items && actionModalOrder.items.length > 0 && (
-                                        <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-white/[0.04]">
-                                            <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 tracking-wider block mb-1">
-                                                Order Items ({actionModalOrder.items.length})
-                                            </span>
-                                            <div className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate" title={actionModalOrder.items.map((i: any) => `${i.name || i.item_name} (x${i.quantity || 1})`).join(', ')}>
-                                                {actionModalOrder.items.map((i: any) => i.name || i.item_name).join(', ')}
-                                            </div>
-                                        </div>
-                                    )}
+                                        {/* Entity Information (Buyer & Supplier Panels) */}
+                                        {(() => {
+                                            const matchedSupplier = suppliers.find(
+                                                s => s.id === actionModalOrder.supplier_id || s.name?.toLowerCase() === actionModalOrder.supplier_name?.toLowerCase()
+                                            );
+                                            const supplierLocation = actionModalOrder.supplier_location || matchedSupplier?.location || actionModalOrder.supplier_address || 'On File / Registered Supplier Facility';
+                                            const isFinancialApproved = (actionModalOrder.financial_approval === 'Approved' || actionModalOrder.admin_approval === 'Approved') &&
+                                                                        actionModalOrder.financial_approval !== 'Pending' &&
+                                                                        actionModalOrder.admin_approval !== 'Pending';
+                                            const approvalDateStr = actionModalOrder.financial_approved_at
+                                                ? new Date(actionModalOrder.financial_approved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                : actionModalOrder.admin_approved_at
+                                                    ? new Date(actionModalOrder.admin_approved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                    : actionModalOrder.created_at
+                                                        ? new Date(actionModalOrder.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                        : '—';
 
-                                    {/* ocr verification CTA */}
-                                    {!(actionModalOrder.paid || actionModalOrder.verification?.match_result === 'matched' || actionModalOrder.verification?.match_result === 'forced') && actionModalOrder.status === 'Delivered' && (
-                                        <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-white/[0.04]">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setReceiptModalPO(actionModalOrder);
-                                                    setReceiptVerificationId(null);
-                                                    setIsReceiptModalOpen(true);
-                                                    setActionModalOrder(null);
-                                                }}
-                                                className="w-full px-4 py-2 text-xs font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 bg-[#f0f3f8] dark:bg-[#1a1b26] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] border border-pink-200/80 dark:border-pink-900/40 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                                            >
-                                                <i className="fas fa-receipt text-xs" />
-                                                <span>Upload Receipt & Verify Payment (OCR)</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* send options (for draft orders) */}
-                                {actionModalOrder.status === 'Draft' && (
-                                    <div className="bg-[#ebf0f7] dark:bg-[#14151e] rounded-2xl p-4 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/50 border border-pink-200/60 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 text-[10px]">
-                                                    <i className="fas fa-paper-plane" />
-                                                </span>
-                                                <div>
-                                                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
-                                                        Send PO to Supplier
-                                                    </h3>
-                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 block">
-                                                        Select template mode & dispatch via Gmail
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* Minimalist Mode Indicator Pill */}
-                                            <div>
-                                                {actionEmailMode === 'ai' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/40">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                                                        <span>AI Content Active</span>
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                                                        <span>Standard Template</span>
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Minimalist Mode Switcher Tabs */}
-                                        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-200/60 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                                            <button
-                                                type="button"
-                                                onClick={() => setActionEmailMode('standard')}
-                                                className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                                    actionEmailMode === 'standard'
-                                                        ? 'bg-white dark:bg-[#1c1e2b] text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700'
-                                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                                                }`}
-                                            >
-                                                <span>Standard</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setActionEmailMode('ai');
-                                                    if (!actionModalAiMessage && !isGeneratingActionAI) {
-                                                        handleGenerateActionAIMessage();
-                                                    }
-                                                }}
-                                                className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                                    actionEmailMode === 'ai'
-                                                        ? 'bg-white dark:bg-[#1c1e2b] text-indigo-600 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800/40'
-                                                        : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
-                                                }`}
-                                            >
-                                                <span>AI Compose</span>
-                                            </button>
-                                        </div>
-
-                                        {/* Content Preview & AI Compose */}
-                                        {actionEmailMode === 'standard' ? (
-                                            <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-white/60 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-700 dark:text-slate-300">
-                                                <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                                                    "Hello <strong>{actionModalOrder.supplier_name}</strong>, please review and accept this official purchase order for the listed items. Confirm availability at your earliest convenience."
-                                                </p>
-                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1 font-medium">
-                                                    <i className="fas fa-check-circle text-emerald-500 text-[9px]" />
-                                                    Includes minimalist breakdown table & confirmation link.
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-indigo-100/80 dark:border-indigo-900/40 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
-                                                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-300/60 dark:border-white/[0.06]">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-                                                            <i className="fas fa-robot text-[9px]" /> AI Explanation
-                                                        </span>
-                                                        {actionModalAiMessage && (
-                                                            <span className="text-[9px] text-slate-400 dark:text-slate-500">
-                                                                (Saved in storage)
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleGenerateActionAIMessage}
-                                                            disabled={isGeneratingActionAI || isSendingActionComm}
-                                                            className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-[#1c1e2b] rounded-lg border border-indigo-200 dark:border-indigo-800/40 cursor-pointer disabled:opacity-50"
-                                                        >
-                                                            {isGeneratingActionAI ? <i className="fas fa-spinner fa-spin mr-1" /> : <i className="fas fa-arrows-rotate mr-1" />}
-                                                            {isGeneratingActionAI ? 'Generating...' : 'Regenerate'}
-                                                        </button>
-                                                        {actionModalAiMessage && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleActionCopyOnly}
-                                                                disabled={isSendingActionComm}
-                                                                className="w-5 h-5 rounded-md bg-white dark:bg-[#1c1e2b] text-slate-600 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-800 cursor-pointer"
-                                                                title="Copy"
-                                                            >
-                                                                <i className="fas fa-copy text-[9px]" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {isGeneratingActionAI ? (
-                                                    <div className="flex items-center justify-center h-16 text-indigo-600 dark:text-indigo-400 gap-1.5 font-semibold text-xs">
-                                                        <i className="fas fa-spinner fa-spin" />
-                                                        <span>Drafting tailored supplier message...</span>
-                                                    </div>
-                                                ) : actionModalAiMessage ? (
-                                                    <div className="space-y-1.5">
-                                                        <textarea
-                                                            value={actionModalAiMessage}
-                                                            onChange={(e) => {
-                                                                setActionModalAiMessage(e.target.value);
-                                                                const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
-                                                                if (typeof window !== 'undefined') {
-                                                                    localStorage.setItem(cacheKey, e.target.value);
-                                                                }
-                                                            }}
-                                                            rows={4}
-                                                            className="w-full bg-white dark:bg-[#181924] p-2.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/50 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-sans transition-all resize-y leading-relaxed"
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-center py-3">
-                                                        <p className="text-slate-400 dark:text-slate-500 italic text-[11px] mb-1">
-                                                            Click AI Compose to generate custom notes.
+                                            return (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                                    {/* Buyer (Issuer) Card */}
+                                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                        <div className="flex items-center gap-2 mb-1.5 text-pink-600 dark:text-pink-400">
+                                                            <i className="fas fa-building text-xs" />
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Buyer (Issuer)</span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-slate-900 dark:text-white">
+                                                            Airship Express Logistics Corp.
                                                         </p>
+                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                                            Procurement & Supply Chain Division
+                                                        </p>
+                                                        <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                                                            <i className="fas fa-map-marker-alt text-pink-500 mt-0.5 text-[10px] shrink-0" />
+                                                            <span className="leading-tight">
+                                                                <strong className="text-slate-700 dark:text-slate-300">Location:</strong> {actionModalOrder.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila (Airship Express Central Hub)'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                                                            <span>Authorized Signatory:</span>
+                                                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[150px]">{(actionModalOrder as any).created_by || 'Authorized Officer'}</span>
+                                                        </div>
                                                     </div>
-                                                )}
+
+                                                    {/* Supplier / Vendor Card */}
+                                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                        <div className="flex items-center gap-2 mb-1.5 text-pink-600 dark:text-pink-400">
+                                                            <i className="fas fa-truck text-xs" />
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Supplier / Vendor</span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                                            {actionModalOrder.supplier_name}
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate font-mono">
+                                                            {actionSupplierEmail || (actionModalOrder as any).supplier_email || 'Verified Partner'}
+                                                        </p>
+                                                        <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                                                            <i className="fas fa-map-marker-alt text-pink-500 mt-0.5 text-[10px] shrink-0" />
+                                                            <span className="leading-tight truncate" title={supplierLocation}>
+                                                                <strong className="text-slate-700 dark:text-slate-300">Location:</strong> {supplierLocation}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                                                            <span>Issue Date:</span>
+                                                            {isFinancialApproved ? (
+                                                                <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                                                                    <i className="fas fa-calendar-check text-[10px] text-emerald-500" />
+                                                                    {approvalDateStr}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-950/40 px-2 py-0.5 rounded-full text-[10px] border border-amber-300 dark:border-amber-700/60 flex items-center gap-1">
+                                                                    <i className="fas fa-hourglass-half text-[9px]" />
+                                                                    Pending
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Full Itemized Line Items Table */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                                                    <i className="fas fa-boxes-stacked text-pink-500" />
+                                                    <span>Purchased Line Items</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-pink-600 dark:text-pink-400 px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/80 border border-pink-200 dark:border-pink-900/50">
+                                                    {Array.isArray(actionModalOrder.items) && actionModalOrder.items.length > 0 ? actionModalOrder.items.length : 1} {Array.isArray(actionModalOrder.items) && actionModalOrder.items.length === 1 ? 'item' : 'items'}
+                                                </span>
+                                            </div>
+
+                                            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-[#ebf0f7] dark:bg-[#13141c] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <table className="w-full text-left text-xs border-collapse">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-white/60 dark:bg-white/[0.02] text-[10.5px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                            <th className="py-2.5 px-3.5 w-12 text-center">#</th>
+                                                            <th className="py-2.5 px-3.5">Item Description</th>
+                                                            <th className="py-2.5 px-3.5 text-center w-20">Qty</th>
+                                                            <th className="py-2.5 px-3.5 text-right w-28">Unit Price</th>
+                                                            <th className="py-2.5 px-3.5 text-right w-32">Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 text-slate-700 dark:text-slate-300 font-medium">
+                                                        {Array.isArray(actionModalOrder.items) && actionModalOrder.items.length > 0 ? (
+                                                            actionModalOrder.items.map((it: any, idx: number) => {
+                                                                const qty = Number(it.quantity) || 1;
+                                                                const price = Number(it.unit_price ?? it.price ?? 0);
+                                                                const lineTotal = it.total ? Number(it.total) : (it.total_price ? Number(it.total_price) : qty * price);
+
+                                                                return (
+                                                                    <tr key={idx} className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors">
+                                                                        <td className="py-2.5 px-3.5 text-center text-slate-400 font-mono text-xs">
+                                                                            {idx + 1}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white">
+                                                                            {it.name || it.item_name || it.description || 'Purchased Item'}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 text-center">
+                                                                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-white/70 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-white/60 dark:border-white/[0.04]">
+                                                                                {qty}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                                            ₱{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                                            ₱{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            <tr>
+                                                                <td className="py-2.5 px-3.5 text-center text-slate-400 font-mono text-xs">1</td>
+                                                                <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white">
+                                                                    {actionModalOrder.notes || 'Requisition Order Package'}
+                                                                </td>
+                                                                <td className="py-2.5 px-3.5 text-center font-mono text-xs">1</td>
+                                                                <td className="py-2.5 px-3.5 text-right font-mono">
+                                                                    ₱{Number(actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                                <td className="py-2.5 px-3.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                                    ₱{Number(actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        {(actionModalOrder.subtotal !== undefined || actionModalOrder.discount || actionModalOrder.shipping_fee || actionModalOrder.tax_amount) ? (
+                                                            <>
+                                                                <tr className="border-t border-slate-200/80 dark:border-slate-800 bg-white/30 dark:bg-white/[0.01]">
+                                                                    <td colSpan={3} className="py-1.5 px-3.5 text-xs text-slate-500 font-medium">Subtotal</td>
+                                                                    <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                                        ₱{Number(actionModalOrder.subtotal ?? actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </td>
+                                                                </tr>
+                                                                {Number(actionModalOrder.discount || 0) > 0 && (
+                                                                    <tr className="border-t border-slate-200/40 dark:border-slate-800/40 bg-white/30 dark:bg-white/[0.01]">
+                                                                        <td colSpan={3} className="py-1.5 px-3.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">Discount</td>
+                                                                        <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                                                            -₱{Number(actionModalOrder.discount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                {Number(actionModalOrder.shipping_fee || 0) > 0 && (
+                                                                    <tr className="border-t border-slate-200/40 dark:border-slate-800/40 bg-white/30 dark:bg-white/[0.01]">
+                                                                        <td colSpan={3} className="py-1.5 px-3.5 text-xs text-slate-500 font-medium">Shipping Fee</td>
+                                                                        <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                                            +₱{Number(actionModalOrder.shipping_fee).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                {Number(actionModalOrder.tax_amount || 0) > 0 && (
+                                                                    <tr className="border-t border-slate-200/40 dark:border-slate-800/40 bg-white/30 dark:bg-white/[0.01]">
+                                                                        <td colSpan={3} className="py-1.5 px-3.5 text-xs text-slate-500 font-medium">VAT ({actionModalOrder.tax_rate ?? 12}%)</td>
+                                                                        <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                                            +₱{Number(actionModalOrder.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                <tr className="border-t-2 border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-white/[0.02]">
+                                                                    <td colSpan={3} className="py-2.5 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                                                                        Total Order Value
+                                                                    </td>
+                                                                    <td colSpan={2} className="py-2.5 px-3.5 text-right font-mono text-base font-black text-pink-600 dark:text-pink-400">
+                                                                        ₱{Number(actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </td>
+                                                                </tr>
+                                                            </>
+                                                        ) : (
+                                                            <tr className="border-t-2 border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-white/[0.01]">
+                                                                <td colSpan={3} className="py-2.5 px-3.5 text-xs font-bold text-slate-500 uppercase">
+                                                                    Total Order Value
+                                                                </td>
+                                                                <td colSpan={2} className="py-2.5 px-3.5 text-right font-mono text-base font-black text-pink-600 dark:text-pink-400">
+                                                                    ₱{Number(actionModalOrder.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        {/* Commercial Logistics & Payment Terms Panel */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-1">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Payment Terms & Method
+                                                </span>
+                                                <p className="font-bold text-slate-900 dark:text-white">
+                                                    {actionModalOrder.payment_terms || 'Net 30 Days (Standard B2B)'}
+                                                </p>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-1">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Procurement Category
+                                                </span>
+                                                <p className="font-bold text-slate-900 dark:text-white">
+                                                    {actionModalOrder.category || (actionModalOrder as any).items?.[0]?.category || 'General Procurement'}
+                                                </p>
+                                            </div>
+
+                                            <div className="sm:col-span-2 md:col-span-1 p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-1">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Delivery Location / Hub
+                                                </span>
+                                                <p className="font-semibold text-slate-800 dark:text-slate-200 line-clamp-2" title={actionModalOrder.delivery_location || 'Airship Express Hub'}>
+                                                    {actionModalOrder.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila(Airship Express)'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Terms & Conditions Box */}
+                                        {actionModalOrder.terms_and_conditions && (
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs space-y-1.5">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Governing Terms & Conditions
+                                                </span>
+                                                <p className="font-mono text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                    {actionModalOrder.terms_and_conditions}
+                                                </p>
                                             </div>
                                         )}
 
-                                        {/* supplier contact & buttons */}
-                                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
-                                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                                {actionSupplierEmail ? (
-                                                    <span className="truncate block font-medium" title={actionSupplierEmail}>
-                                                        <i className="fas fa-envelope text-pink-500 mr-1.5" />
-                                                        {actionSupplierEmail}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-amber-600 dark:text-amber-400 font-medium">
-                                                        <i className="fas fa-exclamation-triangle mr-1.5" />
-                                                        No supplier email configured
-                                                    </span>
-                                                )}
+                                        {/* Requisition Notes Box */}
+                                        {actionModalOrder.notes && (
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs space-y-1.5">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Requisition Notes & Instructions
+                                                </span>
+                                                <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                    {actionModalOrder.notes}
+                                                </p>
                                             </div>
+                                        )}
 
-                                            <div className="flex items-center gap-2 justify-end">
+                                        {/* Action Buttons Toolbar */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDigitalReceiptPO(actionModalOrder);
+                                                    setIsDigitalReceiptModalOpen(true);
+                                                }}
+                                                className="py-2.5 px-4 text-xs font-bold text-white bg-pink-600 hover:bg-pink-500 border border-pink-400/80 rounded-xl shadow-[3px_3px_7px_rgba(219,39,119,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                            >
+                                                <Receipt className="h-4 w-4" />
+                                                <span>View & Print Official Digital Receipt</span>
+                                            </button>
+
+                                            {(actionModalOrder.verification?.uploaded_file_url || actionModalOrder.document?.storage_path) ? (
                                                 <button
                                                     type="button"
-                                                    onClick={handleActionEmail}
-                                                    title="Send Email via Gmail"
-                                                    disabled={isSendingActionComm || !actionSupplierEmail}
-                                                    className="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 border border-pink-400/80 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.35)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                                                    onClick={() => {
+                                                        setViewingDocData({
+                                                            id: actionModalOrder.document?.id || actionModalOrder.verification?.id,
+                                                            title: actionModalOrder.document?.title || `Receipt - PO #${actionModalOrder.po_number}`,
+                                                            fileName: actionModalOrder.document?.file_name || `receipt_${actionModalOrder.po_number}.png`,
+                                                            fileUrl: actionModalOrder.verification?.uploaded_file_url,
+                                                            storagePath: actionModalOrder.document?.storage_path,
+                                                            fileType: actionModalOrder.document?.file_type,
+                                                            poNumber: actionModalOrder.po_number,
+                                                            supplierName: actionModalOrder.supplier_name,
+                                                            verifiedStatus: actionModalOrder.verification?.match_result,
+                                                            totalAmount: actionModalOrder.total_amount,
+                                                            notes: actionModalOrder.document?.notes || (actionModalOrder.verification?.match_result === 'matched' ? 'OCR Verified Matched' : undefined),
+                                                            uploadedBy: actionModalOrder.document?.uploaded_by,
+                                                        });
+                                                        setIsDocViewerOpen(true);
+                                                    }}
+                                                    className="py-2.5 px-4 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] dark:bg-[#1a1b26] hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                                                 >
-                                                    {isSendingActionComm ? (
-                                                        <i className="fas fa-spinner fa-spin text-white" />
-                                                    ) : (
-                                                        <i className="fas fa-paper-plane text-white text-[11px]" />
-                                                    )}
-                                                    <span>{isSendingActionComm ? 'Sending...' : 'Send via Gmail'}</span>
+                                                    <FileText className="h-4 w-4 text-pink-500" />
+                                                    <span>View Verified Receipt Doc</span>
                                                 </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Digital Receipt Print Quick Button */}
-                                <div className="pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setDigitalReceiptPO(actionModalOrder);
-                                            setIsDigitalReceiptModalOpen(true);
-                                        }}
-                                        className="w-full py-2 px-4 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#f0f3f8] dark:bg-[#1a1b26] hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                                    >
-                                        <i className="fas fa-receipt text-pink-500 dark:text-pink-400 text-xs" />
-                                        <span>View & Print Official Digital Receipt</span>
-                                    </button>
-                                </div>
-
-                                {/* status transition section */}
-                                <div className={`space-y-2.5 transition-opacity duration-200 ${isSendingActionComm ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                                            <i className="fas fa-arrows-rotate text-pink-500 text-[11px]" />
-                                            Update Order Status
-                                        </label>
-                                        {isSendingActionComm ? (
-                                            <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 px-2 py-0.5 rounded-md border border-pink-200 dark:border-pink-800/40 flex items-center gap-1">
-                                                <i className="fas fa-spinner fa-spin text-[9px]" /> Disabled while sending...
-                                            </span>
-                                        ) : !canUpdateStatus ? (
-                                            <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/40 flex items-center gap-1">
-                                                <i className="fas fa-lock text-[9px]" /> Managers, Execs & Admins Only
-                                            </span>
-                                        ) : null}
-                                    </div>
-
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {['Draft', 'Sent', 'Confirmed', 'Delivered', 'Cancelled'].map((status) => {
-                                            const isCurrent = actionModalOrder.status === status;
-                                            const STATUS_ORDER = ['Draft', 'Sent', 'Confirmed', 'Delivered', 'Completed'];
-                                            const currentIndex = STATUS_ORDER.indexOf(actionModalOrder.status);
-                                            const targetIndex = STATUS_ORDER.indexOf(status);
-
-                                            // Backward status disabling:
-                                            // When Confirmed -> Draft and Sent are disabled
-                                            // When Delivered -> Draft, Sent, and Confirmed are disabled
-                                            const isPreviousStatus = currentIndex !== -1 && targetIndex !== -1 && targetIndex < currentIndex;
-                                            
-                                            // Setting Confirmed requires Admin or Executive
-                                            const requiresAdminOrExec = status === 'Confirmed' && !isAdmin && !isExecutive;
-                                            const isRestricted = !canUpdateStatus || requiresAdminOrExec;
-                                            const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted || isPreviousStatus || isSendingActionComm;
-
-                                            const getStatusIcon = () => {
-                                                switch (status) {
-                                                    case 'Draft': return 'fa-file-lines';
-                                                    case 'Sent': return 'fa-paper-plane';
-                                                    case 'Confirmed': return 'fa-shield-check';
-                                                    case 'Delivered': return 'fa-truck-ramp-box';
-                                                    case 'Cancelled': return 'fa-ban';
-                                                    default: return 'fa-tag';
-                                                }
-                                            };
-
-                                            const getStatusSubtitle = () => {
-                                                switch (status) {
-                                                    case 'Draft': return 'Initial unissued draft';
-                                                    case 'Sent': return 'Dispatched to vendor';
-                                                    case 'Confirmed': return 'Vendor acknowledged';
-                                                    case 'Delivered': return 'Received at facility';
-                                                    case 'Cancelled': return 'Void / Terminated';
-                                                    default: return '';
-                                                }
-                                            };
-
-                                            const getIconStyle = () => {
-                                                if (isCurrent) {
-                                                    return 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30 shadow-xs';
-                                                }
-                                                switch (status) {
-                                                    case 'Draft': return 'bg-slate-200/70 dark:bg-slate-800/70 text-slate-600 dark:text-slate-400 border border-slate-300/40 dark:border-slate-700/40';
-                                                    case 'Sent': return 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20';
-                                                    case 'Confirmed': return 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20';
-                                                    case 'Delivered': return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
-                                                    case 'Cancelled': return 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20';
-                                                    default: return 'bg-slate-200 dark:bg-slate-800 text-slate-500';
-                                                }
-                                            };
-
-                                            return (
+                                            ) : actionModalOrder.status === 'Delivered' && !(actionModalOrder.paid || actionModalOrder.verification?.match_result === 'matched') ? (
                                                 <button
-                                                    key={status}
                                                     type="button"
-                                                    disabled={isDisabled}
-                                                    onClick={() => handleUpdateStatus(actionModalOrder.id, status)}
-                                                    title={isSendingActionComm
-                                                        ? "Status updates are disabled while sending communication"
-                                                        : isCurrent
-                                                            ? `Current status is ${status}`
-                                                            : isPreviousStatus
-                                                                ? `Previous stage: Cannot revert from ${actionModalOrder.status} back to ${status}`
-                                                                : isRestricted
-                                                                    ? requiresAdminOrExec
-                                                                        ? "Admin & Executive Only: Only Administrators and Executives can set Confirmed status"
-                                                                        : "Only Managers, Executives, and Admins can update status"
-                                                                    : `Click to change status to ${status}`}
-                                                    className={`group w-full px-3.5 py-2.5 rounded-2xl text-xs transition-all flex items-center justify-between border ${isCurrent
-                                                        ? 'bg-[#e2e8f0]/80 dark:bg-[#101118] border-pink-400/60 dark:border-pink-500/50 shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] cursor-default'
-                                                        : isPreviousStatus || isRestricted
-                                                            ? 'bg-[#ebf0f7]/50 dark:bg-[#14151e]/50 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.15)]'
-                                                            : 'bg-[#f0f3f8] dark:bg-[#1a1b26] border-white/80 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] hover:border-pink-300 dark:hover:border-pink-500/40 hover:text-pink-600 dark:hover:text-pink-400 text-slate-700 dark:text-slate-200 active:scale-[0.98] cursor-pointer'
-                                                        }`}
+                                                    onClick={() => {
+                                                        setReceiptModalPO(actionModalOrder);
+                                                        setReceiptVerificationId(null);
+                                                        setIsReceiptModalOpen(true);
+                                                        setActionModalOrder(null);
+                                                    }}
+                                                    className="py-2.5 px-4 text-xs font-bold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 bg-[#ebf0f7] dark:bg-[#1a1b26] border border-pink-200/80 dark:border-pink-900/40 rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                                                 >
-                                                    <div className="flex items-center gap-3 text-left">
-                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${getIconStyle()}`}>
-                                                            <i className={`fas ${getStatusIcon()} text-xs`} />
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="font-bold text-slate-800 dark:text-slate-100 text-xs leading-tight">{status}</span>
-                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal leading-tight mt-0.5">{getStatusSubtitle()}</span>
+                                                    <i className="fas fa-upload text-pink-500" />
+                                                    <span>Upload Receipt & Verify (OCR)</span>
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setActionModalTab('manage')}
+                                                    className="py-2.5 px-4 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] dark:bg-[#1a1b26] hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                                >
+                                                    <i className="fas fa-sliders text-pink-500" />
+                                                    <span>Manage Status & Dispatch</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Send options (for draft orders) */}
+                                        {actionModalOrder.status === 'Draft' && (
+                                            <div className="bg-[#ebf0f7] dark:bg-[#14151e] rounded-2xl p-4 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/50 border border-pink-200/60 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 text-[10px]">
+                                                            <i className="fas fa-paper-plane" />
+                                                        </span>
+                                                        <div>
+                                                            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
+                                                                Send PO to Supplier
+                                                            </h3>
+                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 block">
+                                                                Select template mode & dispatch via Gmail
+                                                            </span>
                                                         </div>
                                                     </div>
 
-                                                    {isCurrent ? (
-                                                        <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-xl bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-300/80 dark:border-pink-900/50 tracking-wider shadow-xs">
-                                                            Current ✓
-                                                        </span>
-                                                    ) : isPreviousStatus ? (
-                                                        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                                                            <i className="fas fa-history text-[9px]" /> Past Stage
-                                                        </span>
-                                                    ) : isRestricted ? (
-                                                        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                                                            <i className="fas fa-lock text-[9px]" /> {requiresAdminOrExec ? 'Admin/Exec' : 'Locked'}
-                                                        </span>
-                                                    ) : (
-                                                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500 group-hover:text-pink-600 dark:group-hover:text-pink-400 group-hover:translate-x-0.5 transition-all">
-                                                            <span>Apply</span>
-                                                            <i className="fas fa-chevron-right text-[9px]" />
-                                                        </div>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+                                                    <div>
+                                                        {actionEmailMode === 'ai' ? (
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/40">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                                                <span>AI Content Active</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                                                <span>Standard Template</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
 
-                                {/* delete purchase order button */}
-                                {(() => {
-                                    const isPOLocked = ['sent', 'confirmed', 'delivered', 'completed'].includes((actionModalOrder.status || '').toLowerCase());
-                                    return (
-                                        <div className="pt-2">
-                                            <button
-                                                type="button"
-                                                disabled={pendingRowId === actionModalOrder.id || isSendingActionComm || isPOLocked}
-                                                onClick={() => handleDeleteOrder(actionModalOrder.id)}
-                                                title={isPOLocked ? `This order is in "${actionModalOrder.status}" status and is permanently locked against deletion.` : "Delete Purchase Order"}
-                                                className={`w-full py-2.5 px-4 text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2 border ${
-                                                    isPOLocked
-                                                        ? 'bg-[#ebf0f7]/50 dark:bg-[#14151e]/50 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.15)]'
-                                                        : 'text-rose-600 dark:text-rose-400 bg-[#ebf0f7] dark:bg-[#14151e] hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200/70 dark:border-rose-900/40 shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] cursor-pointer active:scale-95'
-                                                }`}
-                                            >
-                                                {pendingRowId === actionModalOrder.id ? (
-                                                    <i className="fas fa-spinner fa-spin text-xs" />
-                                                ) : isPOLocked ? (
-                                                    <i className="fas fa-lock text-xs" />
+                                                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-200/60 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActionEmailMode('standard')}
+                                                        className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                            actionEmailMode === 'standard'
+                                                                ? 'bg-white dark:bg-[#1c1e2b] text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700'
+                                                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                                                        }`}
+                                                    >
+                                                        <span>Standard</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setActionEmailMode('ai');
+                                                            if (!actionModalAiMessage && !isGeneratingActionAI) {
+                                                                handleGenerateActionAIMessage();
+                                                            }
+                                                        }}
+                                                        className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                            actionEmailMode === 'ai'
+                                                                ? 'bg-white dark:bg-[#1c1e2b] text-indigo-600 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800/40'
+                                                                : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                                        }`}
+                                                    >
+                                                        <span>AI Compose</span>
+                                                    </button>
+                                                </div>
+
+                                                {actionEmailMode === 'standard' ? (
+                                                    <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-white/60 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-700 dark:text-slate-300">
+                                                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                            "Hello <strong>{actionModalOrder.supplier_name}</strong>, please review and accept this official purchase order for the listed items. Confirm availability at your earliest convenience."
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1 font-medium">
+                                                            <i className="fas fa-check-circle text-emerald-500 text-[9px]" />
+                                                            Includes line items breakdown & confirmation link.
+                                                        </p>
+                                                    </div>
                                                 ) : (
-                                                    <i className="fas fa-trash-alt text-xs" />
+                                                    <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-indigo-100/80 dark:border-indigo-900/40 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+                                                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-300/60 dark:border-white/[0.06]">
+                                                            <span className="text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                                                                <i className="fas fa-robot text-[9px]" /> AI Explanation
+                                                            </span>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleGenerateActionAIMessage}
+                                                                    disabled={isGeneratingActionAI || isSendingActionComm}
+                                                                    className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-[#1c1e2b] rounded-lg border border-indigo-200 dark:border-indigo-800/40 cursor-pointer disabled:opacity-50"
+                                                                >
+                                                                    {isGeneratingActionAI ? <i className="fas fa-spinner fa-spin mr-1" /> : <i className="fas fa-arrows-rotate mr-1" />}
+                                                                    {isGeneratingActionAI ? 'Generating...' : 'Regenerate'}
+                                                                </button>
+                                                                {actionModalAiMessage && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleActionCopyOnly}
+                                                                        disabled={isSendingActionComm}
+                                                                        className="w-5 h-5 rounded-md bg-white dark:bg-[#1c1e2b] text-slate-600 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-800 cursor-pointer"
+                                                                        title="Copy"
+                                                                    >
+                                                                        <i className="fas fa-copy text-[9px]" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {isGeneratingActionAI ? (
+                                                            <div className="flex items-center justify-center h-16 text-indigo-600 dark:text-indigo-400 gap-1.5 font-semibold text-xs">
+                                                                <i className="fas fa-spinner fa-spin" />
+                                                                <span>Drafting tailored supplier message...</span>
+                                                            </div>
+                                                        ) : actionModalAiMessage ? (
+                                                            <div className="space-y-1.5">
+                                                                <textarea
+                                                                    value={actionModalAiMessage}
+                                                                    onChange={(e) => {
+                                                                        setActionModalAiMessage(e.target.value);
+                                                                        const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
+                                                                        if (typeof window !== 'undefined') {
+                                                                            localStorage.setItem(cacheKey, e.target.value);
+                                                                        }
+                                                                    }}
+                                                                    rows={4}
+                                                                    className="w-full bg-white dark:bg-[#181924] p-2.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/50 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-sans transition-all resize-y leading-relaxed"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-center py-3">
+                                                                <p className="text-slate-400 dark:text-slate-500 italic text-[11px] mb-1">
+                                                                    Click AI Compose to generate custom notes.
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
-                                                <span>{isPOLocked ? `Order Locked (${actionModalOrder.status})` : 'Delete Purchase Order'}</span>
-                                            </button>
+
+                                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                                        {actionSupplierEmail ? (
+                                                            <span className="truncate block font-medium" title={actionSupplierEmail}>
+                                                                <i className="fas fa-envelope text-pink-500 mr-1.5" />
+                                                                {actionSupplierEmail}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                                                <i className="fas fa-exclamation-triangle mr-1.5" />
+                                                                No supplier email configured
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleActionEmail}
+                                                            title="Send Email via Gmail"
+                                                            disabled={isSendingActionComm || !actionSupplierEmail}
+                                                            className="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 border border-pink-400/80 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.35)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                                                        >
+                                                            {isSendingActionComm ? (
+                                                                <i className="fas fa-spinner fa-spin text-white" />
+                                                            ) : (
+                                                                <i className="fas fa-paper-plane text-white text-[11px]" />
+                                                            )}
+                                                            <span>{isSendingActionComm ? 'Sending...' : 'Send via Gmail'}</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Status transition section */}
+                                        <div className={`space-y-2.5 transition-opacity duration-200 ${isSendingActionComm ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                                                    <i className="fas fa-arrows-rotate text-pink-500 text-[11px]" />
+                                                    Update Order Status
+                                                </label>
+                                                {isSendingActionComm ? (
+                                                    <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 px-2 py-0.5 rounded-md border border-pink-200 dark:border-pink-800/40 flex items-center gap-1">
+                                                        <i className="fas fa-spinner fa-spin text-[9px]" /> Disabled while sending...
+                                                    </span>
+                                                ) : !canUpdateStatus ? (
+                                                    <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/40 flex items-center gap-1">
+                                                        <i className="fas fa-lock text-[9px]" /> Purchase Officers, Execs & Admins Only
+                                                    </span>
+                                                ) : null}
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {['Delivered', 'Cancelled'].map((status) => {
+                                                    const isCurrent = actionModalOrder.status === status;
+                                                    const isOrderCancelled = actionModalOrder.status === 'Cancelled';
+                                                    const isRestricted = !canUpdateStatus;
+                                                    const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted || isSendingActionComm || isOrderCancelled;
+
+                                                    const getStatusIcon = () => {
+                                                        switch (status) {
+                                                            case 'Delivered': return 'fa-truck-ramp-box';
+                                                            case 'Cancelled': return 'fa-ban';
+                                                            default: return 'fa-tag';
+                                                        }
+                                                    };
+
+                                                    const getStatusSubtitle = () => {
+                                                        switch (status) {
+                                                            case 'Delivered': return 'Mark items received at facility';
+                                                            case 'Cancelled': return 'Void / Cancel purchase order';
+                                                            default: return '';
+                                                        }
+                                                    };
+
+                                                    const getIconStyle = () => {
+                                                        if (isCurrent) {
+                                                            return 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30 shadow-xs';
+                                                        }
+                                                        switch (status) {
+                                                            case 'Delivered': return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
+                                                            case 'Cancelled': return 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20';
+                                                            default: return 'bg-slate-200 dark:bg-slate-800 text-slate-500';
+                                                        }
+                                                    };
+
+                                                    return (
+                                                        <button
+                                                            key={status}
+                                                            type="button"
+                                                            disabled={isDisabled}
+                                                            onClick={() => handleUpdateStatus(actionModalOrder.id, status)}
+                                                            className={`group w-full px-3.5 py-2.5 rounded-2xl text-xs transition-all flex items-center justify-between border ${isCurrent
+                                                                ? 'bg-[#e2e8f0]/80 dark:bg-[#101118] border-pink-400/60 dark:border-pink-500/50 shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] cursor-default'
+                                                                : isRestricted || isOrderCancelled
+                                                                    ? 'bg-[#ebf0f7]/50 dark:bg-[#14151e]/50 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.15)]'
+                                                                    : 'bg-[#f0f3f8] dark:bg-[#1a1b26] border-white/80 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] hover:border-pink-300 dark:hover:border-pink-500/40 hover:text-pink-600 dark:hover:text-pink-400 text-slate-700 dark:text-slate-200 active:scale-[0.98] cursor-pointer'
+                                                                }`}
+                                                        >
+                                                            <div className="flex items-center gap-3 text-left">
+                                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${getIconStyle()}`}>
+                                                                    <i className={`fas ${getStatusIcon()} text-xs`} />
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-slate-800 dark:text-slate-100 text-xs leading-tight">{status}</span>
+                                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal leading-tight mt-0.5">{getStatusSubtitle()}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {isCurrent ? (
+                                                                <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-xl bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-300/80 dark:border-pink-900/50 tracking-wider shadow-xs">
+                                                                    Current ✓
+                                                                </span>
+                                                            ) : isRestricted ? (
+                                                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                                                    <i className="fas fa-lock text-[9px]" /> Locked
+                                                                </span>
+                                                            ) : isOrderCancelled ? (
+                                                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                                                    <i className="fas fa-ban text-[9px]" /> Voided
+                                                                </span>
+                                                            ) : (
+                                                                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500 group-hover:text-pink-600 dark:group-hover:text-pink-400 group-hover:translate-x-0.5 transition-all">
+                                                                    <span>Apply</span>
+                                                                    <i className="fas fa-chevron-right text-[9px]" />
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    );
-                                })()}
+
+                                        {/* Delete purchase order button */}
+                                        {(() => {
+                                            const isPOLocked = ['sent', 'confirmed', 'delivered', 'completed'].includes((actionModalOrder.status || '').toLowerCase());
+                                            return (
+                                                <div className="pt-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={pendingRowId === actionModalOrder.id || isSendingActionComm || isPOLocked}
+                                                        onClick={() => handleDeleteOrder(actionModalOrder.id)}
+                                                        title={isPOLocked ? `This order is in "${actionModalOrder.status}" status and is permanently locked against deletion.` : "Delete Purchase Order"}
+                                                        className={`w-full py-2.5 px-4 text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2 border ${
+                                                            isPOLocked
+                                                                ? 'bg-[#ebf0f7]/50 dark:bg-[#14151e]/50 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.15)]'
+                                                                : 'text-rose-600 dark:text-rose-400 bg-[#ebf0f7] dark:bg-[#14151e] hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200/70 dark:border-rose-900/40 shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] cursor-pointer active:scale-95'
+                                                        }`}
+                                                    >
+                                                        {pendingRowId === actionModalOrder.id ? (
+                                                            <i className="fas fa-spinner fa-spin text-xs" />
+                                                        ) : isPOLocked ? (
+                                                            <i className="fas fa-lock text-xs" />
+                                                        ) : (
+                                                            <i className="fas fa-trash-alt text-xs" />
+                                                        )}
+                                                        <span>{isPOLocked ? `Order Locked (${actionModalOrder.status})` : 'Delete Purchase Order'}</span>
+                                                    </button>
+                                                </div>
+                                            );
+                                        })()}
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

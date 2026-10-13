@@ -99,7 +99,7 @@ export function useGallery() {
 
     const buildQuery = useCallback((pageNum: number, forCount: boolean = false) => {
         let query = supabase
-            .from('documents')
+            .from('supplier_documents')
             .select(forCount ? 'file_size' : '*', forCount ? undefined : { count: 'exact' })
             .in('category', ['photos', 'documents'])
             .order('created_at', { ascending: false });
@@ -351,7 +351,7 @@ export function useGallery() {
             .channel(`gallery_realtime_${Date.now()}`)
             .on(
                 'postgres_changes',
-                { event: '*', schema: 'public', table: 'documents' },
+                { event: '*', schema: 'public', table: 'supplier_documents' },
                 (payload) => {
                     galleryDataCache.invalidateAll();
                     if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {

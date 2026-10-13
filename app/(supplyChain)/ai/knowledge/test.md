@@ -11,7 +11,7 @@ The AI assistant uses markdown files to store documentation about the warehouse 
 - Inventory management
 - Warehouse operations
 - Procurement
-- Courier management
+- Document management
 
 ## Test Data
 - Item: Test Item

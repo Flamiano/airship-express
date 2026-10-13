@@ -69,7 +69,7 @@ export const SessionLogoutTimer: React.FC<SessionLogoutTimerProps> = ({ compact 
     useEffect(() => {
         const currentRole = user.getRole();
         setUserRole(currentRole || 'User');
-        const endTime = user.getAllowedTimeEnd() || (isExempt(currentRole) ? null : '17:00');
+        const endTime = user.getAllowedTimeEnd() || (isExempt(currentRole) ? null : '23:59');
         setAllowedTimeEnd(endTime);
 
         // Initial setup from storage
@@ -104,7 +104,7 @@ export const SessionLogoutTimer: React.FC<SessionLogoutTimerProps> = ({ compact 
             if (e.key === 'user_allowed_time_end' || e.key === 'user_role') {
                 const updatedRole = user.getRole();
                 setUserRole(updatedRole || 'User');
-                setAllowedTimeEnd(user.getAllowedTimeEnd() || (isExempt(updatedRole) ? null : '17:00'));
+                setAllowedTimeEnd(user.getAllowedTimeEnd() || (isExempt(updatedRole) ? null : '23:59'));
             }
         };
         window.addEventListener('storage', handleStorage);
@@ -125,7 +125,7 @@ export const SessionLogoutTimer: React.FC<SessionLogoutTimerProps> = ({ compact 
 
             const role = user.getRole();
             setUserRole(role || 'User');
-            const endT = user.getAllowedTimeEnd() || (isExempt(role) ? null : '17:00');
+            const endT = user.getAllowedTimeEnd() || (isExempt(role) ? null : '23:59');
             setAllowedTimeEnd(endT);
 
             const shiftSec = calculateShiftSeconds(endT);

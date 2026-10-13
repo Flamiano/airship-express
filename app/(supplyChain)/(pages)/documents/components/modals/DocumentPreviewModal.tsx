@@ -149,12 +149,56 @@ export function DocumentPreviewModal({
                                                 <dt className="text-slate-500 dark:text-slate-400 font-medium">Supplier:</dt>
                                                 <dd className="text-slate-800 dark:text-slate-200 truncate max-w-[150px] font-semibold" title={selectedDoc.supplier || '-'}>{selectedDoc.supplier || '-'}</dd>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <dt className="text-slate-500 dark:text-slate-400 font-medium">Parcel:</dt>
-                                                <dd className="font-mono text-slate-800 dark:text-slate-200 font-semibold">{selectedDoc.parcel_batch || '-'}</dd>
-                                            </div>
                                         </dl>
                                     </div>
+
+                                    {/* AI OCR & Visual Intelligence */}
+                                    {(selectedDoc.extracted || selectedDoc.extracted_text) && (
+                                        <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)] space-y-2.5">
+                                            <h4 className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-white/[0.06]">
+                                                <span className="flex items-center gap-1.5 text-pink-600 dark:text-pink-400">
+                                                    <i className="fas fa-sparkles"></i>
+                                                    <span>AI Vision &amp; OCR Content</span>
+                                                </span>
+                                                {selectedDoc.extracted?.status === 'processing' && (
+                                                    <span className="text-[10px] text-pink-600 dark:text-pink-400 flex items-center gap-1 animate-pulse">
+                                                        <i className="fas fa-circle-notch fa-spin"></i> Processing...
+                                                    </span>
+                                                )}
+                                            </h4>
+
+                                            {selectedDoc.extracted?.description && (
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Image Explanation</p>
+                                                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mt-0.5">
+                                                        {selectedDoc.extracted.description}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {selectedDoc.extracted?.visual_objects && selectedDoc.extracted.visual_objects.length > 0 && (
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Visual Objects Recognized</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {selectedDoc.extracted.visual_objects.map((obj, i) => (
+                                                            <span key={i} className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-[10px] font-medium text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
+                                                                {obj}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {(selectedDoc.extracted?.text || selectedDoc.extracted_text) && (
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Extracted OCR Text</p>
+                                                    <div className="max-h-32 overflow-y-auto p-2 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                                        {selectedDoc.extracted?.text || selectedDoc.extracted_text}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* notes */}
                                     {selectedDoc.notes && (

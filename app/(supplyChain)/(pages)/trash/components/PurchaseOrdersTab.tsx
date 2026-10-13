@@ -17,29 +17,56 @@ import { AppButton } from '../../../components/ui/AppButton';
 import { SearchableDropdown, SearchableDropdownOption } from '../../../components/ui/SearchableDropdown';
 import { trashCache } from '../utils/trashCache';
 import { TrashRetentionBadge } from './TrashRetentionBadge';
-
-interface ArchivedPurchaseOrder {
-    id: string;
-    po_number: string;
-    request_id?: string;
-    supplier_id?: number | null;
-    supplier_name: string;
-    total_amount: number;
-    status: string;
-    delivery_date?: string;
-    notes?: string | null;
-    items?: any[];
-    created_by?: string | null;
-    created_at: string;
-    updated_at: string;
-    deleted_at: string;
-    deleted_by: string;
-    deletion_reason?: string | null;
-    original_id: string;
-}
+import {
+    ArchivedPurchaseOrderViewModal,
+    type ArchivedPurchaseOrder,
+} from './ArchivedPurchaseOrderViewModal';
 
 const ITEMS_PER_PAGE = 10;
 const formatCurrency = (amount: number) => `₱${(amount || 0).toLocaleString()}`;
+
+const formatArchivedPurchaseOrder = (po: any): ArchivedPurchaseOrder => ({
+    id: po.id,
+    po_number: sanitizeText(po.po_number),
+    request_id: po.request_id,
+    supplier_id: po.supplier_id ? sanitizeNumber(po.supplier_id) : null,
+    supplier_name: sanitizeText(po.supplier_name),
+    total_amount: sanitizeNumber(po.total_amount || 0),
+    status: sanitizeText(po.status || 'Draft'),
+    delivery_date: po.delivery_date,
+    notes: po.notes ? sanitizeText(po.notes) : null,
+    items: po.items || [],
+    created_by: po.created_by ? sanitizeText(po.created_by) : null,
+    created_at: po.created_at,
+    updated_at: po.updated_at,
+    deleted_at: po.deleted_at || new Date().toISOString(),
+    deleted_by: sanitizeText(po.deleted_by || 'Unknown'),
+    deletion_reason: po.deletion_reason ? sanitizeText(po.deletion_reason) : null,
+    original_id: po.original_id || po.id,
+    paid: Boolean(po.paid),
+    fully_received: Boolean(po.fully_received),
+    paid_verified_at: po.paid_verified_at,
+    paid_verified_by: po.paid_verified_by,
+    force_updated_by: po.force_updated_by,
+    force_updated_at: po.force_updated_at,
+    force_reason: po.force_reason ? sanitizeText(po.force_reason) : null,
+    admin_approval: sanitizeText(po.admin_approval || 'Pending'),
+    admin_approved_at: po.admin_approved_at,
+    admin_approved_by: po.admin_approved_by,
+    financial_approval: sanitizeText(po.financial_approval || 'Pending'),
+    financial_approved_at: po.financial_approved_at,
+    financial_approved_by: po.financial_approved_by,
+    delivery_location: po.delivery_location ? sanitizeText(po.delivery_location) : null,
+    payment_terms: po.payment_terms ? sanitizeText(po.payment_terms) : null,
+    terms_and_conditions: po.terms_and_conditions ? sanitizeText(po.terms_and_conditions) : null,
+    subtotal: sanitizeNumber(po.subtotal || 0),
+    discount: sanitizeNumber(po.discount || 0),
+    tax_rate: sanitizeNumber(po.tax_rate || 0),
+    tax_amount: sanitizeNumber(po.tax_amount || 0),
+    shipping_fee: sanitizeNumber(po.shipping_fee || 0),
+    category: po.category ? sanitizeText(po.category) : null,
+    suppliers_qoutation_bid: po.suppliers_qoutation_bid ? sanitizeNumber(po.suppliers_qoutation_bid) : null,
+});
 
 export function PurchaseOrdersTab() {
     const { confirm } = useConfirm();
@@ -55,6 +82,7 @@ export function PurchaseOrdersTab() {
     const [selectedPoIds, setSelectedPoIds] = useState<Set<string>>(new Set());
     const [poPage, setPoPage] = useState(1);
     const [poTotalPages, setPoTotalPages] = useState(1);
+    const [selectedViewPo, setSelectedViewPo] = useState<ArchivedPurchaseOrder | null>(null);
     const [isMounted, setIsMounted] = useState(false);
 
     const debouncedPoSearchTerm = useDebounce(poSearchTerm, 300);
@@ -80,25 +108,7 @@ export function PurchaseOrdersTab() {
 
             if (error) throw error;
 
-            const transformedData: ArchivedPurchaseOrder[] = (data || []).map((po: any) => ({
-                id: po.id,
-                po_number: sanitizeText(po.po_number),
-                request_id: po.request_id,
-                supplier_id: po.supplier_id ? sanitizeNumber(po.supplier_id) : null,
-                supplier_name: sanitizeText(po.supplier_name),
-                total_amount: sanitizeNumber(po.total_amount || 0),
-                status: sanitizeText(po.status || 'Draft'),
-                delivery_date: po.delivery_date,
-                notes: po.notes ? sanitizeText(po.notes) : null,
-                items: po.items || [],
-                created_by: po.created_by ? sanitizeText(po.created_by) : null,
-                created_at: po.created_at,
-                updated_at: po.updated_at,
-                deleted_at: po.deleted_at || new Date().toISOString(),
-                deleted_by: sanitizeText(po.deleted_by || 'Unknown'),
-                deletion_reason: po.deletion_reason ? sanitizeText(po.deletion_reason) : null,
-                original_id: po.original_id || po.id,
-            }));
+            const transformedData: ArchivedPurchaseOrder[] = (data || []).map(formatArchivedPurchaseOrder);
 
             trashCache.set('purchase_orders', transformedData);
             setArchivedPurchaseOrders(transformedData);
@@ -157,6 +167,20 @@ export function PurchaseOrdersTab() {
                             notes: po.notes,
                             items: po.items,
                             created_by: po.created_by,
+                            paid: po.paid ?? false,
+                            fully_received: po.fully_received ?? false,
+                            admin_approval: po.admin_approval,
+                            financial_approval: po.financial_approval,
+                            delivery_location: po.delivery_location,
+                            payment_terms: po.payment_terms,
+                            terms_and_conditions: po.terms_and_conditions,
+                            subtotal: po.subtotal,
+                            discount: po.discount,
+                            tax_rate: po.tax_rate,
+                            tax_amount: po.tax_amount,
+                            shipping_fee: po.shipping_fee,
+                            category: po.category,
+                            suppliers_qoutation_bid: po.suppliers_qoutation_bid,
                             updated_at: new Date().toISOString(),
                         })
                         .eq('id', existingActive.id);
@@ -196,6 +220,20 @@ export function PurchaseOrdersTab() {
                         notes: po.notes,
                         items: po.items,
                         created_by: po.created_by,
+                        paid: po.paid ?? false,
+                        fully_received: po.fully_received ?? false,
+                        admin_approval: po.admin_approval,
+                        financial_approval: po.financial_approval,
+                        delivery_location: po.delivery_location,
+                        payment_terms: po.payment_terms,
+                        terms_and_conditions: po.terms_and_conditions,
+                        subtotal: po.subtotal,
+                        discount: po.discount,
+                        tax_rate: po.tax_rate,
+                        tax_amount: po.tax_amount,
+                        shipping_fee: po.shipping_fee,
+                        category: po.category,
+                        suppliers_qoutation_bid: po.suppliers_qoutation_bid,
                         created_at: po.created_at,
                         updated_at: new Date().toISOString(),
                     });
@@ -320,6 +358,20 @@ export function PurchaseOrdersTab() {
                             notes: po.notes,
                             items: po.items,
                             created_by: po.created_by,
+                            paid: po.paid ?? false,
+                            fully_received: po.fully_received ?? false,
+                            admin_approval: po.admin_approval,
+                            financial_approval: po.financial_approval,
+                            delivery_location: po.delivery_location,
+                            payment_terms: po.payment_terms,
+                            terms_and_conditions: po.terms_and_conditions,
+                            subtotal: po.subtotal,
+                            discount: po.discount,
+                            tax_rate: po.tax_rate,
+                            tax_amount: po.tax_amount,
+                            shipping_fee: po.shipping_fee,
+                            category: po.category,
+                            suppliers_qoutation_bid: po.suppliers_qoutation_bid,
                             created_at: po.created_at,
                             updated_at: new Date().toISOString(),
                         });
@@ -467,6 +519,51 @@ export function PurchaseOrdersTab() {
         setIsMounted(true);
         fetchArchivedPurchaseOrders();
 
+        // Realtime subscription for purchase_orders_archive
+        const channelName = `realtime_trash_po_tab_${Date.now()}`;
+        const poChannel = supabase
+            .channel(channelName)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'purchase_orders_archive' },
+                (payload) => {
+                    if (payload.eventType === 'INSERT') {
+                        const newPo = formatArchivedPurchaseOrder(payload.new);
+                        setArchivedPurchaseOrders(prev => {
+                            if (prev.some(p => p.id === newPo.id)) return prev;
+                            const updated = [newPo, ...prev];
+                            trashCache.set('purchase_orders', updated);
+                            return updated;
+                        });
+                    } else if (payload.eventType === 'UPDATE') {
+                        const updatedPo = formatArchivedPurchaseOrder(payload.new);
+                        setArchivedPurchaseOrders(prev => {
+                            const updated = prev.map(p => p.id === updatedPo.id ? updatedPo : p);
+                            trashCache.set('purchase_orders', updated);
+                            return updated;
+                        });
+                    } else if (payload.eventType === 'DELETE') {
+                        const deletedId = payload.old?.id;
+                        if (deletedId) {
+                            setArchivedPurchaseOrders(prev => {
+                                const updated = prev.filter(p => p.id !== deletedId);
+                                trashCache.set('purchase_orders', updated);
+                                return updated;
+                            });
+                            setSelectedPoIds(prev => {
+                                if (prev.has(deletedId)) {
+                                    const updated = new Set(prev);
+                                    updated.delete(deletedId);
+                                    return updated;
+                                }
+                                return prev;
+                            });
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
         const unsubscribe = trashCache.subscribe((key, action) => {
             if (!key || key === 'purchase_orders') {
                 if (action === 'force-refresh' || action === 'invalidate') {
@@ -481,7 +578,10 @@ export function PurchaseOrdersTab() {
             }
         });
 
-        return unsubscribe;
+        return () => {
+            supabase.removeChannel(poChannel);
+            unsubscribe();
+        };
     }, [fetchArchivedPurchaseOrders]);
 
     return (
@@ -675,7 +775,7 @@ export function PurchaseOrdersTab() {
                                 <th className="py-3 px-4">Status</th>
                                 <th className="py-3 px-4">Deleted By</th>
                                 <th className="py-3 px-4">Deleted At & Auto-Purge</th>
-                                <th className="text-right! py-3 px-4 w-[130px] min-w-[130px]">Actions</th>
+                                <th className="text-right! py-3 px-4 w-[160px] min-w-[160px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -690,7 +790,7 @@ export function PurchaseOrdersTab() {
                                         { type: 'badge' },
                                         { type: 'avatar-text', subtext: false },
                                         { type: 'date' },
-                                        { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                        { type: 'actions', align: 'right', width: 'w-[160px]' },
                                     ]}
                                 />
                             ) : paginatedPurchaseOrders.length === 0 ? (
@@ -734,7 +834,14 @@ export function PurchaseOrdersTab() {
                                                 </div>
                                             </td>
                                             <td data-label="PO Number" className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
-                                                <span className="truncate max-w-[140px] inline-block" title={po.po_number}>{po.po_number}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedViewPo(po)}
+                                                    className="truncate max-w-[140px] inline-block text-left hover:text-pink-600 dark:hover:text-pink-400 hover:underline transition-colors cursor-pointer"
+                                                    title="Click to view details"
+                                                >
+                                                    {po.po_number}
+                                                </button>
                                             </td>
                                             <td data-label="Supplier" className="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">
                                                 <span className="truncate max-w-[180px] inline-block" title={po.supplier_name}>{po.supplier_name}</span>
@@ -754,8 +861,14 @@ export function PurchaseOrdersTab() {
                                                     <TrashRetentionBadge deletedAt={po.deleted_at} />
                                                 </div>
                                             </td>
-                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
-                                                <div className="flex items-center justify-end gap-2.5">
+                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[160px] min-w-[160px]">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <CrudActionButton
+                                                        action="view"
+                                                        ariaLabel={`View purchase order ${po.po_number}`}
+                                                        title="View Details"
+                                                        onClick={() => setSelectedViewPo(po)}
+                                                    />
                                                     <CrudActionButton
                                                         action="restore"
                                                         ariaLabel={`Restore purchase order ${po.po_number}`}
@@ -800,6 +913,21 @@ export function PurchaseOrdersTab() {
                     />
                 </div>
             </div>
+
+            {/* View Full Archived Purchase Order Modal */}
+            <ArchivedPurchaseOrderViewModal
+                isOpen={!!selectedViewPo}
+                onClose={() => setSelectedViewPo(null)}
+                po={selectedViewPo}
+                onRestore={async (p) => {
+                    await handleRestorePurchaseOrder(p);
+                    setSelectedViewPo(null);
+                }}
+                onPermanentDelete={async (p) => {
+                    await handleDeletePurchaseOrderPermanently(p);
+                    setSelectedViewPo(null);
+                }}
+            />
         </div>
     );
 }

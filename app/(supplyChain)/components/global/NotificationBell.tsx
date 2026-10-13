@@ -1292,7 +1292,7 @@ export function NotificationBell() {
         switch (first) {
             case 'All': return <Users className="h-3 w-3" />;
             case 'Admin': return <Shield className="h-3 w-3" />;
-            case 'Manager': return <UserCog className="h-3 w-3" />;
+            case 'Purchase Officer': return <UserCog className="h-3 w-3" />;
             case 'Executive': return <Shield className="h-3 w-3" />;
             default: return <User className="h-3 w-3" />;
         }
@@ -1316,7 +1316,7 @@ export function NotificationBell() {
         }
         switch (first) {
             case 'Admin': return 'bg-purple-100 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/30';
-            case 'Manager': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/30';
+            case 'Purchase Officer': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/30';
             case 'Employee': return 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/30';
             case 'Executive': return 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/30';
             case 'Operator': return 'bg-orange-100 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/30';
@@ -1524,36 +1524,6 @@ export function NotificationBell() {
                                                             {notification.message}
                                                         </p>
 
-                                                        {/* Dispatch Manifest Excel Attachment Download */}
-                                                        {notification.link && (notification.link.includes('dispatch-manifest') || notification.type === 'dispatch_manifest') && (
-                                                            <div className="mt-2.5 pt-2 border-t border-slate-200/50 dark:border-slate-800/60 flex items-center justify-between gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (!isRead) {
-                                                                            handleMarkAsRead(notification.id);
-                                                                        }
-                                                                        const a = document.createElement('a');
-                                                                        a.href = notification.link;
-                                                                        a.target = '_blank';
-                                                                        a.download = '';
-                                                                        document.body.appendChild(a);
-                                                                        a.click();
-                                                                        document.body.removeChild(a);
-                                                                        toast.success('Downloading attached manifest (.xlsx)...');
-                                                                    }}
-                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-xl text-emerald-700 dark:text-emerald-300 bg-[#e8f5ec] dark:bg-[#15231c] shadow-[3px_3px_7px_#c6d8cb,-3px_-3px_7px_#ffffff] dark:shadow-[3px_3px_7px_#0a110d,-2px_-2px_6px_#1e3228] hover:shadow-[inset_2px_2px_4px_#c6d8cb,inset_-2px_-2px_4px_#ffffff] dark:hover:shadow-[inset_2px_2px_4px_#0a110d,inset_-2px_-2px_4px_#1e3228] active:scale-95 transition-all cursor-pointer"
-                                                                >
-                                                                    <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                                                                    <span>Download Attached (.xlsx)</span>
-                                                                </button>
-                                                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium px-2 py-0.5 rounded-md bg-[#e4f2e9] dark:bg-[#121e18] shadow-[inset_1px_1px_2px_#c4d5ca,inset_-1px_-1px_2px_#ffffff] flex items-center gap-1">
-                                                                    <FileSpreadsheet className="h-3 w-3" />
-                                                                    <span>Excel File</span>
-                                                                </span>
-                                                            </div>
-                                                        )}
 
                                                         {/* Login Authorization Request - Extend Action */}
                                                         {(notification.title === 'Login Authorization Request' || (notification.link && notification.link.includes('tab=access_control'))) && (

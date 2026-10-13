@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
         // 2. Fetch pending documents in a single query (indexed, limit 200)
         let docQuery = supabase
-            .from("documents")
+            .from("supplier_documents")
             .select("id, title, file_name, file_type, storage_path, user_id, uploaded_by, role, created_at")
             .or("file_type.eq.pending,storage_path.eq.,file_size.eq.0")
             .order("created_at", { ascending: false })

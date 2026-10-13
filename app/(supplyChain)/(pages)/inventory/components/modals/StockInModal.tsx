@@ -55,8 +55,8 @@ export function StockInModal({
     const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(normalizedRole) || currentUserRole === 'Admin';
     const isExecutive = ['executive'].includes(normalizedRole) || currentUserRole === 'Executive';
     const canForce = isAdmin || isExecutive;
-    const isManager = ['manager'].includes(normalizedRole) || currentUserRole === 'Manager';
-    const isAdminOrManager = isAdmin || isManager || isExecutive;
+    const isPurchaseOfficer = ['purchase officer', 'purchase_officer'].includes(normalizedRole) || currentUserRole === 'Purchase Officer';
+    const isAdminOrPurchaseOfficer = isAdmin || isPurchaseOfficer || isExecutive;
 
     useEffect(() => {
         if (isOpen && currentItem) {
@@ -325,7 +325,7 @@ export function StockInModal({
                         </div>
                     )}
 
-                    {/* Force Stock In for Admin/Executive/Manager */}
+                    {/* Force Stock In for Admin/Executive/Purchase Officer */}
                     {(exceedsLimit || isMissingDeliveredPo) && (
                         <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
                             <div className="flex items-center justify-between gap-2">
@@ -356,7 +356,7 @@ export function StockInModal({
                             {!canForce && (
                                 <p className="text-[11px] text-amber-700 dark:text-amber-400/90 flex items-center gap-1.5 px-1 font-medium">
                                     <i className="fas fa-circle-info text-amber-500 text-xs shrink-0"></i>
-                                    <span>Force stock-in override is restricted to Administrator and Executive roles (disabled for Manager role).</span>
+                                    <span>Force stock-in override is restricted to Administrator and Executive roles (disabled for Purchase Officer role).</span>
                                 </p>
                             )}
 

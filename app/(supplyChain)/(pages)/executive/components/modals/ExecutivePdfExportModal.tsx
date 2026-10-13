@@ -17,10 +17,10 @@ interface ExecutivePdfExportModalProps {
 const TAB_SCOPES: { id: ExecutiveExportScope; label: string; icon: string; desc: string }[] = [
     { id: 'all', label: 'All Tabs (Master)', icon: 'fa-layer-group', desc: 'Unified briefing across all operational domains' },
     { id: 'overview', label: 'Overview', icon: 'fa-chart-pie', desc: 'High-level scorecard, daily trends, and quick summaries' },
-    { id: 'operations', label: 'Operations', icon: 'fa-truck', desc: 'Warehouse queues, courier allocation, and status distribution' },
+    { id: 'operations', label: 'Operations', icon: 'fa-warehouse', desc: 'Warehouse stock, inventory categories, and status distribution' },
     { id: 'kpis', label: 'KPI Deep Dive', icon: 'fa-tachometer-alt', desc: 'Complete 8-metric scorecard and strategic takeaways' },
-    { id: 'forecast', label: 'Forecast', icon: 'fa-chart-line', desc: '7-day parcel intake predictions and monthly spend forecast' },
-    { id: 'reports', label: 'Reports / Ledger', icon: 'fa-file-csv', desc: 'Verified parcel manifests and audit transactions' },
+    { id: 'forecast', label: 'Forecast', icon: 'fa-chart-line', desc: '7-day warehouse inbound demand predictions and monthly spend forecast' },
+    { id: 'reports', label: 'Reports / Ledger', icon: 'fa-file-csv', desc: 'Verified warehouse manifests and purchase order audit transactions' },
 ];
 
 export default function ExecutivePdfExportModal({
@@ -295,7 +295,7 @@ export default function ExecutivePdfExportModal({
                                 <span>Export Scope Summary:</span>
                             </div>
                             <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                                Target: <strong>{TAB_SCOPES.find(t => t.id === selectedScope)?.label}</strong> · {data.parcels?.length || 0} parcels indexed · SLA Rate: {data.pageKpis?.ontimeRate || '0.0%'} · {Object.keys(data.courierBreakdown || {}).length} active couriers.
+                                Target: <strong>{TAB_SCOPES.find(t => t.id === selectedScope)?.label}</strong> · {data.inventory?.length || 0} inventory items · {data.suppliers?.length || 0} suppliers.
                             </div>
                         </div>
                     </div>

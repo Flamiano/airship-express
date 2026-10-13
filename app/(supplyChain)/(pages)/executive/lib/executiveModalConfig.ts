@@ -20,28 +20,29 @@ export function buildExecutiveModalConfig(
     if (reportType === 'executive') {
         const totalStock = inventory.reduce((acc, i) => acc + (Number(i.current_stock) || 0), 0);
         const totalSpent = purchaseOrders.reduce((acc, po) => acc + (Number(po.total_amount) || 0), 0);
-        const fulfillmentRate = pageKpis.ontimeRate || "0.0%";
+        const activeSuppliersCount = suppliers.filter(s => (s.status || '').toLowerCase() === 'active').length;
 
         const totalPrAmount = procurement.reduce((acc, pr) => acc + (Number(pr.amount) || 0), 0);
         const pendingPrCount = procurement.filter(pr => (pr.status || '').toLowerCase() === 'pending').length;
 
         return {
             title: "Executive Summary Report",
-            subtitle: "Holistic overview of operations, inventory & procurement",
+            subtitle: "Holistic overview of warehousing, inventory, suppliers & procurement",
             icon: "fa-file-alt",
             iconColor: "text-pink-600 dark:text-pink-400",
             iconBg: "bg-pink-50 dark:bg-pink-950/40 border-pink-100 dark:border-pink-900/30",
-            description: "Aggregated high-level snapshot of supply chain activity, document logs, inventory capacity, and total procurement commitments.",
+            description: "Aggregated high-level snapshot of warehouse inventory capacity, supplier partner registry, and total procurement commitments.",
             metrics: [
-                { label: "Total Parcels", value: parcels.length, sublabel: `${fulfillmentRate} delivered`, color: "text-pink-600 dark:text-pink-400" },
                 { label: "Total Stock Units", value: totalStock.toLocaleString(), sublabel: `${inventory.length} SKUs`, color: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Approved Suppliers", value: suppliers.length, sublabel: `${activeSuppliersCount} active partners`, color: "text-blue-600 dark:text-blue-400" },
                 { label: "PR Requisitions", value: `₱${totalPrAmount.toLocaleString()}`, sublabel: `${procurement.length} requests (${pendingPrCount} pending)`, color: "text-purple-600 dark:text-purple-400" },
                 { label: "PO Spend", value: `₱${totalSpent.toLocaleString()}`, sublabel: `${purchaseOrders.length} active orders`, color: "text-indigo-600 dark:text-indigo-400" },
             ],
             listHeader: "Executive Snapshot Summary",
             items: [
-                { title: "Parcels Logged", subtitle: `Active supply chain shipments (${fulfillmentRate} delivered)`, value: `${parcels.length} records`, icon: "fa-box", badge: "Live Operations", badgeColor: "bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300", category: "operations" },
-                { title: "Inventory SKUs", subtitle: `Unique items across all classifications`, value: `${inventory.length} SKUs`, icon: "fa-warehouse", badge: "Catalogued", badgeColor: "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300", category: "warehouse" },
+                { title: "Warehouse Stock", subtitle: `Active inventory stock across warehouse racks`, value: `${totalStock.toLocaleString()} units`, icon: "fa-boxes-stacked", badge: "In Storage", badgeColor: "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300", category: "warehouse" },
+                { title: "Inventory SKUs", subtitle: `Unique catalogued items across all classifications`, value: `${inventory.length} SKUs`, icon: "fa-warehouse", badge: "Catalogued", badgeColor: "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300", category: "warehouse" },
+                { title: "Approved Suppliers", subtitle: `Active vendor partner relationships in registry`, value: `${suppliers.length} vendors`, icon: "fa-handshake", badge: "Verified", badgeColor: "bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300", category: "suppliers" },
                 { title: "Purchase Requisitions", subtitle: `Requisition pipeline (${pendingPrCount} awaiting approval, ${procurement.length - pendingPrCount} approved)`, value: `${procurement.length} PRs`, icon: "fa-clipboard-list", badge: `₱${totalPrAmount.toLocaleString()}`, badgeColor: "bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300", category: "procurement" },
                 { title: "Purchase Orders", subtitle: `Vendor commitments and active supply contracts`, value: `${purchaseOrders.length} orders`, icon: "fa-file-invoice-dollar", badge: `₱${totalSpent.toLocaleString()}`, badgeColor: "bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300", category: "procurement" },
                 { title: "Documents Tracked", subtitle: `Archived digital compliance logs`, value: `${documents.length} docs`, icon: "fa-folder-open", badge: "Compliant", badgeColor: "bg-cyan-100 dark:bg-cyan-950/50 text-cyan-700 dark:text-cyan-300", category: "compliance" },
@@ -49,13 +50,14 @@ export function buildExecutiveModalConfig(
             onDownload: () => {
                 const headers = ["Domain Sector", "KPI Metric", "Recorded Value", "Operational Status", "Audited Timestamp"];
                 const rows = [
-                    ["Logistics", "Total Parcels", parcels.length, "Active", new Date().toISOString()],
+                    ["Warehouse", "Total Stock Units", totalStock, "In Storage", new Date().toISOString()],
                     ["Warehouse", "Total SKUs", inventory.length, "Catalogued", new Date().toISOString()],
+                    ["Suppliers", "Registered Vendors", suppliers.length, `${activeSuppliersCount} Active`, new Date().toISOString()],
                     ["Procurement", "Purchase Requests", procurement.length, `${pendingPrCount} Pending / ${procurement.length - pendingPrCount} Approved`, new Date().toISOString()],
                     ["Procurement", "Purchase Orders Issued", purchaseOrders.length, "Issued/Pending", new Date().toISOString()],
                     ["Compliance", "Archived Documents", documents.length, "Compliant", new Date().toISOString()]
                 ];
-                downloadCSV("Executive_Summary_Intelligence_Report", [], ["Logistics operational summary."], headers, rows);
+                downloadCSV("Executive_Summary_Intelligence_Report", [], ["Supply chain warehousing and procurement summary."], headers, rows);
             },
             downloadLabel: "Download Executive Insights (CSV)",
             viewAllLink: "/executive",
@@ -63,84 +65,48 @@ export function buildExecutiveModalConfig(
         };
     }
 
-    if (reportType === 'parcels') {
-        const deliveredCount = parcels.filter(p => p.status === 'delivered').length;
-        const rate = pageKpis.ontimeRate || "0.0%";
+    if (reportType === 'parcels' || reportType === 'warehouse') {
+        const totalStock = inventory.reduce((acc, i) => acc + (Number(i.current_stock) || 0), 0);
+        const lowStockCount = inventory.filter(i => (Number(i.current_stock) || 0) <= (Number(i.minimum_stock) || 0)).length;
 
         return {
-            title: "Parcel Performance & Manifest Audit",
-            subtitle: "Tracking parcel barcode, courier handoff, destination & verification status",
-            icon: "fa-box",
+            title: "Warehouse Inbound & Storage Manifest",
+            subtitle: "Tracking warehouse storage bins, stock health & item allocations",
+            icon: "fa-boxes-stacked",
             iconColor: "text-blue-600 dark:text-blue-400",
             iconBg: "bg-blue-50 dark:bg-blue-950/40 border-blue-100 dark:border-blue-900/30",
-            description: "Detailed analysis of incoming cargo volume, fulfillment timeline, clearance bottlenecks, and courier handoffs formatted like the inventory parcels manifest.",
+            description: "Detailed analysis of warehouse stock units, category classifications, storage bin allocation, and replenishment thresholds.",
             metrics: [
-                { label: "Total Parcels", value: parcels.length, sublabel: "Database Records", color: "text-blue-600 dark:text-blue-400" },
-                { label: "Delivered", value: deliveredCount, sublabel: "Completed SLA", color: "text-emerald-600 dark:text-emerald-400" },
-                { label: "Fulfillment Rate", value: rate, sublabel: "Target >80%", color: "text-purple-600 dark:text-purple-400" },
+                { label: "Total Stock Units", value: totalStock.toLocaleString(), sublabel: "Units in Storage", color: "text-blue-600 dark:text-blue-400" },
+                { label: "Catalogued SKUs", value: inventory.length, sublabel: "Active Items", color: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Low Stock Alerts", value: lowStockCount, sublabel: "Requires Restock", color: "text-rose-600 dark:text-rose-400" },
             ],
-            listHeader: "Manifest Parcels List (Warehousing/Inventory Format)",
+            listHeader: "Warehouse Inventory Items & Storage Bins",
             maxDisplayCount: 10,
-            items: parcels.map((p, idx) => {
-                const st = (p.status || 'received').toLowerCase();
-                const badgeColor = st === 'delivered'
-                    ? "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300"
-                    : st === 'picked_up'
-                        ? "bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300"
-                        : st === 'in_transit'
-                            ? "bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
-                            : st === 'sorting'
-                                ? "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300"
-                                : "bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300";
-
+            items: inventory.map((i, idx) => {
+                const cur = Number(i.current_stock) || 0;
+                const min = Number(i.minimum_stock) || 0;
+                const isLow = cur <= min;
                 return {
-                    title: `Tracking #${p.tracking_number || p.barcode || `AX-PARCEL-${p.id || idx + 1}`}`,
-                    subtitle: `Consignee: ${p.destination || p.sender_name || 'N/A'} | Courier: ${p.courier || 'Airship Express'} | Region: ${p.region || p.city || 'Central Hub'} | Scanned: ${p.created_at ? new Date(p.created_at).toLocaleString('sv-SE').slice(0, 16) : 'Recent'}`,
-                    value: (p.status || 'RECEIVED').replace(/_/g, ' ').toUpperCase(),
-                    icon: "fa-barcode",
-                    badge: (p.status || 'received').replace(/_/g, ' '),
-                    badgeColor,
-                    category: (p.status || 'received').replace(/_/g, ' '),
+                    title: i.item_name || `Item #${i.id || idx + 1}`,
+                    subtitle: `SKU: ${i.item_code || 'N/A'} | Category: ${i.category || 'General'} | Bin: ${i.storage_location || 'Main Storage'}`,
+                    value: `${cur} units`,
+                    icon: "fa-boxes-stacked",
+                    badge: isLow ? 'Low Stock' : 'In Stock',
+                    badgeColor: isLow
+                        ? "bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300"
+                        : "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300",
+                    category: i.category || 'warehouse',
                 };
             }),
             onDownload: () => {
-                const headers = ["Tracking Number", "Barcode", "Courier", "Destination", "Status", "Date Created"];
-                const rows = parcels.map(p => [p.tracking_number || 'N/A', p.barcode || 'N/A', p.courier || 'Airship Express', p.destination || 'N/A', p.status || 'Received', p.created_at || 'N/A']);
-                downloadCSV("Parcel_Performance_Report", [], ["Courier clearance throughput."], headers, rows);
+                const headers = ["Item Name", "SKU Code", "Category", "Current Stock", "Min Stock", "Location"];
+                const rows = inventory.map(i => [i.item_name || 'N/A', i.item_code || 'N/A', i.category || 'General', i.current_stock || 0, i.minimum_stock || 0, i.storage_location || 'Main Rack']);
+                downloadCSV("Warehouse_Stock_Manifest", [], ["Warehouse inbound storage inventory audit."], headers, rows);
             },
-            downloadLabel: "Download Parcel Manifest (CSV)",
-            viewAllLink: "/warehousing?tab=incoming",
+            downloadLabel: "Download Warehouse Manifest (CSV)",
+            viewAllLink: "/warehousing",
             viewAllLabel: "Open Warehousing Module"
-        };
-    }
-
-    if (reportType === 'couriers') {
-        const courierCounts = data.courierBreakdown || {};
-        const courierItems = Object.entries(courierCounts).map(([name, count]) => ({
-            title: name,
-            subtitle: `Courier logistics partner handling active parcel assignments`,
-            value: `${count} parcels`,
-            icon: "fa-truck",
-            badge: "Active Carrier",
-            badgeColor: "bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300",
-            category: "courier",
-        }));
-
-        return {
-            title: "Courier Partner Distribution",
-            subtitle: "Parcels handled by registered courier partners",
-            icon: "fa-truck",
-            iconColor: "text-indigo-600 dark:text-indigo-400",
-            iconBg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-100 dark:border-indigo-900/30",
-            description: "Volume distribution across third-party linehaul partners and local couriers.",
-            metrics: [
-                { label: "Active Carriers", value: Object.keys(courierCounts).length, sublabel: "Registered partners", color: "text-indigo-600 dark:text-indigo-400" },
-                { label: "Total Handled", value: parcels.length, sublabel: "Shipments assigned", color: "text-pink-600 dark:text-pink-400" },
-            ],
-            listHeader: "Courier Breakdown Manifest",
-            items: courierItems,
-            viewAllLink: "/couriers",
-            viewAllLabel: "Open Couriers Hub"
         };
     }
 
@@ -353,12 +319,12 @@ export function buildExecutiveModalConfig(
             const label = histDisplay[idx] || dateStr;
             const isToday = idx === histDates.length - 1;
             const predForToday = fcValues.length > 0 ? Math.round(fcValues[0]) : actualVal;
-            const compStr = isToday ? ` | Predicted for today: ${predForToday} parcels (Comparing Actual vs Predicted)` : "";
+            const compStr = isToday ? ` | Predicted for today: ${predForToday} units (Comparing Actual vs Predicted)` : "";
 
             return {
                 title: `Date: ${dateStr} (${label}${isToday ? ' - Today' : ''})`,
-                subtitle: `Actual Supabase Data: ${actualVal} parcels recorded${compStr}`,
-                value: isToday ? `Actual: ${actualVal} (Fcst: ${predForToday})` : `${actualVal} parcels (Actual)`,
+                subtitle: `Actual Warehouse Inbound: ${actualVal} units recorded${compStr}`,
+                value: isToday ? `Actual: ${actualVal} (Fcst: ${predForToday})` : `${actualVal} units (Actual)`,
                 icon: "fa-calendar-check",
                 badge: isToday ? "Today (Actual)" : "Actual Recorded",
                 badgeColor: isToday ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300" : "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300",
@@ -373,8 +339,8 @@ export function buildExecutiveModalConfig(
 
             return {
                 title: `Date: ${dateStr} (${isTomorrow ? 'Tomorrow - Day +1' : `Day +${dayOffset}`})`,
-                subtitle: `WASM Model Prediction: ${predVal} parcels | Actual Data: Pending arrival of ${dateStr} (Will display actual recorded when date comes)`,
-                value: `${predVal} parcels (Predicted)`,
+                subtitle: `WASM Model Prediction: ${predVal} units | Actual Data: Pending arrival of ${dateStr} (Will display actual recorded when date comes)`,
+                value: `${predVal} units (Predicted)`,
                 icon: "fa-chart-line",
                 badge: isTomorrow ? `Tomorrow Fcst: ${predVal}` : `Projected: ${predVal}`,
                 badgeColor: "bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300",
@@ -386,26 +352,26 @@ export function buildExecutiveModalConfig(
         const totalProjected = fcValues.reduce((a, b) => a + Math.round(b), 0);
 
         return {
-            title: "7-Day WASM Predictive vs Actual Parcel Forecast",
-            subtitle: "Comparison of actual recorded database intake vs predicted WASM projections",
+            title: "7-Day WASM Predictive vs Actual Warehouse Inbound Forecast",
+            subtitle: "Comparison of actual recorded warehouse intake vs predicted WASM projections",
             icon: "fa-chart-line",
             iconColor: "text-pink-600 dark:text-pink-400",
             iconBg: "bg-pink-50 dark:bg-pink-950/40 border-pink-100 dark:border-pink-900/30",
-            description: "Executes Holt-Winters & AutoTheta forecasting algorithms over historical database records using the @sipemu/anofox-forecast Rust/WASM engine. Shows actual recorded intake alongside projected future volumes. When future dates arrive, actual recorded data automatically populates to compare against predictions.",
+            description: "Executes Holt-Winters & AutoTheta forecasting algorithms over historical warehouse intake records using the @sipemu/anofox-forecast Rust/WASM engine. Shows actual recorded inbound alongside projected future volumes. When future dates arrive, actual recorded data automatically populates to compare against predictions.",
             metrics: [
-                { label: "Historical Actual", value: `${totalHistorical} parcels`, sublabel: `Past ${histDates.length} days recorded`, color: "text-blue-600 dark:text-blue-400" },
-                { label: "Projected Next 7 Days", value: `${totalProjected} parcels`, sublabel: `WASM prediction total`, color: "text-pink-600 dark:text-pink-400" },
+                { label: "Historical Actual", value: `${totalHistorical} units`, sublabel: `Past ${histDates.length} days recorded`, color: "text-blue-600 dark:text-blue-400" },
+                { label: "Projected Next 7 Days", value: `${totalProjected} units`, sublabel: `WASM prediction total`, color: "text-pink-600 dark:text-pink-400" },
                 { label: "Confidence Level", value: confidence, sublabel: modelUsed, color: "text-emerald-600 dark:text-emerald-400" },
             ],
-            listHeader: "Forecast Manifest: Actual Database Intake & WASM Predictions",
+            listHeader: "Forecast Manifest: Actual Warehouse Intake & WASM Predictions",
             items: [...historicalList, ...predictedList],
             onDownload: () => {
                 const headers = ["Date", "Type", "Recorded / Predicted Count", "Status Notes"];
                 const rows = [
-                    ...histDates.map((d, i) => [d, "Actual", histCounts[i] ?? 0, "Recorded in parcels table"]),
+                    ...histDates.map((d, i) => [d, "Actual", histCounts[i] ?? 0, "Recorded in warehouse intake"]),
                     ...fcDates.map((d, i) => [d, "Predicted (WASM)", Math.round(fcValues[i] ?? 0), "Holt-Winters projection"])
                 ];
-                downloadCSV("WASM_Parcel_Forecast_Actual_vs_Predicted", [], ["7-Day forecast vs actual database intake."], headers, rows);
+                downloadCSV("WASM_Warehouse_Inbound_Forecast", [], ["7-Day forecast vs actual database intake."], headers, rows);
             },
             downloadLabel: "Download Forecast & Actuals (CSV)",
             viewAllLink: "/forecast",

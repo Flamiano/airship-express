@@ -126,11 +126,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                             onClick={handleCancel}
                         />
 
-                        {/* Neumorphic Modal Card */}
+                        {/* Modal Card */}
                         <div className="relative bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl max-w-md w-full p-6 sm:p-8 
-                                        border border-white/80 dark:border-[#2c2d3c] 
-                                        shadow-[12px_12px_36px_rgba(166,175,195,0.5),-12px_-12px_36px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] 
-                                        dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85),-8px_-8px_24px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)]
+                                        border border-slate-200/80 dark:border-[#2c2d3c] 
+                                        shadow-none
                                         animate-in fade-in zoom-in-95 duration-200 z-10">
                             
                             {/* Debossed Inset Icon Well */}

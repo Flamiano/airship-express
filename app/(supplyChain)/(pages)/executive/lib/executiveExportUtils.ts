@@ -11,7 +11,6 @@ export interface ExecutiveExportOptions {
         parcelsCanvas?: HTMLCanvasElement | null;
         inventoryCanvas?: HTMLCanvasElement | null;
         procurementCanvas?: HTMLCanvasElement | null;
-        courierCanvas?: HTMLCanvasElement | null;
         statusCanvas?: HTMLCanvasElement | null;
         forecastCanvas?: HTMLCanvasElement | null;
     };
@@ -87,7 +86,7 @@ export async function exportExecutiveReport(
         parcels: null,
         inventory: null,
         procurement: null,
-        courier: null,
+        inventoryCategory: null,
         status: null,
         forecast: null,
     };
@@ -141,16 +140,16 @@ export async function exportExecutiveReport(
             }
         });
 
-        // 2. Courier Distribution Chart
-        const courierLabels = Object.keys(data.courierBreakdown || {});
-        const courierValues = Object.values(data.courierBreakdown || {});
-        images.courier = renderOffscreenChart({
+        // 2. Inventory Category Distribution Chart
+        const invCatLabels = Object.keys(data.inventoryCategoryBreakdown || {});
+        const invCatValues = Object.values(data.inventoryCategoryBreakdown || {});
+        images.inventoryCategory = renderOffscreenChart({
             type: 'bar',
             data: {
-                labels: courierLabels.length > 0 ? courierLabels : ['No Couriers'],
+                labels: invCatLabels.length > 0 ? invCatLabels : ['No Categories'],
                 datasets: [{
-                    label: 'Parcels Dispatched',
-                    data: courierValues.length > 0 ? courierValues : [0],
+                    label: 'Stock Items',
+                    data: invCatValues.length > 0 ? invCatValues : [0],
                     backgroundColor: ['#4f46e5', '#db2777', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'],
                     borderRadius: 6,
                 }]
@@ -160,7 +159,7 @@ export async function exportExecutiveReport(
                     legend: { display: false },
                     title: {
                         display: true,
-                        text: 'Courier Partner Dispatch Volume Breakdown',
+                        text: 'Inventory Category Stock Distribution Breakdown',
                         font: { size: 12, weight: 'bold' },
                         color: '#0f172a'
                     }
@@ -284,7 +283,6 @@ function exportExecutivePdf(
     const showForecast = showAll || scope === 'forecast';
     const showReports = showAll || scope === 'reports';
 
-    const courierList = Object.entries(data.courierBreakdown || {}).sort((a, b) => b[1] - a[1]);
     const statusList = Object.entries(data.statusBreakdown || {}).sort((a, b) => b[1] - a[1]);
     const invCatList = Object.entries(data.inventoryCategoryBreakdown || {}).sort((a, b) => b[1] - a[1]);
 
@@ -475,43 +473,43 @@ function exportExecutivePdf(
   ${(showOverview || showKpis) ? `
   <div class="grid-4">
     <div class="kpi-card">
-      <div class="kpi-label">Parcels Today</div>
-      <div class="kpi-val pink">${formatNum(data.pageKpis?.parcelsToday)}</div>
-      <div class="kpi-sub">${data.pageKpis?.parcelsChangePct || '0% vs yesterday'}</div>
+      <div class="kpi-label">Warehouse Total Stock</div>
+      <div class="kpi-val pink">${data.pageKpis?.totalStockUnitsFormatted || formatNum(data.pageKpis?.totalStockUnits)}</div>
+      <div class="kpi-sub">${formatNum(data.pageKpis?.inventorySkus)} catalogued SKUs</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Ready for Dispatch</div>
-      <div class="kpi-val">${formatNum(data.pageKpis?.readyForDispatch)}</div>
-      <div class="kpi-sub">${data.pageKpis?.readyPct || '0%'} queue ratio</div>
+      <div class="kpi-label">Catalogued Inventory SKUs</div>
+      <div class="kpi-val">${formatNum(data.pageKpis?.inventorySkus)}</div>
+      <div class="kpi-sub">${formatNum(data.pageKpis?.lowStockAlerts)} low-stock alerts</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Dispatched (MTD)</div>
-      <div class="kpi-val">${formatNum(data.pageKpis?.dispatchedMtd)}</div>
-      <div class="kpi-sub">${data.pageKpis?.dispatchedChangePct || '0 shipments'}</div>
+      <div class="kpi-label">Active Purchase Orders</div>
+      <div class="kpi-val">${formatNum(data.pageKpis?.openPOs)}</div>
+      <div class="kpi-sub">${data.pageKpis?.mtdSpendFormatted || '₱0'} committed spend</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Delivery SLA Rate</div>
-      <div class="kpi-val emerald">${data.pageKpis?.ontimeRate || '0.0%'}</div>
-      <div class="kpi-sub">${formatNum(data.parcels?.filter(p => p.status === 'delivered')?.length)} total delivered</div>
+      <div class="kpi-label">Approved Suppliers</div>
+      <div class="kpi-val emerald">${formatNum(data.pageKpis?.activeSuppliers)}</div>
+      <div class="kpi-sub">${formatNum(data.pageKpis?.totalSuppliers)} registered vendors</div>
     </div>
   </div>` : ''}
 
   ${showOverview ? `
   <div class="section-title">
-    <span>OPERATIONAL FLOW & INVENTORY SUMMARY</span>
+    <span>WAREHOUSING, INVENTORY & PROCUREMENT SUMMARY</span>
   </div>
   <div class="grid-4">
     <div class="kpi-card">
-      <div class="kpi-label">Receiving Queue Pending</div>
-      <div class="kpi-val">${formatNum(data.operationsSummary?.receivingQueuePending)}</div>
+      <div class="kpi-label">Pending Inbound Orders</div>
+      <div class="kpi-val">${formatNum(data.operationsSummary?.pendingInboundOrders)}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">In-Sorting Queue</div>
-      <div class="kpi-val">${formatNum(data.operationsSummary?.sortingParcels)}</div>
+      <div class="kpi-label">Warehouse Stock In-Bin</div>
+      <div class="kpi-val">${formatNum(data.operationsSummary?.totalStockUnits)}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Total Parcels in System</div>
-      <div class="kpi-val">${formatNum(data.parcels?.length)}</div>
+      <div class="kpi-label">Approved Suppliers</div>
+      <div class="kpi-val">${formatNum(data.operationsSummary?.activeSuppliersCount)}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">MTD Procurement Spend</div>
@@ -528,30 +526,30 @@ function exportExecutivePdf(
 
   ${showOperations ? `
   <div class="section-title">
-    <span>WAREHOUSE OPERATIONS & COURIER LOGISTICS</span>
-    <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">${courierList.length} Couriers Active</span>
+    <span>WAREHOUSE OPERATIONS & INVENTORY DISTRIBUTION</span>
+    <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">${invCatList.length} Categories Active</span>
   </div>
 
-  ${includeCharts && images.courier ? `
+  ${includeCharts && images.inventoryCategory ? `
   <div class="chart-container">
-    <img class="chart-img" src="${images.courier}" alt="Courier Distribution Chart" />
-    <div class="caption">Figure: Courier Partner Dispatch Volume Breakdown</div>
+    <img class="chart-img" src="${images.inventoryCategory}" alt="Inventory Category Distribution Chart" />
+    <div class="caption">Figure: Inventory Category Stock Distribution Breakdown</div>
   </div>` : ''}
 
   <div class="grid-2">
     <div>
-      <div style="font-weight: 700; font-size: 9.5px; margin-bottom: 4px; color: #1e293b;">Courier Partner Volume Distribution</div>
+      <div style="font-weight: 700; font-size: 9.5px; margin-bottom: 4px; color: #1e293b;">Inventory Category Distribution</div>
       <table class="table-custom">
         <thead>
           <tr>
-            <th>Courier Partner</th>
-            <th style="text-align: right;">Volume</th>
+            <th>Inventory Category</th>
+            <th style="text-align: right;">SKU Count</th>
           </tr>
         </thead>
         <tbody>
-          ${courierList.map(([name, count]) => `
+          ${invCatList.map(([cat, count]) => `
             <tr>
-              <td><strong>${name}</strong></td>
+              <td><strong>${cat}</strong></td>
               <td style="text-align: right;">${formatNum(count)}</td>
             </tr>
           `).join('')}
@@ -643,7 +641,7 @@ function exportExecutivePdf(
   <div class="grid-4">
     <div class="kpi-card">
       <div class="kpi-label">7-Day Projected Total</div>
-      <div class="kpi-val pink">${formatNum(data.forecast7Day?.total_next_week || data.pageKpis?.parcelsToday * 7)} units</div>
+      <div class="kpi-val pink">${formatNum(data.forecast7Day?.total_next_week || (data.pageKpis?.parcelsToday || 0) * 7)} units</div>
       <div class="kpi-sub">95% Confidence Interval</div>
     </div>
     <div class="kpi-card">
@@ -666,27 +664,27 @@ function exportExecutivePdf(
 
   ${showReports ? `
   <div class="section-title">
-    <span>AUDIT LEDGER & RECENT PARCEL TRANSACTIONS</span>
+    <span>AUDIT LEDGER & RECENT PURCHASE ORDERS</span>
     <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">Top 15 Verified Database Entries</span>
   </div>
   <table class="table-custom">
     <thead>
       <tr>
-        <th style="width: 20%;">Tracking / Barcode</th>
-        <th style="width: 25%;">Consignee</th>
-        <th style="width: 20%;">Courier Partner</th>
-        <th style="width: 15%;">Destination Area</th>
-        <th style="width: 20%;">Current Status</th>
+        <th style="width: 20%;">PO Number</th>
+        <th style="width: 30%;">Supplier / Vendor</th>
+        <th style="width: 20%;">Department</th>
+        <th style="width: 15%;">Amount</th>
+        <th style="width: 15%;">Current Status</th>
       </tr>
     </thead>
     <tbody>
       ${(data.recentTransactions || []).slice(0, 15).map(tx => `
         <tr>
           <td><code>${tx.id}</code></td>
-          <td><strong>${tx.consignee}</strong></td>
-          <td>${tx.courier}</td>
-          <td>${tx.area}</td>
-          <td><span class="badge ${tx.status === 'delivered' ? 'badge-emerald' : 'badge-pink'}">${tx.status}</span></td>
+          <td><strong>${tx.supplier || tx.consignee || 'Vendor'}</strong></td>
+          <td>${tx.department || tx.area || 'General'}</td>
+          <td>${tx.amount || '—'}</td>
+          <td><span class="badge ${tx.status?.toLowerCase().includes('approved') || tx.status?.toLowerCase().includes('delivered') || tx.status?.toLowerCase().includes('completed') ? 'badge-emerald' : 'badge-pink'}">${tx.status}</span></td>
         </tr>
       `).join('')}
     </tbody>
@@ -779,7 +777,7 @@ function exportExecutiveWord(
         minute: '2-digit',
     });
 
-    const courierList = Object.entries(data.courierBreakdown || {}).sort((a, b) => b[1] - a[1]);
+    const invCatList = Object.entries(data.inventoryCategoryBreakdown || {}).sort((a, b) => b[1] - a[1]);
 
     const scopeTitles: Record<ExecutiveExportScope, string> = {
         all: 'Comprehensive Master Intelligence Report (All Tabs)',
@@ -845,16 +843,16 @@ function exportExecutiveWord(
   <h2>Key Performance Indicators Scorecard</h2>
   <table>
     <tr>
-      <th>Parcels Today</th>
-      <th>Ready for Dispatch</th>
-      <th>Dispatched MTD</th>
-      <th>Delivery SLA Rate</th>
+      <th>Warehouse Total Stock</th>
+      <th>Catalogued SKUs</th>
+      <th>Active Purchase Orders</th>
+      <th>Approved Suppliers</th>
     </tr>
     <tr>
-      <td><strong>${formatNum(data.pageKpis?.parcelsToday)}</strong></td>
-      <td><strong>${formatNum(data.pageKpis?.readyForDispatch)}</strong></td>
-      <td><strong>${formatNum(data.pageKpis?.dispatchedMtd)}</strong></td>
-      <td style="color: #059669; font-weight: bold;">${data.pageKpis?.ontimeRate || '0.0%'}</td>
+      <td><strong>${data.pageKpis?.totalStockUnitsFormatted || formatNum(data.pageKpis?.totalStockUnits)}</strong></td>
+      <td><strong>${formatNum(data.pageKpis?.inventorySkus)}</strong></td>
+      <td><strong>${formatNum(data.pageKpis?.openPOs)}</strong></td>
+      <td style="color: #059669; font-weight: bold;">${formatNum(data.pageKpis?.activeSuppliers)}</td>
     </tr>
   </table>` : ''}
 
@@ -865,23 +863,23 @@ function exportExecutiveWord(
   </div>` : ''}
 
   ${showOperations ? `
-  <h2>Courier Partner Dispatch Breakdown</h2>
+  <h2>Inventory Category Stock Breakdown</h2>
   <table>
     <tr>
-      <th>Courier Partner</th>
-      <th style="text-align: right;">Total Dispatched Parcels</th>
+      <th>Inventory Category</th>
+      <th style="text-align: right;">Total SKUs</th>
     </tr>
-    ${courierList.map(([name, count]) => `
+    ${invCatList.map(([name, count]) => `
       <tr>
         <td><strong>${name}</strong></td>
         <td style="text-align: right;">${formatNum(count)}</td>
       </tr>
     `).join('')}
   </table>
-  ${showOperations && includeCharts && images.courier ? `
+  ${showOperations && includeCharts && images.inventoryCategory ? `
   <div class="chart-box">
-    <img src="${images.courier}" alt="Courier Distribution Chart" />
-    <div class="caption">Figure: Courier Partner Dispatch Volume Breakdown</div>
+    <img src="${images.inventoryCategory}" alt="Inventory Category Distribution Chart" />
+    <div class="caption">Figure: Inventory Category Stock Distribution Breakdown</div>
   </div>` : ''}` : ''}
 
   ${showKpis ? `
@@ -902,21 +900,21 @@ function exportExecutiveWord(
   </table>` : ''}
 
   ${showReports ? `
-  <h2>Recent Verified Transactions Ledger</h2>
+  <h2>Recent Purchase Orders Ledger</h2>
   <table>
     <tr>
-      <th>Tracking ID</th>
-      <th>Consignee</th>
-      <th>Courier</th>
-      <th>Area</th>
+      <th>PO Number</th>
+      <th>Supplier / Vendor</th>
+      <th>Department</th>
+      <th>Amount</th>
       <th>Status</th>
     </tr>
     ${(data.recentTransactions || []).slice(0, 20).map(t => `
       <tr>
         <td><code>${t.id}</code></td>
-        <td><strong>${t.consignee}</strong></td>
-        <td>${t.courier}</td>
-        <td>${t.area}</td>
+        <td><strong>${t.supplier || t.consignee || 'Vendor'}</strong></td>
+        <td>${t.department || t.area || 'General'}</td>
+        <td>${t.amount || '—'}</td>
         <td>${t.status}</td>
       </tr>
     `).join('')}
@@ -947,7 +945,7 @@ function exportExecutiveExcel(
     scope: ExecutiveExportScope
 ) {
     const reportDate = new Date().toISOString().slice(0, 10);
-    const courierList = Object.entries(data.courierBreakdown || {}).sort((a, b) => b[1] - a[1]);
+    const invCatList = Object.entries(data.inventoryCategoryBreakdown || {}).sort((a, b) => b[1] - a[1]);
     const statusList = Object.entries(data.statusBreakdown || {}).sort((a, b) => b[1] - a[1]);
 
     const scopeTitles: Record<ExecutiveExportScope, string> = {
@@ -993,30 +991,30 @@ function exportExecutiveExcel(
       <td colspan="5" class="section-cell">1. EXECUTIVE KPI SCORECARD</td>
     </tr>
     <tr>
-      <td class="header-cell">Parcels Received Today</td>
-      <td class="header-cell">Ready for Dispatch</td>
-      <td class="header-cell">Dispatched (MTD)</td>
-      <td class="header-cell">Delivery SLA Rate</td>
-      <td class="header-cell">Total DB Parcels</td>
+      <td class="header-cell">Warehouse Total Stock</td>
+      <td class="header-cell">Catalogued SKUs</td>
+      <td class="header-cell">Active Purchase Orders</td>
+      <td class="header-cell">Approved Suppliers</td>
+      <td class="header-cell">Committed Spend</td>
     </tr>
     <tr>
-      <td class="data-cell pink-cell">${data.pageKpis?.parcelsToday || 0}</td>
-      <td class="data-cell">${data.pageKpis?.readyForDispatch || 0}</td>
-      <td class="data-cell">${data.pageKpis?.dispatchedMtd || 0}</td>
-      <td class="data-cell green-cell">${data.pageKpis?.ontimeRate || '0.0%'}</td>
-      <td class="data-cell">${data.parcels?.length || 0}</td>
+      <td class="data-cell pink-cell">${data.pageKpis?.totalStockUnitsFormatted || (data.pageKpis?.totalStockUnits || 0)}</td>
+      <td class="data-cell">${data.pageKpis?.inventorySkus || 0}</td>
+      <td class="data-cell">${data.pageKpis?.openPOs || 0}</td>
+      <td class="data-cell green-cell">${data.pageKpis?.activeSuppliers || 0}</td>
+      <td class="data-cell green-cell">${data.pageKpis?.mtdSpendFormatted || '₱0'}</td>
     </tr>
     <tr><td></td></tr>` : ''}
 
     ${showOperations ? `
     <tr>
-      <td colspan="5" class="section-cell">2. COURIER ALLOCATION & STATUS BREAKDOWN</td>
+      <td colspan="5" class="section-cell">2. INVENTORY CATEGORY & STATUS BREAKDOWN</td>
     </tr>
     <tr>
-      <th class="header-cell" colspan="2">Courier Partner</th>
-      <th class="header-cell" colspan="3">Dispatched Parcels</th>
+      <th class="header-cell" colspan="2">Inventory Category</th>
+      <th class="header-cell" colspan="3">Stock Items</th>
     </tr>
-    ${courierList.map(([name, count]) => `
+    ${invCatList.map(([name, count]) => `
       <tr>
         <td class="data-cell" colspan="2"><strong>${name}</strong></td>
         <td class="data-cell" colspan="3" style="text-align: right;">${count}</td>
@@ -1060,17 +1058,15 @@ function exportExecutiveExcel(
     <tr>
       <th class="header-cell">Tracking ID</th>
       <th class="header-cell">Consignee</th>
-      <th class="header-cell">Courier</th>
       <th class="header-cell">Destination Area</th>
-      <th class="header-cell">Status</th>
+      <th class="header-cell" colspan="2">Status</th>
     </tr>
     ${(data.recentTransactions || []).slice(0, 30).map(t => `
       <tr>
         <td class="data-cell">${t.id}</td>
         <td class="data-cell"><strong>${t.consignee}</strong></td>
-        <td class="data-cell">${t.courier}</td>
         <td class="data-cell">${t.area}</td>
-        <td class="data-cell">${t.status}</td>
+        <td class="data-cell" colspan="2">${t.status}</td>
       </tr>
     `).join('')}
     ` : ''}

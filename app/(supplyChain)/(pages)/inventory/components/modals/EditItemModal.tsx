@@ -1,12 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { sanitizeText } from '../../../../components/global/sanitize';
 import { EditItemFormData, InventoryItem, Supplier } from '../../types';
 import { AppButton } from '../../../../components/ui/AppButton';
 import Portal from '../../../../components/client/Portal';
 import { supabase } from '../../../../lib/services/client/supabase';
+import { SearchableDropdown, SearchableDropdownOption } from '../../../../components/ui/SearchableDropdown';
+
+const STANDARD_CATEGORIES = [
+    'Packaging Materials',
+    'Office Supplies & Stationery',
+    'Warehouse Supplies',
+    'Warehouse Equipment',
+    'Equipment & Machinery',
+    'Cleaning & Janitorial Supplies',
+    'Safety Equipment & PPE',
+    'IT & Computer Hardware',
+    'Electronics & Gadgets',
+    'Hardware & Maintenance Tools',
+    'Logistics & Fleet Consumables',
+    'Raw Materials & Chemicals',
+    'Printing & Signage Media',
+    'Furniture & Fixtures',
+    'Electrical & Power Supplies',
+    'Medical & First Aid Supplies',
+    'Pantry & Breakroom Supplies',
+    'General Commercial Supplies'
+];
 
 interface EditItemModalProps {
     isOpen: boolean;
@@ -27,6 +49,9 @@ export function EditItemModal({
 }: EditItemModalProps) {
     const [localSuppliers, setLocalSuppliers] = useState<Supplier[]>(suppliers);
     const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false);
+    const [supplierCategories, setSupplierCategories] = useState<string[]>([]);
+    const [isCustomCategory, setIsCustomCategory] = useState(false);
+    const [customCategoryText, setCustomCategoryText] = useState('');
 
     const [formData, setFormData] = useState<EditItemFormData>({
         id: '',
@@ -45,12 +70,13 @@ export function EditItemModal({
 
     useEffect(() => {
         if (suppliers && suppliers.length > 0) {
-            setLocalSuppliers(suppliers);
+            const activeOnly = suppliers.filter((s: any) => s.is_active !== false && s.is_active !== 0 && s.is_active !== 'false');
+            setLocalSuppliers(activeOnly);
         }
     }, [suppliers]);
 
     useEffect(() => {
-        if (isOpen && (!localSuppliers || localSuppliers.length === 0)) {
+        if (isOpen) {
             let isMounted = true;
             setIsLoadingSuppliers(true);
 
@@ -58,11 +84,21 @@ export function EditItemModal({
                 try {
                     const { data, error } = await supabase
                         .from('suppliers')
-                        .select('id, name')
+                        .select('id, name, category, is_active, status')
                         .order('name');
 
                     if (isMounted && !error && data && data.length > 0) {
-                        setLocalSuppliers(data as Supplier[]);
+                        const activeSupps = data.filter((s: any) => s.is_active !== false && s.status !== 'inactive');
+                        setLocalSuppliers(activeSupps as unknown as Supplier[]);
+
+                        const activeCats = Array.from(
+                            new Set(
+                                activeSupps
+                                    .map((s: any) => (typeof s.category === 'string' ? s.category.trim() : ''))
+                                    .filter(Boolean)
+                            )
+                        ).sort();
+                        setSupplierCategories(activeCats);
                     }
                 } catch (err) {
                     console.error('Error fetching suppliers:', err);
@@ -79,7 +115,45 @@ export function EditItemModal({
                 isMounted = false;
             };
         }
-    }, [isOpen, localSuppliers]);
+    }, [isOpen]);
+
+    // Format options for SearchableDropdown (Custom Design)
+    const categoryOptions: SearchableDropdownOption[] = useMemo(() => {
+        const activeSet = new Set(supplierCategories.map(c => c.toLowerCase().trim()));
+
+        const combined = Array.from(
+            new Set([
+                ...supplierCategories,
+                ...STANDARD_CATEGORIES,
+                ...(item?.category ? [item.category] : [])
+            ])
+        ).filter(
+            cat => cat.toLowerCase().trim() !== 'others' && cat.toLowerCase().trim() !== 'other' && cat.toLowerCase().trim() !== '__other__'
+        ).sort((a, b) => {
+            const aActive = activeSet.has(a.toLowerCase().trim());
+            const bActive = activeSet.has(b.toLowerCase().trim());
+            if (aActive && !bActive) return -1;
+            if (!aActive && bActive) return 1;
+            return a.localeCompare(b);
+        });
+
+        const options: SearchableDropdownOption[] = combined.map(cat => {
+            const hasActive = activeSet.has(cat.toLowerCase().trim());
+            return {
+                value: cat,
+                label: hasActive ? `${cat} (Active Supplier)` : cat,
+                icon: hasActive ? 'fas fa-store' : 'fas fa-tag',
+            };
+        });
+
+        options.push({
+            value: '__other__',
+            label: '+ Custom Category...',
+            icon: 'fas fa-pen',
+        });
+
+        return options;
+    }, [supplierCategories, item]);
 
     // Populate form when item changes
     useEffect(() => {
@@ -98,14 +172,20 @@ export function EditItemModal({
                 purchase_price: item.purchase_price || 0,
                 status: item.status || 'available'
             });
+            setIsCustomCategory(false);
+            setCustomCategoryText('');
         }
     }, [isOpen, item]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.item_code.trim() || !formData.item_name.trim() || !formData.category || !formData.unit.trim()) {
-            toast.warning('Please fill in all required fields');
+        const effectiveCategory = (isCustomCategory || formData.category === '__other__')
+            ? customCategoryText.trim()
+            : (formData.category || '').trim();
+
+        if (!formData.item_code.trim() || !formData.item_name.trim() || !effectiveCategory || !formData.unit.trim()) {
+            toast.warning('Please fill in all required fields including category');
             return;
         }
 
@@ -122,6 +202,7 @@ export function EditItemModal({
 
         await onSave({
             ...formData,
+            category: effectiveCategory,
             purchase_price: numericPrice
         });
         onClose();
@@ -212,28 +293,41 @@ export function EditItemModal({
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                                        Category <span className="text-rose-500 dark:text-rose-400">*</span>
-                                    </label>
-                                    <div className="relative">
-                                        <i className="fas fa-layer-group absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
-                                        <select
-                                            className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg pl-9 pr-8 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
-                                            value={formData.category}
-                                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                            required
-                                            disabled={loading}
-                                        >
-                                            <option value="Packaging Materials" className="dark:bg-slate-900">Packaging Materials</option>
-                                            <option value="Warehouse Supplies" className="dark:bg-slate-900">Warehouse Supplies</option>
-                                            <option value="Equipment" className="dark:bg-slate-900">Equipment</option>
-                                            <option value="Warehouse Equipment" className="dark:bg-slate-900">Warehouse Equipment</option>
-                                            <option value="Cleaning Supplies" className="dark:bg-slate-900">Cleaning Supplies</option>
-                                            <option value="Office Supplies" className="dark:bg-slate-900">Office Supplies</option>
-                                            <option value="Other" className="dark:bg-slate-900">Other</option>
-                                        </select>
-                                        <i className="fas fa-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
-                                    </div>
+                                    <SearchableDropdown
+                                        value={formData.category}
+                                        onChange={(val) => {
+                                            setFormData({ ...formData, category: val });
+                                            if (val === '__other__') {
+                                                setIsCustomCategory(true);
+                                            } else {
+                                                setIsCustomCategory(false);
+                                            }
+                                        }}
+                                        options={categoryOptions}
+                                        placeholder="-- Select Category --"
+                                        searchPlaceholder="Search category..."
+                                        icon="fas fa-layer-group"
+                                        className="w-full"
+                                        tone="pink"
+                                        emptyValue=""
+                                        title="Item Category"
+                                        disabled={loading}
+                                    />
+                                    {(isCustomCategory || formData.category === '__other__') && (
+                                        <div className="mt-2 space-y-1 animate-in fade-in duration-150">
+                                            <label className="block text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                                                Specify Custom Category Name <span className="text-rose-500">*</span>
+                                            </label>
+                                            <input
+                                                className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-blue-400 dark:border-blue-500/60 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                                                placeholder="Type custom category name (e.g. Lab Supplies)..."
+                                                value={customCategoryText}
+                                                onChange={(e) => setCustomCategoryText(e.target.value)}
+                                                required
+                                                disabled={loading}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div>

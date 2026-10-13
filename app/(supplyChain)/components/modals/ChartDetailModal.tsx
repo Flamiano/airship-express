@@ -17,7 +17,7 @@ export function ChartDetailModal({ isOpen, onClose, month, monthIndex, orders, t
     return (
         <Portal>
             <div className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl  dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] w-full max-w-2xl max-h-[90vh] flex flex-col border border-white/90 dark:border-white/[0.08] overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl shadow-none w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200/80 dark:border-white/[0.08] overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                 <div className="px-6 py-4.5 border-b border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
                     <div>
                         <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">

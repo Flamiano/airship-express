@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { sanitizeText } from '../../../../components/global/sanitize';
 import { AppButton } from '../../../../components/ui/AppButton';
 import Portal from '../../../../components/client/Portal';
 import { supabase } from '../../../../lib/services/client/supabase';
+import { SearchableDropdown, SearchableDropdownOption } from '../../../../components/ui/SearchableDropdown';
 
 export interface AddItemModalProps {
     isOpen: boolean;
@@ -14,6 +15,27 @@ export interface AddItemModalProps {
     suppliers?: Array<{ id: string | number; name: string }>;
     loading?: boolean;
 }
+
+const STANDARD_CATEGORIES = [
+    'Packaging Materials',
+    'Office Supplies & Stationery',
+    'Warehouse Supplies',
+    'Warehouse Equipment',
+    'Equipment & Machinery',
+    'Cleaning & Janitorial Supplies',
+    'Safety Equipment & PPE',
+    'IT & Computer Hardware',
+    'Electronics & Gadgets',
+    'Hardware & Maintenance Tools',
+    'Logistics & Fleet Consumables',
+    'Raw Materials & Chemicals',
+    'Printing & Signage Media',
+    'Furniture & Fixtures',
+    'Electrical & Power Supplies',
+    'Medical & First Aid Supplies',
+    'Pantry & Breakroom Supplies',
+    'General Commercial Supplies'
+];
 
 export function AddItemModal({
     isOpen,
@@ -24,6 +46,9 @@ export function AddItemModal({
 }: AddItemModalProps) {
     const [localSuppliers, setLocalSuppliers] = useState<Array<{ id: string | number; name: string }>>(suppliers);
     const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false);
+    const [supplierCategories, setSupplierCategories] = useState<string[]>([]);
+    const [isCustomCategory, setIsCustomCategory] = useState(false);
+    const [customCategoryText, setCustomCategoryText] = useState('');
 
     const [formData, setFormData] = useState({
         item_code: '',
@@ -41,27 +66,39 @@ export function AddItemModal({
 
     useEffect(() => {
         if (suppliers && suppliers.length > 0) {
-            setLocalSuppliers(suppliers);
+            const activeOnly = suppliers.filter((s: any) => s.is_active !== false && s.is_active !== 0 && s.is_active !== 'false');
+            setLocalSuppliers(activeOnly);
         }
     }, [suppliers]);
 
+    // Fetch active suppliers & unique supplier categories
     useEffect(() => {
-        if (isOpen && (!localSuppliers || localSuppliers.length === 0)) {
+        if (isOpen) {
             let isMounted = true;
             setIsLoadingSuppliers(true);
 
-            const loadSuppliers = async () => {
+            const loadData = async () => {
                 try {
-                    const { data, error } = await supabase
+                    const { data: suppData, error: suppErr } = await supabase
                         .from('suppliers')
-                        .select('id, name')
+                        .select('id, name, category, is_active, status')
                         .order('name');
 
-                    if (isMounted && !error && data && data.length > 0) {
-                        setLocalSuppliers(data);
+                    if (isMounted && !suppErr && suppData && suppData.length > 0) {
+                        const activeSupps = suppData.filter((s: any) => s.is_active !== false && s.status !== 'inactive');
+                        setLocalSuppliers(activeSupps);
+
+                        const activeCats = Array.from(
+                            new Set(
+                                activeSupps
+                                    .map((s: any) => (typeof s.category === 'string' ? s.category.trim() : ''))
+                                    .filter(Boolean)
+                            )
+                        ).sort();
+                        setSupplierCategories(activeCats);
                     }
                 } catch (err) {
-                    console.error('Error fetching suppliers:', err);
+                    console.error('Error fetching suppliers/categories:', err);
                 } finally {
                     if (isMounted) {
                         setIsLoadingSuppliers(false);
@@ -69,13 +106,50 @@ export function AddItemModal({
                 }
             };
 
-            loadSuppliers();
+            loadData();
 
             return () => {
                 isMounted = false;
             };
         }
-    }, [isOpen, localSuppliers]);
+    }, [isOpen]);
+
+    // Format options for SearchableDropdown (Custom Design)
+    const categoryOptions: SearchableDropdownOption[] = useMemo(() => {
+        const activeSet = new Set(supplierCategories.map(c => c.toLowerCase().trim()));
+
+        const combined = Array.from(
+            new Set([
+                ...supplierCategories,
+                ...STANDARD_CATEGORIES,
+            ])
+        ).filter(
+            cat => cat.toLowerCase().trim() !== 'others' && cat.toLowerCase().trim() !== 'other' && cat.toLowerCase().trim() !== '__other__'
+        ).sort((a, b) => {
+            const aActive = activeSet.has(a.toLowerCase().trim());
+            const bActive = activeSet.has(b.toLowerCase().trim());
+            if (aActive && !bActive) return -1;
+            if (!aActive && bActive) return 1;
+            return a.localeCompare(b);
+        });
+
+        const options: SearchableDropdownOption[] = combined.map(cat => {
+            const hasActive = activeSet.has(cat.toLowerCase().trim());
+            return {
+                value: cat,
+                label: hasActive ? `${cat} (Active Supplier)` : cat,
+                icon: hasActive ? 'fas fa-store' : 'fas fa-tag',
+            };
+        });
+
+        options.push({
+            value: '__other__',
+            label: '+ Custom Category...',
+            icon: 'fas fa-pen',
+        });
+
+        return options;
+    }, [supplierCategories]);
 
     // Reset form when opened
     useEffect(() => {
@@ -93,6 +167,8 @@ export function AddItemModal({
                 description: '',
                 status: 'In Stock'
             });
+            setIsCustomCategory(false);
+            setCustomCategoryText('');
         }
     }, [isOpen]);
 
@@ -100,8 +176,12 @@ export function AddItemModal({
         e.preventDefault();
         if (loading) return;
 
-        if (!formData.item_code.trim() || !formData.item_name.trim() || !formData.category || !formData.unit.trim()) {
-            toast.warning('Please fill in all required fields');
+        const effectiveCategory = (isCustomCategory || formData.category === '__other__')
+            ? customCategoryText.trim()
+            : formData.category.trim();
+
+        if (!formData.item_code.trim() || !formData.item_name.trim() || !effectiveCategory || !formData.unit.trim()) {
+            toast.warning('Please fill in all required fields including category');
             return;
         }
 
@@ -118,6 +198,7 @@ export function AddItemModal({
 
         await onSave({
             ...formData,
+            category: effectiveCategory,
             purchase_price: numericPrice
         });
         onClose();
@@ -198,30 +279,41 @@ export function AddItemModal({
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                                    Category <span className="text-pink-500 dark:text-pink-400">*</span>
-                                </label>
-                                <select
-                                    className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer appearance-none disabled:opacity-50"
-                                    style={{
-                                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                                        backgroundPosition: 'right 0.75rem center',
-                                        backgroundRepeat: 'no-repeat',
-                                        backgroundSize: '1.25em 1.25em'
-                                    }}
+                                <SearchableDropdown
                                     value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    required
+                                    onChange={(val) => {
+                                        setFormData({ ...formData, category: val });
+                                        if (val === '__other__') {
+                                            setIsCustomCategory(true);
+                                        } else {
+                                            setIsCustomCategory(false);
+                                        }
+                                    }}
+                                    options={categoryOptions}
+                                    placeholder="-- Select Category --"
+                                    searchPlaceholder="Search category..."
+                                    icon="fas fa-layer-group"
+                                    className="w-full"
+                                    tone="pink"
+                                    emptyValue=""
+                                    title="Item Category"
                                     disabled={loading}
-                                >
-                                    <option value="Packaging Materials">Packaging Materials</option>
-                                    <option value="Warehouse Supplies">Warehouse Supplies</option>
-                                    <option value="Equipment">Equipment</option>
-                                    <option value="Warehouse Equipment">Warehouse Equipment</option>
-                                    <option value="Cleaning Supplies">Cleaning Supplies</option>
-                                    <option value="Office Supplies">Office Supplies</option>
-                                    <option value="Other">Other</option>
-                                </select>
+                                />
+                                {(isCustomCategory || formData.category === '__other__') && (
+                                    <div className="mt-2 space-y-1 animate-in fade-in duration-150">
+                                        <label className="block text-[11px] font-bold text-pink-600 dark:text-pink-400">
+                                            Specify Custom Category Name <span className="text-pink-500">*</span>
+                                        </label>
+                                        <input
+                                            className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-pink-400 dark:border-pink-500/60 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 transition-all"
+                                            placeholder="Type custom category name (e.g. Lab Supplies)..."
+                                            value={customCategoryText}
+                                            onChange={(e) => setCustomCategoryText(e.target.value)}
+                                            required
+                                            disabled={loading}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <div>

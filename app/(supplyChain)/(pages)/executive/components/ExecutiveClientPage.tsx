@@ -7,6 +7,7 @@ import ExecutiveCharts from './ExecutiveCharts';
 import { useExecutiveData } from '../hooks/useExecutiveData';
 import { CardsSkeleton, ChartsSkeleton } from '../../../components/ui/SkeletonLoader';
 import ExecutivePdfExportModal from './modals/ExecutivePdfExportModal';
+import ExecutiveAiSummaryPanel from './ExecutiveAiSummaryPanel';
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
@@ -30,12 +31,21 @@ export default function ExecutiveClientPage() {
     };
 
     const pageKpis = data?.pageKpis || {
+        totalStockUnits: 0,
+        totalStockUnitsFormatted: "0 Units",
+        inventorySkus: 0,
+        lowStockAlerts: 0,
+        openPOs: 0,
+        mtdSpend: 0,
+        mtdSpendFormatted: "₱0",
+        activeSuppliers: 0,
+        totalSuppliers: 0,
         parcelsToday: 0,
         parcelsChangePct: "0% vs yesterday",
         readyForDispatch: 0,
-        readyPct: "0.0% of total queue",
+        readyPct: "0.0%",
         dispatchedMtd: 0,
-        dispatchedChangePct: "0 shipments this month",
+        dispatchedChangePct: "0 shipments",
         ontimeRate: "0.0%",
     };
 
@@ -93,12 +103,30 @@ export default function ExecutiveClientPage() {
                             </div>
                         </div>
                         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                            Real-time snapshot of parcel flow, operations, procurement, and inventory derived strictly from database tables.
+                            Real-time snapshot of warehouse storage, inventory SKUs, purchase orders, and supplier procurement derived strictly from database tables.
                         </p>
                     </div>
                 </div>
 
-                <div className="shrink-0 self-stretch sm:self-auto flex items-center justify-end">
+                <div className="shrink-0 self-stretch sm:self-auto flex items-center justify-end gap-2.5">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const el = document.getElementById('executive-ai-summary-panel');
+                            if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                el.classList.add('ring-2', 'ring-pink-500', 'ring-offset-2');
+                                setTimeout(() => {
+                                    el.classList.remove('ring-2', 'ring-pink-500', 'ring-offset-2');
+                                }, 2000);
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-[0_3px_10px_rgba(236,72,153,0.35)] transition-all cursor-pointer active:scale-95"
+                        title="Jump to Executive AI Cross-Tab Summary Matrix"
+                    >
+                        <i className="fas fa-wand-magic-sparkles text-xs" />
+                        <span>AI Tab Summary</span>
+                    </button>
                     <DownloadBtn onClick={() => setIsPdfModalOpen(true)} />
                 </div>
             </div>
@@ -252,42 +280,46 @@ export default function ExecutiveClientPage() {
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                     <Cards
-                        header={activeDateRange?.from ? `Parcels in range` : `Parcels received today`}
-                        data={pageKpis.parcelsToday.toLocaleString()}
-                        description={pageKpis.parcelsChangePct}
-                        backHeader={activeDateRange?.from ? "Filtered Range Total" : "Today Ingestion Log"}
-                        backDescription={activeDateRange?.from
-                            ? `Parcels in ${activeDateRange.from} → ${activeDateRange.to}: ${pageKpis.parcelsToday}\nTrend: ${pageKpis.parcelsChangePct}`
-                            : `Parcels created today: ${pageKpis.parcelsToday}\nTrend: ${pageKpis.parcelsChangePct}`}
+                        header="Warehouse Total Stock Units"
+                        data={pageKpis.totalStockUnits.toLocaleString()}
+                        description={`${pageKpis.inventorySkus} catalogued SKUs`}
+                        backHeader="Warehousing Storage"
+                        backDescription={`Total physical units in warehouse storage bins: ${pageKpis.totalStockUnits.toLocaleString()}.\nSKUs tracked: ${pageKpis.inventorySkus}.`}
                     />
                     <Cards
-                        header="Ready for dispatch"
-                        data={pageKpis.readyForDispatch.toLocaleString()}
-                        description={pageKpis.readyPct}
-                        backHeader="Outbound Queue"
-                        backDescription={`Parcels in ready/sorting state: ${pageKpis.readyForDispatch}\nQueue Ratio: ${pageKpis.readyPct}`}
+                        header="Inventory Catalog SKUs"
+                        data={pageKpis.inventorySkus.toLocaleString()}
+                        description={pageKpis.lowStockAlerts > 0 ? `${pageKpis.lowStockAlerts} low-stock alerts` : 'All items optimal'}
+                        backHeader="Inventory Health"
+                        backDescription={`Catalogued inventory SKUs: ${pageKpis.inventorySkus}.\nItems at or below safety minimum: ${pageKpis.lowStockAlerts}.`}
                     />
                     <Cards
-                        header={activeDateRange?.from ? `Dispatched (Period)` : `Dispatched (MTD)`}
-                        data={pageKpis.dispatchedMtd.toLocaleString()}
-                        description={pageKpis.dispatchedChangePct}
-                        backHeader={activeDateRange?.from ? "Period Dispatched Volume" : "Monthly Dispatched Volume"}
-                        backDescription={activeDateRange?.from
-                            ? `Dispatched in ${activeDateRange.from} → ${activeDateRange.to}: ${pageKpis.dispatchedMtd}`
-                            : `Month-to-date dispatched shipments: ${pageKpis.dispatchedMtd}`}
+                        header={activeDateRange?.from ? "Purchase Orders (Period)" : "Active Purchase Orders"}
+                        data={pageKpis.openPOs.toLocaleString()}
+                        description={`₱${pageKpis.mtdSpend.toLocaleString()} committed spend`}
+                        backHeader="PO Fulfillment"
+                        backDescription={`Open purchase orders with suppliers: ${pageKpis.openPOs}.\nMTD PO committed spend: ₱${pageKpis.mtdSpend.toLocaleString()}.`}
                     />
                     <Cards
-                        header="Fulfillment Delivery Rate"
-                        data={pageKpis.ontimeRate}
-                        description={`${data?.parcels.filter(p => p.status === 'delivered').length || 0} total delivered`}
-                        backHeader="Delivery SLA Status"
-                        backDescription={`Ratio of delivered parcels out of total database records: ${pageKpis.ontimeRate}`}
+                        header="Approved Suppliers Network"
+                        data={pageKpis.activeSuppliers.toLocaleString()}
+                        description={`${pageKpis.totalSuppliers} registered vendors`}
+                        backHeader="Vendor Catalog"
+                        backDescription={`Verified active suppliers: ${pageKpis.activeSuppliers} of ${pageKpis.totalSuppliers} registered partners.`}
                     />
                 </div>
 
             )}
 
             <AiQuestions />
+
+            {/* AI Cross-Tab Summary & Executive Briefing */}
+            {data && !loading && (
+                <ExecutiveAiSummaryPanel
+                    data={data}
+                    activeDashboardTab={currentTab}
+                />
+            )}
 
             {/* Executive Charts Container */}
             {loading && !data ? (

@@ -140,18 +140,6 @@ export async function POST(request: Request) {
             }
         }
 
-        // 3. Check role_based_accounts if not verified yet
-        if (!isCurrentPasswordValid) {
-            const { data: rba } = await supabase
-                .from('role_based_accounts')
-                .select('password_hash')
-                .eq('email', targetEmail)
-                .maybeSingle();
-
-            if (rba?.password_hash && rba.password_hash === currentPassword) {
-                isCurrentPasswordValid = true;
-            }
-        }
 
         if (!isCurrentPasswordValid) {
             return NextResponse.json(
@@ -198,18 +186,6 @@ export async function POST(request: Request) {
             // ignore if table/record not present
         }
 
-        // Update role_based_accounts table
-        try {
-            await supabase
-                .from('role_based_accounts')
-                .update({
-                    password_hash: newPassword,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('email', targetEmail);
-        } catch (e) {
-            // ignore if table/record not present
-        }
 
         // Update users table timestamp
         if (userId) {

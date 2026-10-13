@@ -6,27 +6,32 @@ export interface GeoCoordinate {
     longitude: number;
 }
 
-export interface ParcelTrackingInfo {
-    trackingNumber: string;
-    barcode?: string;
-    status: string;
-    courier: string;
-    origin: GeoCoordinate;
-    destination: GeoCoordinate;
-    currentLocation: GeoCoordinate;
-    progressPercentage: number;
-    expectedDelivery: string;
-    routeCoordinates: [number, number][]; // [lat, lng] array
-    completedCoordinates: [number, number][];
-    remainingCoordinates: [number, number][];
-}
-
 // Fixed Headquarters Origin: Binondo, Manila
 export const AIRSHIP_HQ: GeoCoordinate = {
     name: 'Airship Express (HQ - Binondo, Manila)',
     latitude: 14.6017,
     longitude: 120.9721,
 };
+
+/**
+ * Calculate distance in kilometers between two geo coordinates using Haversine formula
+ */
+export function calculateDistanceKm(
+    coord1: { latitude: number; longitude: number },
+    coord2: { latitude: number; longitude: number }
+): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
+    const dLon = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((coord1.latitude * Math.PI) / 180) *
+            Math.cos((coord2.latitude * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c * 10) / 10;
+}
 
 // Known Philippine cities and regional hubs coordinates
 export const KNOWN_PHILIPPINE_LOCATIONS: Record<string, { lat: number; lng: number; displayName: string }> = {

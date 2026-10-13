@@ -2,7 +2,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useAI } from "./AIContext";
+import { useAI, AIBestOfferRecommendation } from "./AIContext";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { calculateGrabbableCollision } from "../../lib/grabbablePhysics";
 // Import robot components
@@ -119,6 +119,7 @@ interface Message {
     createdPOs?: any[];
     lowStockItems?: LowStockInteractiveItem[];
     createdPRs?: any[];
+    bestOfferRecommendation?: AIBestOfferRecommendation;
 }
 interface AIChatbotProps {
     isOpen: boolean;
@@ -130,7 +131,7 @@ const SUGGESTED_QUESTIONS = [
     "What's the current inventory status?",
     "Show me low stock items",
     "What is the process of warehousing?",
-    "Give me all parcels history",
+    "Show pending purchase orders",
 ];
 function stripMarkdown(text: string): string {
     if (!text)
@@ -250,7 +251,7 @@ function OptimizedDocumentPreviewImage({
 }
 
 export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
-    const { openChat, question, setQuestion, isRobotThinking, isRobotResponding, setRobotThinking, setRobotResponding, } = useAI();
+    const { openChat, question, setQuestion, isRobotThinking, isRobotResponding, setRobotThinking, setRobotResponding, activeRecommendation } = useAI();
     const [messages, setMessages] = useState<Message[]>(() => {
         if (typeof window !== 'undefined') {
             try {
@@ -275,7 +276,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 timestamp: new Date(),
                 suggestions: [
                     'Create purchase order',
-                    'How many parcels were received today?',
+                    'What items need reordering?',
                     'Show me low stock items',
                 ]
             }
@@ -293,7 +294,6 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const [isCreatingPR, setIsCreatingPR] = useState(false);
     const [actionFeedback, setActionFeedback] = useState<string | null>(null);
     const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
-    const [activeMode, setActiveMode] = useState<'chat' | 'search'>('chat');
     const [previewModalDoc, setPreviewModalDoc] = useState<MatchedDocument | null>(null);
     const [previewZoom, setPreviewZoom] = useState<number>(1);
     const [previewRotation, setPreviewRotation] = useState<number>(0);
@@ -301,7 +301,6 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const [previewActiveTab, setPreviewActiveTab] = useState<Record<string, string>>({});
     const [copiedPoMap, setCopiedPoMap] = useState<Record<string, boolean>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const searchFileInputRef = useRef<HTMLInputElement>(null);
 
     const handleCopyPo = (poNumber: string, e?: React.MouseEvent) => {
         e?.stopPropagation();
@@ -362,7 +361,6 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         const reader = new FileReader();
         reader.onload = () => {
             const dataUrl = reader.result as string;
-            setActiveMode('chat');
             setAttachedFile({
                 name: file.name,
                 type: file.type || "application/octet-stream",
@@ -375,43 +373,8 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         e.target.value = "";
     };
 
-    const handleSearchFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file)
-            return;
-        if (file.size > 10 * 1024 * 1024) {
-            setActionFeedback("File size must be under 10MB");
-            setTimeout(() => setActionFeedback(null), 4000);
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-            const dataUrl = reader.result as string;
-            setActiveMode('search');
-            setAttachedFile({
-                name: file.name,
-                type: file.type || "application/octet-stream",
-                size: file.size,
-                dataUrl,
-                mode: 'search_document',
-            });
-        };
-        reader.readAsDataURL(file);
-        e.target.value = "";
-    };
-
     const handleRemoveAttachment = () => {
         setAttachedFile(null);
-    };
-
-    const handleModeSwitch = (mode: 'chat' | 'search') => {
-        setActiveMode(mode);
-        if (attachedFile) {
-            setAttachedFile(prev => prev ? {
-                ...prev,
-                mode: mode === 'search' ? 'search_document' : 'normal'
-            } : null);
-        }
     };
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -800,7 +763,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         const currentFile = attachedFile;
         setAttachedFile(null);
         const trimmed = (customQuestion || input).trim();
-        const userPrompt = trimmed || (currentFile ? (currentFile.mode === 'search_document' ? `Search document in database with photo: ${currentFile.name}` : `Analyze this file: ${currentFile.name}`) : "");
+        const userPrompt = trimmed || (currentFile ? `Analyze this file: ${currentFile.name}` : "");
         if (!userPrompt && !currentFile)
             return;
         if (isLoading)
@@ -831,6 +794,59 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             isThinking: true,
         };
         setMessages(prev => [...prev, assistantMsg]);
+
+        // If user is inquiring about the active AI Recommended Best Offer, deliver immediate structured analysis
+        if (activeRecommendation && !currentFile) {
+            const lowerPrompt = userPrompt.toLowerCase();
+            const lowerSupplier = (activeRecommendation.supplierName || '').toLowerCase();
+            const lowerItem = (activeRecommendation.itemName || '').toLowerCase();
+            const isRecQuery = 
+                userPrompt.includes('AI recommendation analysis') ||
+                lowerPrompt.includes('best offer') ||
+                lowerPrompt.includes('recommendation') ||
+                lowerPrompt.includes('better offer') ||
+                (lowerSupplier && lowerPrompt.includes(lowerSupplier)) ||
+                (lowerItem && lowerPrompt.includes(lowerItem));
+
+            if (isRecQuery) {
+                const diffQuotes = activeRecommendation.comparisonQuotes?.filter(
+                    q => q.supplierName.toLowerCase() !== lowerSupplier
+                ) || [];
+                const highestOtherBid = diffQuotes.length > 0 ? Math.max(...diffQuotes.map(q => q.totalAmount)) : 0;
+                const savings = highestOtherBid > activeRecommendation.totalAmount ? highestOtherBid - activeRecommendation.totalAmount : 0;
+
+                const responseText = `Here is the comprehensive evaluation of the **AI Recommended Best Offer** for **${activeRecommendation.itemName}** (${activeRecommendation.requestNumber}):\n\n` +
+                    `🏆 **Winning Proposal: ${activeRecommendation.supplierName}**\n` +
+                    `• **Total Quoted Bid:** ₱${activeRecommendation.totalAmount.toLocaleString()} (₱${activeRecommendation.unitPrice.toLocaleString()} / ${activeRecommendation.unit || 'unit'})\n` +
+                    `• **Fulfillment Speed:** ${activeRecommendation.leadTimeDays || 1} business day(s) lead time\n` +
+                    `• **Availability:** ${activeRecommendation.availability || 'In Stock & Verified'}\n` +
+                    `• **Composite AI Score:** ${activeRecommendation.overallScore || 96}/100 (Rank #1)\n\n` +
+                    (activeRecommendation.summary ? `${activeRecommendation.summary}\n\n` : '') +
+                    (savings > 0 ? `💰 Choosing this proposal delivers up to **₱${savings.toLocaleString()}** in procurement cost efficiency versus alternative market proposals.` : '');
+
+                setMessages(prev => prev.map(m => {
+                    if (m.id === assistantMsgId) {
+                        return {
+                            ...m,
+                            content: responseText,
+                            isThinking: false,
+                            bestOfferRecommendation: activeRecommendation,
+                            suggestions: [
+                                `Award bid to ${activeRecommendation.supplierName}`,
+                                `Compare delivery schedules`,
+                                `Review procurement stage 3`
+                            ]
+                        };
+                    }
+                    return m;
+                }));
+                setRobotThinking(false);
+                setRobotResponding(false);
+                setIsLoading(false);
+                return;
+            }
+        }
+
         // If an attachment is present, route to multimodal document analysis API
         if (currentFile) {
             try {
@@ -848,7 +864,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             size: currentFile.size,
                             base64: currentFile.dataUrl,
                         },
-                        mode: currentFile.mode || (activeMode === 'search' ? 'search_document' : 'normal'),
+                        mode: currentFile.mode || 'normal',
                         userPrompt: trimmed,
                         userId: currentUserId,
                         role: currentRole,
@@ -899,7 +915,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     primaryMatch ? `Preview ${primaryMatch.title || 'matched file'}` : 'Search another photo/receipt',
                                     primaryMatch ? (primaryMatch.is_gallery ? 'View in Gallery' : 'View in Documents') : 'View documents repository',
                                     'Check low stock items',
-                                    'Create purchase request'
+                                    'View purchase orders'
                                 ]
                         };
                     }
@@ -1153,12 +1169,6 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (activeMode === 'search') {
-                if (attachedFile) {
-                    handleSendMessage();
-                }
-                return;
-            }
             handleSendMessage();
         }
     };
@@ -1178,7 +1188,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         setIsCreatingPO(true);
         setActionFeedback(sendEmail ? "Creating Purchase Orders and sending emails..." : "Creating Draft Purchase Orders...");
         try {
-            const currentRole = user.getRole() || 'Manager';
+            const currentRole = user.getRole() || 'Purchase Officer';
             const currentUserName = user.getName() || 'Procurement Team';
             const res = await fetch('/ai/api/create-pos-from-requests', {
                 method: 'POST',
@@ -1251,7 +1261,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 ...item,
                 quantity: lowStockQuantities[item.id] || item.suggested_quantity || 10,
             }));
-            const currentRole = user.getRole() || 'Manager';
+            const currentRole = user.getRole() || 'Purchase Officer';
             const currentUserName = user.getName() || 'Inventory Officer';
             const currentUserEmail = user.getEmail() || '';
             const res = await fetch('/ai/api/create-prs-from-low-stock', {
@@ -1643,6 +1653,156 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             </div>);
     };
 
+    const renderBestOfferRecommendationWidget = (msg: Message) => {
+        if (!msg.bestOfferRecommendation) return null;
+        const rec = msg.bestOfferRecommendation;
+        const comparison = rec.comparisonQuotes || [];
+        const hasOtherQuotes = comparison.length > 1;
+
+        return (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/90 dark:border-[#353746] space-y-3">
+                {/* Header Badge */}
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-pink-500 animate-pulse shrink-0" />
+                        <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+                        <span>AI Recommended Best Offer</span>
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 border border-pink-300/80 dark:border-pink-700/60 shadow-xs">
+                        {rec.overallScore || 96}/100 • Rank #1
+                    </span>
+                </div>
+
+                {/* Neumorphic Winner Spotlight Card */}
+                <div className="rounded-2xl p-3.5 bg-white dark:bg-slate-900/80 border border-pink-200/90 dark:border-[#67224c] shadow-[0_4px_16px_rgba(244,63,94,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_4px_16px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                        <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
+                                    {rec.supplierName}
+                                </h4>
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                                    Recommended Bidder
+                                </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                RFQ Ref: <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">{rec.requestNumber}</span> • {rec.itemName}
+                            </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Quoted Price</span>
+                            <span className="text-sm font-extrabold text-pink-600 dark:text-pink-400">
+                                ₱{(rec.totalAmount || 0).toLocaleString()}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Key Metrics Grid */}
+                    <div className="grid grid-cols-3 gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-[10.5px]">
+                        <div>
+                            <span className="text-slate-400 block text-[9.5px]">Unit Price</span>
+                            <strong className="text-slate-700 dark:text-slate-200 font-semibold truncate block">
+                                ₱{(rec.unitPrice || 0).toLocaleString()}
+                            </strong>
+                        </div>
+                        <div>
+                            <span className="text-slate-400 block text-[9.5px]">Lead Time</span>
+                            <strong className="text-slate-700 dark:text-slate-200 font-semibold truncate block flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-emerald-500 shrink-0" />
+                                {rec.leadTimeDays || 1} day(s)
+                            </strong>
+                        </div>
+                        <div>
+                            <span className="text-slate-400 block text-[9.5px]">Availability</span>
+                            <strong className="text-slate-700 dark:text-slate-200 font-semibold truncate block">
+                                {rec.availability || 'In Stock'}
+                            </strong>
+                        </div>
+                    </div>
+
+                    {/* Strengths Pills */}
+                    {rec.strengths && rec.strengths.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                            {rec.strengths.map((str: string, sIdx: number) => (
+                                <span
+                                    key={sIdx}
+                                    className="text-[9.5px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/70 dark:border-pink-800/30 flex items-center gap-1"
+                                >
+                                    <i className="fas fa-check text-[8px] text-pink-500" />
+                                    <span>{str}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Comparative Quotes Table (if any competitors) */}
+                {hasOtherQuotes && (
+                    <div className="p-2.5 rounded-2xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-[#353746] space-y-1.5">
+                        <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block">
+                            Market Bid Comparison ({comparison.length} quotations)
+                        </span>
+                        <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                            {comparison.map((q, cIdx) => {
+                                const isWinner = q.supplierName.toLowerCase() === rec.supplierName.toLowerCase();
+                                const delta = q.totalAmount - rec.totalAmount;
+                                return (
+                                    <div
+                                        key={cIdx}
+                                        className={`flex items-center justify-between text-[10.5px] p-1.5 rounded-lg transition-colors ${
+                                            isWinner
+                                                ? 'bg-pink-50 dark:bg-pink-950/50 text-pink-950 dark:text-pink-200 font-bold border border-pink-200/70 dark:border-pink-800/40'
+                                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            {isWinner ? (
+                                                <i className="fas fa-trophy text-amber-500 text-[10px] shrink-0" />
+                                            ) : (
+                                                <span className="text-slate-400 text-[9px] w-3">#{cIdx + 1}</span>
+                                            )}
+                                            <span className="truncate">{q.supplierName}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className="font-mono">₱{q.totalAmount.toLocaleString()}</span>
+                                            {delta > 0 && (
+                                                <span className="text-[9px] font-semibold text-rose-500 dark:text-rose-400">
+                                                    +₱{delta.toLocaleString()}
+                                                </span>
+                                            )}
+                                            {isWinner && (
+                                                <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                                                    Best Value
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Action Links */}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="text-[10px] text-slate-400 truncate">
+                        Stage 3: Review & Final Award
+                    </span>
+                    <Link
+                        href={`/procurement?stage=3&search=${encodeURIComponent(rec.requestNumber)}`}
+                        onClick={onClose}
+                        className="shrink-0"
+                    >
+                        <AppButton type="button" variant="pink" size="xs" pill className="text-[11px] gap-1.5">
+                            <span>Award in Procurement</span>
+                            <i className="fas fa-arrow-right text-[10px] shrink-0" />
+                        </AppButton>
+                    </Link>
+                </div>
+            </div>
+        );
+    };
+
     const formatCleanContent = (text: string) => {
         if (!text)
             return '';
@@ -2021,6 +2181,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                 {renderCreatedPOsWidget(msg)}
                 {renderLowStockWidget(msg)}
                 {renderCreatedPRsWidget(msg)}
+                {renderBestOfferRecommendationWidget(msg)}
             </div>
         );
     };
@@ -2409,7 +2570,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             timestamp: new Date(),
                             suggestions: [
                                 'Create purchase order',
-                                'How many parcels were received today?',
+                                'What items need reordering?',
                                 'Show me low stock items',
                             ]
                         };
@@ -2524,50 +2685,15 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                 </div>
                             )}
 
-                            {/* Mode Switcher Segmented Control */}
-                            <div className="mb-3 p-1 rounded-2xl bg-[#e2e9f3] dark:bg-[#11121a] border border-white/60 dark:border-white/[0.04] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4),inset_-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),inset_-1px_-1px_2px_rgba(255,255,255,0.02)] flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => handleModeSwitch('chat')}
-                                    disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}
-                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
-                                        activeMode === 'chat'
-                                            ? 'bg-[#ebf0f7] dark:bg-[#1e1f2c] text-pink-600 dark:text-pink-400 border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.35),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)]'
-                                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                                    }`}
-                                >
-                                    <i className="fas fa-comments text-xs" />
-                                    <span>AI Chat</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleModeSwitch('search')}
-                                    disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}
-                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
-                                        activeMode === 'search'
-                                            ? 'bg-emerald-500/15 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 shadow-[3px_3px_6px_rgba(16,185,129,0.2),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)]'
-                                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                                    }`}
-                                    title="Search Document with Photo"
-                                >
-                                    <i className="fas fa-camera text-xs" />
-                                    <span>Search Document with Photo</span>
-                                </button>
-                            </div>
-
                             {/* Attachment Preview Chip */}
                             {attachedFile && (
-                                <div className={`mb-2 p-2 px-3.5 rounded-2xl border transition-all animate-in fade-in zoom-in-95 duration-150 flex items-center justify-between gap-2 text-xs ${
-                                    attachedFile.mode === 'search_document'
-                                        ? 'bg-emerald-50/90 dark:bg-[#122b22] border-emerald-300 dark:border-emerald-700/60 shadow-[3px_3px_8px_rgba(16,185,129,0.15)]'
-                                        : 'bg-[#ebf0f7] dark:bg-[#1c1d28] border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.35),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)]'
-                                }`}>
+                                <div className="mb-2 p-2 px-3.5 rounded-2xl border transition-all animate-in fade-in zoom-in-95 duration-150 flex items-center justify-between gap-2 text-xs bg-[#ebf0f7] dark:bg-[#1c1d28] border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.35),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)]">
                                     <div className="flex items-center gap-2 min-w-0">
                                         {attachedFile.type.startsWith('image/') ? (
-                                            <img src={attachedFile.dataUrl} alt="Preview" className={`w-8 h-8 rounded-lg object-cover border shrink-0 ${attachedFile.mode === 'search_document' ? 'border-emerald-400 dark:border-emerald-600' : 'border-pink-300 dark:border-pink-800'}`} />
+                                            <img src={attachedFile.dataUrl} alt="Preview" className="w-8 h-8 rounded-lg object-cover border shrink-0 border-pink-300 dark:border-pink-800" />
                                         ) : (
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${attachedFile.mode === 'search_document' ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400' : 'bg-pink-100 dark:bg-pink-950/80 text-pink-600 dark:text-pink-400'}`}>
-                                                <i className={`fas ${attachedFile.mode === 'search_document' ? 'fa-search-plus' : 'fa-file-pdf'} text-sm`} />
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-pink-100 dark:bg-pink-950/80 text-pink-600 dark:text-pink-400">
+                                                <i className="fas fa-file-pdf text-sm" />
                                             </div>
                                         )}
                                         <div className="min-w-0">
@@ -2575,16 +2701,12 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                                 <p className="text-xs font-semibold text-slate-800 dark:text-white truncate">
                                                     {attachedFile.name}
                                                 </p>
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                                    attachedFile.mode === 'search_document'
-                                                        ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
-                                                        : 'bg-pink-100 dark:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800'
-                                                }`}>
-                                                    {attachedFile.mode === 'search_document' ? '🔍 Search Document' : '📎 Chat Attachment'}
+                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
+                                                    📎 Chat Attachment
                                                 </span>
                                             </div>
-                                            <p className={`text-[10px] ${attachedFile.mode === 'search_document' ? 'text-emerald-600 dark:text-emerald-400' : 'text-pink-600 dark:text-pink-400'}`}>
-                                                {(attachedFile.size / 1024).toFixed(1)} KB • {attachedFile.mode === 'search_document' ? 'Will OCR & match in system database' : 'Normal chat • Describe / answer questions'}
+                                            <p className="text-[10px] text-pink-600 dark:text-pink-400">
+                                                {(attachedFile.size / 1024).toFixed(1)} KB • Normal chat • Describe / answer questions
                                             </p>
                                         </div>
                                     </div>
@@ -2595,35 +2717,20 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                             )}
 
                             <div className="relative flex items-center gap-2">
-                                {/* Hidden file inputs */}
+                                {/* Hidden file input */}
                                 <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv" onChange={handleFileSelect} className="hidden" />
-                                <input ref={searchFileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" onChange={handleSearchFileSelect} className="hidden" />
 
-                                {activeMode === 'search' ? (
-                                    /* Search Mode Photo Picker Button */
-                                    <button
-                                        type="button"
-                                        onClick={() => searchFileInputRef.current?.click()}
-                                        disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}
-                                        className="p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-[#153326] dark:hover:bg-[#1a3d2e] dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 shadow-[3px_3px_6px_rgba(16,185,129,0.25),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)] active:shadow-[inset_2px_2px_4px_rgba(16,185,129,0.4)] transition-all duration-150 shrink-0 cursor-pointer disabled:opacity-50 flex items-center justify-center"
-                                        title="Select Photo/Document to Search"
-                                        aria-label="Select photo or document to search"
-                                    >
-                                        <i className="fas fa-camera text-sm" />
-                                    </button>
-                                ) : (
-                                    /* Normal Chat Attachment Button */
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}
-                                        className="p-3 rounded-2xl bg-[#ebf0f7] hover:bg-[#e4ebf5] text-slate-600 hover:text-pink-600 dark:bg-[#1e1f2c] dark:hover:bg-[#252636] dark:text-slate-300 dark:hover:text-pink-400 border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.35),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.45)] transition-all duration-150 shrink-0 cursor-pointer disabled:opacity-50"
-                                        title="Attach picture or document (normal chat)"
-                                        aria-label="Attach picture or document"
-                                    >
-                                        <i className="fas fa-paperclip text-sm" />
-                                    </button>
-                                )}
+                                {/* Chat Attachment Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}
+                                    className="p-3 rounded-2xl bg-[#ebf0f7] hover:bg-[#e4ebf5] text-slate-600 hover:text-pink-600 dark:bg-[#1e1f2c] dark:hover:bg-[#252636] dark:text-slate-300 dark:hover:text-pink-400 border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.35),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.04)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.45)] transition-all duration-150 shrink-0 cursor-pointer disabled:opacity-50"
+                                    title="Attach picture or document"
+                                    aria-label="Attach picture or document"
+                                >
+                                    <i className="fas fa-paperclip text-sm" />
+                                </button>
 
                                 <div className="relative flex-1 flex items-center">
                                     <input
@@ -2632,71 +2739,48 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         onKeyDown={handleKeyDown}
-                                        disabled={activeMode === 'search' || isLoading || (isLockedOut && lockoutSeconds > 0)}
+                                        disabled={isLoading || (isLockedOut && lockoutSeconds > 0)}
                                         placeholder={
                                             isLockedOut && lockoutSeconds > 0
                                                 ? "Queries temporarily locked (cooling down...)"
-                                                : activeMode === 'search'
-                                                ? (attachedFile
-                                                    ? `Photo attached: ${attachedFile.name} (Click search button)`
-                                                    : "Input disabled in Search Mode — upload photo/receipt above")
-                                                : (attachedFile
-                                                    ? "Ask anything about this file (or press enter)..."
-                                                    : "Ask about inventory, stock, or attach docs...")
+                                                : attachedFile
+                                                ? "Ask anything about this file (or press enter)..."
+                                                : "Ask about inventory, stock, or attach docs..."
                                         }
-                                        className={`w-full text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 border border-white/60 dark:border-white/[0.04] shadow-[inset_3px_3px_6px_rgba(166,175,195,0.45),inset_-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.65),inset_-1px_-1px_3px_rgba(255,255,255,0.03)] focus:outline-none focus:border-pink-400 dark:focus:border-pink-500/70 rounded-2xl pl-4 pr-12 py-3.5 text-sm transition-all duration-150 ${
-                                            activeMode === 'search'
-                                                ? 'bg-[#dbe3ef]/60 dark:bg-[#0c0d14]/70 cursor-not-allowed opacity-75 font-medium italic'
-                                                : 'bg-[#e2e9f3] dark:bg-[#11121a] disabled:opacity-60 disabled:cursor-not-allowed'
-                                        }`}
+                                        className="w-full text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 border border-white/60 dark:border-white/[0.04] shadow-[inset_3px_3px_6px_rgba(166,175,195,0.45),inset_-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[inset_3px_3px_7px_rgba(0,0,0,0.65),inset_-1px_-1px_3px_rgba(255,255,255,0.03)] focus:outline-none focus:border-pink-400 dark:focus:border-pink-500/70 rounded-2xl pl-4 pr-12 py-3.5 text-sm transition-all duration-150 bg-[#e2e9f3] dark:bg-[#11121a] disabled:opacity-60 disabled:cursor-not-allowed"
                                     />
 
                                     <button
                                         onClick={() => handleSendMessage()}
-                                        disabled={
-                                            activeMode === 'search'
-                                                ? (!attachedFile || isLoading || (isLockedOut && lockoutSeconds > 0))
-                                                : ((!input.trim() && !attachedFile) || isLoading || (isLockedOut && lockoutSeconds > 0))
-                                        }
-                                        aria-label={activeMode === 'search' ? "Search Database with Photo" : "Send message"}
-                                        className={`absolute right-2 w-8 h-8 rounded-full text-white disabled:opacity-40 disabled:cursor-not-allowed border flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
-                                            activeMode === 'search'
-                                                ? 'bg-gradient-to-tr from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-[3px_3px_6px_rgba(16,185,129,0.4),-1px_-1px_3px_rgba(255,255,255,0.4)] border-emerald-400/40'
-                                                : 'bg-gradient-to-tr from-pink-500 to-rose-600 hover:from-pink-500 hover:to-rose-700 shadow-[3px_3px_6px_rgba(244,63,94,0.4),-1px_-1px_3px_rgba(255,255,255,0.4)] border-pink-400/40'
-                                        }`}
+                                        disabled={(!input.trim() && !attachedFile) || isLoading || (isLockedOut && lockoutSeconds > 0)}
+                                        aria-label="Send message"
+                                        className="absolute right-2 w-8 h-8 rounded-full text-white disabled:opacity-40 disabled:cursor-not-allowed border flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer bg-gradient-to-tr from-pink-500 to-rose-600 hover:from-pink-500 hover:to-rose-700 shadow-[3px_3px_6px_rgba(244,63,94,0.4),-1px_-1px_3px_rgba(255,255,255,0.4)] border-pink-400/40"
                                     >
-                                        <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : activeMode === 'search' ? 'fa-search' : 'fa-arrow-up'} text-xs`} />
+                                        <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`} />
                                     </button>
                                 </div>
                             </div>
 
                             <div className="mt-2.5 flex items-center justify-between px-1">
                                 <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-                                    {isLoading ? (<>
-                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-500"/>
+                                    {isLoading ? (
+                                        <>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-500" />
                                             <span>Processing request...</span>
-                                        </>) : isLockedOut && lockoutSeconds > 0 ? (
+                                        </>
+                                    ) : isLockedOut && lockoutSeconds > 0 ? (
                                         <span className="text-rose-500 font-semibold flex items-center gap-1">
                                             <ShieldAlert className="w-3 h-3" />
                                             <span>Account cooling down ({lockoutSeconds}s)</span>
-                                        </span>
-                                    ) : activeMode === 'search' ? (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                                            <i className="fas fa-camera text-[10px]" />
-                                            <span>Upload photo or receipt to match in database</span>
                                         </span>
                                     ) : (
                                         <span>Press <kbd className="px-1.5 py-0.5 rounded text-[9px] bg-[#e2e9f3] dark:bg-[#11121a] text-slate-600 dark:text-slate-400 border border-white/60 dark:border-white/[0.04] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3)] font-mono">Enter</kbd> to send</span>
                                     )}
                                 </span>
 
-                                <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                                    activeMode === 'search'
-                                        ? 'text-emerald-600 dark:text-emerald-400'
-                                        : 'text-pink-600 dark:text-pink-400'
-                                }`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${activeMode === 'search' ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-pink-500 dark:bg-pink-400'}`}/>
-                                    {activeMode === 'search' ? 'Document Matcher' : 'Warehouse AI'}
+                                <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 text-pink-600 dark:text-pink-400">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-pink-500 dark:bg-pink-400" />
+                                    Warehouse AI
                                 </span>
                             </div>
                         </div>

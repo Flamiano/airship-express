@@ -24,7 +24,7 @@ Each document stores:
 - Category ('documents' or 'photos')
 - Document type ('Official Receipt', 'Invoice', etc.)
 - Supplier name and PO number
-- Parcel batch number
+- Batch tracking number
 - Uploader name and notes
 - Version number
 - Created and updated timestamps
@@ -242,10 +242,6 @@ Features:
 - Verify storage delete permissions
 - Check RLS policies
 
-### Activity Not Logged
-- Verify user authentication
-- Check activity_history table permissions
-- Ensure proper action type
 
 ---
 

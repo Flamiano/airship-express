@@ -15,8 +15,8 @@ import { SearchableDropdown, SearchableDropdownOption } from "../../../../compon
 
 interface DocumentsTableProps {
     documents: Document[];
-    loading: boolean;
-    refreshing: boolean;
+    loading?: boolean;
+    refreshing?: boolean;
     suppliers: Supplier[];
     searchTerm: string;
     onSearchChange: (val: string) => void;
@@ -50,15 +50,17 @@ interface DocumentsTableProps {
     totalItems: number;
     itemsPerPage: number;
     onPageChange: (page: number) => void;
+    onOpenPhotoSearch?: () => void;
 }
 
 export function DocumentsTable({
     documents,
-    loading,
-    refreshing,
+    loading = false,
+    refreshing = false,
     suppliers,
     searchTerm,
     onSearchChange,
+    onOpenPhotoSearch,
     typeFilter,
     onTypeFilterChange,
     extensionFilter,
@@ -95,7 +97,7 @@ export function DocumentsTable({
         { value: 'Invoice', label: 'Invoice', icon: 'fas fa-file-invoice-dollar' },
         { value: 'Delivery Receipt', label: 'Delivery Receipt', icon: 'fas fa-truck-loading' },
         { value: 'Parcel Condition', label: 'Parcel Condition', icon: 'fas fa-box-open' },
-        { value: 'Courier Handover', label: 'Courier Handover', icon: 'fas fa-handshake' },
+        { value: 'Logistics Handover', label: 'Logistics Handover', icon: 'fas fa-handshake' },
         { value: 'Vehicle Maintenance', label: 'Vehicle Maintenance', icon: 'fas fa-wrench' },
     ], []);
 
@@ -121,19 +123,32 @@ export function DocumentsTable({
             <div className="flex-shrink-0 pb-4 mb-3 border-b border-slate-200/60 dark:border-slate-800/80">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-1 flex-wrap items-center gap-2.5">
-                        <div className="relative w-full sm:w-64">
-                            <i
-                                className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none"
-                                aria-hidden="true"
-                            ></i>
-                            <input
-                                type="search"
-                                value={searchTerm}
-                                onChange={(e) => onSearchChange(e.target.value)}
-                                aria-label="Search files"
-                                placeholder="Search files..."
-                                className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 pl-9 pr-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-pink-500 transition-all"
-                            />
+                        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                            <div className="relative w-full sm:w-64">
+                                <i
+                                    className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none"
+                                    aria-hidden="true"
+                                ></i>
+                                <input
+                                    type="search"
+                                    value={searchTerm}
+                                    onChange={(e) => onSearchChange(e.target.value)}
+                                    aria-label="Search files"
+                                    placeholder="Search files..."
+                                    className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 pl-9 pr-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-pink-500 transition-all"
+                                />
+                            </div>
+                            {onOpenPhotoSearch && (
+                                <button
+                                    type="button"
+                                    onClick={onOpenPhotoSearch}
+                                    title="Search Document with Photo"
+                                    aria-label="Search Document with Photo"
+                                    className="p-2.5 rounded-2xl bg-[#ebf0f7] hover:bg-[#e2eaf5] dark:bg-[#1e1f2c] dark:hover:bg-[#27293a] text-pink-600 dark:text-pink-400 border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.6)] active:shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35)] active:scale-95 transition-all flex items-center justify-center shrink-0 cursor-pointer"
+                                >
+                                    <i className="fas fa-camera text-xs" />
+                                </button>
+                            )}
                         </div>
 
                         <SearchableDropdown

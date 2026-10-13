@@ -7,6 +7,7 @@ import { EditAccessScheduleModal } from '../modals/EditAccessScheduleModal';
 import { useConfirm } from '../../../../components/ui/ConfirmModal';
 import { useDebounce } from '../../../../hooks/useDebounce';
 import { Pagination } from '../../../../components/global/pagination';
+import { DEFAULT_ALLOWED_DAYS, DEFAULT_TIME_START, DEFAULT_TIME_END } from '../../../../lib/services/userAccessService';
 
 interface AccessControlTabProps {
     sessions: Session[];
@@ -257,9 +258,9 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                 display_name: displayName,
                 role: session.users?.role,
                 is_allow: !session.is_allow,
-                allowed_days: session.allowed_days && session.allowed_days.length > 0 ? session.allowed_days : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-                allowed_time_start: session.allowed_time_start || '07:00',
-                allowed_time_end: session.allowed_time_end || '17:00',
+                allowed_days: session.allowed_days && session.allowed_days.length > 0 ? session.allowed_days : DEFAULT_ALLOWED_DAYS,
+                allowed_time_start: session.allowed_time_start || DEFAULT_TIME_START,
+                allowed_time_end: session.allowed_time_end || DEFAULT_TIME_END,
                 auth_requested: false,
             });
         } finally {
@@ -284,9 +285,9 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                 display_name: s.users?.display_name || s.hr_employee_name,
                 role: s.users?.role,
                 is_allow: true,
-                allowed_days: s.allowed_days && s.allowed_days.length > 0 ? s.allowed_days : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-                allowed_time_start: s.allowed_time_start || '07:00',
-                allowed_time_end: s.allowed_time_end || '17:00',
+                allowed_days: s.allowed_days && s.allowed_days.length > 0 ? s.allowed_days : DEFAULT_ALLOWED_DAYS,
+                allowed_time_start: s.allowed_time_start || DEFAULT_TIME_START,
+                allowed_time_end: s.allowed_time_end || DEFAULT_TIME_END,
                 auth_requested: false,
             })).filter(r => Boolean(r.email));
 
@@ -331,9 +332,9 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                 display_name: s.users?.display_name || s.hr_employee_name,
                 role: s.users?.role,
                 is_allow: false,
-                allowed_days: s.allowed_days && s.allowed_days.length > 0 ? s.allowed_days : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-                allowed_time_start: s.allowed_time_start || '07:00',
-                allowed_time_end: s.allowed_time_end || '17:00',
+                allowed_days: s.allowed_days && s.allowed_days.length > 0 ? s.allowed_days : DEFAULT_ALLOWED_DAYS,
+                allowed_time_start: s.allowed_time_start || DEFAULT_TIME_START,
+                allowed_time_end: s.allowed_time_end || DEFAULT_TIME_END,
                 auth_requested: false,
             })).filter(r => Boolean(r.email));
 
@@ -362,8 +363,11 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
     };
 
     const formatTimeWindow = (start?: string, end?: string) => {
-        const s = start || '07:00';
-        const e = end || '17:00';
+        const s = start || DEFAULT_TIME_START;
+        const e = end || DEFAULT_TIME_END;
+        if (s === '00:00' && (e === '23:59' || e === '24:00')) {
+            return '24/7 (All Day)';
+        }
         const formatAmPm = (t: string) => {
             const [hStr, mStr] = t.split(':');
             const h = parseInt(hStr, 10);
@@ -768,7 +772,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             {/* Allowed Days */}
                                             <td className="py-3.5 px-4">
                                                 <div className="flex flex-wrap gap-1 max-w-xs">
-                                                    {(session.allowed_days && session.allowed_days.length > 0 ? session.allowed_days : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']).map(d => (
+                                                    {(session.allowed_days && session.allowed_days.length > 0 ? session.allowed_days : DEFAULT_ALLOWED_DAYS).map(d => (
                                                         <span
                                                             key={d}
                                                             className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#e2e9f3] dark:bg-[#11121a] text-slate-700 dark:text-slate-300 border border-white/60 dark:border-white/[0.04]"

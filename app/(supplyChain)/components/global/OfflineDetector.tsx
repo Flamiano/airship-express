@@ -561,7 +561,7 @@ export function OfflineDetector({
                                         <p className="text-xs sm:text-sm mt-0.5 leading-relaxed font-medium text-slate-600 dark:text-slate-300">
                                             {!isOnline
                                                 ? (isWarehousing
-                                                    ? 'Offline mode active: You can continue scanning. Parcels will be stored locally as "Not Synced".'
+                                                    ? 'Offline mode active: You can continue scanning. Items will be stored locally as "Not Synced".'
                                                     : 'Network connectivity paused. Changes will sync once reconnected.')
                                                 : 'Your connection has been restored. All systems fully operational.'
                                             }

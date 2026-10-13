@@ -18,30 +18,10 @@ import { AppButton } from '../../../components/ui/AppButton';
 import { SearchableDropdown, SearchableDropdownOption } from '../../../components/ui/SearchableDropdown';
 import { trashCache } from '../utils/trashCache';
 import { TrashRetentionBadge } from './TrashRetentionBadge';
-
-interface ArchivedDocument {
-    id: string;
-    title: string;
-    file_name: string;
-    file_size: number;
-    file_type: string;
-    storage_path: string;
-    category: string;
-    document_type: string;
-    supplier: string | null;
-    po_number: string | null;
-    parcel_batch: string | null;
-    uploaded_by: string | null;
-    notes: string | null;
-    created_at: string;
-    updated_at: string;
-    version: number;
-    deleted_at: string;
-    deleted_by: string;
-    original_id: string;
-    role: string | null;
-    session_id: string | null;
-}
+import {
+    ArchivedDocumentViewModal,
+    type ArchivedDocument,
+} from './ArchivedDocumentViewModal';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -67,6 +47,16 @@ const formatArchivedDocument = (doc: any): ArchivedDocument => ({
     original_id: doc.original_id || doc.id,
     role: doc.role ? sanitizeText(doc.role) : null,
     session_id: doc.session_id ? sanitizeText(doc.session_id) : null,
+    user_id: doc.user_id || null,
+    supplier_id: doc.supplier_id != null ? Number(doc.supplier_id) : null,
+    file_url: doc.file_url || null,
+    Price: doc.Price || doc.price || null,
+    extracted: doc.extracted || null,
+    extracted_text: doc.extracted_text || null,
+    extracted_data: doc.extracted_data || null,
+    force_inserted_by: doc.force_inserted_by || null,
+    document_verification_id: doc.document_verification_id || null,
+    purchase_id: doc.purchase_id || null,
 });
 
 export function DocumentsTab() {
@@ -85,6 +75,7 @@ export function DocumentsTab() {
     const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
     const [docPage, setDocPage] = useState(1);
     const [docTotalPages, setDocTotalPages] = useState(1);
+    const [selectedViewDoc, setSelectedViewDoc] = useState<ArchivedDocument | null>(null);
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
@@ -145,7 +136,7 @@ export function DocumentsTab() {
             try {
                 // Check if an active document with the same original_id or same filename+size already exists
                 let query = supabase
-                    .from('documents')
+                    .from('supplier_documents')
                     .select('id, title, file_name, file_size')
                     .eq('id', doc.original_id);
 
@@ -154,7 +145,7 @@ export function DocumentsTab() {
 
                 if (!existingActive && doc.file_name && doc.file_size) {
                     const { data: existingByFile } = await supabase
-                        .from('documents')
+                        .from('supplier_documents')
                         .select('id, title, file_name, file_size')
                         .ilike('file_name', doc.file_name)
                         .eq('file_size', doc.file_size)
@@ -179,16 +170,18 @@ export function DocumentsTab() {
 
                     setDocsLoading(true);
                     const { error: updateError } = await supabase
-                        .from('documents')
+                        .from('supplier_documents')
                         .update({
                             title: doc.title,
                             file_name: doc.file_name,
                             file_size: doc.file_size,
                             file_type: doc.file_type,
                             storage_path: doc.storage_path,
+                            file_url: doc.file_url || null,
                             category: doc.category,
                             document_type: doc.document_type,
                             supplier: doc.supplier,
+                            supplier_id: doc.supplier_id != null ? doc.supplier_id : null,
                             po_number: doc.po_number,
                             parcel_batch: doc.parcel_batch,
                             uploaded_by: doc.uploaded_by,
@@ -197,6 +190,14 @@ export function DocumentsTab() {
                             updated_at: new Date().toISOString(),
                             role: doc.role,
                             session_id: doc.session_id,
+                            user_id: doc.user_id || null,
+                            Price: doc.Price || null,
+                            extracted: doc.extracted || null,
+                            extracted_text: doc.extracted_text || null,
+                            extracted_data: doc.extracted_data || null,
+                            force_inserted_by: doc.force_inserted_by || null,
+                            document_verification_id: doc.document_verification_id || null,
+                            purchase_id: doc.purchase_id || null,
                         })
                         .eq('id', existingActive.id);
 
@@ -221,15 +222,23 @@ export function DocumentsTab() {
                     return;
                 }
 
+                let resolvedSupplierId = doc.supplier_id ?? null;
+                if (!resolvedSupplierId && doc.supplier) {
+                    const { data: matchedSup } = await supabase.from('suppliers').select('id').ilike('name', doc.supplier).limit(1).maybeSingle();
+                    if (matchedSup?.id) resolvedSupplierId = matchedSup.id;
+                }
+
                 const { error: insertError } = await supabase
-                    .from('documents')
+                    .from('supplier_documents')
                     .insert({
                         id: doc.original_id,
+                        supplier_id: resolvedSupplierId,
                         title: doc.title,
                         file_name: doc.file_name,
                         file_size: doc.file_size,
                         file_type: doc.file_type,
                         storage_path: doc.storage_path,
+                        file_url: doc.file_url || null,
                         category: doc.category,
                         document_type: doc.document_type,
                         supplier: doc.supplier,
@@ -242,6 +251,14 @@ export function DocumentsTab() {
                         updated_at: new Date().toISOString(),
                         role: doc.role,
                         session_id: doc.session_id,
+                        user_id: doc.user_id || null,
+                        Price: doc.Price || null,
+                        extracted: doc.extracted || null,
+                        extracted_text: doc.extracted_text || null,
+                        extracted_data: doc.extracted_data || null,
+                        force_inserted_by: doc.force_inserted_by || null,
+                        document_verification_id: doc.document_verification_id || null,
+                        purchase_id: doc.purchase_id || null,
                     });
 
                 if (insertError) {
@@ -349,7 +366,7 @@ export function DocumentsTab() {
                 const allOriginalIds = docsToRestore.map(d => d.original_id).filter(Boolean);
 
                 const { data: existingActiveList } = await supabase
-                    .from('documents')
+                    .from('supplier_documents')
                     .select('id')
                     .in('id', allOriginalIds);
 
@@ -363,15 +380,23 @@ export function DocumentsTab() {
                         continue;
                     }
 
+                    let resolvedSupplierId = doc.supplier_id ?? null;
+                    if (!resolvedSupplierId && doc.supplier) {
+                        const { data: matchedSup } = await supabase.from('suppliers').select('id').ilike('name', doc.supplier).limit(1).maybeSingle();
+                        if (matchedSup?.id) resolvedSupplierId = matchedSup.id;
+                    }
+
                     const { error: insertError } = await supabase
-                        .from('documents')
+                        .from('supplier_documents')
                         .insert({
                             id: doc.original_id,
+                            supplier_id: resolvedSupplierId,
                             title: doc.title,
                             file_name: doc.file_name,
                             file_size: doc.file_size,
                             file_type: doc.file_type,
                             storage_path: doc.storage_path,
+                            file_url: doc.file_url || null,
                             category: doc.category,
                             document_type: doc.document_type,
                             supplier: doc.supplier,
@@ -384,6 +409,14 @@ export function DocumentsTab() {
                             updated_at: new Date().toISOString(),
                             role: doc.role,
                             session_id: doc.session_id,
+                            user_id: doc.user_id || null,
+                            Price: doc.Price || null,
+                            extracted: doc.extracted || null,
+                            extracted_text: doc.extracted_text || null,
+                            extracted_data: doc.extracted_data || null,
+                            force_inserted_by: doc.force_inserted_by || null,
+                            document_verification_id: doc.document_verification_id || null,
+                            purchase_id: doc.purchase_id || null,
                         });
 
                     if (insertError) {
@@ -819,7 +852,7 @@ export function DocumentsTab() {
                                 <th className="py-3 px-4">Role</th>
                                 <th className="py-3 px-4">Deleted By</th>
                                 <th className="py-3 px-4">Deleted At & Auto-Purge</th>
-                                <th className="text-right! py-3 px-4 w-[130px] min-w-[130px]">Actions</th>
+                                <th className="text-right! py-3 px-4 w-[160px] min-w-[160px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -836,7 +869,7 @@ export function DocumentsTab() {
                                         { type: 'badge' },
                                         { type: 'avatar-text', subtext: false },
                                         { type: 'date' },
-                                        { type: 'actions', align: 'right', width: 'w-[130px]' },
+                                        { type: 'actions', align: 'right', width: 'w-[160px]' },
                                     ]}
                                 />
                             ) : paginatedDocuments.length === 0 ? (
@@ -886,7 +919,14 @@ export function DocumentsTab() {
                                             </td>
                                             <td data-label="Title / File" className="py-3 px-4">
                                                 <div className="text-right sm:text-left min-w-0 max-w-[220px] sm:max-w-none ml-auto sm:ml-0">
-                                                    <div className="font-semibold text-slate-800 dark:text-slate-200 leading-snug truncate" title={doc.title}>{doc.title}</div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedViewDoc(doc)}
+                                                        className="font-semibold text-slate-800 dark:text-slate-200 leading-snug truncate hover:text-pink-600 dark:hover:text-pink-400 hover:underline transition-colors text-left cursor-pointer inline-block max-w-full"
+                                                        title="Click to view details & preview"
+                                                    >
+                                                        {doc.title}
+                                                    </button>
                                                     <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 truncate" title={doc.file_name}>{doc.file_name}</div>
                                                     {doc.notes && (
                                                         <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mt-0.5 truncate" title={doc.notes}>
@@ -928,7 +968,7 @@ export function DocumentsTab() {
                                                             tone={
                                                                 doc.role === 'Admin'
                                                                     ? 'purple'
-                                                                    : doc.role === 'Manager'
+                                                                    : doc.role === 'Purchase Officer'
                                                                         ? 'indigo'
                                                                         : 'neutral'
                                                             }
@@ -950,8 +990,14 @@ export function DocumentsTab() {
                                                     <TrashRetentionBadge deletedAt={doc.deleted_at} />
                                                 </div>
                                             </td>
-                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap sm:w-[130px] sm:min-w-[130px] w-full">
-                                                <div className="flex items-center justify-end gap-2.5">
+                                            <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap sm:w-[160px] sm:min-w-[160px] w-full">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <CrudActionButton
+                                                        action="view"
+                                                        ariaLabel={`View document ${doc.title}`}
+                                                        title="View Details & Preview"
+                                                        onClick={() => setSelectedViewDoc(doc)}
+                                                    />
                                                     <CrudActionButton
                                                         action="restore"
                                                         ariaLabel={`Restore document ${doc.title}`}
@@ -996,6 +1042,21 @@ export function DocumentsTab() {
                     />
                 </div>
             </div>
+
+            {/* View Full Archived Document Modal */}
+            <ArchivedDocumentViewModal
+                isOpen={!!selectedViewDoc}
+                onClose={() => setSelectedViewDoc(null)}
+                doc={selectedViewDoc}
+                onRestore={async (d) => {
+                    await handleRestoreDocument(d);
+                    setSelectedViewDoc(null);
+                }}
+                onPermanentDelete={async (d) => {
+                    await handleDeleteDocumentPermanently(d);
+                    setSelectedViewDoc(null);
+                }}
+            />
         </div>
     );
 }

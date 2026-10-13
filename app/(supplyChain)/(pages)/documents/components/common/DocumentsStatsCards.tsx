@@ -37,7 +37,7 @@ export function DocumentsStatsCards({
                 headerTextColor="text-muted dark:text-white/80"
                 backDescription={`Total number of files in the system: ${totalFiles}\n\nIncludes all document types\nUpdated in real-time`}
                 tooltip="View all files"
-                tooltipLink="/gallery"
+                tooltipLink="/documents"
                 badge={`${totalFiles} files`}
             />
 

@@ -3,6 +3,7 @@ import { user } from "../../../lib/services/Class/user";
 
 export interface Document {
     id: string;
+    supplier_id?: number | null;
     title: string;
     file_name: string;
     file_size: number;
@@ -14,6 +15,9 @@ export interface Document {
     po_number: string | null;
     parcel_batch: string | null;
     uploaded_by: string | null;
+    file_url?: string | null;
+    extracted_text?: string | null;
+    extracted_data?: any;
     notes: string | null;
     created_at: string;
     updated_at: string;
@@ -57,6 +61,11 @@ export interface Supplier {
     phone: string;
     email: string;
     location: string;
+    document_count?: number;
+    photo_count?: number;
+    total_files?: number;
+    total_size?: number;
+    latest_upload?: string | null;
 }
 
 export interface Activity {

@@ -198,8 +198,8 @@ export function UploadReceiptModal({
     const currentUserRole = user.getRole();
     const normalizedRole = (currentUserRole || '').toLowerCase().trim();
     const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(normalizedRole) || currentUserRole === 'Admin';
-    const isManager = ['manager'].includes(normalizedRole) || currentUserRole === 'Manager';
-    const isAdminOrManager = isAdmin || isManager;
+    const isPurchaseOfficer = ['purchase officer', 'purchase_officer', 'purchaseofficer'].includes(normalizedRole) || currentUserRole === 'Purchase Officer';
+    const isAdminOrPurchaseOfficer = isAdmin || isPurchaseOfficer;
 
     const existingDbFileName = po?.document?.file_name || null;
 
@@ -540,7 +540,7 @@ export function UploadReceiptModal({
                 onClick={onClose}
             >
             <div
-                className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-2xl w-full p-6  dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] border border-white/90 dark:border-white/[0.08] animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden"
+                className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-2xl w-full p-6 shadow-none border border-slate-200/80 dark:border-white/[0.08] animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -805,7 +805,7 @@ export function UploadReceiptModal({
                                     <div>
                                         <p className="font-bold">OCR Mismatch Detected</p>
                                         <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
-                                            The extracted receipt fields do not match the expected Purchase Order. Admin/Manager review or Force Insert is required.
+                                            The extracted receipt fields do not match the expected Purchase Order. Admin/Purchase Officer review or Force Insert is required.
                                         </p>
                                     </div>
                                 </div>
@@ -899,7 +899,7 @@ export function UploadReceiptModal({
                             </div>
 
                             {/* Admin Force Insert Section for Mismatches */}
-                            {verificationState === 'mismatched' && isAdminOrManager && (
+                            {verificationState === 'mismatched' && isAdminOrPurchaseOfficer && (
                                 <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -918,7 +918,7 @@ export function UploadReceiptModal({
                                     </div>
                                     <input
                                         type="text"
-                                        placeholder={isAdmin ? "Reason for manual approval (e.g. Authorized vendor fee variation)" : "Disabled for Manager role (Administrator access required)"}
+                                        placeholder={isAdmin ? "Reason for manual approval (e.g. Authorized vendor fee variation)" : "Disabled for Purchase Officer role (Administrator access required)"}
                                         value={forceReason}
                                         disabled={!isAdmin || isForcing}
                                         onChange={(e) => setForceReason(e.target.value)}
@@ -927,7 +927,7 @@ export function UploadReceiptModal({
                                     {!isAdmin && (
                                         <p className="text-[11px] text-amber-700 dark:text-amber-400/90 flex items-center gap-1.5 px-1 font-medium">
                                             <i className="fas fa-circle-info text-amber-500 text-xs shrink-0"></i>
-                                            <span>Force insert is disabled for Manager role. Please contact an Administrator if this receipt requires manual override.</span>
+                                            <span>Force insert is disabled for Purchase Officer role. Please contact an Administrator if this receipt requires manual override.</span>
                                         </p>
                                     )}
                                     <AppButton
@@ -936,7 +936,7 @@ export function UploadReceiptModal({
                                         size="md"
                                         disabled={!isAdmin || isForcing}
                                         onClick={handleForceInsert}
-                                        title={!isAdmin ? 'Administrative Force Insert is disabled for Manager role. Only Administrators can authorize override.' : undefined}
+                                        title={!isAdmin ? 'Administrative Force Insert is disabled for Purchase Officer role. Only Administrators can authorize override.' : undefined}
                                         className={`w-full ${isAdmin ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-slate-300 dark:bg-slate-800 text-slate-500 dark:text-slate-500 cursor-not-allowed opacity-60'}`}
                                     >
                                         <i className={`fas ${isAdmin ? 'fa-shield-alt' : 'fa-lock'}`}></i>

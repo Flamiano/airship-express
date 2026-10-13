@@ -80,15 +80,19 @@ export async function createScopedPurchaseRequestAction(params: CreateScopedPRPa
         const requestNumber = `PR-${Date.now().toString().slice(-6)}`;
         const totalAmount = quantity * unit_price;
 
-        // Structured JSONB line items embedding inventory_item_id
+        const lineItemId = crypto.randomUUID();
+        // Structured JSONB line items embedding inventory_item_id and unique line item id
         const itemsPayload = [
             {
+                id: lineItemId,
+                item_id: lineItemId,
                 inventory_item_id: Number(inventory_item_id),
                 item_name: item_name,
                 name: item_name,
                 quantity: quantity,
                 unit_price: unit_price,
                 total: totalAmount,
+                status: 'Pending',
             },
         ];
 

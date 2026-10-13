@@ -99,7 +99,7 @@ Your tasks:
    - "document_type": e.g. "Official Receipt", "Tax Invoice", "Purchase Order", "Delivery Note", "Warehouse Facility Photo", "Parcel Shipping Label", "Equipment Photo", "Fleet Vehicle Photo", "Merchandise / Item Photo"
    - "detected_category": e.g. "documents", "photos", "Procurement", "Warehousing", "Inventory", "Fleet"
    - "item_identification": Name or subject of the item/character/product/equipment/scene depicted
-   - "vendor_name": Merchant, supplier, brand, courier, or manufacturer name if visible (e.g. "LBC", "Petron", "ABC Logistics", "Shell")
+   - "vendor_name": Merchant, supplier, brand, logistics provider, or manufacturer name if visible (e.g. "Petron", "ABC Logistics", "Shell")
    - "reference_number": Any clearly visible printed PO#, Invoice#, Tracking#, Serial#, Barcode, Model#, or Batch# from the document or image. CRITICAL: If no reference code or barcode is visibly printed on the image, you MUST return null. NEVER invent synthetic codes.
    - "date": Date if visible (e.g. "2026-08-22")
    - "total_amount": Numerical price/cost amount in PHP as a number (e.g. 1715) or null if not applicable
@@ -388,7 +388,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
         };
 
         // GOOGLE LENS DOCUMENT SEARCH:
-        // Search public.documents across ALL matching columns including:
+        // Search public.supplier_documents across ALL matching columns including:
         // file_name, title, document_type, category, supplier, po_number, parcel_batch, uploaded_by, notes, "Price", and "extracted" (jsonb)
         if (isSearchDocMode) {
             try {
@@ -409,7 +409,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                         ].join(",");
 
                         const { data: refDocs } = await supabaseAdmin
-                            .from("documents")
+                            .from("supplier_documents")
                             .select("*")
                             .or(orQuery)
                             .order("created_at", { ascending: false })
@@ -443,7 +443,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                     ].join(",");
 
                     const { data: contentDocs } = await supabaseAdmin
-                        .from("documents")
+                        .from("supplier_documents")
                         .select("*")
                         .or(orQuery)
                         .order("created_at", { ascending: false })
@@ -466,7 +466,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                         ].join(",");
 
                         const { data: vendorDocs } = await supabaseAdmin
-                            .from("documents")
+                            .from("supplier_documents")
                             .select("*")
                             .or(orQuery)
                             .order("created_at", { ascending: false })
@@ -481,7 +481,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                 // Pass 4: File Name Match (with duplicate-awareness)
                 if (normalizedBaseName.length >= 4 && !isGenericBaseName && !/^\d+$/.test(normalizedBaseName)) {
                     const { data: fileNameMatches } = await supabaseAdmin
-                        .from("documents")
+                        .from("supplier_documents")
                         .select("*")
                         .or(`file_name.ilike.%${fileName}%,file_name.ilike.%${rawBaseName}%,title.ilike.%${rawBaseName}%`)
                         .order("created_at", { ascending: false })
@@ -518,7 +518,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                     ].join(",");
 
                     const { data: docMatches } = await supabaseAdmin
-                        .from("documents")
+                        .from("supplier_documents")
                         .select("*")
                         .or(orQuery)
                         .order("created_at", { ascending: false })
@@ -781,8 +781,8 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
             let targetLabel = "Documents Repository";
 
             if (isImage || rawDoc.category === "photos") {
-                viewLink = `/gallery?search=${encodeURIComponent(rawDoc.title || rawDoc.file_name || rawDoc.po_number || "")}`;
-                targetLabel = "Media Gallery";
+                viewLink = `/documents?search=${encodeURIComponent(rawDoc.title || rawDoc.file_name || rawDoc.po_number || "")}`;
+                targetLabel = "Media & Documents Gallery";
             }
 
             const publicUrl = rawDoc.public_url || getDocPublicUrl(rawDoc.storage_path);

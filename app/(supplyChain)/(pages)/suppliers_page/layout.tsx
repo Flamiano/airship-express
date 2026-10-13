@@ -20,6 +20,8 @@ import {
     ExternalLink,
     KeyRound,
     Loader2,
+    Calendar,
+    Video,
 } from "lucide-react";
 import { user } from "../../lib/services/Class/user";
 import { supabase } from "../../lib/services/client/supabase";
@@ -45,9 +47,9 @@ export default function SupplierPortalLayout({
     const [isLoading, setIsLoading] = useState(true);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-    const currentUserEmail = user.getEmail();
-    const currentUserName = user.getName() || "Authorized Supplier";
+    const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
+    const [currentUserName, setCurrentUserName] = useState<string>("");
+    const [isMounted, setIsMounted] = useState<boolean>(false);
 
     // Format initials
     const getInitials = (name: string): string => {
@@ -58,16 +60,23 @@ export default function SupplierPortalLayout({
     };
 
     useEffect(() => {
+        setIsMounted(true);
+        const email = user.getEmail();
+        const name = user.getName() || "Authorized Supplier";
+        setCurrentUserEmail(email);
+        setCurrentUserName(name);
+
         let channel: any = null;
 
         const fetchSupplierInfo = async () => {
-            if (!currentUserEmail) return;
+            const activeEmail = email || user.getEmail();
+            if (!activeEmail) return;
             try {
                 // Fetch supplier account info
                 const { data: acc } = await supabase
                     .from("suppliers_account")
                     .select("*, suppliers(*)")
-                    .eq("email", currentUserEmail)
+                    .eq("email", activeEmail)
                     .maybeSingle();
 
                 if (acc) {
@@ -100,8 +109,8 @@ export default function SupplierPortalLayout({
         fetchSupplierInfo();
 
         // Subscribe to real-time message changes for badge count
-        if (currentUserEmail) {
-            const channelId = `supplier_nav_${currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+        if (email) {
+            const channelId = `supplier_nav_${email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
             channel = supabase
                 .channel(channelId)
                 .on(
@@ -123,7 +132,7 @@ export default function SupplierPortalLayout({
                 supabase.removeChannel(channel);
             }
         };
-    }, [currentUserEmail]);
+    }, []);
 
     const handleLogout = async () => {
         const confirmed = await confirm({
@@ -187,6 +196,12 @@ export default function SupplierPortalLayout({
             description: "View, track and acknowledge POs",
         },
         {
+            name: "Meetings & Calls",
+            href: "/suppliers_page/meetings",
+            icon: Calendar,
+            description: "Scheduled procurement & negotiation meetings",
+        },
+        {
             name: "Messages & Inquiries",
             href: "/suppliers_page/messages",
             icon: MessageSquare,
@@ -196,7 +211,7 @@ export default function SupplierPortalLayout({
     ];
 
     const companyName = supplierDetails?.name || supplierAccount?.suppliers?.name || "Supplier Partner Portal";
-    const contactName = supplierAccount?.contact_name || currentUserName;
+    const contactName = supplierAccount?.contact_name || (isMounted ? (currentUserName || "Authorized Supplier") : "");
 
     return (
         <SessionGuard requiredRole={['Supplier']}>
@@ -229,7 +244,7 @@ export default function SupplierPortalLayout({
                                 </div>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <h1 className="text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white truncate max-w-[200px] sm:max-w-[280px]">
+                                        <h1 suppressHydrationWarning className="text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white truncate max-w-[200px] sm:max-w-[280px]">
                                             {companyName}
                                         </h1>
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
@@ -238,7 +253,7 @@ export default function SupplierPortalLayout({
                                         </span>
                                     </div>
                                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                                        Rep: <span className="font-semibold text-slate-700 dark:text-slate-300">{contactName}</span>
+                                        Rep: <span suppressHydrationWarning className="font-semibold text-slate-700 dark:text-slate-300">{contactName}</span>
                                     </p>
                                 </div>
                             </div>

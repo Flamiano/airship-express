@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const supplierName = poData?.supplier_name || 'Supplier';
     const amountStr = poData?.total_amount ? ` (₱${Number(poData.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : '';
 
-    // 3. Notify Manager, Admin & Executive
+    // 3. Notify Purchase Officer, Admin & Executive
     try {
         const title = isReject
             ? `Purchase Order Rejected by Supplier: #${po}`
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
                 message,
                 type: 'alert',
                 link: `/purchase-orders?search=${encodeURIComponent(po)}`,
-                role: ['Manager', 'Admin', 'Executive'],
+                role: ['Purchase Officer', 'Admin', 'Executive'],
                 is_read: false,
                 reference_type: 'purchase_order',
                 reference_id: poData?.id || null,

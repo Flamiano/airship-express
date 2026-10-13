@@ -7,24 +7,24 @@ Provides executive leadership with real-time operational oversight across all Ai
 
 ## Core Executive Metrics & Calculations
 1. **Total Inbound Received Volume**:
-   - Count of all scanned and verified parcels per day/month.
+   - Count of all received and verified supplies and inventory items per day/month.
    - Comparison vs. previous periods (DoD, WoW, MoM percentages).
-2. **Dispatch Velocity & Carrier Performance**:
-   - Total volume dispatched by courier partner (J&T, Ninja Van, Flash, Lalamove, 2GO).
-   - On-time dispatch rate target: >= 98.5%.
-   - Average dwell time: Target under 4.0 hours from intake to driver handover.
+2. **Procurement & Vendor Performance**:
+   - Total volume of purchase orders fulfilled by suppliers.
+   - On-time delivery rate target: >= 98.5%.
+   - Average requisition turnaround time.
 3. **Financial & Procurement Exposure**:
    - Total Purchase Order spend committed and cleared.
    - Outstanding accounts payable / unpaid vendor invoices.
    - Highest spend categories (Fleet Maintenance, Packaging Consumables, IT Hardware).
 4. **Warehouse Capacity Utilization**:
-   - Staging floor capacity vs. active volume.
-   - Lane congestion warnings when queue exceeds 85% capacity.
+   - Staging floor capacity vs. active inventory volume.
+   - Stock level alerts when inventory falls below minimum thresholds.
 
 ---
 
 ## Role-Based Access & Governance
 - **Executive**: Full visibility across all analytics, financial summaries, supplier contracts, archive audits, and reports.
 - **Admin**: Full system management, user role assignments, security controls, and deletion privileges.
-- **Manager**: Operational approvals, purchase request creation, driver assignment, and inventory audits.
-- **Operator / Employee**: Barcode scanning, parcel sortation, stock count, and document uploads.
+- **Manager**: Operational approvals, purchase request creation, and inventory audits.
+- **Operator / Employee**: Item intake, inventory stock counts, supply requests, and document uploads.

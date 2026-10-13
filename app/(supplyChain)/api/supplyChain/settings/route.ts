@@ -23,7 +23,7 @@ const DEFAULT_INACTIVITY = {
 const DEFAULT_ROLE_REDIRECTS = {
     'Executive': '/executive',
     'Admin': '/procurement',
-    'Manager': '/warehousing',
+    'Purchase Officer': '/warehousing',
     'Operator': '/warehousing',
     'Staff': '/documents',
     'Employee': '/documents',
@@ -31,15 +31,15 @@ const DEFAULT_ROLE_REDIRECTS = {
 
 const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
     '/executive': ['Executive'],
-    '/warehousing': ['Executive', 'Admin', 'Manager', 'Operator'],
-    '/inventory': ['Executive', 'Admin', 'Manager', 'Operator'],
-    '/procurement': ['Executive', 'Admin', 'Manager'],
-    '/suppliers': ['Executive', 'Admin', 'Manager'],
-    '/purchase-orders': ['Executive', 'Admin', 'Manager'],
-    '/documents': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
+    '/warehousing': ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
+    '/inventory': ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
+    '/procurement': ['Executive', 'Admin', 'Purchase Officer'],
+    '/suppliers': ['Executive', 'Admin', 'Purchase Officer'],
+    '/purchase-orders': ['Superadmin', 'Admin', 'Purchase Officer', 'Executive', 'Operator', 'Supervisor', 'Staff', 'Employee'],
+    '/documents': ['Executive', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator'],
     '/forecast': ['Executive', 'Admin'],
-    '/gallery': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
-    '/trash': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
+    '/gallery': ['Executive', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator'],
+    '/trash': ['Executive', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator'],
     '/user-activity': ['Executive', 'Admin'],
     '/settings': ['Executive', 'Admin'],
 };

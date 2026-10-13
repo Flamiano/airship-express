@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import Chart from "chart.js/auto";
 import { ExecutiveDataPayload } from "../../hooks/useExecutiveData";
 
@@ -89,7 +90,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                         labels,
                         datasets: [
                             {
-                                label: 'Actual Supabase Parcel Data',
+                                label: 'Actual Warehouse Inbound Data',
                                 data: actualSeries,
                                 borderColor: CHART_COLORS.primary,
                                 backgroundColor: `${CHART_COLORS.primary}20`,
@@ -97,7 +98,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                                 tension: 0.3,
                             },
                             {
-                                label: '7-Day WASM Forecast Prediction',
+                                label: '7-Day Inbound WASM Prediction',
                                 data: forecastSeries,
                                 borderColor: CHART_COLORS.secondary,
                                 borderDash: [6, 6],
@@ -179,7 +180,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                 <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2 flex-wrap">
                         <i className="fas fa-chart-line text-pink-500"></i>
-                        <span>Parcel Volume: Actual Supabase Data → 7-Day WASM Prediction</span>
+                        <span>Warehouse Inbound Demand: Historical Inflow → 7-Day WASM Prediction</span>
                         {/* Hover info badge ! with details about chart */}
                         <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -191,7 +192,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                             </button>
                             <div className="tooltip-popover">
                                 <p className="font-bold text-pink-400">Chart Details</p>
-                                <p className="text-slate-200 dark:text-slate-300 mt-1">Executes Holt-Winters additive time-series forecasting via @sipemu/anofox-forecast Rust/WASM engine over real historical parcel dates.</p>
+                                <p className="text-slate-200 dark:text-slate-300 mt-1">Executes Holt-Winters additive time-series forecasting via @sipemu/anofox-forecast Rust/WASM engine over real historical warehouse inbound volume.</p>
                             </div>
                         </div>
                         {prevEval?.has_evaluation && (
@@ -205,17 +206,26 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                             </span>
                         )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2.5">
                         {loadingForecast && (
                             <span className="text-xs text-slate-400 font-mono animate-pulse">Running Rust/WASM Engine...</span>
                         )}
                         <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onOpenModal('forecast', forecastApiData); }}
-                            className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:underline cursor-pointer"
+                            className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 hover:underline cursor-pointer"
                         >
                             Inspect WASM Modal
                         </button>
+                        <Link
+                            href="/forecast"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-sm transition-all"
+                            title="Open full standalone Demand & Inventory Forecasting page"
+                        >
+                            <span>Full Forecast Suite</span>
+                            <i className="fas fa-arrow-up-right-from-square text-[10px]" />
+                        </Link>
                     </div>
                 </div>
                 <div className="h-72 relative">
@@ -229,7 +239,7 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                     <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
                         {nextWeekTotal.toLocaleString()} <span className="text-xs font-normal text-slate-400">units</span>
                     </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Sum of predicted daily intake</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Projected incoming warehouse stock units</p>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#f0f3f8] dark:bg-[#1c1d28] border border-white/80 dark:border-[#2c2d3c] shadow-[4px_4px_10px_rgba(166,175,195,0.3),-4px_-4px_10px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[4px_4px_12px_rgba(0,0,0,0.5),-2px_-2px_6px_rgba(255,255,255,0.03)]">
                     <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prev Week Target Met</p>

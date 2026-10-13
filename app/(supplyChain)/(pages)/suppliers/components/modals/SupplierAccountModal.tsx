@@ -471,9 +471,8 @@ export function SupplierAccountModal({
                                             border border-transparent dark:border-white/[0.06]
                                             shadow-[inset_2px_2px_5px_#cbd4e2,inset_-2px_-2px_5px_#ffffff] dark:shadow-[inset_2px_2px_5px_#0b0d13,inset_-2px_-2px_5px_#25293d]
                                             text-slate-600 dark:text-slate-300">
-                                            An invitation will be emailed to{" "}
-                                            <strong className="text-pink-600 dark:text-pink-400">{email || "the supplier"}</strong>.
-                                            {" "}They will verify with OTP and create their own secure password on first login.
+                                            An account will be registered directly in Authentication and the Users table. An auto-generated secure password will be emailed to{" "}
+                                            <strong className="text-pink-600 dark:text-pink-400">{email || "the supplier"}</strong> for direct sign-in.
                                         </div>
 
                                         {/* Form Actions */}

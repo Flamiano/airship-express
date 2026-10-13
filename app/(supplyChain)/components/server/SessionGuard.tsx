@@ -31,7 +31,7 @@ interface SessionBackup {
     backed_up_at?: string;
     checksum?: string;
 }
-const VALID_ROLES = ['Admin', 'Manager', 'Staff', 'Employee', 'Operator', 'Executive', 'Supplier'];
+const VALID_ROLES = ['Superadmin', 'Executive', 'Admin', 'Purchase Officer', 'Operator', 'Supplier', 'Staff', 'Employee'];
 const CACHE_DURATION = 60 * 1000;
 const TAMPER_POLL_INTERVAL = 30 * 1000;
 const OFFLINE_RETRY_DELAY = 5000;
@@ -668,7 +668,11 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
 
     // activity listeners and inactivity checker
     useEffect(() => {
-        if (guardState !== 'authorized') return;
+        const isPublicRoute = 
+            pathname === '/scAuth' || 
+            pathname?.startsWith('/supplier-portal') || 
+            pathname?.startsWith('/suppliers_page');
+        if (isPublicRoute || guardState !== 'authorized') return;
 
         const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'];
         const handleEvent = () => recordUserActivity();
@@ -842,6 +846,12 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         }, 1000);
     }, [getSessionToken, deactivateSession, clearSessionData, router]);
     const shouldSkipCheck = useCallback(() => {
+        const isPublicRoute = 
+            pathname === '/scAuth' || 
+            pathname?.startsWith('/supplier-portal') || 
+            pathname?.startsWith('/suppliers_page');
+        if (isPublicRoute)
+            return true;
         const now = Date.now();
         const lastCheck = lastCheckRef.current;
         const isSamePage = prevPathRef.current === pathname;
@@ -876,6 +886,16 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     // main session check
     useEffect(() => {
         const checkSession = async () => {
+            const isPublicRoute = 
+                pathname === '/scAuth' || 
+                pathname?.startsWith('/supplier-portal') || 
+                pathname?.startsWith('/suppliers_page');
+
+            if (isPublicRoute) {
+                setGuardState('authorized');
+                return;
+            }
+
             if (!navigator.onLine) {
                 setGuardState('offline');
                 return;
@@ -885,12 +905,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
 
             const sessionToken = getSessionToken();
             if (!sessionToken) {
-                if (pathname !== '/scAuth') {
-                    await handleInvalidSession('No session found. Please login again.', true);
-                }
-                else {
-                    setGuardState('authorized');
-                }
+                await handleInvalidSession('No session found. Please login again.', true);
                 return;
             }
             if (shouldSkipCheck()) {
@@ -1000,6 +1015,15 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
 
     // Synchronous immediate permission pre-check whenever route/role changes
     useEffect(() => {
+        const isPublicRoute = 
+            pathname === '/scAuth' || 
+            pathname?.startsWith('/supplier-portal') || 
+            pathname?.startsWith('/suppliers_page');
+        if (isPublicRoute) {
+            setGuardState('authorized');
+            return;
+        }
+
         const currentRole = user.getRole();
         if (currentRole && VALID_ROLES.includes(currentRole)) {
             if (!settingsService.canAccessPage(currentRole, pathname, requiredRole)) {
@@ -1012,6 +1036,12 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
 
     // Live settings subscriber to instantly re-check permissions when altered
     useEffect(() => {
+        const isPublicRoute = 
+            pathname === '/scAuth' || 
+            pathname?.startsWith('/supplier-portal') || 
+            pathname?.startsWith('/suppliers_page');
+        if (isPublicRoute) return;
+
         const unsubscribe = settingsService.subscribe(() => {
             const currentUserRole = user.getRole();
             if (currentUserRole && VALID_ROLES.includes(currentUserRole)) {
@@ -1145,6 +1175,16 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             setGuardState('checking');
         }
     }, [guardState]);
+
+    const isPublicRoute = 
+        pathname === '/scAuth' || 
+        pathname?.startsWith('/supplier-portal') || 
+        pathname?.startsWith('/suppliers_page');
+
+    if (isPublicRoute) {
+        return <>{children}</>;
+    }
+
     if (guardState === 'offline') {
         return <OfflinePage />;
     }

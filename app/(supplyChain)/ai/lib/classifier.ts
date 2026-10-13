@@ -66,11 +66,8 @@ export async function classifyIntent(query: string): Promise<ClassificationResul
     );
 
     if ((isMathQuery || isObviousOutOfScope) &&
-        !lowerQuery.includes('parcel') &&
         !lowerQuery.includes('inventory') &&
-        !lowerQuery.includes('warehouse') &&
-        !lowerQuery.includes('shipment') &&
-        !lowerQuery.includes('courier')) {
+        !lowerQuery.includes('warehouse')) {
         return {
             is_related: false,
             resources: [],
@@ -121,13 +118,14 @@ You are an intent classifier for a Warehouse Management System.
 **YOUR TASK:** Determine if the user's question is related to warehouse/freight management.
 
 **RELATED TOPICS (always related):**
-- Parcels, shipments, deliveries, couriers
-- Inventory, stock, items, supplies, low stock
-- Warehouse operations, receiving, sorting, dispatch, dwell times
-- Suppliers, procurement, purchase orders, purchase requests, requisitions
+- Inventory, stock, items, supplies, low stock, stock movements, stock ins, stock outs, adjustments
+- Warehouse operations, receiving, storage locations, sorting, dispatch, dwell times
+- Warehouse damages, defective items, damage incident reports, supplier returns, replacement claims
+- Suppliers, procurement, purchase orders, purchase requests, requisitions, vendor quotations, supplier meetings
+- OCR receipt verification, document tracking, invoice matching
 - Executive overview, executive KPIs, macro business metrics, executive financial summaries
 - Forecasting, predictive demand, algorithmic demand models
-- User activities, audit logs, active sessions, system settings
+- User activities, audit logs, active sessions, blocked devices, reinstatement appeals, system settings
 - Performance metrics, tracking, status
 - Daily operations, peak hours, sorting areas
 - Questions about the system itself
@@ -199,11 +197,12 @@ function classifyWithKeywords(query: string): ClassificationResult {
     ];
 
     const isOutOfScope = outOfScopePatterns.some(pattern => lower.includes(pattern));
-    const isWarehouseRelated = lower.includes('parcel') || lower.includes('inventory') ||
-        lower.includes('warehouse') || lower.includes('shipment') ||
-        lower.includes('courier') || lower.includes('stock') ||
+    const isWarehouseRelated = lower.includes('inventory') ||
+        lower.includes('warehouse') || lower.includes('stock') ||
         lower.includes('receiving') || lower.includes('dispatch') ||
-        lower.includes('sorting') || lower.includes('supplier');
+        lower.includes('sorting') || lower.includes('supplier') ||
+        lower.includes('damage') || lower.includes('defect') ||
+        lower.includes('return') || lower.includes('movement');
 
     if (isOutOfScope && !isWarehouseRelated) {
         return {
@@ -223,13 +222,16 @@ function classifyWithKeywords(query: string): ClassificationResult {
     );
 
     const allKeywords = [...knowledgeKeywords, ...actionKeywords,
-        'parcel', 'parcels', 'shipment', 'shipments', 'delivery', 'courier',
         'warehouse', 'warehousing', 'inventory', 'stock', 'supplier', 'suppliers',
+        'stock movement', 'stock movements', 'stock in', 'stock out', 'adjustment',
+        'damage', 'damages', 'damage incident', 'defect', 'defects', 'return', 'returns', 'replacement',
         'receiving', 'sorting', 'dispatch', 'inbound', 'outgoing',
         'process', 'procedure', 'operation', 'daily', 'flow',
         'procurement', 'purchase', 'purchase order', 'purchase request', 'requisition', 'vendor', 'tracking', 'status',
+        'quotation', 'quotations', 'quote', 'meeting', 'meetings', 'ocr', 'verification', 'receipt',
         'executive', 'overview', 'kpi', 'kpis', 'metric', 'metrics', 'forecast', 'forecasting',
         'user activity', 'activity', 'audit', 'settings', 'gallery', 'trash',
+        'blocked device', 'blocked devices', 'appeal', 'appeals', 'sessions',
         'supply chain', 'logistics', 'freight', 'container'
     ];
 
@@ -280,18 +282,10 @@ function classifyWithKeywords(query: string): ClassificationResult {
             }
 
             if (resources.length === 0) {
-                if (lower.includes('parcel') || lower.includes('shipment')) {
-                    resources.push({ type: 'tool', name: 'get_parcels' });
-                }
                 if (lower.includes('stock') || lower.includes('inventory')) {
                     resources.push({ type: 'tool', name: 'get_inventory' });
                 }
-                if (lower.includes('courier') || lower.includes('performance')) {
-                    resources.push({ type: 'tool', name: 'get_courier_performance' });
-                }
-                if (lower.includes('receiving') || lower.includes('queue')) {
-                    resources.push({ type: 'tool', name: 'get_receiving_queue' });
-                }
+
                 if (lower.includes('supplier')) {
                     resources.push({ type: 'tool', name: 'get_suppliers' });
                 }

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { DEFAULT_ALLOWED_DAYS, DEFAULT_TIME_START, DEFAULT_TIME_END } from '../../../lib/services/userAccessService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
@@ -75,57 +76,27 @@ export async function GET(request: Request) {
             }
         }
 
-        // Resolve user information
+        // Resolve user information directly from users table
         let userId = session.user_id;
-        let userRole = 'Employee';
-        let userDisplayName = session.hr_employee_name || '';
+        let userRole = 'Operator';
+        let userDisplayName = session.hr_employee_name || 'User';
         let userEmail = session.email || '';
         let userDepartment = '';
 
+        let userQuery = supabaseAdmin.from('users').select('*');
         if (userId) {
-            const { data: userData } = await supabaseAdmin
-                .from('users')
-                .select('*')
-                .eq('id', userId)
-                .maybeSingle();
-
-            if (userData) {
-                userRole = userData.role || userRole;
-                userDisplayName = userData.display_name || userData.name || userDisplayName;
-                userEmail = userData.email || userEmail;
-                userDepartment = userData.department || '';
-            }
+            userQuery = userQuery.eq('id', userId);
+        } else if (session.email) {
+            userQuery = userQuery.ilike('email', session.email);
         }
 
-        if (!userId || userRole === 'Employee') {
-            const { data: hrData } = await supabaseAdmin
-                .from('mock_employees')
-                .select('*')
-                .eq('email', session.email)
-                .maybeSingle();
-
-            if (hrData) {
-                const rawRole = (hrData.role || hrData.position || '').trim();
-                if (/admin/i.test(rawRole)) userRole = 'Admin';
-                else if (/manager|office-in-charge|project coordinator/i.test(rawRole)) userRole = 'Manager';
-                else if (/operator|appraiser/i.test(rawRole)) userRole = 'Operator';
-                else if (/executive/i.test(rawRole)) userRole = 'Executive';
-                else userRole = hrData.role || userRole;
-
-                userDisplayName = userDisplayName || hrData.name || hrData.full_name || '';
-                userDepartment = userDepartment || hrData.department || '';
-            } else {
-                const { data: supData } = await supabaseAdmin
-                    .from('suppliers_account')
-                    .select('*')
-                    .eq('email', session.email)
-                    .maybeSingle();
-
-                if (supData) {
-                    userRole = 'Supplier';
-                    userDisplayName = userDisplayName || supData.supplier_name || supData.contact_person || '';
-                }
-            }
+        const { data: userData } = await userQuery.maybeSingle();
+        if (userData) {
+            userId = userData.id;
+            userRole = userData.role || userRole;
+            userDisplayName = userData.display_name || userData.name || userDisplayName;
+            userEmail = userData.email || userEmail;
+            userDepartment = userData.department || '';
         }
 
         // calculate remaining time
@@ -149,9 +120,9 @@ export async function GET(request: Request) {
                 id: session.id,
                 email: session.email,
                 hr_employee_name: session.hr_employee_name,
-                allowed_time_start: session.allowed_time_start || '07:00',
-                allowed_time_end: session.allowed_time_end || '17:00',
-                allowed_days: session.allowed_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                allowed_time_start: session.allowed_time_start || DEFAULT_TIME_START,
+                allowed_time_end: session.allowed_time_end || DEFAULT_TIME_END,
+                allowed_days: session.allowed_days || DEFAULT_ALLOWED_DAYS,
                 is_allow: session.is_allow !== null && session.is_allow !== undefined ? Boolean(session.is_allow) : true,
             },
             user: {
@@ -160,9 +131,9 @@ export async function GET(request: Request) {
                 email: userEmail,
                 role: userRole,
                 department: userDepartment,
-                allowed_time_start: session.allowed_time_start || '07:00',
-                allowed_time_end: session.allowed_time_end || '17:00',
-                allowed_days: session.allowed_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                allowed_time_start: session.allowed_time_start || DEFAULT_TIME_START,
+                allowed_time_end: session.allowed_time_end || DEFAULT_TIME_END,
+                allowed_days: session.allowed_days || DEFAULT_ALLOWED_DAYS,
                 is_allow: session.is_allow !== null && session.is_allow !== undefined ? Boolean(session.is_allow) : true,
             }
         });

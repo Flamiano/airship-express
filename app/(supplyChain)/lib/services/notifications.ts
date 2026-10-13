@@ -489,7 +489,7 @@ export async function createPurchaseRequestApprovedNotification(params: {
         message: `Your purchase request ${params.requestNumber} has been approved by ${params.creatorName}`,
         type: 'purchase_request',
         link: `/purchase-requests/${params.poRequestId}`,
-        role: ['Admin', 'Executive', 'Manager', 'Employee'],
+        role: ['Admin', 'Executive', 'Purchase Officer', 'Employee'],
         poRequestId: params.poRequestId,
     });
 }
@@ -510,7 +510,7 @@ export async function createPurchaseRequestRejectedNotification(params: {
         message: `Your purchase request ${params.requestNumber} was rejected by ${params.creatorName}${params.reason ? `: ${params.reason}` : ''}`,
         type: 'purchase_request',
         link: `/purchase-requests/${params.poRequestId}`,
-        role: ['Admin', 'Executive', 'Manager', 'Employee'],
+        role: ['Admin', 'Executive', 'Purchase Officer', 'Employee'],
         poRequestId: params.poRequestId,
     });
 }

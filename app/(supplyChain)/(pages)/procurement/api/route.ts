@@ -1,9 +1,21 @@
 //app/(supplyChain)/procurement/api/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../lib/services/client/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { sanitizeText, sanitizeNumber } from '../../../components/global/sanitize';
 import { headers } from 'next/headers';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 // types
 interface PurchaseRequestItem {
@@ -307,16 +319,20 @@ export async function POST(request: NextRequest) {
         const sanitizedRequestedBy = sanitizeText(requested_by);
         const sanitizedReason = sanitizeText(reason);
         const sanitizedItems = items.map((item: any) => {
+            const itemId = item.id || item.item_id || crypto.randomUUID();
             const name = sanitizeText(item.name);
             const quantity = sanitizeNumber(item.quantity) || 1;
             const unit_price = Number(item.unit_price ?? item.price ?? 0);
             const total = quantity * unit_price;
             return {
+                id: itemId,
+                item_id: itemId,
                 name,
                 quantity,
                 unit_price,
                 price: unit_price,
                 total,
+                status: item.status || 'Pending',
             };
         });
 

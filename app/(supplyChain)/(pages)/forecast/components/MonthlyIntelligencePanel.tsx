@@ -24,7 +24,6 @@ interface MonthlyMetrics {
         peakDay: { date: string; count: number };
         busiestDayOfWeek: { day: string; count: number };
         busiestHourWindow: { timeRange: string; count: number };
-        courierCounts: Record<string, number>;
         statusCounts: Record<string, number>;
         projectedNextMonthVolume: number;
     };
@@ -106,7 +105,7 @@ const SCOPE_OPTIONS = [
 
 const QUICK_PROMPTS = [
     { label: "Complete System Forecast", query: "Provide a complete monthly operational intelligence audit and predictive forecast.", scope: "all" },
-    { label: "Parcels Peak & Busiest Hours", query: "What was our peak parcel day, busiest day of week, peak hours, and courier breakdown?", scope: "parcels" },
+    { label: "Parcels Peak & Busiest Hours", query: "What was our peak parcel day, busiest day of week, peak hours, and status breakdown?", scope: "parcels" },
     { label: "Fast-Depleting Equipment Stocks", query: "Which equipment stocks became low much faster and are at risk of stockout?", scope: "equipment" },
     { label: "Untouched & Stagnant Goods", query: "Which items have almost not been touched or are held in long-term storage?", scope: "equipment" },
     { label: "Procurement & PO Spend Outlay", query: "Summarize purchase orders made, total spend, suppliers, and next-month budget outlook.", scope: "procurement" },
@@ -1044,22 +1043,22 @@ export default function MonthlyIntelligencePanel() {
             {/* Content Display: Tab 3 - System Stats Breakdown */}
             {activeTab === "metrics-grid" && metrics && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                    {/* Courier Distribution */}
+                    {/* Status Distribution */}
                     <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
                         <div className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center justify-between">
-                            <span>Courier Share in {metrics.monthName}</span>
-                            <i className="fa-solid fa-truck-fast text-pink-500" />
+                            <span>Status Share in {metrics.monthName}</span>
+                            <i className="fa-solid fa-boxes-stacked text-pink-500" />
                         </div>
                         <div className="space-y-2 pt-1">
-                            {Object.entries(metrics.parcels.courierCounts).length === 0 ? (
+                            {Object.entries(metrics.parcels.statusCounts || {}).length === 0 ? (
                                 <div className="text-slate-400">No parcel records for this month.</div>
                             ) : (
-                                Object.entries(metrics.parcels.courierCounts).map(([courier, cnt]) => {
+                                Object.entries(metrics.parcels.statusCounts || {}).map(([status, cnt]) => {
                                     const pct = metrics.parcels.total > 0 ? Math.round((cnt / metrics.parcels.total) * 100) : 0;
                                     return (
-                                        <div key={courier} className="space-y-1">
+                                        <div key={status} className="space-y-1">
                                             <div className="flex justify-between text-[11px]">
-                                                <span className="font-medium text-slate-700 dark:text-slate-300">{courier}</span>
+                                                <span className="font-medium text-slate-700 dark:text-slate-300 capitalize">{status.replace(/_/g, ' ')}</span>
                                                 <span className="text-slate-500">{cnt} ({pct}%)</span>
                                             </div>
                                             <div className="w-full bg-[#f0f3f8] dark:bg-[#191a24] border border-slate-200/60 dark:border-slate-800 h-2 rounded-full overflow-hidden shadow-[inset_1px_1px_2px_rgba(0,0,0,0.15)]">

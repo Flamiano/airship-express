@@ -11,7 +11,7 @@ interface SuppliersHeaderProps {
     selectedCount: number;
     totalUnreadMessages?: number;
     onBulkDelete: () => void;
-    onNewSupplier: () => void;
+    onNewSupplier?: () => void;
 }
 
 export function SuppliersHeader({
@@ -20,7 +20,6 @@ export function SuppliersHeader({
     selectedCount,
     totalUnreadMessages = 0,
     onBulkDelete,
-    onNewSupplier,
 }: SuppliersHeaderProps) {
     return (
         <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-3.5">
@@ -62,10 +61,6 @@ export function SuppliersHeader({
                         <span>Delete Selected ({selectedCount})</span>
                     </AppButton>
                 )}
-                <AppButton type="button" variant="primary" size="md" onClick={onNewSupplier}>
-                    <i className="fas fa-plus text-xs" />
-                    <span>New Supplier</span>
-                </AppButton>
             </div>
         </div>
     );

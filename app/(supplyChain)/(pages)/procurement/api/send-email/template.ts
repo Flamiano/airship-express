@@ -4,8 +4,17 @@ export function buildEmailTemplate({
     poNumber,
     supplierName,
     items,
+    subtotal,
+    discount = 0,
+    discountType = 'fixed',
+    shippingFee = 0,
+    taxRate = 0,
+    taxAmount = 0,
     totalAmount,
     deliveryDate,
+    deliveryLocation,
+    paymentTerms,
+    termsAndConditions,
     notes,
     confirmLink,
     customBodyText,
@@ -16,9 +25,18 @@ export function buildEmailTemplate({
 }: {
     poNumber: string;
     supplierName: string;
-    items: Array<{ name: string; quantity: number; unit_price: number; total: number }>;
+    items: Array<{ name: string; quantity: number; unit_price: number; total: number; unit?: string }>;
+    subtotal?: number;
+    discount?: number;
+    discountType?: string;
+    shippingFee?: number;
+    taxRate?: number;
+    taxAmount?: number;
     totalAmount: number;
     deliveryDate: string;
+    deliveryLocation?: string;
+    paymentTerms?: string;
+    termsAndConditions?: string;
     notes: string;
     confirmLink: string;
     customBodyText?: string;
@@ -28,12 +46,25 @@ export function buildEmailTemplate({
     senderEmail?: string;
 }) {
     const resolvedPosition = senderPosition || senderRole || "Procurement Manager";
+    const computedSubtotal = subtotal !== undefined ? subtotal : items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+    const hasDiscount = Boolean(discount && discount > 0);
+    const hasShippingFee = Boolean(shippingFee && shippingFee > 0);
+    const hasTax = Boolean(taxAmount && taxAmount > 0);
+
     const itemsHtml = items.map(item => `
         <tr>
-            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-size: 13px; font-weight: 500;">${item.name}</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; text-align: center; color: #475569; font-size: 13px; font-weight: 600;">${item.quantity}</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">₱${(item.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #0f172a; font-weight: 700; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">₱${item.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-size: 13px; font-weight: 500;">
+                ${item.name}
+            </td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; text-align: center; color: #475569; font-size: 13px; font-weight: 600;">
+                ${item.quantity} ${item.unit ? `<span style="font-size: 11px; color: #94a3b8; font-weight: normal;">${item.unit}</span>` : ''}
+            </td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                ₱${(item.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #0f172a; font-weight: 700; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                ₱${item.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
         </tr>
     `).join('');
 
@@ -66,7 +97,7 @@ export function buildEmailTemplate({
             <td align="center">
                 
                 <!-- Main Card Container -->
-                <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="max-width: 580px; width: 100%; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
                     
                     <!-- Clean Minimalist Header -->
                     <tr>
@@ -78,7 +109,7 @@ export function buildEmailTemplate({
                                             Airship<span style="color: #ec4899;">Express</span>
                                         </div>
                                         <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-top: 2px;">
-                                            Procurement Department
+                                            Supply Chain & Procurement Department
                                         </div>
                                     </td>
                                     <td valign="top" align="right">
@@ -104,11 +135,11 @@ export function buildEmailTemplate({
                             ${bodyContentHtml}
 
                             <!-- Itemized Breakdown Table -->
-                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #f1f5f9; border-radius: 8px; overflow: hidden;">
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin-bottom: 16px; border: 1px solid #f1f5f9; border-radius: 8px; overflow: hidden;">
                                 <thead>
                                     <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
                                         <th align="left" style="padding: 10px 14px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Item Description</th>
-                                        <th align="center" style="padding: 10px 14px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 50px;">Qty</th>
+                                        <th align="center" style="padding: 10px 14px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 55px;">Qty</th>
                                         <th align="right" style="padding: 10px 14px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 100px;">Unit Price</th>
                                         <th align="right" style="padding: 10px 14px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 100px;">Total</th>
                                     </tr>
@@ -116,26 +147,91 @@ export function buildEmailTemplate({
                                 <tbody>
                                     ${itemsHtml}
                                     
+                                    <!-- Subtotal Row -->
+                                    <tr style="background-color: #fafbfc;">
+                                        <td colspan="3" align="right" style="padding: 8px 14px; font-size: 12px; font-weight: 600; color: #64748b; border-top: 1px solid #e2e8f0;">
+                                            Subtotal:
+                                        </td>
+                                        <td align="right" style="padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: #334155; border-top: 1px solid #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                                            ₱${computedSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                    </tr>
+
+                                    ${hasDiscount ? `
+                                    <tr style="background-color: #fafbfc;">
+                                        <td colspan="3" align="right" style="padding: 6px 14px; font-size: 12px; font-weight: 600; color: #16a34a;">
+                                            Discount:
+                                        </td>
+                                        <td align="right" style="padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: #16a34a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                                            -₱${discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                    </tr>
+                                    ` : ''}
+
+                                    ${hasShippingFee ? `
+                                    <tr style="background-color: #fafbfc;">
+                                        <td colspan="3" align="right" style="padding: 6px 14px; font-size: 12px; font-weight: 600; color: #64748b;">
+                                            Shipping Fee:
+                                        </td>
+                                        <td align="right" style="padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: #334155; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                                            +₱${shippingFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                    </tr>
+                                    ` : ''}
+
+                                    ${hasTax ? `
+                                    <tr style="background-color: #fafbfc;">
+                                        <td colspan="3" align="right" style="padding: 6px 14px; font-size: 12px; font-weight: 600; color: #64748b;">
+                                            Tax / VAT (${taxRate || 0}%):
+                                        </td>
+                                        <td align="right" style="padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: #334155; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                                            +₱${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                    </tr>
+                                    ` : ''}
+
                                     <!-- Total Summary Row -->
                                     <tr style="background-color: #fafbfc;">
-                                        <td colspan="3" align="right" style="padding: 12px 14px; font-size: 13px; font-weight: 700; color: #475569; border-top: 2px solid #e2e8f0;">
+                                        <td colspan="3" align="right" style="padding: 12px 14px; font-size: 13px; font-weight: 700; color: #0f172a; border-top: 2px solid #e2e8f0;">
                                             Grand Total:
                                         </td>
-                                        <td align="right" style="padding: 12px 14px; font-size: 15px; font-weight: 800; color: #ec4899; border-top: 2px solid #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+                                        <td align="right" style="padding: 12px 14px; font-size: 16px; font-weight: 800; color: #ec4899; border-top: 2px solid #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
                                             ₱${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
 
-                            <!-- Metadata Banner -->
-                            <div style="background-color: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12.5px; color: #64748b;">
-                                <div style="margin-bottom: ${notes ? '6px' : '0'};">
-                                    <strong style="color: #334155;">Expected Delivery:</strong> ${deliveryDate || 'Standard Timeline'}
+                            <!-- Metadata & Terms Banner -->
+                            <div style="background-color: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px; font-size: 12.5px; color: #64748b; line-height: 1.6;">
+                                <div style="display: table; width: 100%;">
+                                    <div style="display: table-row;">
+                                        <div style="display: table-cell; width: 50%; padding-bottom: 6px;">
+                                            <strong style="color: #334155;">Expected Delivery:</strong><br/>
+                                            ${deliveryDate || 'Standard Timeline'}
+                                        </div>
+                                        <div style="display: table-cell; width: 50%; padding-bottom: 6px;">
+                                            <strong style="color: #334155;">Payment Terms:</strong><br/>
+                                            ${paymentTerms || 'Net 30 Days'}
+                                        </div>
+                                    </div>
+                                    ${deliveryLocation ? `
+                                    <div style="display: table-row;">
+                                        <div style="display: table-cell; padding-top: 6px; border-top: 1px dashed #e2e8f0;" colspan="2">
+                                            <strong style="color: #334155;">Delivery Destination:</strong><br/>
+                                            ${deliveryLocation}
+                                        </div>
+                                    </div>
+                                    ` : ''}
                                 </div>
                                 ${notes ? `
-                                    <div style="border-top: 1px dashed #e2e8f0; padding-top: 6px;">
-                                        <strong style="color: #334155;">Notes / Instructions:</strong> ${notes}
+                                    <div style="border-top: 1px dashed #e2e8f0; padding-top: 8px; margin-top: 8px;">
+                                        <strong style="color: #334155;">Notes / Guidelines:</strong> ${notes}
+                                    </div>
+                                ` : ''}
+                                ${termsAndConditions ? `
+                                    <div style="border-top: 1px dashed #e2e8f0; padding-top: 8px; margin-top: 8px; font-size: 11.5px; color: #94a3b8;">
+                                        <strong style="color: #475569;">Commercial Terms:</strong> ${termsAndConditions}
                                     </div>
                                 ` : ''}
                             </div>

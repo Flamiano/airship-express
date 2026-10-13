@@ -7,17 +7,20 @@ import { DocumentsHeader } from './components/common/DocumentsHeader';
 import { DocumentsStatsCards } from './components/common/DocumentsStatsCards';
 import { CategoryDock } from './components/common/CategoryDock';
 import { DocumentsTable } from './components/tables/DocumentsTable';
-import { ActivityHistoryTable } from './components/tables/ActivityHistoryTable';
+import { SupplierCardsGrid } from './components/suppliers/SupplierCardsGrid';
+import { SupplierDocumentsGallery } from './components/gallery/SupplierDocumentsGallery';
 import { DocumentUploadModal } from './components/modals/DocumentUploadModal';
 import { DocumentEditModal } from './components/modals/DocumentEditModal';
 import { DocumentPreviewModal } from './components/modals/DocumentPreviewModal';
 import { DocumentAttachFileModal } from './components/modals/DocumentAttachFileModal';
+import { SearchDocumentWithPhotoModal } from './components/modals/SearchDocumentWithPhotoModal';
 
 export default function DocumentsContentWrapper() {
+    const [isPhotoSearchModalOpen, setIsPhotoSearchModalOpen] = React.useState(false);
     const {
         documents,
         suppliers,
-        activities,
+        purchaseOrders,
         loading,
         refreshing,
         searchTerm,
@@ -30,6 +33,10 @@ export default function DocumentsContentWrapper() {
         setCategoryFilter,
         supplierFilter,
         setSupplierFilter,
+        selectedSupplier,
+        handleSelectSupplier,
+        galleryViewMode,
+        setGalleryViewMode,
         dateFrom,
         setDateFrom,
         dateTo,
@@ -64,26 +71,12 @@ export default function DocumentsContentWrapper() {
         editPreviewUrl,
         setEditPreviewUrl,
         editPreviewLoading,
-        activityFilter,
-        setActivityFilter,
-        activitySearch,
-        setActivitySearch,
-        activityPage,
-        setActivityPage,
-        totalActivities,
-        activitiesPerPage,
         userName,
         userEmail,
         userRole,
         archiveCount,
-        activityDateFrom,
-        setActivityDateFrom,
-        activityDateTo,
-        setActivityDateTo,
         selectedDocIds,
         setSelectedDocIds,
-        selectedActivityIds,
-        setSelectedActivityIds,
         isDownloading,
         isBulkDeleting,
         totalFiles,
@@ -94,7 +87,6 @@ export default function DocumentsContentWrapper() {
         handleDelete,
         downloadSelectedFiles,
         deleteSelectedDocuments,
-        deleteSelectedActivities,
         handleUpload,
         handleConfirmForceUpload,
         handleUpdate,
@@ -106,7 +98,6 @@ export default function DocumentsContentWrapper() {
         clearAllSelectedFiles,
         maxFilesPerTransaction,
         toggleSelectAllDocuments,
-        toggleSelectAllActivities,
     } = useDocuments();
 
     return (
@@ -126,125 +117,87 @@ export default function DocumentsContentWrapper() {
                 archiveCount={archiveCount}
             />
 
-            {/* category & document type dock filter */}
-            <CategoryDock
-                categoryFilter={categoryFilter}
-                typeFilter={typeFilter}
-                totalFiles={totalFiles}
-                totalPhotos={totalPhotos}
-                documents={documents}
-                onSelectCategory={(cat) => {
-                    setCategoryFilter(cat);
-                    setTypeFilter("");
-                    setCurrentPage(1);
-                }}
-                onSelectType={(type) => {
-                    setTypeFilter(typeFilter === type ? "" : type);
-                    setCategoryFilter("");
-                    setCurrentPage(1);
-                }}
-            />
+            {/* main view: initial supplier cards or selected supplier gallery */}
+            {!selectedSupplier ? (
+                <SupplierCardsGrid
+                    suppliers={suppliers}
+                    loading={loading}
+                    totalFiles={totalFiles}
+                    totalPhotos={totalPhotos}
+                    onSelectSupplier={handleSelectSupplier}
+                    onOpenUpload={() => setIsUploadModalOpen(true)}
+                    onOpenPhotoSearch={() => setIsPhotoSearchModalOpen(true)}
+                />
+            ) : (
+                <SupplierDocumentsGallery
+                    supplier={selectedSupplier}
+                    suppliers={suppliers}
+                    documents={documents}
+                    loading={loading}
+                    refreshing={refreshing}
+                    viewMode={galleryViewMode}
+                    onViewModeChange={setGalleryViewMode}
+                    onBack={() => handleSelectSupplier(null)}
+                    onOpenUpload={() => setIsUploadModalOpen(true)}
+                    onOpenPhotoSearch={() => setIsPhotoSearchModalOpen(true)}
+                    onViewDocument={handleViewDocument}
+                    onEditDocument={handleEditDocument}
+                    onDownloadDocument={downloadFile}
+                    onDeleteDocument={handleDelete}
+                    onAttachFile={openAttachModal}
+                    searchTerm={searchTerm}
+                    onSearchChange={setSearchTerm}
+                    typeFilter={typeFilter}
+                    onTypeFilterChange={(val) => {
+                        setTypeFilter(val);
+                        setCurrentPage(1);
+                    }}
+                    categoryFilter={categoryFilter}
+                    onCategoryFilterChange={(val) => {
+                        setCategoryFilter(val);
+                        setCurrentPage(1);
+                    }}
+                    extensionFilter={extensionFilter}
+                    onExtensionFilterChange={(val) => {
+                        setExtensionFilter(val);
+                        setCurrentPage(1);
+                    }}
+                    dateFrom={dateFrom}
+                    onDateFromChange={(val) => {
+                        setDateFrom(val);
+                        setCurrentPage(1);
+                    }}
+                    dateTo={dateTo}
+                    onDateToChange={(val) => {
+                        setDateTo(val);
+                        setCurrentPage(1);
+                    }}
+                    onClearFilters={clearAllFilters}
+                    onRefresh={() => fetchDocuments(false)}
+                    selectedDocIds={selectedDocIds}
+                    onToggleSelectDoc={(id) => {
+                        const newSelected = new Set(selectedDocIds);
+                        if (newSelected.has(id)) {
+                            newSelected.delete(id);
+                        } else {
+                            newSelected.add(id);
+                        }
+                        setSelectedDocIds(newSelected);
+                    }}
+                    onToggleSelectAll={toggleSelectAllDocuments}
+                    isDownloading={isDownloading}
+                    isBulkDeleting={isBulkDeleting}
+                    onDownloadSelected={downloadSelectedFiles}
+                    onDeleteSelected={deleteSelectedDocuments}
+                    onClearSelection={() => setSelectedDocIds(new Set())}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                />
+            )}
 
-            {/* documents table */}
-            <DocumentsTable
-                documents={documents}
-                loading={loading}
-                refreshing={refreshing}
-                suppliers={suppliers}
-                searchTerm={searchTerm}
-                onSearchChange={setSearchTerm}
-                typeFilter={typeFilter}
-                onTypeFilterChange={(val) => {
-                    setTypeFilter(val);
-                    setCurrentPage(1);
-                }}
-                extensionFilter={extensionFilter}
-                onExtensionFilterChange={(val) => {
-                    setExtensionFilter(val);
-                    setCurrentPage(1);
-                }}
-                supplierFilter={supplierFilter}
-                onSupplierFilterChange={(val) => {
-                    setSupplierFilter(val);
-                    setCurrentPage(1);
-                }}
-                dateFrom={dateFrom}
-                onDateFromChange={(val) => {
-                    setDateFrom(val);
-                    setCurrentPage(1);
-                }}
-                dateTo={dateTo}
-                onDateToChange={(val) => {
-                    setDateTo(val);
-                    setCurrentPage(1);
-                }}
-                onClearFilters={clearAllFilters}
-                onRefresh={() => fetchDocuments(false)}
-                selectedDocIds={selectedDocIds}
-                onToggleSelectDoc={(id) => {
-                    const newSelected = new Set(selectedDocIds);
-                    if (newSelected.has(id)) {
-                        newSelected.delete(id);
-                    } else {
-                        newSelected.add(id);
-                    }
-                    setSelectedDocIds(newSelected);
-                }}
-                onToggleSelectAll={toggleSelectAllDocuments}
-                isDownloading={isDownloading}
-                isBulkDeleting={isBulkDeleting}
-                onDownloadSelected={downloadSelectedFiles}
-                onDeleteSelected={deleteSelectedDocuments}
-                onClearSelection={() => setSelectedDocIds(new Set())}
-                onViewDocument={handleViewDocument}
-                onEditDocument={handleEditDocument}
-                onDownloadDocument={downloadFile}
-                onDeleteDocument={handleDelete}
-                onAttachFile={openAttachModal}
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalItems={totalItems}
-                itemsPerPage={itemsPerPage}
-                onPageChange={setCurrentPage}
-            />
-
-            {/* activity history table */}
-            <ActivityHistoryTable
-                activities={activities}
-                activitySearch={activitySearch}
-                onActivitySearchChange={setActivitySearch}
-                activityFilter={activityFilter}
-                onActivityFilterChange={setActivityFilter}
-                activityDateFrom={activityDateFrom}
-                onActivityDateFromChange={setActivityDateFrom}
-                activityDateTo={activityDateTo}
-                onActivityDateToChange={setActivityDateTo}
-                onResetFilters={() => {
-                    setActivitySearch("");
-                    setActivityFilter("");
-                    setActivityDateFrom("");
-                    setActivityDateTo("");
-                    setActivityPage(1);
-                    setSelectedActivityIds(new Set());
-                }}
-                selectedActivityIds={selectedActivityIds}
-                onToggleSelectActivity={(id) => {
-                    const newSelected = new Set(selectedActivityIds);
-                    if (newSelected.has(id)) {
-                        newSelected.delete(id);
-                    } else {
-                        newSelected.add(id);
-                    }
-                    setSelectedActivityIds(newSelected);
-                }}
-                onToggleSelectAll={toggleSelectAllActivities}
-                onDeleteSelected={deleteSelectedActivities}
-                onClearSelection={() => setSelectedActivityIds(new Set())}
-                activityPage={activityPage}
-                totalActivities={totalActivities}
-                activitiesPerPage={activitiesPerPage}
-                onPageChange={setActivityPage}
-            />
 
             {/* edit modal */}
             <DocumentEditModal
@@ -253,6 +206,7 @@ export default function DocumentsContentWrapper() {
                 editPreviewLoading={editPreviewLoading}
                 editPreviewUrl={editPreviewUrl}
                 suppliers={suppliers}
+                purchaseOrders={purchaseOrders}
                 onClose={() => {
                     setIsEditModalOpen(false);
                     setEditingDoc(null);
@@ -283,9 +237,11 @@ export default function DocumentsContentWrapper() {
                 uploadProgress={uploadProgress}
                 selectedFiles={selectedFiles}
                 suppliers={suppliers}
+                purchaseOrders={purchaseOrders}
                 userName={userName}
                 userRole={userRole}
                 maxFiles={maxFilesPerTransaction}
+                defaultSupplier={selectedSupplier && selectedSupplier.id !== 0 ? selectedSupplier.name : undefined}
                 dropZoneRef={dropZoneRef}
                 onClose={() => {
                     setIsUploadModalOpen(false);
@@ -309,6 +265,23 @@ export default function DocumentsContentWrapper() {
                 }}
                 onAttachSuccess={async () => {
                     await fetchDocuments(false);
+                }}
+            />
+
+            {/* search document with photo modal */}
+            <SearchDocumentWithPhotoModal
+                isOpen={isPhotoSearchModalOpen}
+                onClose={() => setIsPhotoSearchModalOpen(false)}
+                onViewDocument={handleViewDocument}
+                onApplySearchTerm={(term) => {
+                    setSearchTerm(term);
+                    setCurrentPage(1);
+                }}
+                onSelectSupplier={(supplierName) => {
+                    const found = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase());
+                    if (found) {
+                        handleSelectSupplier(found);
+                    }
                 }}
             />
         </div>

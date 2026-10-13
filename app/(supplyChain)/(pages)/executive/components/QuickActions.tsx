@@ -30,8 +30,8 @@ export default function QuickActions() {
                             active:shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.4),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)]
                             active:scale-[0.98] transition-all cursor-pointer"
                         >
-                            <i className="fas fa-scan text-pink-500 dark:text-pink-400 text-xs"></i>
-                            <span>Scan Parcel</span>
+                            <i className="fas fa-boxes-stacked text-pink-500 dark:text-pink-400 text-xs"></i>
+                            <span>Receive Stock</span>
                         </Link>
                         <Link
                             href="/purchase-orders"

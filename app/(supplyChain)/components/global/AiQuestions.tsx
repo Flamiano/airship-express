@@ -14,15 +14,15 @@ interface AiQuestionsProps {
 }
 const defaultQuestions: Question[] = [
     {
-        question: "How many parcels today?",
+        question: "What items are low in stock?",
         color: "bg-pink-500"
     },
     {
-        question: "Show me yesterday's total parcels",
+        question: "Show me pending purchase orders",
         color: "bg-pink-400"
     },
     {
-        question: "Best courier performance?",
+        question: "Who are our active suppliers?",
         color: "bg-pink-300"
     },
     {

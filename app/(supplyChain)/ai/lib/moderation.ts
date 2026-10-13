@@ -72,8 +72,8 @@ export function detectGibberish(text: string): { isGibberish: boolean; reason?: 
 
     // Common supply chain and conversational keywords that are ALWAYS valid
     const VALID_DOMAIN_KEYWORDS = [
-        'stock', 'inventory', 'item', 'items', 'parcel', 'parcels', 'order', 'orders',
-        'purchase', 'request', 'requests', 'supplier', 'suppliers', 'courier', 'couriers',
+        'stock', 'inventory', 'item', 'items', 'order', 'orders',
+        'purchase', 'request', 'requests', 'supplier', 'suppliers',
         'warehouse', 'procurement', 'delivery', 'deliveries', 'track', 'tracking', 'truck',
         'batch', 'draft', 'status', 'show', 'list', 'check', 'view', 'create', 'update',
         'low', 'out', 'help', 'search', 'summary', 'report', 'count', 'spend', 'price',

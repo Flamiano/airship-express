@@ -10,31 +10,31 @@ interface KpisTabProps {
 // Map each KPI id to matching Raindrop pill colors & icons
 function getKpiRaindropStyles(kpiId: string) {
     switch (kpiId) {
-        case 'total-parcels':
+        case 'warehouse-stock':
             return {
                 bg: 'bg-pink-50 dark:bg-pink-950/40',
                 border: 'border-pink-200 dark:border-pink-800/40',
                 iconColor: 'text-pink-600 dark:text-pink-400',
                 glow: 'shadow-[0_2px_10px_rgba(236,72,153,0.15)]',
-                icon: 'fa-box',
+                icon: 'fa-boxes-stacked',
                 accentLine: 'from-pink-500 to-rose-500'
             };
-        case 'active-couriers':
+        case 'active-suppliers':
             return {
                 bg: 'bg-indigo-50 dark:bg-indigo-950/40',
                 border: 'border-indigo-200 dark:border-indigo-800/40',
                 iconColor: 'text-indigo-600 dark:text-indigo-400',
                 glow: 'shadow-[0_2px_10px_rgba(99,102,241,0.15)]',
-                icon: 'fa-truck-fast',
+                icon: 'fa-handshake',
                 accentLine: 'from-indigo-500 to-purple-500'
             };
-        case 'delivery-rate':
+        case 'po-spend':
             return {
                 bg: 'bg-emerald-50 dark:bg-emerald-950/40',
                 border: 'border-emerald-200 dark:border-emerald-800/40',
                 iconColor: 'text-emerald-600 dark:text-emerald-400',
                 glow: 'shadow-[0_2px_10px_rgba(16,185,129,0.15)]',
-                icon: 'fa-circle-check',
+                icon: 'fa-file-invoice-dollar',
                 accentLine: 'from-emerald-500 to-teal-500'
             };
         case 'inventory-items':
@@ -52,7 +52,7 @@ function getKpiRaindropStyles(kpiId: string) {
                 border: 'border-purple-200 dark:border-purple-800/40',
                 iconColor: 'text-purple-600 dark:text-purple-400',
                 glow: 'shadow-[0_2px_10px_rgba(168,85,247,0.15)]',
-                icon: 'fa-file-invoice-dollar',
+                icon: 'fa-clock',
                 accentLine: 'from-purple-500 to-indigo-500'
             };
         case 'documents':
@@ -79,18 +79,16 @@ function getKpiRaindropStyles(kpiId: string) {
 export default function KpisTab({ data, onOpenModal }: KpisTabProps) {
     const handleKpiClick = (kpiId: string) => {
         switch (kpiId) {
-            case 'total-parcels':
-            case 'delivery-rate':
-                onOpenModal('parcels');
-                break;
-            case 'active-couriers':
-                onOpenModal('couriers');
-                break;
+            case 'warehouse-stock':
             case 'inventory-items':
                 onOpenModal('inventory');
                 break;
+            case 'po-spend':
             case 'pending-requests':
                 onOpenModal('procurement');
+                break;
+            case 'active-suppliers':
+                onOpenModal('suppliers');
                 break;
             case 'documents':
                 onOpenModal('documents');
@@ -115,7 +113,7 @@ export default function KpisTab({ data, onOpenModal }: KpisTabProps) {
                             Executive KPI Performance &amp; Deep Dive
                         </h2>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Real-time core performance indicators across logistics, inventory capacity, and procurement.
+                            Real-time core performance indicators across warehousing, inventory capacity, purchase orders, and supplier network.
                         </p>
                     </div>
                 </div>

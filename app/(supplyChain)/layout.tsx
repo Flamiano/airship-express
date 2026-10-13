@@ -207,8 +207,22 @@ function LayoutContent({ children }: {
 export default function SupplyChainLayout({ children, }: {
     children: React.ReactNode;
 }) {
+    const pathname = usePathname();
+    const isPublicRoute = 
+        pathname === '/scAuth' || 
+        pathname?.startsWith('/supplier-portal') || 
+        pathname?.startsWith('/suppliers_page');
+
+    if (isPublicRoute) {
+        return (
+            <AIProvider>
+                <LayoutContent>{children}</LayoutContent>
+            </AIProvider>
+        );
+    }
+
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Operator', 'Executive', 'Supplier']}>
+        <SessionGuard requiredRole={['Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator', 'Executive', 'Supplier']}>
             <AIProvider>
                 <LayoutContent>{children}</LayoutContent>
             </AIProvider>

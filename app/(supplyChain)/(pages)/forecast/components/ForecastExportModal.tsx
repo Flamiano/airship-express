@@ -4,16 +4,17 @@ import { useState } from "react";
 import Portal from "../../../components/client/Portal";
 import { AppButton } from "../../../components/ui/AppButton";
 import { toast } from "sonner";
-import { exportForecastReport, ForecastReportData } from "../lib/forecastExportUtils";
+import { exportForecastReport, DemandForecastExportData } from "../lib/forecastExportUtils";
 
 interface ForecastExportModalProps {
     isOpen: boolean;
     onClose: () => void;
-    forecastData: ForecastReportData | null;
+    forecastData: DemandForecastExportData | any | null;
     chartCanvases?: {
+        demandChart?: HTMLCanvasElement | null;
+        consumptionChart?: HTMLCanvasElement | null;
         parcelChart?: HTMLCanvasElement | null;
         expenseChart?: HTMLCanvasElement | null;
-        courierChart?: HTMLCanvasElement | null;
     };
 }
 
@@ -62,13 +63,13 @@ export default function ForecastExportModal({
                 }}
             >
                 <div
-                    className="bg-[#f0f3f8] dark:bg-[#191a24] rounded-3xl border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75)] max-w-xl w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.4),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85)] max-w-xl w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
                     data-lenis-prevent
                 >
                     {/* Header */}
-                    <div className="p-5 border-b border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0">
+                    <div className="p-5 border-b border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between shrink-0 bg-[#ebf0f7]/70 dark:bg-[#14151e]/60 backdrop-blur-md">
                         <div className="flex items-center gap-3">
-                            <div className="w-11 h-11 rounded-2xl bg-white dark:bg-[#14151c] border border-slate-200/80 dark:border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                            <div className="w-11 h-11 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] p-1.5 flex items-center justify-center shrink-0">
                                 <img
                                     src="/images/logo-remove-bg.png"
                                     alt="Airship Express Logo"
@@ -80,11 +81,11 @@ export default function ForecastExportModal({
                                     <h2 className="text-base font-bold text-slate-900 dark:text-white">
                                         Export Forecast Report
                                     </h2>
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 uppercase tracking-wider">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 uppercase tracking-wider">
                                         Airship Express
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                     Select document format and chart visualization layout
                                 </p>
                             </div>
@@ -113,57 +114,57 @@ export default function ForecastExportModal({
                                 <button
                                     type="button"
                                     onClick={() => setSelectedFormat('pdf')}
-                                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-1.5 ${
+                                    className={`p-3.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 active:scale-95 ${
                                         selectedFormat === 'pdf'
-                                            ? 'bg-pink-50/80 dark:bg-pink-950/30 border-pink-400 dark:border-pink-600 shadow-[inset_1.5px_1.5px_3px_rgba(236,72,153,0.15)] ring-2 ring-pink-500/20'
-                                            : 'bg-[#ebf0f7] dark:bg-[#14151c] border-slate-200/60 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                            ? 'bg-pink-500 text-white border-pink-400 shadow-[0_4px_14px_rgba(236,72,153,0.4),inset_0_1px_1px_rgba(255,255,255,0.5)] font-bold'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_8px_rgba(166,175,195,0.3),-3px_-3px_8px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300'
                                     }`}
                                 >
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
-                                        selectedFormat === 'pdf' ? 'bg-pink-500 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                        selectedFormat === 'pdf' ? 'bg-white/20 text-white' : 'bg-pink-50 dark:bg-pink-950/40 text-pink-500'
                                     }`}>
                                         <i className="fas fa-file-pdf"></i>
                                     </div>
-                                    <span className="font-bold text-xs text-slate-900 dark:text-white">PDF Document</span>
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">Print & Save</span>
+                                    <span className="font-bold text-xs">PDF Document</span>
+                                    <span className={`text-[10px] leading-tight ${selectedFormat === 'pdf' ? 'text-pink-100' : 'text-slate-400'}`}>Print & Save</span>
                                 </button>
 
                                 {/* Word */}
                                 <button
                                     type="button"
                                     onClick={() => setSelectedFormat('word')}
-                                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-1.5 ${
+                                    className={`p-3.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 active:scale-95 ${
                                         selectedFormat === 'word'
-                                            ? 'bg-blue-50/80 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 shadow-[inset_1.5px_1.5px_3px_rgba(59,130,246,0.15)] ring-2 ring-blue-500/20'
-                                            : 'bg-[#ebf0f7] dark:bg-[#14151c] border-slate-200/60 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                            ? 'bg-blue-600 text-white border-blue-400 shadow-[0_4px_14px_rgba(37,99,235,0.4),inset_0_1px_1px_rgba(255,255,255,0.5)] font-bold'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_8px_rgba(166,175,195,0.3),-3px_-3px_8px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300'
                                     }`}
                                 >
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
-                                        selectedFormat === 'word' ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                        selectedFormat === 'word' ? 'bg-white/20 text-white' : 'bg-blue-50 dark:bg-blue-950/40 text-blue-500'
                                     }`}>
                                         <i className="fas fa-file-word"></i>
                                     </div>
-                                    <span className="font-bold text-xs text-slate-900 dark:text-white">Word (.doc)</span>
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">Editable Report</span>
+                                    <span className="font-bold text-xs">Word (.doc)</span>
+                                    <span className={`text-[10px] leading-tight ${selectedFormat === 'word' ? 'text-blue-100' : 'text-slate-400'}`}>Editable Report</span>
                                 </button>
 
                                 {/* Excel */}
                                 <button
                                     type="button"
                                     onClick={() => setSelectedFormat('excel')}
-                                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-1.5 ${
+                                    className={`p-3.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 active:scale-95 ${
                                         selectedFormat === 'excel'
-                                            ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600 shadow-[inset_1.5px_1.5px_3px_rgba(16,185,129,0.15)] ring-2 ring-emerald-500/20'
-                                            : 'bg-[#ebf0f7] dark:bg-[#14151c] border-slate-200/60 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_14px_rgba(16,185,129,0.4),inset_0_1px_1px_rgba(255,255,255,0.5)] font-bold'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_8px_rgba(166,175,195,0.3),-3px_-3px_8px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300'
                                     }`}
                                 >
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
-                                        selectedFormat === 'excel' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                        selectedFormat === 'excel' ? 'bg-white/20 text-white' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500'
                                     }`}>
                                         <i className="fas fa-file-excel"></i>
                                     </div>
-                                    <span className="font-bold text-xs text-slate-900 dark:text-white">Excel (.xls)</span>
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">Spreadsheet Data</span>
+                                    <span className="font-bold text-xs">Excel (.xls)</span>
+                                    <span className={`text-[10px] leading-tight ${selectedFormat === 'excel' ? 'text-emerald-100' : 'text-slate-400'}`}>Spreadsheet Data</span>
                                 </button>
                             </div>
                         </div>
@@ -177,14 +178,14 @@ export default function ForecastExportModal({
                                 {/* With Charts */}
                                 <div
                                     onClick={() => setIncludeCharts(true)}
-                                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 select-none active:scale-98 ${
                                         includeCharts
-                                            ? 'bg-pink-50/60 dark:bg-pink-950/20 border-pink-400 dark:border-pink-600'
-                                            : 'bg-[#ebf0f7] dark:bg-[#14151c] border-slate-200/60 dark:border-slate-800 opacity-75 hover:opacity-100'
+                                            ? 'bg-[#ebf0f7] dark:bg-[#12131b] border-pink-400 dark:border-pink-500 shadow-[inset_1.5px_1.5px_3px_rgba(236,72,153,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.25),-3px_-3px_7px_rgba(255,255,255,0.85)] opacity-80 hover:opacity-100'
                                     }`}
                                 >
                                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                                        includeCharts ? 'border-pink-500 bg-pink-500 text-white' : 'border-slate-400'
+                                        includeCharts ? 'border-pink-500 bg-pink-500 text-white shadow-xs' : 'border-slate-400'
                                     }`}>
                                         {includeCharts && <i className="fas fa-check text-[9px]"></i>}
                                     </div>
@@ -194,7 +195,7 @@ export default function ForecastExportModal({
                                             <span>Include Charts & Visuals</span>
                                         </div>
                                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                                            Captures snapshots of trend charts, outlay graphs, and courier shares alongside data tables.
+                                            Captures snapshots of trend charts, outlay graphs, and distribution shares alongside data tables.
                                         </p>
                                     </div>
                                 </div>
@@ -202,14 +203,14 @@ export default function ForecastExportModal({
                                 {/* Text & Tables Only */}
                                 <div
                                     onClick={() => setIncludeCharts(false)}
-                                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 select-none active:scale-98 ${
                                         !includeCharts
-                                            ? 'bg-pink-50/60 dark:bg-pink-950/20 border-pink-400 dark:border-pink-600'
-                                            : 'bg-[#ebf0f7] dark:bg-[#14151c] border-slate-200/60 dark:border-slate-800 opacity-75 hover:opacity-100'
+                                            ? 'bg-[#ebf0f7] dark:bg-[#12131b] border-pink-400 dark:border-pink-500 shadow-[inset_1.5px_1.5px_3px_rgba(236,72,153,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.25),-3px_-3px_7px_rgba(255,255,255,0.85)] opacity-80 hover:opacity-100'
                                     }`}
                                 >
                                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                                        !includeCharts ? 'border-pink-500 bg-pink-500 text-white' : 'border-slate-400'
+                                        !includeCharts ? 'border-pink-500 bg-pink-500 text-white shadow-xs' : 'border-slate-400'
                                     }`}>
                                         {!includeCharts && <i className="fas fa-check text-[9px]"></i>}
                                     </div>
@@ -226,17 +227,17 @@ export default function ForecastExportModal({
                             </div>
                         </div>
 
-                        {/* Summary of export content */}
-                        <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 space-y-1.5">
+                        {/* Summary of export content (Debossed Inset Well) */}
+                        <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] text-xs text-slate-600 dark:text-slate-300 space-y-1.5">
                             <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                                 <i className="fas fa-info-circle text-pink-500"></i>
                                 <span>Export Contents Summary:</span>
                             </div>
-                            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-500 dark:text-slate-400 pl-1">
-                                <li><strong>7-Day Parcel Forecast:</strong> {forecastData.parcel_7_day.total_next_week.toLocaleString()} projected parcels ({forecastData.parcel_7_day.model_used || 'Holt-Winters'})</li>
-                                <li><strong>Procurement Forecast:</strong> ₱{forecastData.expense_next_month.prediction.toLocaleString()} estimated next month outlay</li>
-                                <li><strong>Operational Peaks:</strong> Busiest month, peak incoming day, and rush hour window</li>
-                                <li><strong>Courier Leaderboard:</strong> Distribution share of active courier dispatch partners</li>
+                            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-500 dark:text-slate-400 pl-1 font-medium">
+                                <li><strong>Items Evaluated:</strong> {forecastData?.items?.length || 0} active supplies audited</li>
+                                <li><strong>Forecast Horizon:</strong> Next {forecastData?.horizon_days || 7} Days demand projection</li>
+                                <li><strong>Model Algorithms:</strong> Croston SBA, AutoTheta, Holt-Winters</li>
+                                <li><strong>Pipeline Inclusions:</strong> Pending purchase orders arriving within horizon</li>
                             </ul>
                         </div>
                     </div>

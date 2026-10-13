@@ -1,172 +1,488 @@
-"use client";
+'use client';
 
-import { ExecutiveDataPayload } from "../../hooks/useExecutiveData";
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+    Calendar,
+    Lock,
+    ShieldCheck,
+    Search,
+    ArrowRight,
+    RefreshCw,
+    Box,
+    Truck,
+    AlertOctagon,
+    ShoppingCart,
+    Users,
+    FileSpreadsheet,
+    DollarSign,
+    ShieldAlert,
+    Loader2,
+} from 'lucide-react';
+import { ExecutiveDataPayload } from '../../hooks/useExecutiveData';
+import { ExecutiveVerificationModal } from '../modals/ExecutiveVerificationModal';
+import { ReportDetailView } from '../reports/ReportDetailView';
+import { user } from '../../../../lib/services/Class/user';
 
 interface ReportsTabProps {
     data: ExecutiveDataPayload;
-    onOpenModal: (reportType: string) => void;
+    onOpenModal?: (reportType: string) => void;
 }
 
-export default function ReportsTab({ data, onOpenModal }: ReportsTabProps) {
-    const reportCards = [
-        {
-            type: 'executive',
-            title: 'Executive Summary Report',
-            subtitle: 'Holistic overview of operations, inventory & procurement',
-            icon: 'fa-file-alt',
-            color: 'text-pink-600 dark:text-pink-400',
-            bg: 'bg-pink-50 dark:bg-pink-950/40',
-            border: 'border-pink-200 dark:border-pink-800/40',
-            glow: 'shadow-[0_2px_12px_rgba(236,72,153,0.18)]',
-            desc: 'Aggregated snapshot of supply chain activity, document logs, inventory capacity, and PO commitments.',
-            count: `${data.parcels.length} parcels • ${data.inventory.length} SKUs`,
-            infoText: 'Generates aggregated executive overview manifest covering logistics, warehouse stock, and PO commitments.',
-            badge: 'Overview',
+export default function ReportsTab({ data }: ReportsTabProps) {
+    // Current date default
+    const now = new Date();
+    const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
+
+    // Overview state
+    const [overviewData, setOverviewData] = useState<any>(null);
+    const [isOverviewLoading, setIsOverviewLoading] = useState<boolean>(true);
+    const [overviewError, setOverviewError] = useState<string | null>(null);
+    const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+    const [searchQuery, setSearchQuery] = useState<string>('');
+
+    // Verification state
+    const [verificationToken, setVerificationToken] = useState<string | null>(null);
+    const [isVerifyModalOpen, setIsVerifyModalOpen] = useState<boolean>(false);
+    const [pendingCategory, setPendingCategory] = useState<any>(null);
+
+    // Active detail view state
+    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const [detailReportData, setDetailReportData] = useState<any>(null);
+    const [isDetailLoading, setIsDetailLoading] = useState<boolean>(false);
+
+    // Helper: get current user session token
+    const getSessionToken = () => {
+        return (
+            user.getSessionToken() ||
+            (typeof window !== 'undefined'
+                ? localStorage.getItem('session_token') || localStorage.getItem('sc_session_token')
+                : '') ||
+            ''
+        );
+    };
+
+    // 1. Fetch Overview Structure
+    const fetchOverview = useCallback(async () => {
+        setIsOverviewLoading(true);
+        setOverviewError(null);
+        try {
+            const token = getSessionToken();
+            const res = await fetch(
+                `/api/executive/reports/overview?year=${selectedYear}&month=${selectedMonth}`,
+                {
+                    headers: {
+                        'x-session-token': token,
+                    },
+                }
+            );
+
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                setOverviewError(json.error || 'Failed to load report overview.');
+                return;
+            }
+
+            setOverviewData(json);
+        } catch (err: any) {
+            setOverviewError('Network error loading monthly report summary.');
+        } finally {
+            setIsOverviewLoading(false);
+        }
+    }, [selectedYear, selectedMonth]);
+
+    useEffect(() => {
+        fetchOverview();
+    }, [fetchOverview]);
+
+    // 2. Fetch Detailed Report Data (Triggered only after verification)
+    const fetchDetailReport = useCallback(
+        async (catId: string, customToken?: string) => {
+            const tokenToUse = customToken || verificationToken;
+            if (!tokenToUse) {
+                // Must verify password first
+                return;
+            }
+
+            setIsDetailLoading(true);
+            try {
+                const sessionToken = getSessionToken();
+                const res = await fetch(
+                    `/api/executive/reports/detail?category=${catId}&year=${selectedYear}&month=${selectedMonth}`,
+                    {
+                        headers: {
+                            'x-session-token': sessionToken,
+                            'x-executive-verification': tokenToUse,
+                        },
+                    }
+                );
+
+                const json = await res.json();
+                if (!res.ok || !json.success) {
+                    if (json.needsVerification || res.status === 403) {
+                        // Verification expired or missing -> trigger modal
+                        setVerificationToken(null);
+                        setPendingCategory(overviewData?.categories?.find((c: any) => c.id === catId));
+                        setIsVerifyModalOpen(true);
+                        setActiveCategory(null);
+                        return;
+                    }
+                    alert(json.error || 'Failed to fetch confidential report data.');
+                    return;
+                }
+
+                setDetailReportData(json.report);
+                setActiveCategory(catId);
+            } catch (err) {
+                alert('Network error retrieving detailed report.');
+            } finally {
+                setIsDetailLoading(false);
+            }
         },
-        {
-            type: 'parcels',
-            title: 'Parcel Performance Report',
-            subtitle: 'Tracking parcel lifecycle, clearance rate & couriers',
-            icon: 'fa-box',
-            color: 'text-blue-600 dark:text-blue-400',
-            bg: 'bg-blue-50 dark:bg-blue-950/40',
-            border: 'border-blue-200 dark:border-blue-800/40',
-            glow: 'shadow-[0_2px_12px_rgba(59,130,246,0.18)]',
-            desc: 'Detailed analysis of incoming cargo volume, fulfillment timeline, bottlenecks, and courier handoffs.',
-            count: `${data.pageKpis.ontimeRate} SLA rate`,
-            infoText: 'Detailed parcel manifest including barcode tracking numbers, status badges, consignees, and courier partners.',
-            badge: 'Logistics',
-        },
-        {
-            type: 'inventory',
-            title: 'Inventory & Stock Health Audit',
-            subtitle: 'Stock levels, min threshold alerts & SKU turnover',
-            icon: 'fa-warehouse',
-            color: 'text-amber-600 dark:text-amber-400',
-            bg: 'bg-amber-50 dark:bg-amber-950/40',
-            border: 'border-amber-200 dark:border-amber-800/40',
-            glow: 'shadow-[0_2px_12px_rgba(245,158,11,0.18)]',
-            desc: 'Complete catalog breakdown showing stock balances, storage bin assignments, and low-stock warnings.',
-            count: `${data.inventory.filter(i => i.current_stock <= i.minimum_stock).length} low-stock alerts`,
-            infoText: 'Warehouse inventory audit listing item names, category classifications, and reorder warnings.',
-            badge: 'Storage',
-        },
-        {
-            type: 'procurement',
-            title: 'Procurement & Spend Intelligence',
-            subtitle: 'PO commitments, approval queues & departmental spend',
-            icon: 'fa-file-invoice-dollar',
-            color: 'text-purple-600 dark:text-purple-400',
-            bg: 'bg-purple-50 dark:bg-purple-950/40',
-            border: 'border-purple-200 dark:border-purple-800/40',
-            glow: 'shadow-[0_2px_12px_rgba(168,85,247,0.18)]',
-            desc: 'Purchase request tracking, vendor PO totals, approval statuses, and monthly budget utilization.',
-            count: `${data.procurement.length} requests • ₱${data.procurementSummary.mtdSpend.toLocaleString()} PO spend`,
-            infoText: 'Financial spend audit detailing purchase orders, vendor names, and approval stages.',
-            badge: 'Finance',
-        },
+        [selectedYear, selectedMonth, verificationToken, overviewData]
+    );
+
+    // If month changes while viewing a detailed report, refresh it
+    useEffect(() => {
+        if (activeCategory && verificationToken) {
+            fetchDetailReport(activeCategory);
+        }
+    }, [selectedYear, selectedMonth]);
+
+    // 3. Handle Click on Report Card or "Open Report" button:
+    // ALWAYS prompts for Executive password verification before releasing report data
+    const handleOpenReportClick = (categoryItem: any) => {
+        setPendingCategory(categoryItem);
+        setIsVerifyModalOpen(true);
+    };
+
+    // 4. Handle Successful Verification Callback
+    const handleVerificationSuccess = (token: string) => {
+        setVerificationToken(token);
+        setIsVerifyModalOpen(false);
+
+        if (pendingCategory) {
+            fetchDetailReport(pendingCategory.id, token);
+        }
+    };
+
+    // 5. Handle Returning Back to Overview: clear token so next open prompts for password again
+    const handleBackToOverview = () => {
+        setActiveCategory(null);
+        setDetailReportData(null);
+        setPendingCategory(null);
+        setVerificationToken(null);
+    };
+
+    // Category icon mapper
+    const getCategoryIcon = (id: string) => {
+        switch (id) {
+            case 'inventory':
+                return <Box className="w-5 h-5 text-amber-500" />;
+            case 'stock-movements':
+                return <Truck className="w-5 h-5 text-blue-500" />;
+            case 'defectives-replacements':
+                return <AlertOctagon className="w-5 h-5 text-rose-500" />;
+            case 'procurement':
+                return <ShoppingCart className="w-5 h-5 text-purple-500" />;
+            case 'suppliers':
+                return <Users className="w-5 h-5 text-emerald-500" />;
+            case 'purchase-orders':
+                return <FileSpreadsheet className="w-5 h-5 text-indigo-500" />;
+            case 'po-financial':
+                return <DollarSign className="w-5 h-5 text-pink-500" />;
+            case 'confidential-sc':
+            default:
+                return <ShieldAlert className="w-5 h-5 text-rose-600" />;
+        }
+    };
+
+    // Filter categories for display
+    const displayedCategories = (overviewData?.categories || []).filter((cat: any) => {
+        if (categoryFilter !== 'ALL' && cat.badge !== categoryFilter) {
+            return false;
+        }
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            const matchesTitle = cat.title.toLowerCase().includes(query);
+            const matchesDesc = cat.description.toLowerCase().includes(query);
+            const matchesBadge = cat.badge.toLowerCase().includes(query);
+            return matchesTitle || matchesDesc || matchesBadge;
+        }
+        return true;
+    });
+
+    const monthOptions = [
+        { num: 1, name: 'January' },
+        { num: 2, name: 'February' },
+        { num: 3, name: 'March' },
+        { num: 4, name: 'April' },
+        { num: 5, name: 'May' },
+        { num: 6, name: 'June' },
+        { num: 7, name: 'July' },
+        { num: 8, name: 'August' },
+        { num: 9, name: 'September' },
+        { num: 10, name: 'October' },
+        { num: 11, name: 'November' },
+        { num: 12, name: 'December' },
     ];
 
+    // IF VIEWING A DETAILED REPORT: Render Detail View
+    if (activeCategory && detailReportData) {
+        return (
+            <>
+                <ReportDetailView
+                    reportData={detailReportData}
+                    onBack={handleBackToOverview}
+                    onRefresh={() => fetchDetailReport(activeCategory)}
+                    isLoading={isDetailLoading}
+                />
+
+                <ExecutiveVerificationModal
+                    isOpen={isVerifyModalOpen}
+                    onClose={() => {
+                        setIsVerifyModalOpen(false);
+                        setPendingCategory(null);
+                    }}
+                    reportTitle={pendingCategory?.title || 'Confidential Report'}
+                    onSuccess={handleVerificationSuccess}
+                />
+            </>
+        );
+    }
+
+    // OVERVIEW VIEW: Render Month Selector & Summary Cards
     return (
-        <div className="space-y-4">
-            {/* Header Neumorphic Banner */}
-            <div className="p-3.5 sm:p-4 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    {/* Compact Icon Pill */}
-                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center text-sm shadow-[0_2px_8px_rgba(236,72,153,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] shrink-0">
-                        <i className="fas fa-file-csv" />
-                    </div>
-                    <div>
-                        <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                            Executive Intelligence Reports &amp; Manifests
-                        </h2>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Generate and download structured CSV reports with line-by-line manifests and strategic notes.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-start sm:self-center">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-[#ebf0f7] dark:bg-[#14151c] text-pink-700 dark:text-pink-300 border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
-                        <i className="fas fa-arrow-down-to-bracket text-[9px]" />
-                        4 Export Manifests
-                    </span>
-                </div>
-            </div>
-
-            {/* Reports Cards Grid (Neumorphic Design) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
-                {reportCards.map((report) => (
-                    <div
-                        key={report.type}
-                        onClick={() => onOpenModal(report.type)}
-                        className="p-4 sm:p-5 rounded-2xl bg-[#f0f3f8] dark:bg-[#1c1d28] border border-white/80 dark:border-[#2c2d3c] shadow-[5px_5px_14px_rgba(166,175,195,0.35),-5px_-5px_14px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.85)] dark:shadow-[6px_6px_18px_rgba(0,0,0,0.6),-4px_-4px_14px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.06)] hover:shadow-[1px_1px_4px_rgba(166,175,195,0.5),-1px_-1px_4px_rgba(255,255,255,0.95)] hover:border-pink-300 dark:hover:border-pink-500/50 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between group cursor-pointer space-y-3"
-                    >
+        <div className="space-y-5">
+            {/* 1. Header Banner & Monthly Selector */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03)] space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* Title & Description */}
+                    <div className="flex items-start gap-3.5">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center shadow-[0_2px_10px_rgba(236,72,153,0.35)] shrink-0">
+                            <Lock className="w-5 h-5" />
+                        </div>
                         <div>
-                            {/* Card Top: Neumorphic Icon & Header */}
-                            <div className="flex items-start gap-3 mb-2.5">
-                                {/* Compact Icon Pill */}
-                                <div
-                                    className={`w-11 h-11 rounded-2xl ${report.bg} ${report.border} ${report.glow} border flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105`}
-                                >
-                                    <i className={`fas ${report.icon} text-base ${report.color}`} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-1.5">
-                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                            {report.badge}
-                                        </span>
-                                        {/* Hover info badge */}
-                                        <div className="info-badge-container" onClick={(e) => e.stopPropagation()}>
-                                            <button
-                                                type="button"
-                                                className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 hover:bg-pink-200 dark:hover:bg-pink-900 text-[9px] font-bold flex items-center justify-center cursor-pointer shrink-0 transition-transform hover:scale-110 shadow-2xs"
-                                                aria-label="Report information"
-                                            >
-                                                !
-                                            </button>
-                                            <div className="tooltip-popover">
-                                                <p className="font-bold text-pink-400">Report Details</p>
-                                                <p className="text-slate-200 dark:text-slate-300 mt-0.5 text-[11px]">{report.infoText}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate mt-0.5">
-                                        {report.title}
-                                    </h3>
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
-                                        {report.subtitle}
-                                    </p>
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                                    Confidential Monthly Supply Chain Report Center
+                                </h1>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-[#EC4899] dark:text-pink-300 border border-pink-200 dark:border-pink-900/40">
+                                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                                    Executive Classified
+                                </span>
                             </div>
-
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5 line-clamp-2 pl-0.5">
-                                {report.desc}
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Centralized monthly reporting center. Detailed figures, stock movements, and financial statements are released only after Executive password verification.
                             </p>
-
-                            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#ebf0f7] dark:bg-[#14151c] text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
-                                <i className="fas fa-database text-[9px] mr-1.5 text-pink-500" />
-                                {report.count}
-                            </div>
-                        </div>
-
-                        {/* Card Footer Action */}
-                        <div className="pt-2.5 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between">
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                                CSV &amp; Audit Ready
-                            </span>
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onOpenModal(report.type); }}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-[11px] font-bold bg-[#f0f3f8] dark:bg-[#1d1e28] text-pink-600 dark:text-pink-300 border border-white/70 dark:border-[#2a2b38] hover:border-pink-300 dark:hover:border-pink-500/50 shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.5),-1px_-1px_3px_rgba(255,255,255,0.9)] transition-all active:scale-95 group/btn cursor-pointer"
-                            >
-                                <span>Preview &amp; Export</span>
-                                <i className="fas fa-arrow-right text-[9px] group-hover/btn:translate-x-0.5 transition-transform" />
-                            </button>
                         </div>
                     </div>
-                ))}
+
+                    {/* Month & Year Selectors */}
+                    <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-center">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white dark:bg-[#14151c] border border-slate-200/80 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
+                            <Calendar className="w-3.5 h-3.5 text-pink-500" />
+                            <select
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                                className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
+                                aria-label="Select reporting month"
+                            >
+                                {monthOptions.map((m) => (
+                                    <option key={m.num} value={m.num} className="dark:bg-slate-900">
+                                        {m.name}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer border-l border-slate-200 dark:border-slate-700 pl-1.5"
+                                aria-label="Select reporting year"
+                            >
+                                {[2024, 2025, 2026, 2027].map((yr) => (
+                                    <option key={yr} value={yr} className="dark:bg-slate-900">
+                                        {yr}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => fetchOverview()}
+                            disabled={isOverviewLoading}
+                            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 bg-white dark:bg-[#14151c] border border-slate-200/80 dark:border-slate-800 hover:text-pink-600 shadow-sm transition-all disabled:opacity-50"
+                            title="Refresh month data"
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isOverviewLoading ? 'animate-spin text-pink-500' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Reporting Period Label & Category Summary Badge */}
+                <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                    <div className="flex items-center gap-2">
+                        <span className="text-slate-400 dark:text-slate-500 font-medium">Reporting Window:</span>
+                        <strong className="text-slate-800 dark:text-slate-200 font-mono text-[11px]">
+                            {overviewData?.period?.periodLabel || `Month ${selectedMonth}, ${selectedYear} (Asia/Manila)`}
+                        </strong>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-[#ebf0f7] dark:bg-[#14151c] text-pink-700 dark:text-pink-300 border border-slate-200/60 dark:border-slate-800">
+                            {overviewData?.totalCategories || 8} Categories Available
+                        </span>
+                        {verificationToken && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50">
+                                <ShieldCheck className="w-3 h-3" />
+                                Verified Session Active
+                            </span>
+                        )}
+                    </div>
+                </div>
             </div>
+
+            {/* 2. Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search report categories..."
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-pink-500 shadow-sm"
+                    />
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                    {['ALL', 'Operational', 'Logistics', 'Quality Assurance', 'Procurement', 'Financial Audit', 'Confidential Internal Audit'].map(
+                        (badge) => (
+                            <button
+                                key={badge}
+                                type="button"
+                                onClick={() => setCategoryFilter(badge)}
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-bold tracking-wider uppercase transition-all whitespace-nowrap cursor-pointer ${
+                                    categoryFilter === badge
+                                        ? 'bg-[#EC4899] text-white shadow-sm'
+                                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                                }`}
+                            >
+                                {badge === 'ALL' ? 'All Categories' : badge}
+                            </button>
+                        )
+                    )}
+                </div>
+            </div>
+
+            {/* 3. Loading or Error Banner */}
+            {isOverviewLoading && !overviewData && (
+                <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
+                    <p className="text-xs font-semibold">Loading confidential report center...</p>
+                </div>
+            )}
+
+            {overviewError && (
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-700 dark:text-rose-300">
+                    <p className="font-bold">Error loading report overview</p>
+                    <p className="mt-0.5">{overviewError}</p>
+                </div>
+            )}
+
+            {/* 4. Category Cards Grid (Metadata & Scope Only — No Raw Data Revealed) */}
+            {overviewData && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {displayedCategories.map((card: any) => (
+                        <div
+                            key={card.id}
+                            onClick={() => handleOpenReportClick(card)}
+                            className="p-5 rounded-2xl bg-[#f0f3f8] dark:bg-[#1c1d28] border border-white/80 dark:border-[#2c2d3c] shadow-[5px_5px_14px_rgba(166,175,195,0.35),-5px_-5px_14px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.85)] dark:shadow-[6px_6px_18px_rgba(0,0,0,0.6),-4px_-4px_14px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.06)] hover:shadow-[1px_1px_4px_rgba(166,175,195,0.5),-1px_-1px_4px_rgba(255,255,255,0.95)] hover:border-pink-300 dark:hover:border-pink-500/50 transition-all flex flex-col justify-between group space-y-4 cursor-pointer"
+                        >
+                            <div className="space-y-3">
+                                {/* Card Header */}
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                                        {getCategoryIcon(card.id)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 block truncate">
+                                            {card.badge}
+                                        </span>
+                                        <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate mt-0.5">
+                                            {card.title}
+                                        </h2>
+                                    </div>
+                                </div>
+
+                                {/* Short Scope Description */}
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
+                                    {card.description}
+                                </p>
+
+                                {/* Protected Data Banner */}
+                                <div className="p-2.5 rounded-xl bg-white dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)] dark:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.4)] flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                        <Lock className="w-3.5 h-3.5 text-pink-500" />
+                                        <span>Figures Classified</span>
+                                    </div>
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/60 px-2 py-0.5 rounded-full border border-pink-200 dark:border-pink-900/50">
+                                        Protected
+                                    </span>
+                                </div>
+
+                                {/* Scope of Covered Metrics */}
+                                <div className="pt-1 space-y-1.5">
+                                    <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                        Covered Metrics:
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {card.indicators?.map((ind: string, idx: number) => (
+                                            <span
+                                                key={idx}
+                                                className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50"
+                                            >
+                                                <span className="w-1 h-1 rounded-full bg-pink-500 shrink-0" />
+                                                <span className="truncate max-w-[130px]">{ind}</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card Footer: Protected Open Action */}
+                            <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between">
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate mr-2">
+                                    {card.periodNote}
+                                </span>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenReportClick(card)}
+                                    disabled={isDetailLoading}
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-[#EC4899] hover:bg-[#db2777] active:scale-95 shadow-[0_2px_6px_rgba(236,72,153,0.35)] transition-all cursor-pointer group/btn shrink-0"
+                                >
+                                    <span>Open Report</span>
+                                    <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-0.5 transition-transform" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* 5. Executive Verification Password Modal */}
+            <ExecutiveVerificationModal
+                isOpen={isVerifyModalOpen}
+                onClose={() => {
+                    setIsVerifyModalOpen(false);
+                    setPendingCategory(null);
+                }}
+                reportTitle={pendingCategory?.title || 'Confidential Report'}
+                onSuccess={handleVerificationSuccess}
+            />
         </div>
     );
 }

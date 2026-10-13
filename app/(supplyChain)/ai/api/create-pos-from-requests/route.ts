@@ -62,8 +62,8 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const createdPOs = [];
-        const emailResults = [];
+        const createdPOs: any[] = [];
+        const emailResults: any[] = [];
 
         for (const pr of requests) {
             const poNumber = `PO-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`;
@@ -101,13 +101,22 @@ export async function POST(request: NextRequest) {
                 request_id: pr.id,
                 supplier_id: validSupplierId,
                 supplier_name: supplierName,
+                subtotal: totalAmount,
+                discount: 0,
+                tax_rate: 0,
+                tax_amount: 0,
                 total_amount: totalAmount,
                 status: status,
                 delivery_date: deliveryDate,
+                delivery_location: "Airship Express Central Logistics Hub, Manila, Philippines",
+                payment_terms: "Net 30 Days (Standard B2B)",
+                terms_and_conditions: "1. All goods supplied are guaranteed brand new and authentic.\n2. Official BIR Invoice and Receipt must be provided upon delivery.\n3. Defective items will be replaced free of charge within 48 hours.",
                 notes: pr.reason ? `Generated via AI from ${pr.request_number || 'PR'}: ${pr.reason}` : `Generated from Purchase Request ${pr.request_number || ''}`,
                 items: items,
                 paid: false,
                 fully_received: false,
+                admin_approval: "Approved",
+                financial_approval: "Pending",
             };
 
             let insertedRecord: any = null;

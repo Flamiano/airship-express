@@ -352,7 +352,7 @@ export function PurchaseRequestDetailModal({
                 onClick={onClose}
             >
                 <div
-                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-2xl w-full p-6 dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] border border-white/90 dark:border-white/[0.08] animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden"
+                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-2xl w-full p-6 shadow-none border border-slate-200/80 dark:border-white/[0.08] animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
@@ -539,6 +539,7 @@ export function PurchaseRequestDetailModal({
                                                     <th className="py-2 px-2.5 text-center w-24">Quantity</th>
                                                     <th className="py-2 px-2.5 text-right w-28">Unit Price</th>
                                                     <th className="py-2 px-2.5 text-right w-28">Total</th>
+                                                    <th className="py-2 px-2.5 text-center w-24">Status</th>
                                                     {isEditing && <th className="py-2 px-2 text-center w-10"></th>}
                                                 </tr>
                                             </thead>
@@ -548,6 +549,7 @@ export function PurchaseRequestDetailModal({
                                                         const qty = Number(item.quantity) || 1;
                                                         const price = Number(item.unit_price ?? item.price ?? 0);
                                                         const total = qty * price;
+                                                        const itStatus = item.status || ((request.status || '').toLowerCase() === 'approved' ? 'Approved' : (request.status || '').toLowerCase() === 'rejected' ? 'Rejected' : 'Pending');
                                                         return (
                                                             <tr key={idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
                                                                 <td className="py-2.5 px-2">
@@ -581,6 +583,21 @@ export function PurchaseRequestDetailModal({
                                                                 <td className="py-2 px-2.5 text-right font-bold text-slate-900 dark:text-white font-mono">
                                                                     ₱{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                 </td>
+                                                                <td className="py-2.5 px-2.5 text-center">
+                                                                    <StatusBadge
+                                                                        tone={
+                                                                            itStatus === 'Approved'
+                                                                                ? 'emerald'
+                                                                                : itStatus === 'Rejected'
+                                                                                ? 'rose'
+                                                                                : 'amber'
+                                                                        }
+                                                                        size="xs"
+                                                                        dot
+                                                                    >
+                                                                        {itStatus}
+                                                                    </StatusBadge>
+                                                                </td>
                                                                 <td className="py-2 px-1 text-center">
                                                                     {(editForm?.items || []).length > 1 && (
                                                                         <button
@@ -601,6 +618,7 @@ export function PurchaseRequestDetailModal({
                                                         const qty = Number(item.quantity) || 1;
                                                         const price = Number(item.unit_price ?? item.price ?? 0);
                                                         const total = Number(item.total) > 0 ? Number(item.total) : qty * price;
+                                                        const itStatus = item.status || ((request.status || '').toLowerCase() === 'approved' ? 'Approved' : (request.status || '').toLowerCase() === 'rejected' ? 'Rejected' : 'Pending');
                                                         return (
                                                             <tr key={idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
                                                                 <td className="py-2.5 px-2.5 font-semibold text-slate-800 dark:text-slate-200">
@@ -614,6 +632,21 @@ export function PurchaseRequestDetailModal({
                                                                 </td>
                                                                 <td className="py-2.5 px-2.5 text-right font-bold text-slate-900 dark:text-white font-mono">
                                                                     ₱{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                                <td className="py-2.5 px-2.5 text-center">
+                                                                    <StatusBadge
+                                                                        tone={
+                                                                            itStatus === 'Approved'
+                                                                                ? 'emerald'
+                                                                                : itStatus === 'Rejected'
+                                                                                ? 'rose'
+                                                                                : 'amber'
+                                                                        }
+                                                                        size="xs"
+                                                                        dot
+                                                                    >
+                                                                        {itStatus}
+                                                                    </StatusBadge>
                                                                 </td>
                                                             </tr>
                                                         );

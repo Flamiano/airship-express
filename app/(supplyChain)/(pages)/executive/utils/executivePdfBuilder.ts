@@ -419,27 +419,27 @@ export async function generateExecutiveDirectPdf(
         // ==============================
         const kpis = [
             {
-                title: "TODAY'S INGESTION",
-                value: `${data?.pageKpis?.parcelsToday ?? 0} Parcels`,
-                sub: data?.pageKpis?.parcelsChangePct ?? "+0% vs yesterday",
+                title: "TOTAL STOCK UNITS",
+                value: `${data?.pageKpis?.totalStockUnitsFormatted ?? (data?.pageKpis?.totalStockUnits ?? 0)} Units`,
+                sub: "Warehouse storage in-bin",
                 accent: COLORS.secondary,
             },
             {
-                title: "READY FOR DISPATCH",
-                value: `${data?.pageKpis?.readyForDispatch ?? 0} Items`,
-                sub: data?.pageKpis?.readyPct ?? "0.0% of active queue",
+                title: "CATALOGUED SKUS",
+                value: `${data?.pageKpis?.inventorySkus ?? 0} SKUs`,
+                sub: `${data?.pageKpis?.lowStockAlerts ?? 0} low stock alerts`,
                 accent: COLORS.warning,
             },
             {
-                title: "DISPATCHED MTD",
-                value: `${data?.pageKpis?.dispatchedMtd ?? 0} Shipments`,
-                sub: data?.pageKpis?.dispatchedChangePct ?? "Current billing cycle",
+                title: "ACTIVE PURCHASE ORDERS",
+                value: `${data?.pageKpis?.openPOs ?? 0} Orders`,
+                sub: `${data?.pageKpis?.mtdSpendFormatted ?? '₱0'} committed`,
                 accent: COLORS.primary,
             },
             {
-                title: "ON-TIME SLA RATE",
-                value: `${data?.pageKpis?.ontimeRate ?? '0.0%'}`,
-                sub: "Target Benchmark: >= 98.0%",
+                title: "APPROVED SUPPLIERS",
+                value: `${data?.pageKpis?.activeSuppliers ?? 0} Active`,
+                sub: `${data?.pageKpis?.totalSuppliers ?? 0} registered vendors`,
                 accent: COLORS.success,
             },
         ];
@@ -550,18 +550,19 @@ export async function generateExecutiveDirectPdf(
         ctx.text('WAREHOUSE OPERATIONS SUMMARY', margin + 10, curY + 7, { font: 'F2', size: 8.5, color: COLORS.dark });
 
         const ops = data?.operationsSummary || {
-            receivingQueuePending: 0,
-            sortingParcels: 0,
-            deliveredParcels: 0,
+            pendingInboundOrders: 0,
+            activeInventorySkus: 0,
+            activeSuppliersCount: 0,
             anomaliesCount: 0,
+            totalStockUnits: 0,
         };
 
         const opsItems = [
-            { label: 'Receiving Queue Pending', val: `${ops.receivingQueuePending ?? 0} units` },
-            { label: 'Sorting / Staging Ingested', val: `${ops.sortingParcels ?? 0} parcels` },
-            { label: 'Confirmed Delivered Packages', val: `${ops.deliveredParcels ?? 0} deliveries` },
-            { label: 'Operational Exceptions / Anomalies', val: `${ops.anomaliesCount ?? 0} flagged` },
-            { label: 'Warehouse Dispatch SLA', val: data?.pageKpis?.ontimeRate ?? '98.5%' },
+            { label: 'Pending Inbound Orders', val: `${ops.pendingInboundOrders ?? 0} orders` },
+            { label: 'Warehouse Stock In-Bin', val: `${ops.totalStockUnits ?? (data?.pageKpis?.totalStockUnits ?? 0)} units` },
+            { label: 'Catalogued Inventory SKUs', val: `${ops.activeInventorySkus ?? (data?.inventory?.length ?? 0)} SKUs` },
+            { label: 'Approved Supplier Partners', val: `${ops.activeSuppliersCount ?? (data?.pageKpis?.activeSuppliers ?? 0)} active` },
+            { label: 'Inventory Restock Anomalies', val: `${ops.anomaliesCount ?? (data?.pageKpis?.lowStockAlerts ?? 0)} alerts` },
         ];
 
         opsItems.forEach((item, i) => {
@@ -606,59 +607,65 @@ export async function generateExecutiveDirectPdf(
         curY += panelH + 20;
 
         // ==============================
-        // SECTION 4: RECENT MANIFEST / SHIPMENTS TABLE
+        // SECTION 4: RECENT PURCHASE ORDERS TABLE
         // ==============================
-        ctx.text('4. RECENT HIGH-PRIORITY TRANSACTIONS & INGESTION MANIFEST', margin, curY, { font: 'F2', size: 10, color: COLORS.dark });
+        ctx.text('4. RECENT PURCHASE ORDERS & PROCUREMENT TRANSACTIONS', margin, curY, { font: 'F2', size: 10, color: COLORS.dark });
         ctx.line(margin, curY + 12, margin + contentW, curY + 12, COLORS.cardBorder, 1);
         curY += 18;
 
         // Table Header
-        const colWidths = [120, 130, 80, 100, 101.28];
+        const colWidths = [110, 140, 90, 95, 96.28];
         const tableX = margin;
         const thH = 20;
 
         ctx.rect(tableX, curY, contentW, thH, COLORS.dark, null);
-        ctx.text('TRACKING / SHIPMENT ID', tableX + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
-        ctx.text('DESTINATION / ROUTE', tableX + colWidths[0] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
-        ctx.text('PRIORITY', tableX + colWidths[0] + colWidths[1] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
+        ctx.text('PO NUMBER', tableX + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
+        ctx.text('SUPPLIER / VENDOR', tableX + colWidths[0] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
+        ctx.text('DEPARTMENT', tableX + colWidths[0] + colWidths[1] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
         ctx.text('STATUS', tableX + colWidths[0] + colWidths[1] + colWidths[2] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
-        ctx.text('LAST LOGGED', tableX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
+        ctx.text('AMOUNT (₱)', tableX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + 8, curY + 6, { font: 'F2', size: 7.5, color: COLORS.white });
         curY += thH;
 
-        // Table Rows (up to 12 recent parcels)
-        const recentParcels = (data?.parcels && data.parcels.length > 0)
-            ? data.parcels.slice(0, 11)
-            : [
-                { id: '1', tracking_number: 'AE-890214-MNL', destination: 'Manila North Hub', priority: 'Express', status: 'delivered', updated_at: '2026-09-05' },
-                { id: '2', tracking_number: 'AE-890215-CEB', destination: 'Cebu Central Facility', priority: 'Standard', status: 'in_transit', updated_at: '2026-09-05' },
-                { id: '3', tracking_number: 'AE-890216-DVO', destination: 'Davao South Terminal', priority: 'Express', status: 'out_for_delivery', updated_at: '2026-09-05' },
-                { id: '4', tracking_number: 'AE-890217-ILO', destination: 'Iloilo Distribution', priority: 'Priority', status: 'staging', updated_at: '2026-09-05' },
-                { id: '5', tracking_number: 'AE-890218-CRK', destination: 'Clark Aviation Port', priority: 'Standard', status: 'received', updated_at: '2026-09-05' },
-            ];
+        // Table Rows (up to 11 recent POs)
+        const recentTxs = (data?.recentTransactions && data.recentTransactions.length > 0)
+            ? data.recentTransactions.slice(0, 11)
+            : (data?.purchaseOrders && data.purchaseOrders.length > 0)
+                ? data.purchaseOrders.slice(0, 11).map(po => ({
+                    id: po.po_number || po.id,
+                    supplier: po.supplier_name || 'Vendor',
+                    department: 'General',
+                    status: po.status || 'Issued',
+                    amount: `₱${(Number(po.total_amount) || 0).toLocaleString()}`,
+                }))
+                : [
+                    { id: 'PO-2026-001', supplier: 'Petron Logistics', department: 'Operations', status: 'Approved', amount: '₱142,500' },
+                    { id: 'PO-2026-002', supplier: 'Fastline Packaging', department: 'Warehousing', status: 'Completed', amount: '₱88,200' },
+                    { id: 'PO-2026-003', supplier: 'Aviation Parts Co', department: 'Fleet', status: 'Pending', amount: '₱310,000' },
+                ];
 
         const rowH = 17;
-        recentParcels.forEach((p, idx) => {
+        recentTxs.forEach((tx: any, idx: number) => {
             const bg = idx % 2 === 0 ? COLORS.cardBg : COLORS.lightBg;
             ctx.rect(tableX, curY, contentW, rowH, bg, COLORS.cardBorder, 0.5);
 
-            const trackNum = p.tracking_number || `AE-${String(p.id).padStart(6, '0')}`;
-            const dest = (p as any).destination || (p as any).recipient_name || 'Regional Hub';
-            const priority = (p as any).priority || 'Standard';
-            const status = (p.status || 'Active').toUpperCase().replace(/_/g, ' ');
-            const logged = (p as any).created_at ? new Date((p as any).created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Today';
+            const poNum = tx.id;
+            const supplier = tx.supplier || tx.consignee || 'Vendor';
+            const dept = tx.department || tx.area || 'General';
+            const status = (tx.status || 'Active').toUpperCase().replace(/_/g, ' ');
+            const amount = tx.amount || '—';
 
-            ctx.text(trackNum, tableX + 8, curY + 5, { font: 'F2', size: 7.5, color: COLORS.dark });
-            ctx.text(dest, tableX + colWidths[0] + 8, curY + 5, { font: 'F1', size: 7.5, color: COLORS.slate });
-            ctx.text(priority, tableX + colWidths[0] + colWidths[1] + 8, curY + 5, { font: 'F1', size: 7.5, color: COLORS.muted });
+            ctx.text(poNum, tableX + 8, curY + 5, { font: 'F2', size: 7.5, color: COLORS.dark });
+            ctx.text(supplier, tableX + colWidths[0] + 8, curY + 5, { font: 'F1', size: 7.5, color: COLORS.slate });
+            ctx.text(dept, tableX + colWidths[0] + colWidths[1] + 8, curY + 5, { font: 'F1', size: 7.5, color: COLORS.muted });
 
             // Status color pill
-            const statusColor = status.includes('DELIVERED') ? COLORS.success
-                : status.includes('TRANSIT') ? COLORS.secondary
-                : status.includes('OUT') ? COLORS.warning
+            const statusColor = status.includes('DELIVERED') || status.includes('APPROVED') || status.includes('COMPLETED') ? COLORS.success
+                : status.includes('TRANSIT') || status.includes('ORDERED') ? COLORS.secondary
+                : status.includes('PENDING') ? COLORS.warning
                 : COLORS.muted;
             ctx.text(status, tableX + colWidths[0] + colWidths[1] + colWidths[2] + 8, curY + 5, { font: 'F2', size: 7, color: statusColor });
 
-            ctx.text(logged, tableX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + 8, curY + 5, { font: 'F1', size: 7.5, color: COLORS.muted });
+            ctx.text(amount, tableX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + 8, curY + 5, { font: 'F2', size: 7.5, color: COLORS.dark });
 
             curY += rowH;
         });

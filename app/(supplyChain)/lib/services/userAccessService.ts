@@ -29,9 +29,9 @@ export interface UserAccessRule {
     updated_by?: string;
 }
 
-export const DEFAULT_ALLOWED_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-export const DEFAULT_TIME_START = '07:00';
-export const DEFAULT_TIME_END = '17:00';
+export const DEFAULT_ALLOWED_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+export const DEFAULT_TIME_START = '00:00';
+export const DEFAULT_TIME_END = '23:59';
 
 const SETTINGS_ROW_ID = 'user_access_control';
 export const BUSINESS_TIMEZONE = 'Asia/Manila';
@@ -126,7 +126,7 @@ export async function getAllUserAccessRules(): Promise<Record<string, UserAccess
                         email: s.email,
                         display_name: s.users?.display_name || s.hr_employee_name,
                         role: s.users?.role,
-                        is_allow: s.is_allow !== null && s.is_allow !== undefined ? Boolean(s.is_allow) : (isExecutiveOrAdmin ? true : false),
+                        is_allow: s.is_allow !== null && s.is_allow !== undefined ? Boolean(s.is_allow) : true,
                         allowed_days: parsedDays,
                         allowed_time_start: s.allowed_time_start || DEFAULT_TIME_START,
                         allowed_time_end: s.allowed_time_end || DEFAULT_TIME_END,
@@ -184,10 +184,9 @@ export async function saveUserAccessRule(rule: Partial<UserAccessRule> & { email
         const emailKey = rule.email.toLowerCase().trim();
         const allRules = await getAllUserAccessRules();
 
-        const isExecutiveOrAdmin = ['admin', 'executive'].includes((rule.role || '').toLowerCase().trim());
         const existing = allRules[emailKey] || {
             email: rule.email,
-            is_allow: isExecutiveOrAdmin ? true : false,
+            is_allow: true,
             allowed_days: DEFAULT_ALLOWED_DAYS,
             allowed_time_start: DEFAULT_TIME_START,
             allowed_time_end: DEFAULT_TIME_END,
@@ -365,18 +364,16 @@ export async function validateUserLoginAuthorization(params: {
     const allRules = await getAllUserAccessRules();
     const rule = allRules[emailKey];
 
-    // If no rule exists yet, default is ALLOWED for Admin, but NOT ALLOWED for staff/operators
+    // If no rule exists yet, default is ALLOWED (7 days a week, 24/7 enabled)
     if (!rule) {
-        const isAdmin = normRole === 'admin';
         return {
-            allowed: isAdmin,
+            allowed: true,
             isConfigured: false,
-            reason: isAdmin ? undefined : 'Your account is pending authorization from an Administrator.',
             rule: {
                 email: params.email,
                 user_id: params.userId,
                 role: params.role,
-                is_allow: isAdmin,
+                is_allow: true,
                 allowed_days: DEFAULT_ALLOWED_DAYS,
                 allowed_time_start: DEFAULT_TIME_START,
                 allowed_time_end: DEFAULT_TIME_END,
@@ -425,18 +422,18 @@ export async function validateUserLoginAuthorization(params: {
 
     const [startH, startM] = startTimeStr.split(':').map(Number);
     const [endH, endM] = endTimeStr.split(':').map(Number);
-    const startTotalMinutes = (isNaN(startH) ? 7 : startH) * 60 + (isNaN(startM) ? 0 : startM);
-    const endTotalMinutes = (isNaN(endH) ? 17 : endH) * 60 + (isNaN(endM) ? 0 : endM);
+    const startTotalMinutes = (isNaN(startH) ? 0 : startH) * 60 + (isNaN(startM) ? 0 : startM);
+    const endTotalMinutes = (isNaN(endH) ? 23 : endH) * 60 + (isNaN(endM) ? 59 : endM);
 
     if (currentTotalMinutes < startTotalMinutes || currentTotalMinutes > endTotalMinutes) {
-        // Format nicely for user (e.g., 7:00 AM - 5:00 PM)
+        // Format nicely for user (e.g., 12:00 AM - 11:59 PM)
         const formatTimeAmPm = (h: number, m: number) => {
             const period = h >= 12 ? 'PM' : 'AM';
             const h12 = h % 12 === 0 ? 12 : h % 12;
             return `${h12}:${String(m).padStart(2, '0')} ${period}`;
         };
-        const startFormatted = formatTimeAmPm(startH || 7, startM || 0);
-        const endFormatted = formatTimeAmPm(endH || 17, endM || 0);
+        const startFormatted = formatTimeAmPm(isNaN(startH) ? 0 : startH, isNaN(startM) ? 0 : startM);
+        const endFormatted = formatTimeAmPm(isNaN(endH) ? 23 : endH, isNaN(endM) ? 59 : endM);
 
         return {
             allowed: false,

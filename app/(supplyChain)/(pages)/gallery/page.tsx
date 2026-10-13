@@ -1,21 +1,6 @@
-// server page component providing metadata, session protection, and fallback skeleton
-import { Metadata } from 'next';
-import { Suspense } from 'react';
-import GalleryContentWrapper from './GalleryContentWrapper';
-import { PageSkeleton } from '../../components/ui/SkeletonLoader';
-import { SessionGuard } from '../../components/server/SessionGuard';
-
-export const metadata: Metadata = {
-    title: 'Media Gallery | Supply Chain Management',
-    description: 'Browse and preview uploaded receipts, proof of delivery photos, and operational documents',
-};
+// redirect /gallery to /documents as gallery view is integrated into documents
+import { redirect } from 'next/navigation';
 
 export default function GalleryPage() {
-    return (
-        <Suspense fallback={<PageSkeleton />}>
-            <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Executive', 'Operator']}>
-                <GalleryContentWrapper />
-            </SessionGuard>
-        </Suspense>
-    );
+    redirect('/documents');
 }

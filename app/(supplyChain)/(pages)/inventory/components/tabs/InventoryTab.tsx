@@ -2,8 +2,9 @@
 
 'use client';
 
-import { useState, useEffect, memo } from 'react';
-import { InventoryItem } from '../../types';
+import { useState, useEffect, memo, useMemo } from 'react';
+import { toast } from 'sonner';
+import { InventoryItem, Supplier } from '../../types';
 import { sanitizeSearch } from '../../../../components/global/sanitize';
 import { Pagination } from '../../../../components/global/pagination';
 import { TableContentLoader } from '../../../../components/global/Loader';
@@ -11,9 +12,9 @@ import { TableRowsSkeleton } from '../../../../components/ui/SkeletonLoader';
 import { CrudActionButton } from '../../../../components/ui/CrudActionButton';
 import { AppButton } from '../../../../components/ui/AppButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
-import { ShoppingCart, ArrowDown, ArrowUp, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { ShoppingCart, MoreHorizontal, Pencil, Trash2, MessageSquare, Compass } from 'lucide-react';
 import Portal from '../../../../components/client/Portal';
+import { SupplierMessageModal } from '../../../suppliers/components/modals/SupplierMessageModal';
 
 interface InventoryTabProps {
     items: InventoryItem[];
@@ -27,6 +28,7 @@ interface InventoryTabProps {
     itemsPerPage: number;
     isLoading?: boolean;
     userRole?: string;
+    suppliers?: any[];
     onSearchChange: (value: string) => void;
     onCategoryChange: (value: string) => void;
     onStatusChange: (value: string) => void;
@@ -37,8 +39,8 @@ interface InventoryTabProps {
     onEdit: (item: InventoryItem) => void;
     onDelete: (id: string, name: string) => void;
     onDeleteMultiple?: () => void;
-    onStockIn: (itemName: string, item?: InventoryItem) => void;
-    onStockOut: (itemName: string) => void;
+    onStockIn?: (itemName: string, item?: InventoryItem) => void;
+    onStockOut?: (itemName: string) => void;
     onAddItem: () => void;
     onOrderPO?: (item: InventoryItem) => void;
     onViewPurchaseRequest?: (requestId: string, requestNumber?: string) => void;
@@ -56,6 +58,7 @@ export const InventoryTab = memo(function InventoryTab({
     itemsPerPage,
     isLoading = false,
     userRole = '',
+    suppliers = [],
     onSearchChange,
     onCategoryChange,
     onStatusChange,
@@ -87,6 +90,39 @@ export const InventoryTab = memo(function InventoryTab({
         item: InventoryItem;
         position: { top: number; left: number };
     } | null>(null);
+
+    const [selectedSupplierForMessage, setSelectedSupplierForMessage] = useState<any>(null);
+    const [showSupplierPickerModal, setShowSupplierPickerModal] = useState<boolean>(false);
+    const [pickerItemContext, setPickerItemContext] = useState<InventoryItem | null>(null);
+    const [supplierPickerSearch, setSupplierPickerSearch] = useState<string>('');
+
+    const handleOpenMessageSupplier = (item?: InventoryItem | null) => {
+        if (item && item.supplier) {
+            const matched = suppliers.find((s: any) =>
+                s && s.name && s.name.trim().toLowerCase() === item.supplier?.trim().toLowerCase()
+            );
+            if (matched) {
+                setSelectedSupplierForMessage(matched);
+                return;
+            }
+        }
+        setPickerItemContext(item || null);
+        setSupplierPickerSearch(item?.supplier || '');
+        setShowSupplierPickerModal(true);
+    };
+
+    const filteredSuppliersForPicker = useMemo(() => {
+        const q = supplierPickerSearch.trim().toLowerCase();
+        return suppliers.filter((s: any) => {
+            if (!s || s.is_active === false) return false;
+            if (!q) return true;
+            const name = (s.name || '').toLowerCase();
+            const cat = (s.category || '').toLowerCase();
+            const contact = (s.contact_person || '').toLowerCase();
+            const email = (s.email || '').toLowerCase();
+            return name.includes(q) || cat.includes(q) || contact.includes(q) || email.includes(q);
+        });
+    }, [suppliers, supplierPickerSearch]);
 
     // close action overflow menu on outside click, window resize, or scroll
     useEffect(() => {
@@ -125,7 +161,6 @@ export const InventoryTab = memo(function InventoryTab({
     const someSelected = selectedIds.size > 0 && selectedIds.size < items.length;
 
     const normalizedRole = (userRole || '').trim().toLowerCase();
-    const canStockOut = ['admin', 'executive', 'super_admin', 'superadmin'].includes(normalizedRole);
 
     // calculate range
     const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
@@ -205,6 +240,18 @@ export const InventoryTab = memo(function InventoryTab({
                     />
                     <span>{allSelected ? 'Deselect All' : 'Select All'}</span>
                 </button>
+
+                {/* message supplier button */}
+                <AppButton
+                    type="button"
+                    variant="neutral"
+                    size="sm"
+                    onClick={() => handleOpenMessageSupplier(null)}
+                    title="Open direct message with registered suppliers"
+                >
+                    <MessageSquare className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                    <span>Message Supplier</span>
+                </AppButton>
 
                 {/* reset filters button */}
                 <AppButton
@@ -309,7 +356,6 @@ export const InventoryTab = memo(function InventoryTab({
                                 const isSelected = selectedIds.has(item.id);
                                 const po = item.latest_po;
                                 const isDelivered = po?.status === 'Delivered';
-                                const hasReceivableStock = isDelivered && ((po?.quantity_received || 0) < (po?.quantity_ordered || 0));
                                 const isForced = Boolean(item.force_updated_at || item.force_updated_by || item.force_reason);
 
                                 const isStockCritical = item.current_stock === 0;
@@ -499,8 +545,8 @@ export const InventoryTab = memo(function InventoryTab({
                                                             label="Order"
                                                             icon={ShoppingCart}
                                                             className={hasPendingPR ? "opacity-50" : ""}
-                                                            ariaLabel={hasPendingPR ? `Cannot order: PR ${pendingPRNumber || 'Pending'} pending` : "Order / Purchase Request"}
-                                                            title={hasPendingPR ? `Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending approval` : "Order / Purchase Request"}
+                                                            ariaLabel={hasPendingPR ? `Cannot order: PR ${pendingPRNumber || 'Pending'} pending` : "Create Purchase Order"}
+                                                            title={hasPendingPR ? `Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending approval` : "Create Purchase Order"}
                                                             onClick={() => {
                                                                 if (hasPendingPR) {
                                                                     toast.info(`Purchase Order locked: Purchase Request (${pendingPRNumber || 'Pending'}) is currently pending approval.`, {
@@ -512,33 +558,14 @@ export const InventoryTab = memo(function InventoryTab({
                                                             }}
                                                         />
 
-                                                        {/* stock in */}
+                                                        {/* message supplier button */}
                                                         <CrudActionButton
                                                             action="custom"
-                                                            label="In"
-                                                            icon={ArrowDown}
-                                                            ariaLabel={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                            title={hasReceivableStock ? `Ready to receive on PO #${po?.po_number}` : 'Stock In'}
-                                                            onClick={() => onStockIn(item.item_name, item)}
-                                                        />
-
-                                                        {/* stock out */}
-                                                        <CrudActionButton
-                                                            action="custom"
-                                                            label="Out"
-                                                            icon={ArrowUp}
-                                                            className={!canStockOut ? "opacity-50" : ""}
-                                                            ariaLabel={!canStockOut ? "Direct Stock Out is restricted to Admin and Executive only" : "Stock Out"}
-                                                            title={!canStockOut ? "Direct Stock Out is restricted to Admin and Executive only (Managers release via Requests tab)" : "Stock Out"}
-                                                            onClick={() => {
-                                                                if (!canStockOut) {
-                                                                    toast.info("Direct Stock Out is restricted to Admin & Executive. Managers release approved stock via the Requisitions tab.", {
-                                                                        id: `stockout-restricted-${item.id}`
-                                                                    });
-                                                                } else {
-                                                                    onStockOut(item.item_name);
-                                                                }
-                                                            }}
+                                                            label="Chat"
+                                                            icon={MessageSquare}
+                                                            ariaLabel="Message Supplier"
+                                                            title={item.supplier ? `Message supplier (${item.supplier})` : "Message Supplier"}
+                                                            onClick={() => handleOpenMessageSupplier(item)}
                                                         />
 
                                                         {/* action overflow button */}
@@ -550,11 +577,11 @@ export const InventoryTab = memo(function InventoryTab({
                                                             title="More Actions"
                                                             onClick={(e) => {
                                                                 const rect = e.currentTarget.getBoundingClientRect();
-                                                                const menuWidth = 145;
+                                                                const menuWidth = 185;
                                                                 const left = Math.max(10, Math.min(window.innerWidth - menuWidth - 10, rect.right - menuWidth));
                                                                 const top = rect.bottom + 6;
-                                                                const fitsBelow = top + 95 < window.innerHeight;
-                                                                const resolvedTop = fitsBelow ? top : rect.top - 90;
+                                                                const fitsBelow = top + 170 < window.innerHeight;
+                                                                const resolvedTop = fitsBelow ? top : rect.top - 165;
 
                                                                 setOpenActionMenu(prev => (prev?.itemId === item.id ? null : {
                                                                     itemId: item.id,
@@ -675,7 +702,7 @@ export const InventoryTab = memo(function InventoryTab({
                             left: `${openActionMenu.position.left}px`,
                             zIndex: 9999,
                         }}
-                        className="w-[145px] bg-[#f0f3f8] dark:bg-[#181926] rounded-2xl border border-white/90 dark:border-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.18),0_4px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_12px_35px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.05)] p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
+                        className="w-[185px] bg-[#f0f3f8] dark:bg-[#181926] rounded-2xl border border-white/90 dark:border-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.18),0_4px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_12px_35px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.05)] p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button
@@ -696,6 +723,32 @@ export const InventoryTab = memo(function InventoryTab({
                             onClick={() => {
                                 const itm = openActionMenu.item;
                                 setOpenActionMenu(null);
+                                onOrderPO?.(itm);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer text-left group"
+                        >
+                            <ShoppingCart className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-pink-500 transition-colors" />
+                            <span>Create Purchase Order</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const itm = openActionMenu.item;
+                                setOpenActionMenu(null);
+                                handleOpenMessageSupplier(itm);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-pink-50 dark:hover:bg-pink-950/40 hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer text-left group"
+                        >
+                            <MessageSquare className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-pink-500 transition-colors" />
+                            <span>Message Supplier</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const itm = openActionMenu.item;
+                                setOpenActionMenu(null);
                                 onDelete(itm.id, itm.item_name);
                             }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer text-left group"
@@ -703,6 +756,139 @@ export const InventoryTab = memo(function InventoryTab({
                             <Trash2 className="w-3.5 h-3.5 text-rose-500 group-hover:text-rose-600 transition-colors" />
                             <span>Delete Item</span>
                         </button>
+                    </div>
+                </Portal>
+            )}
+
+            {/* Modal: Direct Supplier Messaging */}
+            <SupplierMessageModal
+                isOpen={Boolean(selectedSupplierForMessage)}
+                onClose={() => setSelectedSupplierForMessage(null)}
+                supplier={selectedSupplierForMessage}
+            />
+
+            {/* Modal: Select Supplier to Message (when item has no matched supplier or opened globally) */}
+            {showSupplierPickerModal && (
+                <Portal>
+                    <div
+                        className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                        onClick={() => {
+                            setShowSupplierPickerModal(false);
+                            setPickerItemContext(null);
+                        }}
+                    >
+                        <div
+                            className="bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] rounded-3xl max-w-lg w-full p-6 animate-in zoom-in-95 duration-200 space-y-4 max-h-[90vh] flex flex-col shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/[0.06] shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm border border-white/80 dark:border-white/[0.06] bg-pink-500/10 text-pink-600 dark:text-pink-400 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)]">
+                                        <MessageSquare className="w-5 h-5 text-pink-500" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                                            Message Supplier
+                                        </h3>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                            {pickerItemContext ? `Select a supplier to message regarding "${pickerItemContext.item_name}"` : 'Select a registered vendor to start or continue direct chat'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <AppButton
+                                    type="button"
+                                    variant="neutral"
+                                    size="icon-sm"
+                                    onClick={() => {
+                                        setShowSupplierPickerModal(false);
+                                        setPickerItemContext(null);
+                                    }}
+                                    aria-label="Close modal"
+                                >
+                                    <i className="fas fa-times text-xs"></i>
+                                </AppButton>
+                            </div>
+
+                            {pickerItemContext?.supplier && !suppliers.some(s => s.name?.toLowerCase().trim() === pickerItemContext.supplier?.toLowerCase().trim()) && (
+                                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs flex items-start gap-2 shrink-0">
+                                    <i className="fas fa-info-circle text-amber-500 mt-0.5" />
+                                    <div>
+                                        <span>Current listed supplier &quot;{pickerItemContext.supplier}&quot; is not yet registered in the supplier directory. You can message any registered vendor below.</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Search input */}
+                            <div className="relative shrink-0">
+                                <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={supplierPickerSearch}
+                                    onChange={(e) => setSupplierPickerSearch(e.target.value)}
+                                    placeholder="Search suppliers by name, category, email..."
+                                    className="w-full bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] rounded-2xl px-3.5 py-2.5 pl-9 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-pink-500/20 transition-all"
+                                    autoFocus
+                                />
+                            </div>
+
+                            {/* Suppliers list */}
+                            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[350px]">
+                                {filteredSuppliersForPicker.length === 0 ? (
+                                    <div className="py-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
+                                        <i className="fas fa-building text-2xl opacity-40" />
+                                        <p className="text-xs">No registered suppliers matched your search.</p>
+                                    </div>
+                                ) : (
+                                    filteredSuppliersForPicker.map((supp) => (
+                                        <div
+                                            key={supp.id}
+                                            onClick={() => {
+                                                setSelectedSupplierForMessage(supp);
+                                                setShowSupplierPickerModal(false);
+                                                setPickerItemContext(null);
+                                            }}
+                                            className="p-3 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#14151e]/70 border border-white/80 dark:border-white/[0.06] hover:border-pink-300 dark:hover:border-pink-500/40 hover:bg-white dark:hover:bg-[#1a1b28] transition-all cursor-pointer flex items-center justify-between gap-3 group shadow-sm active:scale-[0.99]"
+                                        >
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h4 className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors truncate">
+                                                        {supp.name}
+                                                    </h4>
+                                                    {supp.category && (
+                                                        <StatusBadge tone="neutral" size="xs">
+                                                            {supp.category}
+                                                        </StatusBadge>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                                    {supp.contact_person ? `${supp.contact_person} • ` : ''}{supp.email || supp.phone || 'Active Supplier'}
+                                                </p>
+                                            </div>
+                                            <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 font-bold text-xs group-hover:bg-pink-500 group-hover:text-white transition-all shadow-xs">
+                                                <MessageSquare className="w-3.5 h-3.5" />
+                                                <span>Chat</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="flex justify-end pt-2 border-t border-slate-200/60 dark:border-white/[0.06] shrink-0">
+                                <AppButton
+                                    type="button"
+                                    variant="neutral"
+                                    size="md"
+                                    onClick={() => {
+                                        setShowSupplierPickerModal(false);
+                                        setPickerItemContext(null);
+                                    }}
+                                >
+                                    Cancel
+                                </AppButton>
+                            </div>
+                        </div>
                     </div>
                 </Portal>
             )}

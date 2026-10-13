@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Supplier } from '../../types';
 import { formatFileSize, getFileColor, getFileIcon } from '../../utils/formatters';
 import { AppButton } from '../../../../components/ui/AppButton';
@@ -10,15 +10,27 @@ import {
     clearAllCachedFilePreviewUrls 
 } from './SelectedFilesGridModal';
 
+const STANDARD_DOC_TYPES = [
+    "Official Receipt",
+    "Invoice",
+    "Delivery Receipt",
+    "Parcel Condition",
+    "Logistics Handover",
+    "Vehicle Maintenance",
+    "Other",
+];
+
 interface DocumentUploadModalProps {
     isOpen: boolean;
     isUploading: boolean;
     uploadProgress: number;
     selectedFiles: File[];
     suppliers: Supplier[];
+    purchaseOrders?: Array<{ id: string; po_number: string; supplier_id?: number | null; supplier_name?: string }>;
     userName: string;
     userRole?: string;
     maxFiles?: number;
+    defaultSupplier?: string;
     dropZoneRef: React.RefObject<HTMLDivElement | null>;
     onClose: () => void;
     onFileSelect: (files: FileList | null) => void;
@@ -35,9 +47,11 @@ export function DocumentUploadModal({
     uploadProgress,
     selectedFiles,
     suppliers,
+    purchaseOrders = [],
     userName,
     userRole = 'Employee',
     maxFiles = 5,
+    defaultSupplier,
     dropZoneRef,
     onClose,
     onFileSelect,
@@ -49,7 +63,179 @@ export function DocumentUploadModal({
 }: DocumentUploadModalProps) {
     const [createWithoutFile, setCreateWithoutFile] = useState(false);
     const [isGridModalOpen, setIsGridModalOpen] = useState(false);
+    const [selectedSupplierName, setSelectedSupplierName] = useState(defaultSupplier || "");
+    const [selectedPoNumber, setSelectedPoNumber] = useState("");
+    const [isCustomPo, setIsCustomPo] = useState(false);
+
+    // Form inputs state for auto-filling and editing
+    const [docTitle, setDocTitle] = useState("");
+    const [docCategory, setDocCategory] = useState("documents");
+    const [docType, setDocType] = useState("Official Receipt");
+    const [docPrice, setDocPrice] = useState("");
+    const [docNotes, setDocNotes] = useState("");
+
+    // Live AI Scanning state
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanResult, setScanResult] = useState<any | null>(null);
+    const [showOcrText, setShowOcrText] = useState(false);
+    const lastScannedKeyRef = useRef<string | null>(null);
+
     const isPrivileged = ['Executive', 'Admin'].includes(userRole);
+
+    // Reset when modal closes or opens
+    useEffect(() => {
+        if (!isOpen) {
+            setDocTitle("");
+            setDocCategory("documents");
+            setDocType("Official Receipt");
+            setDocPrice("");
+            setDocNotes("");
+            setScanResult(null);
+            setIsScanning(false);
+            setShowOcrText(false);
+            lastScannedKeyRef.current = null;
+            setSelectedSupplierName(defaultSupplier || "");
+            setSelectedPoNumber("");
+            setIsCustomPo(false);
+            setCreateWithoutFile(false);
+        }
+    }, [isOpen, defaultSupplier]);
+
+    useEffect(() => {
+        if (defaultSupplier) {
+            setSelectedSupplierName(defaultSupplier);
+        }
+    }, [defaultSupplier]);
+
+    const filteredPos = useMemo(() => {
+        if (!selectedSupplierName) return purchaseOrders;
+        const matched = purchaseOrders.filter(
+            (p) => (p.supplier_name || '').toLowerCase() === selectedSupplierName.toLowerCase()
+        );
+        return matched.length > 0 ? matched : purchaseOrders;
+    }, [purchaseOrders, selectedSupplierName]);
+
+    // Live AI OCR & Vision Scanner runner
+    const runScan = async (file: File) => {
+        const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(jpe?g|png|webp|heic|pdf)$/i.test(file.name);
+        if (!isImageOrPdf) return;
+
+        setIsScanning(true);
+        try {
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+            });
+            reader.readAsDataURL(file);
+            const fileBase64 = await base64Promise;
+
+            const res = await fetch('/ai/api/verify-document-ocr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileBase64,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    fileType: file.type,
+                    userRole,
+                    userName,
+                }),
+            });
+
+            if (!res.ok) {
+                console.warn('[Pre-upload OCR] OCR response status:', res.status);
+                return;
+            }
+
+            const data = await res.json();
+            if (data?.success) {
+                const extractedPayload = data.extracted || {
+                    text: data.extracted_text || null,
+                    description: data.photo_description || data.summary || null,
+                    visual_objects: Array.isArray(data.visual_objects) ? data.visual_objects : [],
+                    vendor_name: data.extracted_supplier || null,
+                    po_number: data.extracted_po_number || null,
+                    price: data.extracted_price || null,
+                    summary: data.summary || null,
+                    document_type: data.detected_type || 'Official Receipt',
+                    category: data.detected_category || 'documents',
+                    confidence_score: data.confidence_score || 95,
+                    extracted_at: new Date().toISOString(),
+                };
+
+                setScanResult(extractedPayload);
+
+                // Auto-fill title if empty or default
+                if (data.extracted_title) {
+                    setDocTitle(data.extracted_title);
+                } else if (!docTitle) {
+                    setDocTitle(file.name.replace(/\.[^/.]+$/, ""));
+                }
+
+                // Auto-fill category
+                if (data.detected_category) {
+                    const cat = data.detected_category.toLowerCase();
+                    setDocCategory(cat === 'photos' ? 'photos' : 'documents');
+                }
+
+                // Auto-fill document type
+                if (data.detected_type) {
+                    setDocType(data.detected_type);
+                }
+
+                // Auto-fill price
+                if (data.extracted_price) {
+                    setDocPrice(String(data.extracted_price).replace(/[^\d.,]/g, ''));
+                }
+
+                // Auto-fill supplier
+                if (data.extracted_supplier) {
+                    const matchedSupplier = suppliers.find(
+                        s => s.name.toLowerCase() === data.extracted_supplier.toLowerCase() ||
+                             s.name.toLowerCase().includes(data.extracted_supplier.toLowerCase()) ||
+                             data.extracted_supplier.toLowerCase().includes(s.name.toLowerCase())
+                    );
+                    if (matchedSupplier) {
+                        setSelectedSupplierName(matchedSupplier.name);
+                    }
+                }
+
+                // Auto-fill PO number
+                if (data.extracted_po_number) {
+                    setSelectedPoNumber(data.extracted_po_number);
+                    const hasPo = purchaseOrders.some(
+                        p => p.po_number.toLowerCase() === data.extracted_po_number.toLowerCase()
+                    );
+                    if (!hasPo) {
+                        setIsCustomPo(true);
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[Pre-upload OCR] Error scanning file:', err);
+        } finally {
+            setIsScanning(false);
+        }
+    };
+
+    // Trigger AI scan as soon as files are selected
+    useEffect(() => {
+        if (createWithoutFile || selectedFiles.length === 0) {
+            if (selectedFiles.length === 0) {
+                setScanResult(null);
+                lastScannedKeyRef.current = null;
+            }
+            return;
+        }
+
+        const primaryFile = selectedFiles[0];
+        const fileKey = `${primaryFile.name}-${primaryFile.size}-${primaryFile.lastModified}`;
+        if (lastScannedKeyRef.current === fileKey) return;
+        lastScannedKeyRef.current = fileKey;
+
+        runScan(primaryFile);
+    }, [selectedFiles, createWithoutFile]);
 
     if (!isOpen) return null;
 
@@ -74,7 +260,7 @@ export function DocumentUploadModal({
                                     )}
                                 </h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                    {createWithoutFile ? 'Record document metadata now and attach file later' : 'Upload files with automatic Gemini OCR validation (Max 5 files)'}
+                                    {createWithoutFile ? 'Record document metadata now and attach file later' : 'Upload documents and photos freely (Max 5 files)'}
                                 </p>
                             </div>
                         </div>
@@ -92,6 +278,12 @@ export function DocumentUploadModal({
 
                     {/* form body */}
                     <form onSubmit={onSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+                        {/* Hidden input carrying instant AI scan metadata */}
+                        <input
+                            type="hidden"
+                            name="preExtractedData"
+                            value={scanResult ? JSON.stringify(scanResult) : ''}
+                        />
 
                         {/* Upload Progress Status Banner */}
                         {isUploading && (
@@ -303,7 +495,7 @@ export function DocumentUploadModal({
                                                                     onRemoveFile(index);
                                                                 }}
                                                                 aria-label={`Remove ${file.name}`}
-                                                            >
+                                                             >
                                                                 <i className="fas fa-times text-[10px]"></i>
                                                             </AppButton>
                                                         </div>
@@ -329,6 +521,109 @@ export function DocumentUploadModal({
                             </div>
                         )}
 
+                        {/* AI Live Scanning & Inspection Feedback Section */}
+                        {isScanning && (
+                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-pink-500/30 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] flex items-center justify-between animate-pulse">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-[#ebf0f7] dark:bg-[#191a24] text-pink-500 dark:text-pink-400 flex items-center justify-center border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_4px_rgba(166,175,195,0.3),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_4px_rgba(0,0,0,0.5)]">
+                                        <i className="fas fa-wand-magic-sparkles fa-spin text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                            <span>AI Vision &amp; OCR Live Scanning...</span>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-600 dark:text-pink-300 border border-pink-500/20 font-medium">Gemini Lens</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                            Analyzing visual contents, transcribing text, auto-filling document metadata...
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {!isScanning && scanResult && (
+                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.55)] space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#191a24] text-pink-500 dark:text-pink-400 flex items-center justify-center text-xs border border-white/80 dark:border-white/[0.06] shadow-[1.5px_1.5px_3px_rgba(166,175,195,0.3),-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[1.5px_1.5px_3px_rgba(0,0,0,0.5)]">
+                                            <i className="fas fa-wand-magic-sparkles"></i>
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                            AI Scanned Content &amp; Explanation
+                                        </span>
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                            {scanResult.confidence_score || 95}% Match
+                                        </span>
+                                    </div>
+                                    {selectedFiles.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                lastScannedKeyRef.current = null;
+                                                runScan(selectedFiles[0]);
+                                            }}
+                                            className="px-2.5 py-1 rounded-xl text-[11px] text-pink-600 dark:text-pink-400 font-semibold bg-[#ebf0f7] dark:bg-[#191a24] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_4px_rgba(166,175,195,0.3),-2px_-2px_4px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35)] flex items-center gap-1 cursor-pointer transition-all"
+                                        >
+                                            <i className="fas fa-arrows-rotate text-[10px]"></i>
+                                            <span>Re-scan</span>
+                                        </button>
+                                    )}
+                                </div>
+
+                                {scanResult.description && (
+                                    <div className="bg-[#e2e8f0]/60 dark:bg-[#101118]/80 p-3 rounded-xl border border-slate-200/60 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] text-xs">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                                            <i className="fas fa-eye text-pink-500"></i>
+                                            <span>Image Explanation &amp; Content</span>
+                                        </div>
+                                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-[11px]">
+                                            {scanResult.description}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {Array.isArray(scanResult.visual_objects) && scanResult.visual_objects.length > 0 && (
+                                    <div>
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                                            <i className="fas fa-cube text-purple-500"></i>
+                                            <span>Visual Objects Recognized</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {scanResult.visual_objects.map((obj: string, idx: number) => (
+                                                <span
+                                                    key={idx}
+                                                    className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-[#ebf0f7] dark:bg-[#191a24] text-purple-600 dark:text-purple-300 border border-white/70 dark:border-white/[0.06] shadow-[1px_1px_2px_rgba(166,175,195,0.25)]"
+                                                >
+                                                    {obj}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {scanResult.text && (
+                                    <div className="bg-[#e2e8f0]/60 dark:bg-[#101118]/80 p-3 rounded-xl border border-slate-200/60 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.06)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)]">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                                <i className="fas fa-file-lines text-blue-500"></i>
+                                                <span>Extracted OCR Text</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowOcrText(!showOcrText)}
+                                                className="text-[10px] text-pink-600 dark:text-pink-400 hover:underline font-semibold"
+                                            >
+                                                {showOcrText ? "Collapse" : "Show Full Text"}
+                                            </button>
+                                        </div>
+                                        <p className={`text-[11px] text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap leading-relaxed ${showOcrText ? 'max-h-40 overflow-y-auto' : 'line-clamp-2'}`}>
+                                            {scanResult.text}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* fields grid */}
                         <div className={`space-y-3.5 pt-1 ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}>
                             {/* Document Title */}
@@ -338,6 +633,8 @@ export function DocumentUploadModal({
                                 </label>
                                 <input
                                     name="title"
+                                    value={docTitle}
+                                    onChange={(e) => setDocTitle(e.target.value)}
                                     disabled={isUploading}
                                     required={createWithoutFile}
                                     placeholder={createWithoutFile ? "e.g. Official Receipt - Supplier ABC" : "Auto-generated from file name or custom title"}
@@ -348,29 +645,46 @@ export function DocumentUploadModal({
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Category</label>
-                                    <select name="category" disabled={isUploading} className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed">
+                                    <select
+                                        name="category"
+                                        value={docCategory}
+                                        onChange={(e) => setDocCategory(e.target.value)}
+                                        disabled={isUploading}
+                                        className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed"
+                                    >
                                         <option value="documents" className="dark:bg-slate-900">Documents</option>
                                         <option value="photos" className="dark:bg-slate-900">Photos</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Document Type</label>
-                                    <select name="documentType" disabled={isUploading} className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed">
-                                        <option value="Official Receipt" className="dark:bg-slate-900">Official Receipt</option>
-                                        <option value="Invoice" className="dark:bg-slate-900">Invoice</option>
-                                        <option value="Delivery Receipt" className="dark:bg-slate-900">Delivery Receipt</option>
-                                        <option value="Parcel Condition" className="dark:bg-slate-900">Parcel Condition</option>
-                                        <option value="Courier Handover" className="dark:bg-slate-900">Courier Handover</option>
-                                        <option value="Vehicle Maintenance" className="dark:bg-slate-900">Vehicle Maintenance</option>
-                                        <option value="Other" className="dark:bg-slate-900">Other</option>
+                                    <select
+                                        name="documentType"
+                                        value={docType}
+                                        onChange={(e) => setDocType(e.target.value)}
+                                        disabled={isUploading}
+                                        className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed"
+                                    >
+                                        {STANDARD_DOC_TYPES.map((t) => (
+                                            <option key={t} value={t} className="dark:bg-slate-900">{t}</option>
+                                        ))}
+                                        {docType && !STANDARD_DOC_TYPES.includes(docType) && (
+                                            <option value={docType} className="dark:bg-slate-900">{docType} (AI Detected)</option>
+                                        )}
                                     </select>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Supplier</label>
-                                    <select name="supplier" disabled={isUploading} className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed">
+                                    <select
+                                        name="supplier"
+                                        value={selectedSupplierName}
+                                        onChange={(e) => setSelectedSupplierName(e.target.value)}
+                                        disabled={isUploading}
+                                        className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed"
+                                    >
                                         <option value="" className="dark:bg-slate-900 text-slate-400">Select supplier</option>
                                         {suppliers.map((s) => (
                                             <option key={s.id} value={s.name} className="dark:bg-slate-900">{s.name}</option>
@@ -378,12 +692,54 @@ export function DocumentUploadModal({
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">PO Number</label>
-                                    <input name="poNumber" disabled={isUploading} className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-pink-500 transition-all disabled:cursor-not-allowed" placeholder="e.g. PO-2026-0031" />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Parcel Batch</label>
-                                    <input name="parcelBatch" disabled={isUploading} className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-pink-500 transition-all disabled:cursor-not-allowed" placeholder="e.g. PB-2026-045" />
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">PO Number</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsCustomPo(!isCustomPo);
+                                                setSelectedPoNumber("");
+                                            }}
+                                            className="text-[10px] text-pink-600 dark:text-pink-400 hover:underline font-semibold"
+                                        >
+                                            {isCustomPo ? "Choose from list" : "+ Enter custom PO"}
+                                        </button>
+                                    </div>
+                                    {isCustomPo ? (
+                                        <input
+                                            name="poNumber"
+                                            value={selectedPoNumber}
+                                            onChange={(e) => setSelectedPoNumber(e.target.value)}
+                                            disabled={isUploading}
+                                            className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-pink-500 transition-all disabled:cursor-not-allowed"
+                                            placeholder="e.g. PO-2026-0031"
+                                        />
+                                    ) : (
+                                        <select
+                                            name="poNumber"
+                                            value={selectedPoNumber}
+                                            onChange={(e) => {
+                                                if (e.target.value === '__custom__') {
+                                                    setIsCustomPo(true);
+                                                    setSelectedPoNumber("");
+                                                } else {
+                                                    setSelectedPoNumber(e.target.value);
+                                                }
+                                            }}
+                                            disabled={isUploading}
+                                            className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer disabled:cursor-not-allowed"
+                                        >
+                                            <option value="" className="dark:bg-slate-900 text-slate-400">Select PO Number</option>
+                                            {filteredPos.map((po) => (
+                                                <option key={po.id || po.po_number} value={po.po_number} className="dark:bg-slate-900">
+                                                    {po.po_number} {po.supplier_name ? `(${po.supplier_name})` : ''}
+                                                </option>
+                                            ))}
+                                            <option value="__custom__" className="dark:bg-slate-900 font-semibold text-pink-600 dark:text-pink-400">
+                                                + Enter custom PO Number
+                                            </option>
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 
@@ -395,6 +751,8 @@ export function DocumentUploadModal({
                                         <input
                                             name="price"
                                             type="text"
+                                            value={docPrice}
+                                            onChange={(e) => setDocPrice(e.target.value)}
                                             disabled={isUploading}
                                             className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 pl-6 pr-3 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-pink-500 transition-all font-mono disabled:cursor-not-allowed"
                                             placeholder="e.g. 1,500.00"
@@ -416,7 +774,14 @@ export function DocumentUploadModal({
                                 </div>
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Notes</label>
-                                    <input name="notes" disabled={isUploading} className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-pink-500 transition-all disabled:cursor-not-allowed" placeholder="Additional details" />
+                                    <input
+                                        name="notes"
+                                        value={docNotes}
+                                        onChange={(e) => setDocNotes(e.target.value)}
+                                        disabled={isUploading}
+                                        className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-lg py-2 px-3 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-pink-500 transition-all disabled:cursor-not-allowed"
+                                        placeholder="Additional details"
+                                    />
                                 </div>
                             </div>
                         </div>

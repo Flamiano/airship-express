@@ -5,16 +5,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { SessionGuard } from '../../components/server/SessionGuard';
 import { DocumentsTab } from './components/DocumentsTab';
 import { PurchaseOrdersTab } from './components/PurchaseOrdersTab';
-import { SuppliersTab } from './components/SuppliersTab';
-import { ParcelsTab } from './components/ParcelsTab';
 import { trashCache } from './utils/trashCache';
 import { AppButton } from '../../components/ui/AppButton';
 import UnauthorizedEmptyState, { useUserRole } from '../../components/global/UnauthorizedEmptyState';
 
-type ArchiveTab = 'documents' | 'purchase_orders' | 'suppliers' | 'parcels';
+type ArchiveTab = 'documents' | 'purchase_orders';
 
 const DEFAULT_TAB: ArchiveTab = 'documents';
-const VALID_TABS: ArchiveTab[] = ['documents', 'purchase_orders', 'suppliers', 'parcels'];
+const VALID_TABS: ArchiveTab[] = ['documents', 'purchase_orders'];
 
 export default function ArchivePage() {
     const router = useRouter();
@@ -26,12 +24,8 @@ export default function ArchivePage() {
 
     const canAccessDocuments = isPrivileged || isStaffOrEmployee || isOperator;
     const canAccessPurchaseOrders = isPrivileged;
-    const canAccessSuppliers = isPrivileged;
-    const canAccessParcels = isPrivileged || isOperator;
 
     const getDefaultTabForRole = useCallback((role: string): ArchiveTab => {
-        const norm = (role || '').trim().toLowerCase();
-        if (norm === 'operator') return 'parcels';
         return 'documents';
     }, []);
 
@@ -99,12 +93,10 @@ export default function ArchivePage() {
     const tabs = [
         { key: 'documents' as const, label: 'Documents', icon: 'fa-file-alt', restricted: !canAccessDocuments },
         { key: 'purchase_orders' as const, label: 'Purchase Orders', icon: 'fa-file-invoice', restricted: !canAccessPurchaseOrders },
-        { key: 'suppliers' as const, label: 'Suppliers', icon: 'fa-handshake', restricted: !canAccessSuppliers },
-        { key: 'parcels' as const, label: 'Parcels', icon: 'fa-boxes', restricted: !canAccessParcels },
     ];
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Executive', 'Operator']}>
+        <SessionGuard requiredRole={['Admin', 'Purchase Officer', 'Staff', 'Employee', 'Executive', 'Operator']}>
             <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
                 {/* header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-slate-800 pb-5">
@@ -195,9 +187,9 @@ export default function ArchivePage() {
                             {isLoaded && !canAccessDocuments ? (
                                 <UnauthorizedEmptyState
                                     title="Documents Trash Restricted"
-                                    description="You do not have permission to view or manage deleted documents. This section is restricted to Admin, Manager, Executive, Staff, and Operator personnel only."
+                                    description="You do not have permission to view or manage deleted documents. This section is restricted to Admin, Purchase Officer, Executive, Staff, and Operator personnel only."
                                     currentRole={userRole}
-                                    requiredRoles={['Admin', 'Manager', 'Executive', 'Staff', 'Operator']}
+                                    requiredRoles={['Admin', 'Purchase Officer', 'Executive', 'Staff', 'Operator']}
                                     statusCode={403}
                                     statusText="Forbidden"
                                 />
@@ -211,46 +203,14 @@ export default function ArchivePage() {
                             {isLoaded && !canAccessPurchaseOrders ? (
                                 <UnauthorizedEmptyState
                                     title="Purchase Orders Trash Restricted"
-                                    description="You do not have permission to view or manage deleted purchase orders. This section is restricted to Admin, Manager, and Executive personnel only."
+                                    description="You do not have permission to view or manage deleted purchase orders. This section is restricted to Admin, Purchase Officer, and Executive personnel only."
                                     currentRole={userRole}
-                                    requiredRoles={['Admin', 'Manager', 'Executive']}
+                                    requiredRoles={['Admin', 'Purchase Officer', 'Executive']}
                                     statusCode={403}
                                     statusText="Forbidden"
                                 />
                             ) : (
                                 <PurchaseOrdersTab />
-                            )}
-                        </div>
-                    )}
-                    {visitedTabs.has('suppliers') && (
-                        <div className={activeTab === 'suppliers' ? 'block animate-in fade-in-50 duration-200' : 'hidden'}>
-                            {isLoaded && !canAccessSuppliers ? (
-                                <UnauthorizedEmptyState
-                                    title="Suppliers Trash Restricted"
-                                    description="You do not have permission to view or manage deleted suppliers. This section is restricted to Admin, Manager, and Executive personnel only."
-                                    currentRole={userRole}
-                                    requiredRoles={['Admin', 'Manager', 'Executive']}
-                                    statusCode={403}
-                                    statusText="Forbidden"
-                                />
-                            ) : (
-                                <SuppliersTab />
-                            )}
-                        </div>
-                    )}
-                    {visitedTabs.has('parcels') && (
-                        <div className={activeTab === 'parcels' ? 'block animate-in fade-in-50 duration-200' : 'hidden'}>
-                            {isLoaded && !canAccessParcels ? (
-                                <UnauthorizedEmptyState
-                                    title="Parcels Trash Restricted"
-                                    description="You do not have permission to view or manage deleted parcels. This section is restricted to Admin, Manager, Executive, and Operator personnel only."
-                                    currentRole={userRole}
-                                    requiredRoles={['Admin', 'Manager', 'Executive', 'Operator']}
-                                    statusCode={403}
-                                    statusText="Forbidden"
-                                />
-                            ) : (
-                                <ParcelsTab />
                             )}
                         </div>
                     )}

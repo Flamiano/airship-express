@@ -257,7 +257,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
         // Clean up any stale mismatched document records for this PO from previous failed attempts
         try {
             await supabaseAdmin
-                .from('documents')
+                .from('supplier_documents')
                 .delete()
                 .eq('purchase_id', po.id)
                 .ilike('notes', '%Mismatch%');
@@ -283,6 +283,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             storage_path: storagePath,
             category: 'documents',
             document_type: 'Official Receipt',
+            supplier_id: Number(po.supplier_id) || 1,
             supplier: po.supplier_name ? String(po.supplier_name).slice(0, 190) : null,
             po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
             purchase_id: po.id,
@@ -435,7 +436,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
             };
 
             const { data: insertedMatchedDoc, error: docError } = await supabaseAdmin
-                .from('documents')
+                .from('supplier_documents')
                 .insert(fullDocPayload)
                 .select('id')
                 .single();
@@ -446,7 +447,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                 console.error('First matched document insert attempt failed:', docError);
                 // Fallback attempt with minimal schema if table columns differ
                 const { data: retryDoc, error: retryErr } = await supabaseAdmin
-                    .from('documents')
+                    .from('supplier_documents')
                     .insert({
                         title: sanitizedTitle,
                         file_name: sanitizedFileName,
@@ -455,6 +456,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                         storage_path: storagePath,
                         category: 'documents',
                         document_type: 'Official Receipt',
+                        supplier_id: Number(po.supplier_id) || 1,
                         supplier: po.supplier_name ? String(po.supplier_name).slice(0, 190) : null,
                         po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
                         purchase_id: po.id,
@@ -504,25 +506,6 @@ Return ONLY a valid JSON object matching the following structure without any mar
                     .eq('id', po.id);
             }
 
-            // emit activity log
-            try {
-                await supabaseAdmin.from('activity_history').insert({
-                    action_type: 'upload',
-                    target_resource: 'Uploaded Verified Receipt',
-                    document_id: newDocId,
-                    document_title: docPayload.title,
-                    user_id: validUserUUID || null,
-                    user_name: userName || 'Procurement',
-                    details: {
-                        po_number: po.po_number,
-                        ocr_verified: true,
-                        amount: po.total_amount,
-                    },
-                });
-            } catch (actErr) {
-                console.warn('Could not log activity history:', actErr);
-            }
-
             try {
                 await supabaseAdmin.from('notifications').insert({
                     creator_name: 'OCR Verification System',
@@ -531,7 +514,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                     message: `PO #${po.po_number} payment verified via OCR.`,
                     type: 'ocr_complete',
                     link: `/purchase-orders?po_id=${po.id}`,
-                    role: ['Admin', 'Executive', 'Manager'],
+                    role: ['Admin', 'Executive', 'Purchase Officer'],
                     reference_type: 'document_verification',
                     reference_id: dvId,
                     is_read: false,
@@ -553,7 +536,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
             // Ensure any document row accidentally linked to this verification is removed
             try {
                 await supabaseAdmin
-                    .from('documents')
+                    .from('supplier_documents')
                     .delete()
                     .eq('document_verification_id', dvId);
             } catch (cleanupErr) {
@@ -578,7 +561,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                     message: `PO #${po.po_number} receipt details do not match order. Review required.`,
                     type: 'ocr_mismatch',
                     link: `/purchase-orders?verification=${dvId}&po_id=${po.id}`,
-                    role: ['Admin', 'Executive', 'Manager'],
+                    role: ['Admin', 'Executive', 'Purchase Officer'],
                     reference_type: 'document_verification',
                     reference_id: dvId,
                     is_read: false,
@@ -618,13 +601,13 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             reason = 'Authorized administrative override',
         } = input;
 
-        // auth guard - strictly Administrator only (disabled for Manager and other roles)
+        // auth guard - strictly Administrator only (disabled for Purchase Officer and other roles)
         const role = (userRole || '').toLowerCase().trim();
         const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(role) || userRole === 'Admin';
         if (!isAdmin) {
             return {
                 success: false,
-                error: 'Forbidden: Force insert requires Administrator authorization (disabled for Manager role).',
+                error: 'Forbidden: Force insert requires Administrator authorization (disabled for Purchase Officer role).',
                 status: 403,
             };
         }
@@ -676,13 +659,14 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
         // If dv already has a linked document_id, update it
         if (dv.document_id) {
             const { data: updatedDoc } = await supabaseAdmin
-                .from('documents')
+                .from('supplier_documents')
                 .update({
                     title: `Receipt (Forced) - ${po.po_number || po.supplier_name}`.slice(0, 250),
                     force_inserted_by: validUserUUID || null,
                     notes: `Forced override by ${userName}: ${reason}`.slice(0, 250),
                     category: 'documents',
                     document_type: 'Official Receipt',
+                    supplier_id: Number(po.supplier_id) || 1,
                     supplier: po.supplier_name ? String(po.supplier_name).slice(0, 190) : null,
                     po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
                     purchase_id: po.id,
@@ -712,7 +696,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             }
 
             const { data: newDoc, error: docErr } = await supabaseAdmin
-                .from('documents')
+                .from('supplier_documents')
                 .insert({
                     title: `Receipt (Forced) - ${po.po_number || po.supplier_name}`.slice(0, 250),
                     file_name: resolvedFileName.slice(0, 250),
@@ -721,6 +705,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                     storage_path: resolvedStoragePath,
                     category: 'documents',
                     document_type: 'Official Receipt',
+                    supplier_id: Number(po.supplier_id) || 1,
                     supplier: po.supplier_name ? String(po.supplier_name).slice(0, 190) : null,
                     po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
                     purchase_id: po.id,
@@ -740,7 +725,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
             } else {
                 console.error('First forced document insert failed:', docErr);
                 const { data: retryDoc, error: retryErr } = await supabaseAdmin
-                    .from('documents')
+                    .from('supplier_documents')
                     .insert({
                         title: `Receipt (Forced) - ${po.po_number || po.supplier_name}`.slice(0, 250),
                         file_name: resolvedFileName.slice(0, 250),
@@ -749,6 +734,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                         storage_path: resolvedStoragePath,
                         category: 'documents',
                         document_type: 'Official Receipt',
+                        supplier_id: Number(po.supplier_id) || 1,
                         supplier: po.supplier_name ? String(po.supplier_name).slice(0, 190) : null,
                         po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
                         purchase_id: po.id,
@@ -801,25 +787,6 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                 .eq('id', po.id);
         }
 
-        // emit activity log
-        try {
-            await supabaseAdmin.from('activity_history').insert({
-                action_type: 'upload',
-                target_resource: 'Force Inserted Receipt (Admin Override)',
-                document_id: newDocId,
-                document_title: `Receipt (Forced) - ${po.po_number || po.supplier_name}`,
-                user_id: validUserUUID || null,
-                user_name: userName || 'Administrator',
-                details: {
-                    po_number: po.po_number,
-                    forced: true,
-                    reason: reason,
-                },
-            });
-        } catch (actErr) {
-            console.warn('Could not log forced activity history:', actErr);
-        }
-
         try {
             await supabaseAdmin.from('notifications').insert({
                 creator_name: userName,
@@ -828,7 +795,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                 message: `PO #${po.po_number} was manually force-approved by ${userName} (${userRole}). Reason: ${reason}`,
                 type: 'ocr_complete',
                 link: `/purchase-orders?po_id=${po.id}`,
-                role: ['Admin', 'Executive', 'Manager'],
+                role: ['Admin', 'Executive', 'Purchase Officer'],
                 reference_type: 'document_verification',
                 reference_id: dv.id,
                 is_read: false,

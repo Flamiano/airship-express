@@ -1,1478 +1,1194 @@
-// app/(supplyChain)/procurement/page.tsx
+// app/(supplyChain)/(pages)/procurement/page.tsx
 "use client";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import Chart from "chart.js/auto";
+
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { useDebounce } from "../../hooks/useDebounce";
-import { useConfirm } from "../../components/ui/ConfirmModal";
-import { CardsSkeleton, ChartsSkeleton, TableSkeleton } from "../../components/ui/SkeletonLoader";
-import { Pagination } from "../../components/global/pagination";
-import Cards from "../../components/global/Cards";
-import AiQuestions from "../../components/global/AiQuestions";
-import { TableContentLoader } from "../../components/global/Loader";
-import { Supplier, PurchaseOrder, PurchaseRequest } from "./types/index";
-import { CrudActionButton } from "../../components/ui/CrudActionButton";
-import { AppButton } from "../../components/ui/AppButton";
-import { StatusBadge, getPOStatusTone } from "../../components/ui/StatusBadge";
-import { FileText, Check, X } from "lucide-react";
+import { 
+    Layers, 
+    ArrowRight, 
+    RefreshCw, 
+    Sparkles, 
+    Package, 
+    HelpCircle,
+    UserCheck
+} from "lucide-react";
 import { supabase } from "../../lib/services/client/supabase";
-import { fetchProcurementData, createPurchaseRequest, updatePurchaseRequest, deletePurchaseRequest, deleteMultiplePurchaseRequests, patchPurchaseRequest } from './utils/procurementApi';
-import { SessionGuard } from "../../components/server/SessionGuard";
 import { user } from "../../lib/services/Class/user";
-import Link from "next/link";
-const formatCurrency = (amount: number) => `₱${amount.toLocaleString()}`;
-const getPriorityColor = (priority: string) => {
-    switch (priority) {
-        case 'Critical': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
-        case 'Urgent': return 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50 shadow-2xs font-semibold';
-        default: return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
-    }
-};
-const getStatusColor = (status: string) => {
-    switch (status) {
-        case 'Pending': return 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50 shadow-2xs font-semibold';
-        case 'Approved': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
-        case 'Rejected': return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
-        case 'Completed': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
-        default: return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
-    }
-};
-const getPOStatusColor = (status: string) => {
-    switch (status) {
-        case 'Draft': return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs font-semibold';
-        case 'Sent': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-2xs font-semibold';
-        case 'Confirmed': return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-2xs font-semibold';
-        case 'Delivered': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/50 shadow-2xs font-semibold';
-        default: return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50 shadow-2xs font-semibold';
-    }
-};
-import { PurchaseRequestModal } from "../../components/modals/PurchaseRequestModal";
+import { useConfirm } from "../../components/ui/ConfirmModal";
+import { SessionGuard } from "../../components/server/SessionGuard";
+import { CardsSkeleton } from "../../components/ui/SkeletonLoader";
+import AiQuestions from "../../components/global/AiQuestions";
+
+// Procurement Stage Components
+import { ProcurementLifecycleNav, ProcurementStageId } from "./components/ProcurementLifecycleNav";
+import { StageStockShortages } from "./components/StageStockShortages";
+import { StageFindPotentialSuppliers } from "./components/StageFindPotentialSuppliers";
+import { PotentialSuppliersTab } from "../suppliers/components/tables/PotentialSuppliersTab";
+import { StageSupplierReturns } from "./components/StageSupplierReturns";
+
+// Modals
 import { PurchaseOrderModal } from "../../components/modals/PurchaseOrderModal";
 import { ChartDetailModal } from "../../components/modals/ChartDetailModal";
 import { DigitalReceiptModal } from "../../components/modals/DigitalReceiptModal";
-// re-export modals
-export { PurchaseRequestModal, PurchaseOrderModal, ChartDetailModal, DigitalReceiptModal };
-function EmptyState({ title, description, icon = "fas fa-inbox", actionText, onAction }: {
-    title: string;
-    description: string;
-    icon?: string;
-    actionText?: string;
-    onAction?: () => void;
-}) {
-    return (<div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] flex items-center justify-center text-pink-500 dark:text-pink-400 mb-3.5 transition-transform duration-300 hover:scale-105">
-            <i className={`${icon} text-2xl`} />
-        </div>
+import { AddPotentialSupplierModal } from "../suppliers/components/modals/AddPotentialSupplierModal";
+import { VendorQuotationViewModal } from "../suppliers/components/modals/VendorQuotationViewModal";
+import { SupplierMessageModal } from "../suppliers/components/modals/SupplierMessageModal";
 
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
-            {title}
-        </h3>
-        <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm mb-5 leading-relaxed">
-            {description}
-        </p>
+// Types
+import { 
+    PurchaseRequest, 
+    StockShortageItem, 
+    Supplier, 
+    SupplierQuotationItem, 
+    PurchaseOrder 
+} from "./types/index";
+import { 
+    fetchProcurementData, 
+} from "./utils/procurementApi";
+import { fetchApprovedRequisitionsForProcurement } from "../inventory/server/query";
 
-        {actionText && onAction && (<button onClick={onAction} className="px-4 py-2 bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 text-white border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.4)] rounded-2xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95">
-            <i className="fas fa-plus text-[10px]" />
-            <span>{actionText}</span>
-        </button>)}
-    </div>);
-}
-export default function Procurement() {
+// Re-export modals for external imports
+export { PurchaseOrderModal, ChartDetailModal, DigitalReceiptModal };
+
+export default function ProcurementPage() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const { confirm } = useConfirm();
-    const expenseChartCanvasRef = useRef<HTMLCanvasElement>(null);
-    const priorityChartCanvasRef = useRef<HTMLCanvasElement>(null);
-    const expenseChartInstanceRef = useRef<Chart | null>(null);
-    const priorityChartInstanceRef = useRef<Chart | null>(null);
-    const tableContainerRef = useRef<HTMLDivElement>(null);
-    const [chartDetailModal, setChartDetailModal] = useState<{
-        isOpen: boolean;
-        month: string;
-        monthIndex: number;
-        orders: PurchaseOrder[];
-        totalAmount: number;
-    }>({
-        isOpen: false,
-        month: '',
-        monthIndex: -1,
-        orders: [],
-        totalAmount: 0,
-    });
-    const [activeTab, setActiveTab] = useState<"all" | "pending" | "approved">("all");
-    const [isPurchaseRequestModalOpen, setIsPurchaseRequestModalOpen] = useState(false);
-    const [isPurchaseOrderModalOpen, setIsPurchaseOrderModalOpen] = useState(false);
-    const [selectedRequest, setSelectedRequest] = useState<PurchaseRequest | null>(null);
-    const [digitalReceiptPO, setDigitalReceiptPO] = useState<any | null>(null);
-    const [isDigitalReceiptModalOpen, setIsDigitalReceiptModalOpen] = useState(false);
-    const [editData, setEditData] = useState<any>(null);
-    const [isEditMode, setIsEditMode] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const hasLoadedOnceRef = useRef(false);
-    const [pendingRowId, setPendingRowId] = useState<string | null>(null);
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [isSelectAll, setIsSelectAll] = useState(false);
-    const [requests, setRequests] = useState<PurchaseRequest[]>([]);
-    const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [searchTerm, setSearchTerm] = useState("");
-    const debouncedSearch = useDebounce(searchTerm, 300);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(15);
-    const [totalItems, setTotalItems] = useState(0);
-    const [totalCounts, setTotalCounts] = useState<{
-        all: number;
-        pending: number;
-        approved: number;
-    }>({
-        all: 0,
-        pending: 0,
-        approved: 0
-    });
-    const [isTabTransitioning, setIsTabTransitioning] = useState(false);
-    const [isReadOnly, setIsReadOnly] = useState(false);
-    const [userRole, setUserRole] = useState<string>(() => {
-        return user.getRole() || 'Admin';
-    });
 
+    // Parse URL parameter to active stage
+    const parseStageParam = (param: string | null): ProcurementStageId => {
+        if (!param) return 1;
+        const normalized = param.toLowerCase().trim();
+        if (normalized === "1" || normalized === "requests" || normalized === "shortages") return 1;
+        if (normalized === "2" || normalized === "suppliers" || normalized === "sourcing") return 2;
+        if (normalized === "3" || normalized === "quotations" || normalized === "quotes" || normalized === "compare") return 3;
+        if (normalized === "4" || normalized === "returns" || normalized === "supplier_returns" || normalized === "defective") return 4;
+        return 1;
+    };
+
+    const [currentStage, setCurrentStage] = useState<ProcurementStageId>(() =>
+        parseStageParam(searchParams.get("stage") || searchParams.get("tab"))
+    );
+
+    // Global loading and role state
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [userRole, setUserRole] = useState<string>(() => user.getRole() || "Admin");
+
+    // Core Procurement Datasets
+    const [requests, setRequests] = useState<PurchaseRequest[]>([]);
+    const [shortages, setShortages] = useState<StockShortageItem[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [quotations, setQuotations] = useState<SupplierQuotationItem[]>([]);
+    const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+    const [supplierReturnsCount, setSupplierReturnsCount] = useState<number>(0);
+
+    // Workflow Inter-Stage Transfer State
+    const [activeSourcingFocus, setActiveSourcingFocus] = useState<{
+        itemName?: string;
+        requestNumber?: string;
+        category?: string;
+        previousSupplier?: string | null;
+    } | null>(null);
+
+    const [selectedRequestNumberForQuotes, setSelectedRequestNumberForQuotes] = useState<string | null>(null);
+
+    // Modal Visibility & Payloads
+
+    const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+    const [selectedPOForModal, setSelectedPOForModal] = useState<PurchaseOrder | null>(null);
+    const [poModalPrefillRequest, setPoModalPrefillRequest] = useState<any | null>(null);
+
+    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+    const [receiptModalPO, setReceiptModalPO] = useState<any | null>(null);
+
+    const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
+
+    const [isQuoteViewModalOpen, setIsQuoteViewModalOpen] = useState(false);
+    const [selectedQuoteForModal, setSelectedQuoteForModal] = useState<SupplierQuotationItem | null>(null);
+    const [quoteModalSupplier, setQuoteModalSupplier] = useState<any | null>(null);
+
+    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+    const [selectedSupplierForMessage, setSelectedSupplierForMessage] = useState<any | null>(null);
+
+    // Synchronize role changes
     useEffect(() => {
         const handleStorageChange = () => {
             const storedRole = user.getRole();
             if (storedRole) setUserRole(storedRole);
         };
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
+        window.addEventListener("storage", handleStorageChange);
+        return () => window.removeEventListener("storage", handleStorageChange);
     }, []);
 
-    const normalizedRole = (userRole || '').trim().toLowerCase();
-    const isAdminOrExec = ['admin', 'executive'].includes(normalizedRole);
-    const canApproveReject = isAdminOrExec;
-    const canCreateRequest = ['admin', 'manager', 'executive'].includes(normalizedRole);
+    const normalizedRole = (userRole || "").trim().toLowerCase();
+    const canApproveReject = ["admin", "executive", "purchase officer"].includes(normalizedRole);
+    const canCreateRequest = ["admin", "purchase officer", "executive", "supervisor"].includes(normalizedRole);
 
-    const canEditRequest = useCallback((req: PurchaseRequest | null | undefined): boolean => {
-        if (!req) return false;
-        const reqStatus = (req.status || '').toLowerCase();
-
-        // Sent, confirmed, delivered, or completed requests can never be edited
-        if (['sent', 'confirmed', 'delivered', 'completed'].includes(reqStatus)) return false;
-
-        // If associated PO has been sent, confirmed, or delivered, request cannot be edited
-        const po = purchaseOrders.find(o => o.request_id === req.id);
-        const poStatus = (po?.status || '').toLowerCase();
-        if (['sent', 'confirmed', 'delivered', 'completed'].includes(poStatus)) return false;
-
-        // Pending: Managers, Admins, Executives can edit
-        if (reqStatus === 'pending') {
-            return ['admin', 'executive', 'manager'].includes(normalizedRole);
-        }
-
-        // Approved or Rejected: No editing once approved or rejected
-        return false;
-    }, [normalizedRole, purchaseOrders]);
-
-    const canDeleteRequest = useCallback((req: PurchaseRequest | null | undefined): boolean => {
-        if (!req) return false;
-        const reqStatus = (req.status || '').toLowerCase();
-
-        // Sent, confirmed, delivered, or completed requests can never be deleted
-        if (['sent', 'confirmed', 'delivered', 'completed'].includes(reqStatus)) return false;
-
-        // If associated PO has been sent, confirmed, or delivered, cannot delete
-        const po = purchaseOrders.find(o => o.request_id === req.id);
-        const poStatus = (po?.status || '').toLowerCase();
-        if (['sent', 'confirmed', 'delivered', 'completed'].includes(poStatus)) return false;
-
-        // Pending requests can be deleted by Managers, Admins, Executives
-        if (reqStatus === 'pending') {
-            return ['admin', 'executive', 'manager'].includes(normalizedRole);
-        }
-
-        // Rejected requests can only be deleted by Admin or Executive
-        if (reqStatus === 'rejected') {
-            return ['admin', 'executive'].includes(normalizedRole);
-        }
-
-        return false;
-    }, [normalizedRole, purchaseOrders]);
-    const scrollToTable = useCallback(() => {
-        if (tableContainerRef.current) {
-            const targetElement = document.getElementById(tableContainerRef.current.id);
-            if (targetElement) {
-                const offset = 80;
-                const elementPosition = targetElement.getBoundingClientRect().top;
-                window.scrollTo({
-                    top: elementPosition + window.pageYOffset - offset,
-                    behavior: 'smooth'
-                });
-            }
-        }
-    }, []);
-    useEffect(() => {
-        const handleResize = () => {
-            if (window.innerWidth < 768) {
-                setItemsPerPage(10);
-            }
-            else {
-                setItemsPerPage(15);
-            }
-        };
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
-    const fetchData = useCallback(async (opts?: {
-        silent?: boolean;
-    }) => {
-        const silent = opts?.silent ?? false;
+    // Master Fetch Data
+    const loadAllProcurementData = useCallback(async (isSilent = false) => {
         try {
-            if (!silent && !hasLoadedOnceRef.current) {
-                setLoading(true);
-            }
-            else if (!silent) {
-                setIsRefreshing(true);
-                setIsTabTransitioning(true);
-            }
-            const data = await fetchProcurementData({
-                page: currentPage,
-                limit: itemsPerPage,
-                search: debouncedSearch,
-                tab: activeTab,
-                includeOrders: true,
-                includeSuppliers: true,
-            });
-            setRequests(data.requests || []);
-            setPurchaseOrders(data.purchaseOrders || []);
-            setSuppliers(data.suppliers || []);
-            setTotalItems(data.totalItems || 0);
-            if (data.counts) {
-                setTotalCounts(data.counts);
-            }
-        }
-        catch (error) {
-            console.error('Error fetching data:', error);
-            toast.error('Failed to load procurement data');
-        }
-        finally {
-            hasLoadedOnceRef.current = true;
-            if (!silent) {
-                setLoading(false);
-                setIsRefreshing(false);
-                setTimeout(() => setIsTabTransitioning(false), 300);
-            }
-        }
-    }, [currentPage, itemsPerPage, debouncedSearch, activeTab]);
-    const updateCounts = useCallback(async () => {
-        try {
-            const { count: allCount } = await supabase
-                .from('purchase_requests')
-                .select('*', { count: 'exact', head: true });
-            const { count: pendingCount } = await supabase
-                .from('purchase_requests')
-                .select('*', { count: 'exact', head: true })
-                .eq('status', 'Pending');
-            const { count: approvedCount } = await supabase
-                .from('purchase_requests')
-                .select('*', { count: 'exact', head: true })
-                .in('status', ['Approved', 'Completed']);
-            setTotalCounts({
-                all: allCount || 0,
-                pending: pendingCount || 0,
-                approved: approvedCount || 0
-            });
-        }
-        catch (error) {
-            console.error('Error updating counts:', error);
-        }
-    }, []);
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-    // realtime
-    useEffect(() => {
-        const requestsSubscription = supabase
-            .channel('purchase_requests_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, () => {
-                fetchData({ silent: true });
-            })
-            .subscribe();
-        const ordersSubscription = supabase
-            .channel('purchase_orders_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => {
-                fetchData({ silent: true });
-            })
-            .subscribe();
-        const suppliersSubscription = supabase
-            .channel('suppliers_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
-                fetchData({ silent: true });
-            })
-            .subscribe();
-        return () => {
-            requestsSubscription.unsubscribe();
-            ordersSubscription.unsubscribe();
-            suppliersSubscription.unsubscribe();
-        };
-    }, [fetchData]);
-    // crud operations
-    const handleRequestSubmitted = async (newRequest: any) => {
-        if (isReadOnly) {
-            setIsPurchaseRequestModalOpen(false);
-            setIsReadOnly(false);
-            return;
-        }
-        try {
-            if (isEditMode && editData) {
-                const updatePayload: Partial<PurchaseRequest> = {
-                    type: newRequest.type,
-                    description: newRequest.description,
-                    requested_by: newRequest.requested_by,
-                    department: newRequest.department,
-                    supplier_id: newRequest.supplier_id,
-                    supplier_name: newRequest.supplier_name,
-                    amount: newRequest.amount,
-                    priority: newRequest.priority,
-                    status: newRequest.status,
-                    date: newRequest.date,
-                    items: newRequest.items,
-                    reason: newRequest.reason,
-                };
-                const updated = await updatePurchaseRequest({
-                    id: editData.id,
-                    ...updatePayload
-                });
-                setRequests(prev => prev.map(r => r.id === editData.id ? { ...updated, id: editData.id } : r));
-                toast.success("Purchase request updated successfully!");
-            }
-            else {
-                const createPayload: Omit<PurchaseRequest, 'id' | 'request_number' | 'created_at' | 'updated_at'> = {
-                    type: newRequest.type || "New Request",
-                    description: newRequest.description || "",
-                    requested_by: newRequest.requested_by,
-                    department: newRequest.department || "Fleet",
-                    supplier_id: newRequest.supplier_id,
-                    supplier_name: newRequest.supplier_name,
-                    amount: newRequest.amount || 0,
-                    priority: newRequest.priority || "Normal",
-                    status: newRequest.status || "Pending",
-                    date: newRequest.date || new Date().toISOString().split("T")[0],
-                    items: newRequest.items || [],
-                    reason: newRequest.reason,
-                };
-                const created = await createPurchaseRequest(createPayload);
-                setRequests(prev => [created, ...prev]);
-                setTotalItems(prev => prev + 1);
-                toast.success("Purchase request submitted successfully!");
-            }
-            setSelectedIds(new Set());
-            setIsSelectAll(false);
-            setIsEditMode(false);
-            setIsReadOnly(false);
-            setEditData(null);
-            setIsPurchaseRequestModalOpen(false);
-            await updateCounts();
-        }
-        catch (error) {
-            console.error('Error submitting request:', error);
-            toast.error(isEditMode ? 'Failed to update request' : 'Failed to submit request');
-        }
-    };
-    const handleCreateOrder = (request: PurchaseRequest) => {
-        setSelectedRequest(request);
-        setIsPurchaseOrderModalOpen(true);
-    };
-    const handleOrderCreated = async (orderData: any) => {
-        try {
-            const { error } = await supabase
-                .from('purchase_requests')
-                .update({ status: "Approved", updated_at: new Date().toISOString() })
-                .eq('id', orderData.request_id);
-            if (error)
-                throw error;
+            if (!isSilent) setIsLoading(true);
+            else setIsRefreshing(true);
 
-            const sanitizedItems = (orderData.items && orderData.items.length > 0
-                ? orderData.items
-                : [{
-                    name: orderData.notes || "Purchase Order Item",
-                    item_name: orderData.notes || "Purchase Order Item",
-                    quantity: 1,
-                    unit_price: Number(orderData.total_amount) || 0,
-                    total: Number(orderData.total_amount) || 0,
-                }]
-            ).map((item: any) => {
-                const itemName = item.item_name || item.name || item.description || "Purchase Order Item";
-                const quantity = Math.max(1, Number(item.quantity) || 1);
-                const unit_price = Number(item.unit_price ?? item.price ?? 0);
-                const total = item.total ? Number(item.total) : Number((quantity * unit_price).toFixed(2));
-                return {
-                    ...item,
-                    name: itemName,
-                    item_name: itemName,
-                    quantity,
-                    unit_price,
-                    total,
-                };
-            });
+            // 1. Fetch Purchase Requests, Inventory, Quotes, and Approved Requests via Server Action
+            const [procDataRes, inventoryRes, quotesRes, approvedReqsServerRes, returnsCountRes] = await Promise.allSettled([
+                fetchProcurementData({
+                    page: 1,
+                    limit: 100,
+                    includeOrders: true,
+                    includeSuppliers: true,
+                    tab: "all",
+                }),
+                supabase
+                    .from("inventory_items")
+                    .select("*")
+                    .order("current_stock", { ascending: true }),
+                supabase
+                    .from("supplier_quotations")
+                    .select("*")
+                    .order("created_at", { ascending: false }),
+                fetchApprovedRequisitionsForProcurement(),
+                supabase
+                    .from("supplier_return_requests")
+                    .select("*", { count: "exact", head: true })
+                    .neq("status", "Resolved"),
+            ]);
 
-            const initialStatus = orderData.status || "Draft";
-
-            const { data: insertedPO, error: orderError } = await supabase
-                .from('purchase_orders')
-                .insert({
-                    po_number: orderData.po_number,
-                    request_id: orderData.request_id,
-                    supplier_id: orderData.supplier_id,
-                    supplier_name: orderData.supplier_name,
-                    total_amount: orderData.total_amount,
-                    status: initialStatus,
-                    delivery_date: orderData.delivery_date,
-                    notes: orderData.notes,
-                    items: sanitizedItems,
-                    paid: orderData.paid ?? false,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .select()
-                .single();
-            if (orderError)
-                throw orderError;
-
-            // Generate official digital receipt document
-            try {
-                await supabase.from('documents').insert({
-                    title: `Digital Receipt - PO #${orderData.po_number}`,
-                    file_name: `Receipt-PO-${orderData.po_number}.pdf`,
-                    file_type: 'receipt',
-                    file_size: 'Digital PDF Voucher',
-                    file_path: `/procurement/receipts/PO-${orderData.po_number}`,
-                    supplier_id: orderData.supplier_id || null,
-                    purchase_id: insertedPO?.id || orderData.id || null,
-                    uploaded_by: 'System (Procurement Auto-Receipt)',
-                    created_at: new Date().toISOString()
-                });
-            } catch (docErr) {
-                console.warn('Failed to insert receipt document log:', docErr);
-            }
-
-            const createdPO = { ...orderData, ...(insertedPO || {}), items: sanitizedItems, status: initialStatus, id: insertedPO?.id || Date.now().toString() };
-            setPurchaseOrders(prev => [...prev, createdPO]);
-            setRequests(prev => prev.map(r => r.id === orderData.request_id ? { ...r, status: "Approved" } : r));
-            toast.success("Purchase Order created successfully! Digital receipt generated.");
-            setIsPurchaseOrderModalOpen(false);
-            setSelectedRequest(null);
-            setDigitalReceiptPO(createdPO);
-            setIsDigitalReceiptModalOpen(true);
-            await updateCounts();
-        }
-        catch (error) {
-            console.error('Error creating order:', error);
-            toast.error('Failed to create purchase order');
-        }
-    };
-    const handleEditRequest = (id: string) => {
-        const request = requests.find(r => r.id === id);
-        if (request) {
-            setEditData(request);
-            if (canEditRequest(request)) {
-                setIsEditMode(true);
-                setIsReadOnly(false);
+            if (returnsCountRes.status === "fulfilled" && returnsCountRes.value?.count !== null && returnsCountRes.value?.count !== undefined) {
+                setSupplierReturnsCount(returnsCountRes.value.count);
             } else {
-                setIsEditMode(false);
-                setIsReadOnly(true);
+                try {
+                    const { count: incCount } = await supabase
+                        .from("warehouse_damage_incidents")
+                        .select("*", { count: "exact", head: true })
+                        .neq("status", "Resolved");
+                    if (incCount !== null && incCount !== undefined) setSupplierReturnsCount(incCount);
+                } catch {}
             }
-            setIsPurchaseRequestModalOpen(true);
-        }
-    };
-    const handleDeleteRequest = async (id: string) => {
-        const confirmed = await confirm({
-            title: "Delete Purchase Request",
-            message: "Are you sure you want to delete this request? This action cannot be undone.",
-            confirmText: "Delete",
-            cancelText: "Cancel",
-            confirmVariant: "danger",
-        });
-        if (!confirmed)
-            return;
-        setPendingRowId(id);
-        try {
-            await deletePurchaseRequest(id);
-            setRequests(prev => prev.filter(r => r.id !== id));
-            setTotalItems(prev => prev - 1);
-            setSelectedIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(id);
-                return newSet;
-            });
-            toast.success("Request deleted successfully");
-            await updateCounts();
-        }
-        catch (error) {
-            console.error('Error deleting request:', error);
-            toast.error('Failed to delete request');
-        }
-        finally {
-            setPendingRowId(null);
-        }
-    };
-    const performBulkDelete = async (ids: string[]) => {
-        try {
-            setPendingRowId("bulk");
-            await deleteMultiplePurchaseRequests(ids);
-            setRequests(prev => prev.filter(r => !ids.includes(r.id)));
-            setTotalItems(prev => prev - ids.length);
-            setSelectedIds(new Set());
-            setIsSelectAll(false);
-            toast.success(`Successfully deleted ${ids.length} request(s)`);
-            await updateCounts();
-        }
-        catch (error) {
-            console.error('Error deleting requests:', error);
-            toast.error('Failed to delete selected requests');
-        }
-        finally {
-            setPendingRowId(null);
-        }
-    };
-    const handleBulkDelete = async () => {
-        if (selectedIds.size === 0) {
-            toast.warning("Please select at least one request to delete");
-            return;
-        }
-        const selectedRequests = requests.filter(r => selectedIds.has(r.id));
-        const nonDeletableSelected = selectedRequests.filter(r => r.status !== "Pending" && r.status !== "Rejected");
-        if (nonDeletableSelected.length > 0) {
-            const confirmed = await confirm({
-                title: "Bulk Delete Warning",
-                message: `${nonDeletableSelected.length} selected request(s) are not in "Pending" or "Rejected" status. Only Pending and Rejected requests can be deleted. Would you like to delete only the eligible ones?`,
-                confirmText: "Delete Eligible Only",
-                cancelText: "Cancel",
-                confirmVariant: "danger",
-            });
-            if (!confirmed)
-                return;
-            const deletableToDelete = selectedRequests.filter(r => r.status === "Pending" || r.status === "Rejected");
-            if (deletableToDelete.length === 0) {
-                toast.warning("No eligible requests selected for deletion");
-                return;
+
+            // Consolidate Suppliers
+            const allSuppliersList: any[] = [];
+            if (procDataRes.status === "fulfilled" && procDataRes.value?.suppliers) {
+                allSuppliersList.push(...procDataRes.value.suppliers);
             }
-            const confirmedFinal = await confirm({
-                title: "Delete Selected Requests",
-                message: `Are you sure you want to delete ${deletableToDelete.length} request(s)? This action cannot be undone.`,
-                confirmText: `Delete ${deletableToDelete.length}`,
-                cancelText: "Cancel",
-                confirmVariant: "danger",
-            });
-            if (!confirmedFinal)
-                return;
-            await performBulkDelete(deletableToDelete.map(r => r.id));
-            return;
-        }
-        const confirmed = await confirm({
-            title: "Delete Selected Requests",
-            message: `Are you sure you want to delete ${selectedIds.size} selected request(s)? This action cannot be undone.`,
-            confirmText: `Delete ${selectedIds.size}`,
-            cancelText: "Cancel",
-            confirmVariant: "danger",
-        });
-        if (!confirmed)
-            return;
-        await performBulkDelete(Array.from(selectedIds));
-    };
-
-    const handleBulkApprove = async () => {
-        if (selectedIds.size === 0) {
-            toast.warning("Please select at least one request to approve");
-            return;
-        }
-
-        const selectedRequests = requests.filter(r => selectedIds.has(r.id));
-        const pendingRequests = selectedRequests.filter(r => r.status === "Pending");
-
-        if (pendingRequests.length === 0) {
-            toast.warning("None of the selected requests are in 'Pending' status to approve");
-            return;
-        }
-
-        const nonPendingCount = selectedRequests.length - pendingRequests.length;
-        const confirmMessage = nonPendingCount > 0
-            ? `${pendingRequests.length} of ${selectedRequests.length} selected request(s) are pending. Are you sure you want to approve these ${pendingRequests.length} pending request(s)?`
-            : `Are you sure you want to approve all ${pendingRequests.length} selected pending request(s)? This will mark them ready for purchase order generation.`;
-
-        const confirmed = await confirm({
-            title: "Approve Selected Requests",
-            message: confirmMessage,
-            confirmText: `Approve (${pendingRequests.length})`,
-            cancelText: "Cancel",
-            confirmVariant: "pink",
-        });
-
-        if (!confirmed) return;
-
-        setPendingRowId("bulk");
-        try {
-            const idsToApprove = pendingRequests.map(r => r.id);
-            await patchPurchaseRequest({ ids: idsToApprove, action: 'approve' });
-            setRequests(prev => prev.map(r => idsToApprove.includes(r.id) ? { ...r, status: "Approved" } : r));
-            setSelectedIds(prev => {
-                const next = new Set(prev);
-                idsToApprove.forEach(id => next.delete(id));
-                return next;
-            });
-            setIsSelectAll(false);
-            toast.success(`Successfully approved ${idsToApprove.length} request(s)`);
-            await updateCounts();
-        } catch (error) {
-            console.error('Error approving requests in bulk:', error);
-            toast.error('Failed to approve selected requests');
-        } finally {
-            setPendingRowId(null);
-        }
-    };
-
-    const handleBulkReject = async () => {
-        if (selectedIds.size === 0) {
-            toast.warning("Please select at least one request to reject");
-            return;
-        }
-
-        const selectedRequests = requests.filter(r => selectedIds.has(r.id));
-        const pendingRequests = selectedRequests.filter(r => r.status === "Pending");
-
-        if (pendingRequests.length === 0) {
-            toast.warning("None of the selected requests are in 'Pending' status to reject");
-            return;
-        }
-
-        const nonPendingCount = selectedRequests.length - pendingRequests.length;
-        const confirmMessage = nonPendingCount > 0
-            ? `${pendingRequests.length} of ${selectedRequests.length} selected request(s) are pending. Are you sure you want to reject these ${pendingRequests.length} pending request(s)?`
-            : `Are you sure you want to reject all ${pendingRequests.length} selected pending request(s)?`;
-
-        const confirmed = await confirm({
-            title: "Reject Selected Requests",
-            message: confirmMessage,
-            confirmText: `Reject (${pendingRequests.length})`,
-            cancelText: "Cancel",
-            confirmVariant: "danger",
-        });
-
-        if (!confirmed) return;
-
-        setPendingRowId("bulk");
-        try {
-            const idsToReject = pendingRequests.map(r => r.id);
-            await patchPurchaseRequest({ ids: idsToReject, action: 'reject' });
-            setRequests(prev => prev.map(r => idsToReject.includes(r.id) ? { ...r, status: "Rejected" } : r));
-            setSelectedIds(prev => {
-                const next = new Set(prev);
-                idsToReject.forEach(id => next.delete(id));
-                return next;
-            });
-            setIsSelectAll(false);
-            toast.info(`Successfully rejected ${idsToReject.length} request(s)`);
-            await updateCounts();
-        } catch (error) {
-            console.error('Error rejecting requests in bulk:', error);
-            toast.error('Failed to reject selected requests');
-        } finally {
-            setPendingRowId(null);
-        }
-    };
-
-    const handleSelectAll = () => {
-        if (isSelectAll) {
-            setSelectedIds(new Set());
-        }
-        else {
-            const selectableIds = filteredRequests
-                .filter(r => r.status === "Pending" || r.status === "Rejected")
-                .map(r => r.id);
-            setSelectedIds(new Set(selectableIds));
-        }
-        setIsSelectAll(!isSelectAll);
-    };
-    const handleSelectOne = (id: string) => {
-        const newSet = new Set(selectedIds);
-        if (newSet.has(id)) {
-            newSet.delete(id);
-        }
-        else {
-            const request = requests.find(r => r.id === id);
-            if (request && request.status !== "Pending" && request.status !== "Rejected") {
-                toast.warning("Only Pending or Rejected requests can be selected for bulk operations");
-                return;
+            if (approvedReqsServerRes.status === "fulfilled" && approvedReqsServerRes.value?.suppliers) {
+                allSuppliersList.push(...approvedReqsServerRes.value.suppliers);
             }
-            newSet.add(id);
-        }
-        setSelectedIds(newSet);
-        const selectableIds = filteredRequests
-            .filter(r => r.status === "Pending" || r.status === "Rejected")
-            .map(r => r.id);
-        const allSelected = selectableIds.every(id => newSet.has(id));
-        setIsSelectAll(allSelected && newSet.size === selectableIds.length);
-    };
-    const handleApproveRequest = async (id: string) => {
-        const confirmed = await confirm({
-            title: "Approve Purchase Request",
-            message: "Are you sure you want to approve this request? This will mark it ready for purchase order generation.",
-            confirmText: "Approve Request",
-            cancelText: "Cancel",
-            confirmVariant: "pink",
-        });
-        if (!confirmed)
-            return;
-        setPendingRowId(id);
-        try {
-            await patchPurchaseRequest({ id, action: 'approve' });
-            setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "Approved" } : r));
-            setSelectedIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(id);
-                return newSet;
+
+            const seenSupIds = new Set<string>();
+            const uniqueSuppliers = allSuppliersList.filter((s: any) => {
+                const sid = String(s.id || s.name || "");
+                if (!sid || seenSupIds.has(sid)) return false;
+                seenSupIds.add(sid);
+                return true;
             });
-            toast.success("Request approved successfully");
-            await updateCounts();
-        }
-        catch (error) {
-            console.error('Error approving request:', error);
-            toast.error('Failed to approve request');
-        }
-        finally {
-            setPendingRowId(null);
-        }
-    };
-    const handleRejectRequest = async (id: string) => {
-        const confirmed = await confirm({
-            title: "Reject Purchase Request",
-            message: "Are you sure you want to reject this request?",
-            confirmText: "Reject",
-            cancelText: "Cancel",
-            confirmVariant: "danger",
-        });
-        if (!confirmed)
-            return;
-        setPendingRowId(id);
-        try {
-            await patchPurchaseRequest({ id, action: 'reject' });
-            setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "Rejected" } : r));
-            setSelectedIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(id);
-                return newSet;
+            setSuppliers(uniqueSuppliers);
+
+            // Compute active supplier categories (normalized lowercase)
+            const activeSupplierCategories = new Set<string>();
+            uniqueSuppliers.forEach((s: any) => {
+                const isActive = s.is_active === undefined || s.is_active === true || s.is_active === "true";
+                const isNotInactive = (s.status || "").toLowerCase() !== "inactive";
+                if (isActive && isNotInactive && s.category) {
+                    activeSupplierCategories.add(String(s.category).trim().toLowerCase());
+                }
             });
-            toast.info("Request rejected");
-            await updateCounts();
-        }
-        catch (error) {
-            console.error('Error rejecting request:', error);
-            toast.error('Failed to reject request');
-        }
-        finally {
-            setPendingRowId(null);
-        }
-    };
-    const getPurchaseOrderStatus = (requestId: string): string | null => {
-        const order = purchaseOrders.find(po => po.request_id === requestId);
-        return order ? order.status : null;
-    };
-    const getPurchaseOrderNumber = (requestId: string): string | null => {
-        const order = purchaseOrders.find(po => po.request_id === requestId);
-        return order ? order.po_number : null;
-    };
-    // charts
-    useEffect(() => {
-        if (loading)
-            return;
-        const createCharts = () => {
-            if (expenseChartInstanceRef.current) {
-                expenseChartInstanceRef.current.destroy();
-                expenseChartInstanceRef.current = null;
+            if (approvedReqsServerRes.status === "fulfilled" && Array.isArray(approvedReqsServerRes.value?.activeCategories)) {
+                approvedReqsServerRes.value.activeCategories.forEach((cat: string) => {
+                    if (cat) activeSupplierCategories.add(cat.trim().toLowerCase());
+                });
             }
-            if (priorityChartInstanceRef.current) {
-                priorityChartInstanceRef.current.destroy();
-                priorityChartInstanceRef.current = null;
+
+            // Process Procurement Requests & Orders
+            const rawOrdersList: any[] = (procDataRes.status === "fulfilled" && procDataRes.value?.purchaseOrders) ? procDataRes.value.purchaseOrders : [];
+            const rawQuotesList: any[] = (quotesRes.status === "fulfilled" && quotesRes.value.data) ? (quotesRes.value.data as any[]) : [];
+
+            if (procDataRes.status === "fulfilled" && procDataRes.value) {
+                setRequests(procDataRes.value.requests || []);
+                setPurchaseOrders(rawOrdersList);
             }
-            const monthlyData = Array(12).fill(0);
-            const monthlyOrders: PurchaseOrder[][] = Array(12).fill(null).map(() => []);
-            const currentYear = new Date().getFullYear();
-            purchaseOrders.forEach((order) => {
-                if (order.delivery_date && (order.status === 'Delivered' || order.status === 'Confirmed') && order.paid === true) {
-                    const orderDate = new Date(order.delivery_date);
-                    if (orderDate.getFullYear() === currentYear) {
-                        const month = orderDate.getMonth();
-                        monthlyData[month] += order.total_amount || 0;
-                        monthlyOrders[month].push(order);
+
+            // 1. Compute Delivered Orders & Delivered Items per-request
+            // Once a PO becomes Delivered, only its specific items are marked delivered!
+            const deliveredReqItemsSet = new Set<string>();
+            const deliveredGlobalItemNames = new Set<string>();
+
+            rawOrdersList.forEach((po: any) => {
+                const poSt = (po.status || "").toLowerCase();
+                if (poSt === "delivered" || po.fully_received === true) {
+                    const reqId = po.request_id ? String(po.request_id).trim().toLowerCase() : "";
+                    let reqNum = "";
+                    if (po.notes) {
+                        const match = po.notes.match(/Requisition\s*#?([A-Za-z0-9-]+)/i);
+                        if (match && match[1]) {
+                            reqNum = match[1].trim().toLowerCase();
+                        }
+                    }
+
+                    if (Array.isArray(po.items)) {
+                        po.items.forEach((it: any) => {
+                            const itName = String(it.name || it.item_name || "").trim().toLowerCase();
+                            if (itName) {
+                                deliveredGlobalItemNames.add(itName);
+                                if (reqId) {
+                                    deliveredReqItemsSet.add(`${reqId}__${itName}`);
+                                }
+                                if (reqNum) {
+                                    deliveredReqItemsSet.add(`${reqNum}__${itName}`);
+                                    deliveredReqItemsSet.add(`${reqNum.replace(/[^a-z0-9]/g, "")}__${itName}`);
+                                }
+                            }
+                        });
                     }
                 }
             });
-            const priorityCounts = { Normal: 0, Urgent: 0, Critical: 0 };
-            requests.forEach((req) => {
-                if (req.priority === 'Normal')
-                    priorityCounts.Normal++;
-                else if (req.priority === 'Urgent')
-                    priorityCounts.Urgent++;
-                else if (req.priority === 'Critical')
-                    priorityCounts.Critical++;
-            });
-            if (expenseChartCanvasRef.current && Chart) {
-                const ctx = expenseChartCanvasRef.current.getContext('2d');
-                if (ctx) {
-                    expenseChartInstanceRef.current = new Chart(ctx, {
-                        type: "line",
-                        data: {
-                            labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-                            datasets: [{
-                                label: "Spend",
-                                data: monthlyData,
-                                borderColor: "#EC4899",
-                                backgroundColor: "rgba(236,72,153,.12)",
-                                fill: true,
-                                tension: 0.35,
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointBackgroundColor: "#EC4899",
-                                pointHoverRadius: 8,
-                                pointHoverBackgroundColor: "#BE185D",
-                                pointBorderColor: "#fff",
-                                pointBorderWidth: 2,
-                            }],
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false },
-                                tooltip: {
-                                    backgroundColor: "rgba(15,23,42,0.9)",
-                                    titleColor: "#fff",
-                                    bodyColor: "#e2e8f0",
-                                    borderColor: "#EC4899",
-                                    borderWidth: 1,
-                                    padding: 12,
-                                    callbacks: {
-                                        label: (context: any) => {
-                                            const amount = context.parsed.y;
-                                            const monthIndex = context.dataIndex;
-                                            const orderCount = monthlyOrders[monthIndex]?.length || 0;
-                                            return [
-                                                ` Amount: ₱${amount.toLocaleString()}`,
-                                                ` Orders: ${orderCount}`
-                                            ];
-                                        }
-                                    }
-                                },
-                            },
-                            scales: {
-                                x: { grid: { display: false } },
-                                y: {
-                                    grid: { color: "#F1F5F9" },
-                                    ticks: { callback: (value: any) => `₱${value.toLocaleString()}` }
-                                }
-                            },
-                            onClick: (event: any, elements: any) => {
-                                if (elements.length > 0) {
-                                    const element = elements[0];
-                                    const monthIndex = element.index;
-                                    const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][monthIndex];
-                                    const orders = monthlyOrders[monthIndex] || [];
-                                    const totalAmount = monthlyData[monthIndex] || 0;
-                                    if (orders.length > 0 || totalAmount > 0) {
-                                        setChartDetailModal({
-                                            isOpen: true,
-                                            month: monthName,
-                                            monthIndex: monthIndex,
-                                            orders: orders,
-                                            totalAmount: totalAmount,
-                                        });
-                                    }
-                                }
-                            },
-                        },
-                    });
+
+            // 2. Track Completed / Delivered / Cancelled / Rejected POs so they do NOT lock items in Stage 1
+            const completedOrDeadPoReqNumbers = new Set<string>();
+            const completedOrDeadPoItemKeys = new Set<string>();
+
+            rawOrdersList.forEach((po: any) => {
+                const poSt = (po.status || "").toLowerCase();
+                const isCompletedOrDead = poSt === "delivered" || poSt === "completed" || poSt === "cancelled" || poSt === "rejected" || po.fully_received === true;
+                if (isCompletedOrDead) {
+                    if (po.request_id) completedOrDeadPoReqNumbers.add(String(po.request_id).trim().toLowerCase());
+                    if (po.notes) {
+                        const match = po.notes.match(/Requisition\s*#?([A-Za-z0-9-]+)/i);
+                        if (match && match[1]) completedOrDeadPoReqNumbers.add(match[1].trim().toLowerCase());
+                    }
+                    if (Array.isArray(po.items)) {
+                        po.items.forEach((it: any) => {
+                            const itName = String(it.name || it.item_name || "").trim().toLowerCase();
+                            if (itName) completedOrDeadPoItemKeys.add(itName);
+                        });
+                    }
                 }
-            }
-            if (priorityChartCanvasRef.current && Chart) {
-                priorityChartInstanceRef.current = new Chart(priorityChartCanvasRef.current, {
-                    type: "doughnut",
-                    data: {
-                        labels: ['Normal', 'Urgent', 'Critical'],
-                        datasets: [{
-                            data: [priorityCounts.Normal, priorityCounts.Urgent, priorityCounts.Critical],
-                            backgroundColor: [
-                                '#F472B6',
-                                '#EC4899',
-                                '#BE185D'
-                            ],
-                            borderWidth: 2,
-                            borderColor: "#fff",
-                            hoverOffset: 15,
-                        }],
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        cutout: "65%",
-                        plugins: {
-                            legend: {
-                                position: "bottom",
-                                labels: {
-                                    boxWidth: 10,
-                                    boxHeight: 10,
-                                    usePointStyle: true,
-                                    font: { size: 10 },
-                                },
-                            },
-                            tooltip: {
-                                backgroundColor: "rgba(15,23,42,0.9)",
-                                titleColor: "#fff",
-                                bodyColor: "#e2e8f0",
-                                borderColor: "#EC4899",
-                                borderWidth: 1,
-                                padding: 12,
-                                callbacks: {
-                                    label: (context: any) => {
-                                        const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
-                                        const percentage = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0;
-                                        return `${context.label}: ${context.parsed} (${percentage}%)`;
-                                    }
-                                }
-                            }
+            });
+
+            // Compute Awarded Bids Map (from active in-progress quotations & POs ONLY)
+            const awardedBidMap = new Map<string, { supplierName?: string; poNumber?: string }>();
+
+            rawQuotesList.forEach((q: any) => {
+                const st = (q.status || "").toLowerCase();
+                if (st.includes("accept") || st.includes("award") || st.includes("approve")) {
+                    const qItem = String(q.item_name || "").trim().toLowerCase();
+                    const qNum = String(q.request_number || "").trim().toLowerCase();
+                    const qId = String(q.request_id || "").trim().toLowerCase();
+
+                    // If this quote's requisition or item was delivered/completed/cancelled, DO NOT lock the item
+                    if (qNum && completedOrDeadPoReqNumbers.has(qNum)) return;
+                    if (qId && completedOrDeadPoReqNumbers.has(qId)) return;
+                    if (qItem && completedOrDeadPoItemKeys.has(qItem)) return;
+
+                    const info = { supplierName: q.supplier_name };
+                    if (qItem) {
+                        awardedBidMap.set(qItem, info);
+                        if (qNum) {
+                            awardedBidMap.set(`${qNum}__${qItem}`, info);
+                            awardedBidMap.set(`${qNum.replace(/[^a-z0-9]/g, "")}__${qItem}`, info);
                         }
-                    },
+                        if (qId) {
+                            awardedBidMap.set(`${qId}__${qItem}`, info);
+                        }
+                    } else if (qNum) {
+                        awardedBidMap.set(qNum, info);
+                        awardedBidMap.set(qNum.replace(/[^a-z0-9]/g, ""), info);
+                    }
+                }
+            });
+
+            rawOrdersList.forEach((po: any) => {
+                const poSt = (po.status || "").toLowerCase();
+                const poNum = String(po.po_number || "").toLowerCase();
+                // Exclude draft POs as well as delivered, completed, cancelled, and rejected POs from locking/awarding items
+                // Draft POs are merely in sourcing phase — only show awarded after awarding or approving the quotation/PO
+                const isActiveInProgress = 
+                    poSt !== "draft" && 
+                    !poSt.includes("draft") && 
+                    !poNum.includes("draft") &&
+                    poSt !== "cancelled" && 
+                    poSt !== "rejected" && 
+                    poSt !== "delivered" && 
+                    poSt !== "completed" && 
+                    po.fully_received !== true;
+                
+                if (isActiveInProgress) {
+                    const info = { supplierName: po.supplier_name, poNumber: po.po_number };
+                    const poReqId = String(po.request_id || "").trim().toLowerCase();
+                    
+                    let poReqNum = "";
+                    if (po.notes) {
+                        const match = po.notes.match(/Requisition\s*#?([A-Za-z0-9-]+)/i);
+                        if (match && match[1]) {
+                            poReqNum = match[1].trim().toLowerCase();
+                        }
+                    }
+
+                    if (Array.isArray(po.items) && po.items.length > 0) {
+                        po.items.forEach((it: any) => {
+                            const itName = String(it.name || it.item_name || "").trim().toLowerCase();
+                            if (itName) {
+                                awardedBidMap.set(itName, info);
+                                if (poReqId) awardedBidMap.set(`${poReqId}__${itName}`, info);
+                                if (poReqNum) awardedBidMap.set(`${poReqNum}__${itName}`, info);
+                            }
+                        });
+                    } else {
+                        if (poReqId) awardedBidMap.set(poReqId, info);
+                        if (poReqNum) awardedBidMap.set(poReqNum, info);
+                    }
+                }
+            });
+
+            // 3. Compute Previous Supplier Map (from inventory items, historical POs, and quotes)
+            const previousSupplierMap = new Map<string, { supplierName: string; supplierId?: string | number; email?: string; phone?: string; lastPurchaseDate?: string; unitPrice?: number }>();
+
+            if (inventoryRes.status === "fulfilled" && inventoryRes.value.data) {
+                inventoryRes.value.data.forEach((inv: any) => {
+                    const itemKey = (inv.item_name || "").trim().toLowerCase();
+                    const codeKey = (inv.item_code || "").trim().toLowerCase();
+                    const supName = inv.supplier || inv.supplier_name || inv.vendor || inv.vendor_name;
+                    if (supName) {
+                        const entry = { 
+                            supplierName: String(supName).trim(), 
+                            unitPrice: Number(inv.purchase_price) || 0 
+                        };
+                        if (itemKey) previousSupplierMap.set(itemKey, entry);
+                        if (codeKey) previousSupplierMap.set(codeKey, entry);
+                    }
                 });
             }
-        };
-        const timer = setTimeout(createCharts, 100);
+
+            rawOrdersList.forEach((po: any) => {
+                const poSup = po.supplier_name || po.supplier;
+                if (poSup && (po.status || "").toLowerCase() !== "cancelled") {
+                    if (Array.isArray(po.items)) {
+                        po.items.forEach((it: any) => {
+                            const itKey = (it.item_name || it.name || "").trim().toLowerCase();
+                            const itCode = (it.item_code || "").trim().toLowerCase();
+                            const itPrice = Number(it.unit_price || it.price) || 0;
+                            const entry = { 
+                                supplierName: String(poSup).trim(), 
+                                supplierId: po.supplier_id,
+                                lastPurchaseDate: po.created_at || po.order_date,
+                                unitPrice: itPrice 
+                            };
+                            if (itKey) previousSupplierMap.set(itKey, entry);
+                            if (itCode) previousSupplierMap.set(itCode, entry);
+                        });
+                    }
+                }
+            });
+
+            rawQuotesList.forEach((q: any) => {
+                const qSup = q.supplier_name;
+                const qItem = (q.item_name || "").trim().toLowerCase();
+                if (qSup && qItem && !previousSupplierMap.has(qItem)) {
+                    previousSupplierMap.set(qItem, {
+                        supplierName: String(qSup).trim(),
+                        supplierId: q.supplier_id,
+                        email: q.contact_email,
+                        phone: q.contact_phone,
+                        lastPurchaseDate: q.created_at,
+                        unitPrice: Number(q.unit_price) || 0
+                    });
+                }
+            });
+
+            // Process Inventory Shortages & Approved Requisition Deficits (Stage 1)
+            const shortageMap = new Map<string, StockShortageItem>();
+
+            if (inventoryRes.status === "fulfilled" && inventoryRes.value.data) {
+                const invItems = inventoryRes.value.data;
+                invItems
+                    .filter((item: any) => {
+                        const cur = Number(item.current_stock) || 0;
+                        const min = Number(item.minimum_stock) || 0;
+                        const status = (item.status || "").toLowerCase();
+                        return cur <= min || status === "low-stock" || status === "out-of-stock";
+                    })
+                    .forEach((item: any) => {
+                        const cur = Number(item.current_stock) || 0;
+                        const min = Number(item.minimum_stock) || 0;
+                        const deficit = Math.max(0, min - cur);
+                        const price = Number(item.purchase_price) || 0;
+                        const itemKey = (item.item_name || "").trim().toLowerCase();
+
+                        // If item was delivered via a PO and restocked, skip only if stock is restored
+                        if (deliveredGlobalItemNames.has(itemKey) && cur >= min) {
+                            return;
+                        }
+
+                        const matchAward = awardedBidMap.get(itemKey);
+                        const prevSup = previousSupplierMap.get(itemKey) || (item.item_code ? previousSupplierMap.get(item.item_code.toLowerCase()) : null);
+
+                        shortageMap.set(itemKey, {
+                            id: item.id,
+                            item_code: item.item_code || `ITM-${item.id}`,
+                            item_name: item.item_name || "Warehouse Item",
+                            category: item.category || "General",
+                            current_stock: cur,
+                            unit: item.unit || "units",
+                            minimum_stock: min,
+                            storage_location: item.storage_location || "Binondo Central Hub",
+                            status: cur === 0 ? "out-of-stock" : "low-stock",
+                            updated_at: item.updated_at,
+                            description: item.description,
+                            supplier: item.supplier,
+                            purchase_price: price,
+                            deficit: deficit > 0 ? deficit : 1,
+                            estimated_reorder_cost: (deficit > 0 ? deficit : 1) * (price || 150),
+                            is_bid_awarded: Boolean(matchAward),
+                            awarded_supplier_name: matchAward?.supplierName,
+                            awarded_po_number: matchAward?.poNumber,
+                            previous_supplier: prevSup?.supplierName || item.supplier || null,
+                            previous_supplier_id: prevSup?.supplierId || null,
+                            previous_supplier_email: prevSup?.email || null,
+                            previous_supplier_phone: prevSup?.phone || null,
+                            previous_purchase_date: prevSup?.lastPurchaseDate || null,
+                            previous_unit_price: prevSup?.unitPrice || null,
+                        });
+                    });
+            }
+
+            // Extract approved requests to check for lacking quantities & missing active supplier categories
+            // Exclude cancelled, rejected, delivered, completed, or fulfilled requests
+            const isReqDead = (r: any) => {
+                const st = (r.status || "").toLowerCase();
+                return st === "cancelled" || st === "rejected" || st === "completed" || st === "delivered" || st === "fulfilled";
+            };
+
+            const rawApprovedList: any[] = [];
+            if (approvedReqsServerRes.status === "fulfilled" && approvedReqsServerRes.value?.data) {
+                const srvReqs = approvedReqsServerRes.value.data.filter((r: any) => !isReqDead(r));
+                rawApprovedList.push(...srvReqs);
+            }
+            if (procDataRes.status === "fulfilled" && procDataRes.value?.requests) {
+                const prs = procDataRes.value.requests.filter((r: any) => {
+                    const st = (r.status || "").toLowerCase();
+                    return !isReqDead(r) && (st.includes("approved") || st === "partially released");
+                });
+                rawApprovedList.push(...prs);
+            }
+
+            // Deduplicate requests
+            const seenReqKeys = new Set<string>();
+            const approvedReqList: any[] = [];
+            for (const r of rawApprovedList) {
+                const key = String(r.id || r.request_number || Math.random());
+                if (!seenReqKeys.has(key)) {
+                    seenReqKeys.add(key);
+                    approvedReqList.push(r);
+                }
+            }
+
+            approvedReqList.forEach((req: any) => {
+                const reqStatus = (req.status || "").toLowerCase();
+                let itemsList: any[] = [];
+                if (Array.isArray(req.items) && req.items.length > 0) itemsList = req.items;
+                else if (typeof req.items === "string") {
+                    try {
+                        const parsed = JSON.parse(req.items);
+                        if (Array.isArray(parsed) && parsed.length > 0) itemsList = parsed;
+                    } catch {}
+                }
+
+                // If items array is missing or empty, build from root requisition fields
+                if (itemsList.length === 0 && (req.item_name || req.name || req.description)) {
+                    const reqQty = Number(req.quantity_requested || req.quantity || 1);
+                    const appQty = req.quantity_approved !== undefined ? Number(req.quantity_approved) : 0;
+                    const remQty = req.quantity_remaining !== undefined ? Number(req.quantity_remaining) : reqQty;
+                    itemsList = [{
+                        name: req.item_name || req.name || req.description,
+                        item_name: req.item_name || req.name || req.description,
+                        quantity: reqQty,
+                        quantity_requested: reqQty,
+                        unit: req.unit || "units",
+                        available_quantity: appQty,
+                        deficit_quantity: remQty,
+                        is_new_item: req.is_new_item ?? true,
+                        category: req.category || req.department || "General",
+                        status: req.status || "Pending",
+                        is_approved: reqStatus.includes("approved"),
+                    }];
+                }
+
+                const refNum = req.request_number || `REQ-${String(req.id).slice(0, 8)}`;
+                const rawReqId = String(req.id || "");
+                const matchedUuid = rawReqId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0];
+
+                itemsList.forEach((item: any, idx: number) => {
+                    const itemName = String(item.name || item.item_name || "").trim();
+                    if (!itemName) return;
+
+                    // Check if this specific item is approved
+                    const isItemApproved = item.is_approved === true || item.is_approve === true || item.status === "Approved" || (reqStatus.includes("approved") && item.status !== "Rejected");
+                    if (!isItemApproved) {
+                        return; // Do not push unapproved items into procurement
+                    }
+
+                    const itemKey = itemName.toLowerCase();
+                    const totalReq = Number(item.quantity || item.quantity_requested || 1);
+                    const avail = Number(item.available_quantity ?? item.approved_quantity ?? 0);
+                    const issued = Number(item.issued_quantity || 0);
+                    const deficit = Number(item.deficit_quantity ?? item.remaining_quantity ?? Math.max(0, totalReq - avail - issued));
+
+                    // Check if this specific item in this request has already been released or delivered
+                    const isItemFinished =
+                        item.status === "Delivered" ||
+                        item.status === "Released" ||
+                        item.is_delivered === true ||
+                        item.is_released === true ||
+                        item.is_issued === true ||
+                        reqStatus === "completed" ||
+                        reqStatus === "delivered" ||
+                        reqStatus === "fulfilled" ||
+                        (issued >= totalReq && totalReq > 0) ||
+                        (matchedUuid && deliveredReqItemsSet.has(`${matchedUuid.toLowerCase()}__${itemKey}`)) ||
+                        (refNum && deliveredReqItemsSet.has(`${refNum.toLowerCase()}__${itemKey}`)) ||
+                        (refNum && deliveredReqItemsSet.has(`${refNum.toLowerCase().replace(/[^a-z0-9]/g, "")}__${itemKey}`));
+
+                    // Skip fully released / delivered items with 0 remaining deficit
+                    if (isItemFinished && deficit === 0) {
+                        return;
+                    }
+
+                    const isNewItem = Boolean(item.is_new_item || (!item.catalog_item_id && avail === 0));
+
+                    // Category check against active suppliers
+                    const itemCat = String(item.category || req.category || req.department || "General").trim();
+                    const catKey = itemCat.toLowerCase();
+                    const matchingActiveSuppliers = uniqueSuppliers.filter((s: any) => {
+                        const sCat = String(s.category || "").toLowerCase();
+                        return (s.is_active === undefined || s.is_active === true || s.is_active === "true") &&
+                               (s.status || "").toLowerCase() !== "inactive" &&
+                               (sCat.includes(catKey) || catKey.includes(sCat) || sCat === "all" || sCat === "general");
+                    });
+                    const activeSupplierCount = matchingActiveSuppliers.length;
+                    const activeSupplierNames = matchingActiveSuppliers.map((s: any) => s.name || s.company_name).filter(Boolean);
+                    const hasActiveSupplier = activeSupplierCount > 0 || activeSupplierCategories.has(catKey);
+
+                    // User Rule:
+                    // Only add to Stage 1 if there is a real remaining deficit (> 0), or it's a new item needing sourcing
+                    const shouldAddToStage1 = deficit > 0 || isNewItem || (!hasActiveSupplier && !isItemFinished);
+
+                    if (shouldAddToStage1) {
+                        const effectiveDeficit = deficit > 0 ? deficit : (isItemFinished ? 0 : totalReq);
+                        if (effectiveDeficit <= 0) return; // Ignore zero deficits
+
+                        const itemPrice = Number(item.price || item.unit_price || item.purchase_price || 150);
+                        const itemCleanKey = itemKey.replace(/[^a-z0-9]/g, "_");
+                        const shortageId = matchedUuid 
+                            ? `${matchedUuid}_item_${idx}_${itemCleanKey}` 
+                            : `req-shortage-${String(req.id || "gen")}-${idx}_${itemCleanKey}`;
+
+                        const existing = shortageMap.get(itemKey);
+                        const prevSup = previousSupplierMap.get(itemKey) || (item.item_code ? previousSupplierMap.get(item.item_code.toLowerCase()) : null);
+
+                        // Check if bid is awarded strictly for this item
+                        const refKey = refNum.toLowerCase();
+                        const matchAward = awardedBidMap.get(`${refKey}__${itemKey}`) ||
+                                           (matchedUuid ? awardedBidMap.get(`${matchedUuid.toLowerCase()}__${itemKey}`) : null) ||
+                                           awardedBidMap.get(itemKey);
+                        const isBidAwarded = Boolean(matchAward);
+
+                        if (existing) {
+                            // If existing shortage was only from the baseline warehouse buffer and not from a requisition, overwrite with true requisition deficit
+                            if (!existing.is_from_request) {
+                                existing.deficit = effectiveDeficit;
+                                existing.is_from_request = true;
+                            } else {
+                                existing.deficit = (existing.deficit || 0) + effectiveDeficit;
+                            }
+                            existing.estimated_reorder_cost = existing.deficit * (existing.purchase_price || itemPrice);
+                            
+                            // Combine source request references (e.g. #PR-2026-905106)
+                            if (!existing.source_request) {
+                                existing.source_request = refNum;
+                            } else if (!existing.source_request.includes(refNum)) {
+                                existing.source_request = `${existing.source_request}, ${refNum}`;
+                            }
+
+                            if (!existing.source_department) {
+                                existing.source_department = req.department || "Warehouse";
+                            }
+                            existing.is_new_item = isNewItem || existing.is_new_item;
+                            existing.has_no_active_supplier = !hasActiveSupplier || existing.has_no_active_supplier;
+                            existing.active_supplier_count = activeSupplierCount;
+                            existing.active_supplier_names = activeSupplierNames;
+                            existing.available_ratio = `${avail}/${totalReq}`;
+                            existing.previous_supplier = existing.previous_supplier || prevSup?.supplierName || item.supplier || null;
+                            existing.previous_supplier_id = existing.previous_supplier_id || prevSup?.supplierId || null;
+                            existing.previous_purchase_date = existing.previous_purchase_date || prevSup?.lastPurchaseDate || null;
+                            existing.previous_unit_price = existing.previous_unit_price || prevSup?.unitPrice || null;
+                            
+                            if (matchedUuid && !existing.request_id) {
+                                existing.request_id = matchedUuid;
+                            }
+                            if (isBidAwarded) {
+                                existing.is_bid_awarded = true;
+                                existing.awarded_supplier_name = matchAward?.supplierName || existing.awarded_supplier_name;
+                                existing.awarded_po_number = matchAward?.poNumber || existing.awarded_po_number;
+                            }
+                        } else {
+                            shortageMap.set(itemKey, {
+                                id: shortageId,
+                                request_id: matchedUuid || String(req.id || ""),
+                                item_code: item.catalog_item_code || item.item_code || `REQ-${refNum}-${idx + 1}`,
+                                item_name: itemName,
+                                category: itemCat,
+                                current_stock: avail,
+                                unit: item.unit || "units",
+                                minimum_stock: totalReq,
+                                storage_location: item.storage_location || "Central Warehouse (Procurement Shortage Queue)",
+                                status: avail === 0 ? "out-of-stock" : "low-stock",
+                                deficit: effectiveDeficit,
+                                estimated_reorder_cost: effectiveDeficit * itemPrice,
+                                source_request: refNum,
+                                source_department: req.department || "Warehouse",
+                                is_from_request: true,
+                                is_new_item: isNewItem,
+                                has_no_active_supplier: !hasActiveSupplier,
+                                active_supplier_count: activeSupplierCount,
+                                active_supplier_names: activeSupplierNames,
+                                available_ratio: `${avail}/${totalReq}`,
+                                is_bid_awarded: isBidAwarded,
+                                awarded_supplier_name: matchAward?.supplierName,
+                                awarded_po_number: matchAward?.poNumber,
+                                previous_supplier: prevSup?.supplierName || item.supplier || null,
+                                previous_supplier_id: prevSup?.supplierId || null,
+                                previous_purchase_date: prevSup?.lastPurchaseDate || null,
+                                previous_unit_price: prevSup?.unitPrice || null,
+                            });
+                        }
+                    }
+                });
+            });
+
+            // Final enrichment of shortage items with verified active supplier status and contact records
+            const enrichedShortages: StockShortageItem[] = Array.from(shortageMap.values()).map((sItem) => {
+                const rawSupName = (sItem.supplier || sItem.previous_supplier || "").trim();
+                const rawCat = (sItem.category || "").trim().toLowerCase();
+
+                // 1. Direct name lookup in uniqueSuppliers
+                let matchedSup: any = null;
+                if (rawSupName) {
+                    matchedSup = uniqueSuppliers.find((s: any) => 
+                        s && s.name && s.name.trim().toLowerCase() === rawSupName.toLowerCase()
+                    ) || null;
+                }
+
+                // 2. Category lookup for active suppliers
+                let categoryActiveSup: any = null;
+                if (rawCat) {
+                    categoryActiveSup = uniqueSuppliers.find((s: any) => {
+                        if (!s || !s.category) return false;
+                        const isActive = s.is_active === undefined || s.is_active === true || s.is_active === "true";
+                        const isNotInactive = (s.status || "").toLowerCase() !== "inactive";
+                        return isActive && isNotInactive && s.category.trim().toLowerCase() === rawCat;
+                    }) || null;
+                }
+
+                const isDirectSupActive = matchedSup 
+                    ? (matchedSup.is_active === undefined || matchedSup.is_active === true || matchedSup.is_active === "true") && ((matchedSup.status || "").toLowerCase() !== "inactive")
+                    : false;
+
+                const hasOfficialActiveSupplier = isDirectSupActive || Boolean(categoryActiveSup);
+                const matchedActiveSupplier = isDirectSupActive ? matchedSup : categoryActiveSup;
+
+                return {
+                    ...sItem,
+                    has_official_active_supplier: hasOfficialActiveSupplier,
+                    is_supplier_active: isDirectSupActive,
+                    matched_active_supplier: matchedActiveSupplier,
+                    previous_supplier_obj: matchedSup || null,
+                    previous_supplier_email: matchedSup?.email || sItem.previous_supplier_email || null,
+                    previous_supplier_phone: matchedSup?.phone || sItem.previous_supplier_phone || null,
+                };
+            });
+
+            setShortages(enrichedShortages);
+
+            // Process Supplier Quotations
+            if (quotesRes.status === "fulfilled" && quotesRes.value.data) {
+                setQuotations(quotesRes.value.data as SupplierQuotationItem[]);
+            }
+        } catch (err: any) {
+            console.error("Error loading procurement data:", err);
+            toast.error("Notice: Could not load some procurement data.");
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadAllProcurementData();
+    }, [loadAllProcurementData]);
+
+    // Realtime Supabase Subscription for Procurement Hub
+    useEffect(() => {
+        const channelName = `procurement_realtime_${Date.now()}`;
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "purchase_requests" },
+                (payload) => {
+                    if (payload.eventType === "INSERT") {
+                        const newReq = payload.new as any;
+                        const reqName = newReq?.item_name || (Array.isArray(newReq?.items) && newReq.items[0]?.name) || "Requisition Request";
+                        toast.info(`Procurement Alert: New request "${reqName}" added`, { duration: 3500 });
+                    }
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_items" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "suppliers" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "supplier_quotations" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "purchase_orders" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_requests" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .subscribe();
+
         return () => {
-            clearTimeout(timer);
-            if (expenseChartInstanceRef.current) {
-                expenseChartInstanceRef.current.destroy();
-                expenseChartInstanceRef.current = null;
-            }
-            if (priorityChartInstanceRef.current) {
-                priorityChartInstanceRef.current.destroy();
-                priorityChartInstanceRef.current = null;
-            }
+            supabase.removeChannel(channel);
         };
-    }, [purchaseOrders, requests, loading]);
-    const filteredRequests = requests.filter((req) => {
-        const matchesTab = activeTab === "all" ||
-            (activeTab === "pending" && req.status === "Pending") ||
-            (activeTab === "approved" && (req.status === "Approved" || req.status === "Completed"));
-        const matchesSearch = (req.request_number || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-            (req.requested_by || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-            (req.supplier_name || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-            (req.description || '').toLowerCase().includes(debouncedSearch.toLowerCase());
-        return matchesTab && matchesSearch;
-    });
-    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-    const handlePageChange = (page: number) => {
-        if (page >= 1 && page <= totalPages && page !== currentPage) {
-            setCurrentPage(page);
-            setSelectedIds(new Set());
-            setIsSelectAll(false);
-            setTimeout(scrollToTable, 100);
+    }, [loadAllProcurementData]);
+
+    // Handle Stage switching and URL updates
+    const handleStageChange = (stage: ProcurementStageId) => {
+        setCurrentStage(stage);
+        try {
+            const currentParams = new URLSearchParams(searchParams.toString());
+            currentParams.set("stage", String(stage));
+            window.history.replaceState(null, "", `${pathname}?${currentParams.toString()}`);
+        } catch {
+            // fallback
         }
     };
-    const selectedPendingCount = useMemo(() => {
-        return requests.filter(r => selectedIds.has(r.id) && r.status === "Pending").length;
-    }, [requests, selectedIds]);
-    const totalSpend = purchaseOrders
-        .filter((o) => o.status !== 'Draft' && o.paid === true)
-        .reduce((sum, o) => sum + (o.total_amount || 0), 0);
-    return (<SessionGuard requiredRole={['Admin', 'Manager', 'Executive', 'Supervisor']}>
-        <div className="p-6 space-y-6 fade-in bgCard">
-            {/* header */}
-            <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">
-                <div className="flex items-start gap-3.5">
-                    <div className="w-12 h-12 rounded-2xl bg-[#ffe6f0] border border-pink-300/90 dark:bg-[#341427] dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 text-xl shadow-[inset_0_1px_0_#ffffff,0_2px_6px_rgba(244,63,94,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.6)] shrink-0 mt-0.5 transition-colors">
-                        <i className="fa-solid fa-cart-flatbed" />
-                    </div>
 
-                    <div>
-                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight transition-colors">
-                            Procurement &amp; Sourcing
-                        </h1>
-                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 transition-colors">
-                            Manage fleet maintenance, spare parts, fuel, and operational supplies.
-                        </p>
-                        <div className="inline-flex items-center gap-2 mt-2 px-3.5 py-1.5 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] transition-all">
-                            <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
-                            <i className="fas fa-user-tag text-[11px] text-pink-500 dark:text-pink-400" />
-                            <span className="font-medium text-slate-500 dark:text-slate-400">Role:</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-100 capitalize">
-                                {userRole}
-                            </span>
-                        </div>
-                    </div>
-                </div>
+    // --- WORKFLOW ACTIONS ---
+    // 1. Find Suppliers for Shortage (Stage 1 -> Stage 2 bridge)
+    const handleFindSuppliersForItem = (shortageItem: StockShortageItem) => {
+        if (shortageItem.is_bid_awarded) {
+            toast.info(`Bid has already been awarded for "${shortageItem.item_name}"${shortageItem.awarded_supplier_name ? ` to ${shortageItem.awarded_supplier_name}` : ""}.`);
+            return;
+        }
+        setActiveSourcingFocus({
+            itemName: shortageItem.item_name,
+            requestNumber: shortageItem.source_request,
+            category: shortageItem.category,
+            previousSupplier: shortageItem.previous_supplier || null,
+        });
+        handleStageChange(2);
+        if (shortageItem.previous_supplier) {
+            toast.info(`Switched to Stage 2: Sourcing for "${shortageItem.item_name}". Previous supplier: ${shortageItem.previous_supplier}`);
+        } else {
+            toast.info(`Switched to Stage 2: Locating suppliers for shortage item "${shortageItem.item_name}".`);
+        }
+    };
 
-                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0 mt-2 sm:mt-0">
-                    {selectedIds.size > 0 && (
-                        <AppButton
-                            type="button"
-                            variant="danger"
-                            size="md"
-                            onClick={handleBulkDelete}
-                            disabled={pendingRowId === "bulk"}
-                        >
-                            {pendingRowId === "bulk" ? <i className="fas fa-spinner fa-spin text-xs" /> : <i className="fas fa-trash-alt text-xs" />}
-                            <span>Delete Selected ({selectedIds.size})</span>
-                        </AppButton>
-                    )}
-                    {canCreateRequest && (
-                        <AppButton type="button" variant="primary" size="md" onClick={() => {
-                            setIsEditMode(false);
-                            setIsReadOnly(false);
-                            setEditData(null);
-                            setSelectedIds(new Set());
-                            setIsSelectAll(false);
-                            setIsPurchaseRequestModalOpen(true);
-                        }}>
-                            <i className="fas fa-plus text-xs" />
-                            <span>New Purchase Request</span>
-                        </AppButton>
-                    )}
-                </div>
-            </div>
+    // 6. View Quotes for Supplier (Stage 2 -> Stage 3 bridge)
+    const handleCompareQuotesForSupplier = (sup: Supplier) => {
+        setSelectedRequestNumberForQuotes(null);
+        handleStageChange(3);
+        toast.info(`Switched to Stage 3: Comparing submitted quotes for "${sup.name}".`);
+    };
 
-            {/* ai questions */}
-            <AiQuestions title="AI Suggested Questions" subtitle="Click to ask" questions={[
-                {
-                    question: "Procurement summary",
-                    color: "bg-pink-400"
-                },
-                {
-                    question: "Top expenses by category?",
-                    color: "bg-amber-400"
-                },
-                {
-                    question: "Any urgent purchase requests?",
-                    color: "bg-blue-400"
-                },
-                {
-                    question: "Supplier performance overview",
-                    color: "bg-emerald-400"
+    // 7. Award Bid / Accept Quotation
+    const handleAwardBid = async (quote: SupplierQuotationItem) => {
+        try {
+            await supabase
+                .from("supplier_quotations")
+                .update({ status: "accepted" })
+                .eq("id", quote.id);
+
+            if (quote.request_number) {
+                await supabase
+                    .from("supplier_quotations")
+                    .update({ status: "rejected" })
+                    .neq("id", quote.id)
+                    .eq("request_number", quote.request_number);
+            }
+
+            // Also sync suppliers_qoutation_bid on any existing purchase order linked to this request or quotation
+            try {
+                if (quote.request_id) {
+                    await supabase
+                        .from("purchase_orders")
+                        .update({
+                            suppliers_qoutation_bid: Number(quote.id),
+                            supplier_name: quote.supplier_name,
+                            supplier_id: quote.supplier_id ? Number(quote.supplier_id) : undefined,
+                        })
+                        .eq("request_id", String(quote.request_id));
+                } else if (quote.request_number) {
+                    await supabase
+                        .from("purchase_orders")
+                        .update({
+                            suppliers_qoutation_bid: Number(quote.id),
+                            supplier_name: quote.supplier_name,
+                            supplier_id: quote.supplier_id ? Number(quote.supplier_id) : undefined,
+                        })
+                        .ilike("notes", `%${quote.request_number}%`);
                 }
-            ]} />
+            } catch (poErr) {
+                console.warn("Could not sync suppliers_qoutation_bid on PO:", poErr);
+            }
 
-            {/* cards */}
-            {loading ? (<CardsSkeleton count={4} />) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Cards frontIcon="fa-solid fa-file-invoice" header="Total Requests" data={String(totalCounts.all)} arrow="fa-solid fa-arrow-up" description={`${totalCounts.pending} pending`} backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total purchase requests: ${totalCounts.all}\nPending approvals: ${totalCounts.pending}\nApproved: ${totalCounts.approved}\n${totalCounts.pending} requests awaiting review`} tooltip="View all requests" tooltipLink="/procurement?tab=all" badge={totalCounts.pending > 0 ? `${totalCounts.pending} pending` : undefined} frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
+            setQuotations((prev) =>
+                prev.map((q) => {
+                    if (q.id === quote.id) return { ...q, status: "accepted" };
+                    if (quote.request_number && q.request_number === quote.request_number) {
+                        return { ...q, status: "rejected" };
+                    }
+                    return q;
+                })
+            );
 
-                <Cards frontIcon="fa-solid fa-clock" header="Pending Approvals" data={String(totalCounts.pending)} arrow="fa-solid fa-hourglass-half" description="Awaiting review" backBg="bg-ink dark:bg-ink/90" backHeader="Approval Status" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending requests: ${totalCounts.pending}\nNeed your attention\n${totalCounts.pending > 0 ? 'Review and approve to proceed' : 'No pending approvals'}`} tooltip="Review pending requests" tooltipLink="/procurement?tab=pending" badge={totalCounts.pending > 0 ? `${totalCounts.pending} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
+            toast.success(`Quotation from "${quote.supplier_name}" accepted successfully.`);
+            loadAllProcurementData(true);
+        } catch (err: any) {
+            console.error("Error accepting quote:", err);
+            toast.error("Failed to accept quote.");
+        }
+    };
 
-                <Cards frontIcon="fa-solid fa-circle-check" header="Approved" data={String(totalCounts.approved)} arrow="fa-solid fa-check-double" description="Ready for PO" backBg="bg-ink dark:bg-ink/90" backHeader="Approved Requests" headerTextColor="text-muted dark:text-white/80" backDescription={`Approved: ${totalCounts.approved}\nReady for Purchase Order\n${totalCounts.approved} requests approved\n${totalCounts.approved > 0 ? 'Proceed to create POs' : 'No approved requests yet'}`} tooltip="View approved requests" tooltipLink="/procurement?tab=approved" badge={totalCounts.approved > 0 ? `${totalCounts.approved} ready` : undefined} frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
+    // 8. Record New Manual Quotation
+    const handleRecordNewQuote = async (quoteData: any) => {
+        try {
+            const { data, error } = await supabase
+                .from("supplier_quotations")
+                .insert([quoteData])
+                .select("*")
+                .single();
 
-                <Cards frontIcon="fa-solid fa-coins" header="Total Spend" data={`₱${totalSpend.toLocaleString()}`} arrow="fa-solid fa-chart-line" description="Completed orders" backBg="bg-ink dark:bg-ink/90" backHeader="Financial Summary" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Spend: ₱${totalSpend.toLocaleString()}\nCompleted orders: ${purchaseOrders.filter(o => o.status === 'Delivered' || o.status === 'Confirmed').length}\n${totalSpend > 0 ? 'Tracking procurement costs' : 'No completed orders yet'}`} tooltip="View financial details" tooltipLink="/procurement?tab=approved" frontTextColor="text-blue-500 dark:text-blue-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
-            </div>)}
+            if (error) throw error;
 
-            {/* charts */}
-            {loading ? (<ChartsSkeleton />) : (<div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] xl:col-span-2 transition-all">
-                    <div className="flex items-center justify-between">
-                        <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center">
-                            <div className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center mr-2">
-                                <i className="fas fa-chart-bar text-xs" />
+            setQuotations((prev) => [data as SupplierQuotationItem, ...prev]);
+            toast.success(`Quotation from "${quoteData.supplier_name}" recorded successfully!`);
+        } catch (err: any) {
+            console.error("Error recording quote:", err);
+            toast.error(err.message || "Failed to record quotation.");
+        }
+    };
+
+    // 12. View Quotation Document Modal
+    const handleViewQuotationDocument = (quote: SupplierQuotationItem) => {
+        setSelectedQuoteForModal(quote);
+        const matchedSup = suppliers.find((s) => s.name.toLowerCase() === quote.supplier_name.toLowerCase());
+        setQuoteModalSupplier({
+            id: quote.supplier_id || matchedSup?.id || 1,
+            name: quote.supplier_name,
+            contact_person: quote.contact_person || matchedSup?.contact_person || "Sales Representative",
+            phone: quote.contact_phone || matchedSup?.phone || "",
+            email: quote.contact_email || matchedSup?.email || "",
+            category: matchedSup?.category || "Supplies",
+            location: matchedSup?.location || "Metro Manila",
+        });
+        setIsQuoteViewModalOpen(true);
+    };
+
+    // 13. Direct Supplier Messaging Handler (from Stage 1 or anywhere)
+    const handleMessageSupplier = useCallback((supplier: any, shortageItem?: StockShortageItem) => {
+        let targetSupplier = supplier;
+        if (!targetSupplier && shortageItem) {
+            targetSupplier = shortageItem.matched_active_supplier
+                || shortageItem.previous_supplier_obj
+                || suppliers.find(s => s.name?.toLowerCase() === (shortageItem.supplier || shortageItem.previous_supplier)?.toLowerCase())
+                || {
+                    name: shortageItem.previous_supplier || shortageItem.supplier || "Supplier",
+                    id: shortageItem.previous_supplier_id || String(Date.now()),
+                    email: shortageItem.previous_supplier_email || "",
+                    phone: shortageItem.previous_supplier_phone || "",
+                    category: shortageItem.category || "General",
+                    is_active: shortageItem.is_supplier_active ?? false,
+                    notes: `Supplier for ${shortageItem.item_name}`
+                };
+        }
+
+        if (targetSupplier) {
+            setSelectedSupplierForMessage(targetSupplier);
+            setIsMessageModalOpen(true);
+        } else {
+            toast.error("Supplier contact information is not available.");
+        }
+    }, [suppliers]);
+
+    // 14. Direct PO Creation from Shortage (Stage 1)
+    const handleCreatePOFromShortage = useCallback((shortageItem: StockShortageItem, supplier?: any) => {
+        const targetSup = supplier || shortageItem.matched_active_supplier 
+            || suppliers.find(s => s.name?.toLowerCase() === (shortageItem.supplier || shortageItem.previous_supplier)?.toLowerCase()) 
+            || null;
+
+        const deficitQty = Math.max(1, Number(shortageItem.deficit) || 1);
+        const unitPrice = Number(shortageItem.purchase_price || shortageItem.previous_unit_price || 0);
+
+        setPoModalPrefillRequest({
+            id: `shortage_${shortageItem.id}_${Date.now()}`,
+            supplier_id: targetSup?.id || shortageItem.previous_supplier_id || '',
+            supplier_name: targetSup?.name || shortageItem.supplier || shortageItem.previous_supplier || '',
+            description: `Replenishment order for ${shortageItem.item_name}`,
+            department: shortageItem.category,
+            amount: deficitQty * unitPrice,
+            allowEditItems: true,
+            items: [
+                {
+                    name: shortageItem.item_name,
+                    item_name: shortageItem.item_name,
+                    quantity: deficitQty,
+                    unit_price: unitPrice,
+                    unit: shortageItem.unit || 'units',
+                    total: deficitQty * unitPrice,
+                }
+            ]
+        });
+        setSelectedPOForModal(null);
+        setIsPOModalOpen(true);
+    }, [suppliers]);
+
+    // Compute navigation badge counts
+    const navCounts = useMemo(() => {
+        return {
+            stockShortages: shortages.length,
+            totalSuppliers: suppliers.length,
+            quotationsCount: quotations.length,
+            supplierReturnsCount: supplierReturnsCount,
+        };
+    }, [shortages, suppliers, quotations, supplierReturnsCount]);
+
+    return (
+        <SessionGuard requiredRole={["Admin", "Purchase Officer", "Executive", "Supervisor"]}>
+            <div className="p-4 sm:p-6 lg:p-7 space-y-6 fade-in bgCard">
+                {/* 1. Master Page Header */}
+                <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-300/80 dark:border-white/10 pb-5">
+                    <div className="flex items-start gap-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/[0.06] flex items-center justify-center text-pink-600 dark:text-pink-400 text-xl shrink-0 mt-0.5 shadow-[-3px_-3px_8px_rgba(255,255,255,0.9),_3px_3px_8px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)]">
+                            <i className="fa-solid fa-cart-flatbed" />
+                        </div>
+
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                                    Procurement &amp; Strategic Sourcing Hub
+                                </h1>
                             </div>
-                            <span>Procurement Spending Trend</span>
-                            <div className="relative ml-2 group">
-                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[10px] font-bold cursor-help shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3)]">
-                                    ?
+                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                                End-to-end operational procurement: Monitor stock shortages, find potential suppliers, and collect &amp; compare quotations.
+                            </p>
+
+                            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.3),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] text-[11px] text-slate-600 dark:text-slate-300">
+                                <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
+                                <span className="font-bold text-slate-500">Authenticated Role:</span>
+                                <span className="font-black text-slate-800 dark:text-slate-100 capitalize">
+                                    {userRole}
                                 </span>
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3.5 bg-slate-900 dark:bg-slate-800 text-slate-200 dark:text-slate-300 text-xs rounded-2xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 border border-slate-700/60">
-                                    <p className="font-semibold text-white mb-1">📊 Chart Info</p>
-                                    <p>Shows monthly spending from <span className="text-pink-400 font-medium">Delivered</span> and <span className="text-pink-400 font-medium">Confirmed</span> orders that are <span className="text-emerald-400 font-medium">paid</span>.</p>
-                                    <p className="mt-1 text-slate-400 text-[10px]">💡 Click on any data point to see orders for that month.</p>
-                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-slate-900 dark:bg-slate-800"></div>
-                                </div>
                             </div>
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
-                            <i className="fas fa-calendar-alt text-pink-500 dark:text-pink-400 text-[11px]" />
-                            <span>Completed orders (Paid)</span>
                         </div>
                     </div>
-                    <div className="w-full h-[200px] mt-3">
-                        {purchaseOrders.some(o => (o.status === 'Delivered' || o.status === 'Confirmed') && o.paid === true && (o.total_amount || 0) > 0) ? (
-                            <canvas ref={expenseChartCanvasRef} className="w-full h-full" />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
-                                <div className="w-12 h-12 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] flex items-center justify-center text-pink-500 dark:text-pink-400 mb-2.5">
-                                    <i className="fas fa-chart-line text-base" />
-                                </div>
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Spending Trend Data</span>
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5">Completed and paid purchase order expenditures will appear here</span>
-                            </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={() => loadAllProcurementData(true)}
+                            className="p-2.5 px-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#1a1c2c] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-3px_-3px_8px_rgba(255,255,255,0.9),_3px_3px_8px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] border border-white/60 dark:border-white/[0.06] cursor-pointer flex items-center gap-2"
+                            title="Refresh Datasets"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-pink-500" : ""}`} />
+                            <span className="text-xs font-black hidden sm:inline">Refresh Hub</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* 2. AI Questions Helper - Strictly Solid Pink and Slate */}
+                <AiQuestions
+                    title="Procurement Intelligent Co-Pilot"
+                    subtitle="Ask questions or trigger instant workflow actions"
+                    questions={[
+                        { question: "Monitor warehouse stock shortages and deficits", color: "bg-pink-500" },
+                        { question: "Find potential suppliers on logistics sourcing map", color: "bg-pink-500" },
+                        { question: "Collect and compare supplier quotations and pricing", color: "bg-pink-500" },
+                    ]}
+                />
+
+                {/* 3. 3-Stage Lifecycle Stepper Navigation */}
+                <ProcurementLifecycleNav
+                    currentStage={currentStage}
+                    onSelectStage={handleStageChange}
+                    counts={navCounts}
+                />
+
+                {/* 4. Stage Workspaces Rendering */}
+                {isLoading ? (
+                    <div className="py-12 space-y-4">
+                        <CardsSkeleton count={3} />
+                    </div>
+                ) : (
+                    <div>
+                        {/* STAGE 1: Stock Shortages */}
+                        {currentStage === 1 && (
+                            <StageStockShortages
+                                shortages={shortages}
+                                isLoading={isLoading}
+                                onFindSuppliersForItem={handleFindSuppliersForItem}
+                                onRefresh={() => loadAllProcurementData(true)}
+                                onMessageSupplier={handleMessageSupplier}
+                                onCreatePO={handleCreatePOFromShortage}
+                            />
+                        )}
+
+                        {/* STAGE 2: Find potential suppliers */}
+                        {currentStage === 2 && (
+                            <StageFindPotentialSuppliers
+                                suppliers={suppliers}
+                                shortages={shortages}
+                                activeSourcingFocus={activeSourcingFocus}
+                                onClearSourcingFocus={() => setActiveSourcingFocus(null)}
+                                onRefresh={() => loadAllProcurementData(true)}
+                                onOpenPOModal={(item, sup) => {
+                                    setSelectedPOForModal(null);
+                                    setIsPOModalOpen(true);
+                                }}
+                            />
+                        )}
+
+                        {/* STAGE 3: Collect and compare quotations (Transferred from /suppliers?tab=potential) */}
+                        {currentStage === 3 && (
+                            <PotentialSuppliersTab
+                                registeredSuppliers={suppliers}
+                                onSupplierPromoted={() => loadAllProcurementData(true)}
+                                onViewPurchaseOrder={(po) => {
+                                    if (po) {
+                                        setReceiptModalPO(po);
+                                        setIsReceiptModalOpen(true);
+                                    }
+                                }}
+                            />
+                        )}
+
+                        {/* STAGE 4: Supplier Returns & Defective Item Resolution */}
+                        {currentStage === 4 && (
+                            <StageSupplierReturns
+                                onRefreshParent={() => loadAllProcurementData(true)}
+                            />
                         )}
                     </div>
-                </div>
-                <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] transition-all">
-                    <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center">
-                        <div className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center mr-2">
-                            <i className="fas fa-chart-pie text-xs" />
-                        </div>
-                        <span>Request Priority Distribution</span>
-                    </div>
-                    <div className="w-full h-[200px] mt-3">
-                        {requests.length > 0 ? (
-                            <canvas ref={priorityChartCanvasRef} className="w-full h-full" />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
-                                <div className="w-12 h-12 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] flex items-center justify-center text-pink-500 dark:text-pink-400 mb-2.5">
-                                    <i className="fas fa-chart-pie text-base" />
-                                </div>
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">No Priority Data</span>
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs mt-0.5">Priority breakdown will display once requests are submitted</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>)}
+                )}
 
-            {/* table */}
-            {loading ? (<TableSkeleton rows={itemsPerPage} hasFilter hasSearch hasPagination columns={[
-                { type: 'checkbox', width: 'w-10' },
-                { header: 'Request ID', type: 'mono' },
-                { header: 'Priority', type: 'badge' },
-                { header: 'Requester', type: 'avatar-text', subtext: true },
-                { header: 'Department', type: 'text' },
-                { header: 'Category', type: 'text' },
-                { header: 'Total Cost', type: 'currency' },
-                { header: 'Date', type: 'date' },
-                { header: 'Status', type: 'badge' },
-                { header: 'Next Approver', type: 'text' },
-                { header: 'Approval Step', type: 'badge' },
-                { header: 'Actions', type: 'actions', align: 'right', width: 'w-[170px]' },
-            ]} />) : (<div ref={tableContainerRef} id="procurement-table" className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] overflow-hidden relative flex flex-col">
-                {isRefreshing && <TableContentLoader />}
+                {/* 5. MODALS INTEGRATION */}
 
-                {/* filter bar */}
-                <div className="flex-shrink-0 pb-4 mb-3 border-b border-slate-200/60 dark:border-slate-800/80 transition-all">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* A. Direct Supplier Messaging Modal */}
+                <SupplierMessageModal
+                    isOpen={isMessageModalOpen}
+                    onClose={() => {
+                        setIsMessageModalOpen(false);
+                        setSelectedSupplierForMessage(null);
+                    }}
+                    supplier={selectedSupplierForMessage}
+                />
 
-                        {/* left */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
-                            {/* title */}
-                            <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2.5 shrink-0">
-                                <div className="w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center">
-                                    <i className="fas fa-list text-xs" />
-                                </div>
-                                <span>Purchase Requests</span>
-                                {isRefreshing && (<i className="fas fa-circle-notch fa-spin text-pink-500 text-xs ml-0.5" title="Refreshing..." />)}
-                            </div>
+                {/* B. Purchase Order Modal */}
+                {isPOModalOpen && (
+                    <PurchaseOrderModal
+                        isOpen={isPOModalOpen}
+                        onClose={() => {
+                            setIsPOModalOpen(false);
+                            setSelectedPOForModal(null);
+                            setPoModalPrefillRequest(null);
+                        }}
+                        request={poModalPrefillRequest || null}
+                        suppliers={suppliers}
+                        onOrderCreated={(newPO) => {
+                            setIsPOModalOpen(false);
+                            setPoModalPrefillRequest(null);
+                            loadAllProcurementData(true);
+                        }}
+                    />
+                )}
 
-                            {/* search */}
-                            <div className="relative flex-1 max-w-sm">
-                                <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none" />
-                                <input className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl px-3.5 py-2 pl-9 pr-8 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-pink-500 transition-all" placeholder="Search by ID, requester, supplier..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                                {searchTerm && (<button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 rounded-md" aria-label="Clear search">
-                                    <i className="fas fa-times" />
-                                </button>)}
-                            </div>
-                        </div>
+                {/* C. Official Digital Receipt Modal */}
+                {isReceiptModalOpen && receiptModalPO && (
+                    <DigitalReceiptModal
+                        isOpen={isReceiptModalOpen}
+                        onClose={() => {
+                            setIsReceiptModalOpen(false);
+                            setReceiptModalPO(null);
+                        }}
+                        order={receiptModalPO}
+                    />
+                )}
 
-                        {/* right */}
-                        <div className="flex items-center justify-between sm:justify-end gap-2.5">
-                            {/* tabs */}
-                            <div className="inline-flex gap-1 bg-[#ebf0f7] dark:bg-[#14151c] p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)]">
-                                {[
-                                    { key: "all", label: "All", count: totalCounts.all },
-                                    { key: "pending", label: "Pending", count: totalCounts.pending },
-                                    { key: "approved", label: "Approved", count: totalCounts.approved },
-                                ].map((tab) => {
-                                    const isActive = activeTab === tab.key;
-                                    return (<button key={tab.key} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-1.5 active:scale-95 ${isActive
-                                        ? "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-900 dark:text-white border border-white/70 dark:border-[#2a2b38] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)]"
-                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"}`} onClick={() => {
-                                            setActiveTab(tab.key as any);
-                                            setSelectedIds(new Set());
-                                            setIsSelectAll(false);
-                                        }}>
-                                        <span>{tab.label}</span>
-                                        <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors ${isActive
-                                            ? "bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-300 border border-pink-200/80 dark:border-pink-900/40"
-                                            : "bg-slate-300/50 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}>
-                                            {tab.count}
-                                        </span>
-                                    </button>);
-                                })}
-                            </div>
+                {/* D. Add Potential Supplier Lead Modal */}
+                {isAddSupplierModalOpen && (
+                    <AddPotentialSupplierModal
+                        isOpen={isAddSupplierModalOpen}
+                        onClose={() => setIsAddSupplierModalOpen(false)}
+                        onSupplierAdded={() => {
+                            setIsAddSupplierModalOpen(false);
+                            loadAllProcurementData(true);
+                            toast.success("Supplier lead registered successfully.");
+                        }}
+                        availableRequests={requests.map((r) => ({
+                            id: r.id,
+                            requestNumber: r.request_number,
+                            itemName: r.items && r.items[0] ? (r.items[0].name || r.items[0].item_name || "Item") : r.description,
+                            category: r.department,
+                        }))}
+                    />
+                )}
 
-                            {/* po action & bulk delete / approve / reject */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                                {selectedIds.size > 0 && (
-                                    <>
-                                        {canApproveReject && (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleBulkApprove}
-                                                    disabled={pendingRowId === "bulk" || selectedPendingCount === 0}
-                                                    title={selectedPendingCount === 0 ? "No pending requests selected" : `Approve ${selectedPendingCount} pending request(s)`}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200/70 dark:border-emerald-800/50 rounded-2xl shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                                                >
-                                                    {pendingRowId === "bulk" ? <i className="fas fa-spinner fa-spin text-xs" /> : <i className="fas fa-check text-[10px]" />}
-                                                    <span>Approve ({selectedPendingCount})</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleBulkReject}
-                                                    disabled={pendingRowId === "bulk" || selectedPendingCount === 0}
-                                                    title={selectedPendingCount === 0 ? "No pending requests selected" : `Reject ${selectedPendingCount} pending request(s)`}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 border border-amber-200/70 dark:border-amber-800/50 rounded-2xl shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                                                >
-                                                    {pendingRowId === "bulk" ? <i className="fas fa-spinner fa-spin text-xs" /> : <i className="fas fa-times text-[10px]" />}
-                                                    <span>Reject ({selectedPendingCount})</span>
-                                                </button>
-                                            </>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={handleBulkDelete}
-                                            disabled={pendingRowId === "bulk"}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 border border-rose-200/70 dark:border-rose-800/50 rounded-2xl shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] transition-all cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
-                                        >
-                                            {pendingRowId === "bulk" ? <i className="fas fa-spinner fa-spin text-xs" /> : <i className="fas fa-trash-alt text-[10px]" />}
-                                            <span>Delete Selected ({selectedIds.size})</span>
-                                        </button>
-                                    </>
-                                )}
-                                <Link href="/purchase-orders">
-                                    <AppButton type="button" variant="primary" size="sm" aria-label="Go to Purchase Orders" className="shrink-0">
-                                        <i className="fas fa-file-invoice-dollar text-xs" />
-                                        <span className="hidden sm:inline">Purchase Orders</span>
-                                    </AppButton>
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* scrollable table container */}
-                <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40 shadow-[inset_1.5px_1.5px_4px_rgba(166,175,195,0.25)]">
-                    <table className="table-pro w-full border-collapse text-left text-xs">
-                        <thead>
-                            <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-[#e4ebf5] dark:bg-[#14151c] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
-                                <th className="w-10 py-3 px-4 text-center">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                        <input type="checkbox" className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600" checked={isSelectAll && selectedIds.size > 0} onChange={handleSelectAll} disabled={filteredRequests.filter((r) => r.status === "Pending" || r.status === "Rejected").length === 0} title={filteredRequests.filter((r) => r.status === "Pending" || r.status === "Rejected").length === 0 ? "No pending or rejected requests to select" : "Select all pending and rejected requests"} />
-                                        {selectedIds.size > 0 && (<span className="text-[10px] bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-bold px-1.5 py-0.2 rounded-full border border-pink-200/60 dark:border-pink-900/40">
-                                            {selectedIds.size}
-                                        </span>)}
-                                    </div>
-                                </th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">PR #</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Type</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Description</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Requested By</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Dept</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Supplier</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">Amount</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Priority</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Date</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">Status</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">PO Status</th>
-                                <th className="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right! sm:w-[170px] sm:min-w-[170px]">Actions</th>
-                            </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                            {filteredRequests.length === 0 ? (<tr>
-                                <td colSpan={13} className="py-12">
-                                    <EmptyState title="No purchase requests found" description={activeTab === "pending"
-                                        ? "There are no pending requests waiting for approval."
-                                        : activeTab === "approved"
-                                            ? "There are no approved requests ready for purchase orders."
-                                            : "Try adjusting your search filters or create a new request."} icon="fas fa-shopping-cart" actionText={canCreateRequest ? "Create New Request" : undefined} onAction={canCreateRequest ? () => {
-                                                setIsEditMode(false);
-                                                setIsReadOnly(false);
-                                                setEditData(null);
-                                                setIsPurchaseRequestModalOpen(true);
-                                            } : undefined} />
-                                </td>
-                            </tr>) : (filteredRequests.map((req) => {
-                                const hasPO = purchaseOrders.some((po) => po.request_id === req.id);
-                                const poStatus = getPurchaseOrderStatus(req.id);
-                                const poNumber = getPurchaseOrderNumber(req.id);
-                                const rowBusy = pendingRowId === req.id;
-                                const isSelected = selectedIds.has(req.id);
-                                const isPending = req.status === "Pending";
-                                return (<tr key={req.id} onClick={() => handleEditRequest(req.id)} className={`group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 cursor-pointer ${rowBusy ? "opacity-50 pointer-events-none" : ""} ${isSelected ? "bg-pink-50/50 dark:bg-pink-950/20" : "bg-transparent"}`}>
-                                    <td data-label="Select" className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center justify-between md:justify-center w-full">
-                                            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                                                <input type="checkbox" className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600 disabled:opacity-30 disabled:cursor-not-allowed" checked={isSelected} onChange={() => handleSelectOne(req.id)} disabled={(!isPending && req.status !== "Rejected") || rowBusy} title={!isPending && req.status !== "Rejected" ? "Only pending or rejected requests can be selected" : ""} />
-                                                <span className="md:hidden text-xs font-semibold text-slate-700 dark:text-slate-200">Select</span>
-                                            </label>
-                                            <span className="md:hidden font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700/60">
-                                                {req.request_number}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td data-label="PR #" className="py-3.5 px-4 font-mono text-xs font-semibold text-slate-900 dark:text-white whitespace-nowrap text-right sm:text-left">
-                                        {req.request_number}
-                                    </td>
-                                    <td data-label="Type" className="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap text-right sm:text-left">
-                                        {req.type}
-                                    </td>
-                                    <td data-label="Description" className="py-3.5 px-4">
-                                        <span className="text-slate-600 dark:text-slate-400 truncate max-w-[180px] sm:max-w-none block text-right sm:text-left ml-auto sm:ml-0" title={req.description}>
-                                            {req.description}
-                                        </span>
-                                    </td>
-                                    <td data-label="Requested By" className="py-3.5 px-4 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap text-right sm:text-left">
-                                        {req.requested_by}
-                                    </td>
-                                    <td data-label="Dept" className="py-3.5 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap text-right sm:text-left">
-                                        {req.department}
-                                    </td>
-                                    <td data-label="Supplier" className="py-3.5 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap max-w-[140px] truncate text-right sm:text-left ml-auto sm:ml-0" title={req.supplier_name}>
-                                        {req.supplier_name}
-                                    </td>
-                                    <td data-label="Amount" className="py-3.5 px-4 text-right font-bold text-slate-900 dark:text-white tracking-tight whitespace-nowrap">
-                                        ₱{(() => {
-                                            const computedAmt = Number(req.amount) > 0
-                                                ? Number(req.amount)
-                                                : (req.items?.reduce((acc: number, item: any) => acc + ((Number(item.quantity) || 1) * (Number(item.unit_price ?? item.price ?? item.purchase_price ?? 0))), 0) || 0);
-                                            return computedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                        })()}
-                                    </td>
-                                    <td data-label="Priority" className="py-3.5 px-4 whitespace-nowrap">
-                                        <div className="flex justify-end sm:justify-start">
-                                            <StatusBadge tone={req.priority === 'Critical' ? 'rose' : req.priority === 'Urgent' ? 'amber' : 'indigo'} size="xs">
-                                                {req.priority}
-                                            </StatusBadge>
-                                        </div>
-                                    </td>
-                                    <td data-label="Date" className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap text-right sm:text-left">
-                                        {req.date}
-                                    </td>
-                                    <td data-label="Status" className="py-3.5 px-4 whitespace-nowrap">
-                                        <div className="flex justify-end sm:justify-start">
-                                            <StatusBadge tone={req.status === 'Pending' ? 'amber' : req.status === 'Approved' ? 'purple' : req.status === 'Rejected' ? 'rose' : req.status === 'Completed' ? 'pink' : 'neutral'} dot size="xs">
-                                                {req.status}
-                                            </StatusBadge>
-                                        </div>
-                                    </td>
-                                    <td data-label="PO Status" className="py-3.5 px-4 whitespace-nowrap">
-                                        <div className="flex justify-end sm:justify-start">
-                                            {hasPO && poStatus ? (<StatusBadge tone={getPOStatusTone(poStatus)} size="xs" title={`PO Status: ${poStatus} ${poNumber ? `(#${poNumber})` : ''}`}>
-                                                {poStatus} {poNumber && `#${poNumber}`}
-                                            </StatusBadge>) : (<span className="text-[10px] text-slate-400 dark:text-slate-500 italic">No PO</span>)}
-                                        </div>
-                                    </td>
-                                    <td data-label="Actions" className="py-3.5 px-4 text-right sm:w-[170px] sm:min-w-[170px] w-full" onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center justify-end gap-2.5 flex-wrap w-full sm:w-auto">
-                                            {rowBusy && (<svg className="w-4 h-4 animate-spin text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                            </svg>)}
-
-                                            {req.status === "Approved" && !hasPO && (<CrudActionButton action="custom" label="Create PO" icon={FileText} onClick={() => handleCreateOrder(req)} disabled={rowBusy} ariaLabel="Create Purchase Order" title="Create Purchase Order" />)}
-
-                                            {canApproveReject && req.status === "Pending" && (<>
-                                                <CrudActionButton action="custom" label="Approve" icon={Check} onClick={() => handleApproveRequest(req.id)} disabled={rowBusy} ariaLabel="Approve Request" title="Approve Request" />
-                                                <CrudActionButton action="custom" label="Reject" icon={X} onClick={() => handleRejectRequest(req.id)} disabled={rowBusy} ariaLabel="Reject Request" title="Reject Request" />
-                                            </>)}
-
-                                            {canEditRequest(req) && (
-                                                <CrudActionButton action="edit" onClick={() => handleEditRequest(req.id)} disabled={rowBusy} ariaLabel="Edit Request" title="Edit Request" />
-                                            )}
-
-                                            {canDeleteRequest(req) && (
-                                                <CrudActionButton action="delete" onClick={() => handleDeleteRequest(req.id)} disabled={rowBusy} ariaLabel="Delete Request" title="Delete Request" />
-                                            )}
-
-                                            {req.status === "Approved" && hasPO && (<StatusBadge tone="emerald" icon="fas fa-check" size="xs" title="Purchase order already generated">
-                                                PO Created
-                                            </StatusBadge>)}
-
-                                            {req.status === "Rejected" && (<span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full">
-                                                <span>Rejected</span>
-                                            </span>)}
-                                        </div>
-                                    </td>
-                                </tr>);
-                            }))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* pagination */}
-                <div className="flex-shrink-0 pagination-container-class flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-1">
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
-                            Showing <span className="font-semibold text-slate-800 dark:text-white">
-                                {totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}
-                            </span> to{' '}
-                            <span className="font-semibold text-slate-800 dark:text-white">
-                                {Math.min(currentPage * itemsPerPage, totalItems)}
-                            </span> of{' '}
-                            <span className="font-semibold text-slate-800 dark:text-white">{totalItems}</span> requests
-                        </span>
-                        {selectedIds.size > 0 && (<div className="flex items-center gap-2 pl-3 border-l border-slate-200/60 dark:border-slate-800 animate-in fade-in duration-150 flex-wrap">
-                            <span className="px-2.5 py-1 rounded-xl bg-pink-50 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-bold border border-pink-200/80 dark:border-pink-900/40 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)]">
-                                {selectedIds.size} selected
-                            </span>
-
-                            {canApproveReject && (
-                                <>
-                                    <button 
-                                        onClick={handleBulkApprove} 
-                                        disabled={pendingRowId === "bulk" || selectedPendingCount === 0} 
-                                        title={selectedPendingCount === 0 ? "No pending requests selected" : `Approve ${selectedPendingCount} pending request(s)`}
-                                        className="px-3 py-1.5 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 rounded-2xl border border-emerald-200/70 dark:border-emerald-800/50 shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95"
-                                    >
-                                        {pendingRowId === "bulk" ? (<i className="fas fa-spinner fa-spin text-xs" />) : (<i className="fas fa-check text-xs" />)}
-                                        <span>Approve ({selectedPendingCount})</span>
-                                    </button>
-                                    <button 
-                                        onClick={handleBulkReject} 
-                                        disabled={pendingRowId === "bulk" || selectedPendingCount === 0} 
-                                        title={selectedPendingCount === 0 ? "No pending requests selected" : `Reject ${selectedPendingCount} pending request(s)`}
-                                        className="px-3 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-600 dark:text-amber-400 rounded-2xl border border-amber-200/70 dark:border-amber-800/50 shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95"
-                                    >
-                                        {pendingRowId === "bulk" ? (<i className="fas fa-spinner fa-spin text-xs" />) : (<i className="fas fa-times text-xs" />)}
-                                        <span>Reject ({selectedPendingCount})</span>
-                                    </button>
-                                </>
-                            )}
-
-                            <button onClick={handleBulkDelete} disabled={pendingRowId === "bulk"} className="px-3 py-1.5 text-xs font-bold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 rounded-2xl border border-rose-200/70 dark:border-rose-800/50 shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95">
-                                {pendingRowId === "bulk" ? (<i className="fas fa-spinner fa-spin text-xs" />) : (<i className="fas fa-trash-alt text-xs" />)}
-                                <span>Delete Selected</span>
-                            </button>
-
-                            <button onClick={() => {
-                                setSelectedIds(new Set());
-                                setIsSelectAll(false);
-                            }} className="w-7 h-7 rounded-xl bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center border border-white/70 dark:border-[#2a2b38] shadow-[2px_2px_4px_rgba(166,175,195,0.3),-2px_-2px_4px_rgba(255,255,255,0.9)] transition-all cursor-pointer active:scale-95" title="Clear selection" aria-label="Clear selection">
-                                <i className="fas fa-times text-xs" />
-                            </button>
-                        </div>)}
-                    </div>
-
-                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} />
-                </div>
-            </div>)}
-
-            <PurchaseRequestModal isOpen={isPurchaseRequestModalOpen} onClose={() => {
-                setIsPurchaseRequestModalOpen(false);
-                setIsEditMode(false);
-                setIsReadOnly(false);
-                setEditData(null);
-            }} suppliers={suppliers} role={userRole} onRequestSubmitted={handleRequestSubmitted} editData={editData} isEdit={isEditMode} readOnly={isReadOnly} />
-
-            <PurchaseOrderModal isOpen={isPurchaseOrderModalOpen} onClose={() => {
-                setIsPurchaseOrderModalOpen(false);
-                setSelectedRequest(null);
-            }} request={selectedRequest} suppliers={suppliers} onOrderCreated={handleOrderCreated} />
-
-            <DigitalReceiptModal isOpen={isDigitalReceiptModalOpen} onClose={() => {
-                setIsDigitalReceiptModalOpen(false);
-                setDigitalReceiptPO(null);
-            }} purchaseOrder={digitalReceiptPO} />
-
-            <ChartDetailModal isOpen={chartDetailModal.isOpen} onClose={() => setChartDetailModal(prev => ({ ...prev, isOpen: false }))} month={chartDetailModal.month} monthIndex={chartDetailModal.monthIndex} orders={chartDetailModal.orders} totalAmount={chartDetailModal.totalAmount} />
-        </div>
-    </SessionGuard>);
+                {/* E. Vendor Quotation View Modal */}
+                {isQuoteViewModalOpen && quoteModalSupplier && (
+                    <VendorQuotationViewModal
+                        supplier={quoteModalSupplier}
+                        initialQuote={selectedQuoteForModal as any}
+                        onClose={() => {
+                            setIsQuoteViewModalOpen(false);
+                            setSelectedQuoteForModal(null);
+                            setQuoteModalSupplier(null);
+                        }}
+                        onAwardBid={(sup, quote) => {
+                            setIsQuoteViewModalOpen(false);
+                            if (selectedQuoteForModal) {
+                                handleAwardBid(selectedQuoteForModal);
+                            }
+                        }}
+                    />
+                )}
+            </div>
+        </SessionGuard>
+    );
 }

@@ -7,7 +7,7 @@ import { SessionGuard } from '../../components/server/SessionGuard';
 
 export const metadata: Metadata = {
     title: 'Warehouse Inventory | Supply Chain Management',
-    description: 'Manage warehouse inventory items, stock levels, and parcels'
+    description: 'Manage warehouse inventory items and stock levels'
 };
 
 export default function InventoryPage() {
@@ -17,7 +17,7 @@ export default function InventoryPage() {
                 <PageSkeleton />
             }
         >
-            <SessionGuard requiredRole={['Admin', 'Manager', 'Operator', 'Executive']}>
+            <SessionGuard requiredRole={['Admin', 'Purchase Officer', 'Operator', 'Executive']}>
                 <InventoryClient />
             </SessionGuard>
         </Suspense>

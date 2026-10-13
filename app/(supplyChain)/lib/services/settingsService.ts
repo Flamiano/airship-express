@@ -2,7 +2,7 @@
 
 import { supabase } from './client/supabase';
 
-export type UserRole = 'Admin' | 'Executive' | 'Manager' | 'Operator' | 'Staff' | 'Employee' | 'Supplier';
+export type UserRole = 'Superadmin' | 'Executive' | 'Admin' | 'Purchase Officer' | 'Operator' | 'Supplier' | 'Employee';
 
 export interface InactivitySettings {
     enabled: boolean;
@@ -12,9 +12,9 @@ export interface InactivitySettings {
 }
 
 export interface ConcurrencySlotSettings {
-    executiveSlots: number; // Reserved exclusively for Executives & Admins (default: 10, max: 500)
-    managerSlots: number;   // Reserved for Managers + Executive/Admin (default: 20, max: 500)
-    employeeSlots: number;  // For Staff & Operators (default: 70, max: 650)
+    executiveSlots: number; // Reserved exclusively for Superadmin/Executives & Admins (default: 10, max: 500)
+    managerSlots: number;   // Reserved for Purchase Officers & Operators (default: 20, max: 500)
+    employeeSlots: number;  // Standard slots (default: 70, max: 650)
     supplierSlots: number;  // For Suppliers (default: 10, max: 50)
 }
 
@@ -42,16 +42,16 @@ export const DEFAULT_CONCURRENCY_SLOTS: ConcurrencySlotSettings = {
     supplierSlots: 10,
 };
 
-export const ALL_ROLES: UserRole[] = ['Executive', 'Admin', 'Manager', 'Operator', 'Staff', 'Employee'];
+export const ALL_ROLES: UserRole[] = ['Executive', 'Admin', 'Purchase Officer', 'Operator', 'Supplier'];
 
 export const DEFAULT_ROLE_REDIRECTS: Record<UserRole, string> = {
     'Executive': '/executive',
     'Admin': '/procurement',
-    'Manager': '/warehousing',
+    'Purchase Officer': '/purchase-orders',
     'Operator': '/warehousing',
-    'Staff': '/documents',
-    'Employee': '/documents',
     'Supplier': '/suppliers_page/purchase-orders',
+    'Superadmin': '/executive',
+    'Employee': '/warehousing',
 };
 
 export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
@@ -67,42 +67,42 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
         label: 'Warehousing',
         description: 'Facility management, bays, racks, and storage layouts',
         section: 'Operations',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Operator'],
+        allowedRoles: ['Executive', 'Admin', 'Operator'],
     },
     {
         route: '/inventory',
-        label: 'Parcel Inventory',
-        description: 'Parcel tracking, item classifications, and stock counts',
+        label: 'Inventory',
+        description: 'Item classifications, stock levels, and warehouse counts',
         section: 'Operations',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Operator'],
+        allowedRoles: ['Executive', 'Admin', 'Operator'],
     },
     {
         route: '/procurement',
         label: 'Procurement',
         description: 'Purchase requests, supplier requisitions, and budgeting',
         section: 'Procurement',
-        allowedRoles: ['Executive', 'Admin', 'Manager'],
+        allowedRoles: ['Executive', 'Admin', 'Purchase Officer'],
     },
     {
         route: '/suppliers',
         label: 'Suppliers',
         description: 'Vendor directory, partner ratings, and supply agreements',
         section: 'Procurement',
-        allowedRoles: ['Executive', 'Admin', 'Manager'],
+        allowedRoles: ['Executive', 'Admin', 'Purchase Officer'],
     },
     {
         route: '/purchase-orders',
         label: 'Purchase Orders',
         description: 'Order fulfillment, invoicing, and purchase authorization',
         section: 'Procurement',
-        allowedRoles: ['Executive', 'Admin', 'Manager'],
+        allowedRoles: ['Superadmin', 'Admin', 'Purchase Officer', 'Executive', 'Operator', 'Employee'],
     },
     {
         route: '/documents',
         label: 'Documents',
         description: 'Compliance files, shipping docs, and records archive',
         section: 'Intelligence',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
+        allowedRoles: ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
     },
     {
         route: '/forecast',
@@ -116,14 +116,14 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
         label: 'Gallery',
         description: 'Media archive, logistics photos, and inspection snapshots',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
+        allowedRoles: ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
     },
     {
         route: '/trash',
         label: 'Trash & Recycle Bin',
         description: 'Deleted records recovery and permanent purge controls',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
+        allowedRoles: ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
     },
     {
         route: '/user-activity',
@@ -444,7 +444,13 @@ class SettingsService {
             }
         }
 
-        return fallbackRoles || ['Executive', 'Admin', 'Manager', 'Operator', 'Staff', 'Employee', 'Supplier'];
+        const validFallback = Array.isArray(fallbackRoles)
+            ? fallbackRoles
+            : typeof fallbackRoles === 'string' && (fallbackRoles as string).trim()
+            ? [(fallbackRoles as string).trim()]
+            : undefined;
+
+        return validFallback || ['Superadmin', 'Executive', 'Admin', 'Purchase Officer', 'Operator', 'Supplier'];
     }
 
     /**
@@ -453,24 +459,31 @@ class SettingsService {
     public canAccessPage(role: string, pathname: string, fallbackRoles?: string[]): boolean {
         if (!role) return false;
         const normRole = role.trim().toLowerCase();
+        const validFallback = Array.isArray(fallbackRoles)
+            ? fallbackRoles
+            : typeof fallbackRoles === 'string' && (fallbackRoles as string).trim()
+            ? [(fallbackRoles as string).trim()]
+            : undefined;
 
         // 1. Check fallbackRoles directly (from NAV / page definitions)
-        if (fallbackRoles && fallbackRoles.length > 0) {
-            const isFallbackAllowed = fallbackRoles.some(r => {
+        if (validFallback && validFallback.length > 0) {
+            const isFallbackAllowed = validFallback.some(r => {
                 const normAllowed = (r || '').trim().toLowerCase();
                 if (normRole === normAllowed) return true;
-                if ((normRole === 'staff' && normAllowed === 'employee') || (normRole === 'employee' && normAllowed === 'staff')) return true;
+                if ((normRole === 'superadmin' && normAllowed === 'executive') || (normRole === 'executive' && normAllowed === 'superadmin')) return true;
+                if ((normRole === 'purchase officer' && (normAllowed === 'staff' || normAllowed === 'employee')) || ((normRole === 'staff' || normRole === 'employee') && normAllowed === 'purchase officer')) return true;
                 return false;
             });
             if (isFallbackAllowed) return true;
         }
 
         // 2. Check dynamic allowed roles from DB/settings
-        const allowedRoles = this.getPageRoles(pathname, fallbackRoles);
+        const allowedRoles = this.getPageRoles(pathname, validFallback);
         return allowedRoles.some(r => {
             const normAllowed = (r || '').trim().toLowerCase();
             if (normRole === normAllowed) return true;
-            if ((normRole === 'staff' && normAllowed === 'employee') || (normRole === 'employee' && normAllowed === 'staff')) return true;
+            if ((normRole === 'superadmin' && normAllowed === 'executive') || (normRole === 'executive' && normAllowed === 'superadmin')) return true;
+            if ((normRole === 'purchase officer' && (normAllowed === 'staff' || normAllowed === 'employee')) || ((normRole === 'staff' || normRole === 'employee') && normAllowed === 'purchase officer')) return true;
             return false;
         });
     }

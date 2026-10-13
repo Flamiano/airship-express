@@ -421,7 +421,7 @@ interface ShadUiNavProps {
     onAIClick?: () => void;
 }
 export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
-    const { openChat, isOpen: isAIOpen, isRobotThinking, isRobotResponding } = useAI();
+    const { openChat, isOpen: isAIOpen, isRobotThinking, isRobotResponding, activeRecommendation, openRecommendationChat } = useAI();
     const [isOpen, setIsOpen] = useState(false);
     const [isHovering, setIsHovering] = useState(false);
     const [isMsgHovering, setIsMsgHovering] = useState(false);
@@ -432,6 +432,12 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
             setIsOpen(false);
         }
     }, [isAIOpen]);
+
+    useEffect(() => {
+        if (activeRecommendation) {
+            setIsOpen(true);
+        }
+    }, [activeRecommendation]);
     const greetings = [
         "Hi there!",
         "Hey! How can I help?",
@@ -574,96 +580,153 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                 <div className="h-7 w-px bg-pink-200/60 dark:bg-[#67224c]"/>
 
                                 <div className="relative">
-                                <button onClick={() => {
-                openChat();
-                setIsOpen(false);
-                if (onAIClick)
-                    onAIClick();
-            }} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} className="group relative rounded-xl p-1 transition-all duration-75 active:scale-95 focus-visible:outline-none cursor-pointer">
-                                    <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center">
-                                        <motion.div animate={{
-                y: isHovering ? -15 : 0,
-                scale: isHovering ? 1.15 : 1,
-                rotate: isHovering ? [0, -5, 5, -3, 3, 0] : 0,
-            }} transition={{
-                y: {
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 15,
-                },
-                scale: {
-                    duration: 0.2,
-                },
-                rotate: {
-                    duration: 0.5,
-                    ease: "easeInOut",
-                },
-            }}>
-                                            <RobotHeader size={44} isThinking={isRobotThinking} isResponding={isRobotResponding}/>
-                                        </motion.div>
-
-                                        <motion.div className="absolute -bottom-1 left-1/2 -translate-x-1/2 
-                                               rounded-full bg-pink-400/20 blur-sm" animate={{
-                width: isHovering ? 20 : 30,
-                height: isHovering ? 2 : 4,
-                opacity: isHovering ? 0.3 : 0.5,
-            }} transition={{
-                duration: 0.2,
-            }}/>
-
-                                        {isHovering && (<motion.div className="absolute inset-0 rounded-full 
-                                                   border-2 border-pink-400/50 dark:border-pink-400/30" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1.3, opacity: 0.6 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ duration: 0.3 }}/>)}
-
-                                        {(isRobotThinking || isRobotResponding) && (<motion.div className="absolute inset-0 rounded-full 
-                                                   border-2 border-pink-400/30 dark:border-pink-400/20" animate={{
-                    scale: [1, 1.1, 1],
-                    opacity: [0.3, 0.7, 0.3],
-                }} transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                }}/>)}
-                                    </div>
-                                </button>
-
-                                <AnimatePresence>
-                                    {isHovering && (<motion.div className="absolute -top-16 left-1/2 -translate-x-1/2 
-                                               whitespace-nowrap z-50 pointer-events-none" initial={{ opacity: 0, y: 10, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.8 }} transition={{ duration: 0.1 }}>
-                                            <motion.div key={currentGreeting} className="bg-white dark:bg-[#1c1d25] 
-                                                   rounded-2xl px-4 py-2 shadow-[0_8px_25px_rgba(0,0,0,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_10px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)] 
-                                                   border border-pink-200 dark:border-[#67224c] 
-                                                   text-xs sm:text-sm font-semibold text-pink-600 dark:text-pink-300" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={{ duration: 0.1 }}>
-                                                {currentGreeting}
+                                    <button onClick={() => {
+                                        if (activeRecommendation) {
+                                            openRecommendationChat(activeRecommendation);
+                                        } else {
+                                            openChat();
+                                        }
+                                        setIsOpen(false);
+                                        if (onAIClick)
+                                            onAIClick();
+                                    }} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} className="group relative rounded-xl p-1 transition-all duration-75 active:scale-95 focus-visible:outline-none cursor-pointer">
+                                        <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center">
+                                            <motion.div animate={{
+                                                y: isHovering ? -15 : 0,
+                                                scale: isHovering ? 1.15 : 1,
+                                                rotate: isHovering ? [0, -5, 5, -3, 3, 0] : 0,
+                                            }} transition={{
+                                                y: {
+                                                    type: "spring",
+                                                    stiffness: 400,
+                                                    damping: 15,
+                                                },
+                                                scale: {
+                                                    duration: 0.2,
+                                                },
+                                                rotate: {
+                                                    duration: 0.5,
+                                                    ease: "easeInOut",
+                                                },
+                                            }}>
+                                                <RobotHeader size={44} isThinking={isRobotThinking} isResponding={isRobotResponding}/>
                                             </motion.div>
-                                            <div className="w-0 h-0 mx-auto 
-                                                     border-x-8 border-x-transparent 
-                                                     border-t-8 border-t-white dark:border-t-[#1c1d25]"/>
-                                        </motion.div>)}
-                                </AnimatePresence>
-                            </div>
-                        </div>
-                    </motion.div>)}
-            </AnimatePresence>
 
-            <motion.button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    setIsOpen((prev) => !prev);
-                }}
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.92 }}
-                transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                aria-label={isOpen ? "Hide navigation" : "Show navigation"}
-                aria-expanded={isOpen}
-                className={cn(
-                    "relative z-50 flex h-12 w-8 items-center justify-center rounded-full pointer-events-auto select-none touch-manipulation",
-                    "border border-pink-400/60 dark:border-[#832b61] bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white",
-                    "shadow-[0_4px_16px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] cursor-pointer",
-                    "transition-all duration-150",
-                    "focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 dark:focus:ring-offset-[#1c1b1f]"
-                )}
-            >
+                                            <motion.div className="absolute -bottom-1 left-1/2 -translate-x-1/2 
+                                                   rounded-full bg-pink-400/20 blur-sm" animate={{
+                                                width: isHovering ? 20 : 30,
+                                                height: isHovering ? 2 : 4,
+                                                opacity: isHovering ? 0.3 : 0.5,
+                                            }} transition={{
+                                                duration: 0.2,
+                                            }}/>
+
+                                            {isHovering && (<motion.div className="absolute inset-0 rounded-full 
+                                                       border-2 border-pink-400/50 dark:border-pink-400/30" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1.3, opacity: 0.6 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ duration: 0.3 }}/>)}
+
+                                            {(isRobotThinking || isRobotResponding) && (<motion.div className="absolute inset-0 rounded-full 
+                                                       border-2 border-pink-400/30 dark:border-pink-400/20" animate={{
+                                                scale: [1, 1.1, 1],
+                                                opacity: [0.3, 0.7, 0.3],
+                                            }} transition={{
+                                                duration: 1.5,
+                                                repeat: Infinity,
+                                                ease: "easeInOut",
+                                            }}/>)}
+                                        </div>
+                                    </button>
+
+                                    <AnimatePresence>
+                                        {activeRecommendation ? (
+                                            <motion.div
+                                                key="recommendation-bubble"
+                                                className="absolute -top-32 right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 w-64 sm:w-72 z-50 cursor-pointer"
+                                                initial={{ opacity: 0, y: 15, scale: 0.85 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: -10, scale: 0.85 }}
+                                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openRecommendationChat(activeRecommendation);
+                                                    setIsOpen(false);
+                                                    if (onAIClick) onAIClick();
+                                                }}
+                                            >
+                                                <div className="bg-white/95 dark:bg-[#1a1b26]/95 rounded-2xl p-2.5 shadow-[0_12px_32px_rgba(236,72,153,0.35),inset_0_1px_0_#ffffff] dark:shadow-[0_12px_32px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.08)] border-2 border-pink-400 dark:border-pink-500 backdrop-blur-md group hover:scale-[1.02] active:scale-95 transition-transform">
+                                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                                        <span className="flex items-center gap-1.5 text-[10.5px] font-bold text-pink-600 dark:text-pink-300">
+                                                            <span className="relative flex h-2 w-2">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500"></span>
+                                                            </span>
+                                                            <i className="fas fa-trophy text-amber-500 text-[11px]" />
+                                                            AI Best Offer
+                                                        </span>
+                                                        <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40">
+                                                            {activeRecommendation.overallScore || 96}/100
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-start justify-between gap-1.5">
+                                                        <div className="min-w-0">
+                                                            <p className="text-[11.5px] font-bold text-slate-900 dark:text-white truncate">
+                                                                {activeRecommendation.supplierName}
+                                                            </p>
+                                                            <p className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                                                                ₱{activeRecommendation.totalAmount.toLocaleString()} • {activeRecommendation.leadTimeDays || 1}d lead
+                                                            </p>
+                                                        </div>
+                                                        <span className="shrink-0 text-[10px] font-bold text-pink-600 dark:text-pink-400 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform mt-0.5">
+                                                            Chat <i className="fas fa-chevron-right text-[8px]" />
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="w-0 h-0 mx-auto border-x-8 border-x-transparent border-t-8 border-t-pink-400 dark:border-t-pink-500" />
+                                            </motion.div>
+                                        ) : isHovering ? (
+                                            <motion.div className="absolute -top-16 left-1/2 -translate-x-1/2 
+                                                       whitespace-nowrap z-50 pointer-events-none" initial={{ opacity: 0, y: 10, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.8 }} transition={{ duration: 0.1 }}>
+                                                    <motion.div key={currentGreeting} className="bg-white dark:bg-[#1c1d25] 
+                                                           rounded-2xl px-4 py-2 shadow-[0_8px_25px_rgba(0,0,0,0.12),inset_0_1px_0_#ffffff] dark:shadow-[0_10px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)] 
+                                                           border border-pink-200 dark:border-[#67224c] 
+                                                           text-xs sm:text-sm font-semibold text-pink-600 dark:text-pink-300" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={{ duration: 0.1 }}>
+                                                        {currentGreeting}
+                                                    </motion.div>
+                                                    <div className="w-0 h-0 mx-auto 
+                                                             border-x-8 border-x-transparent 
+                                                             border-t-8 border-t-white dark:border-t-[#1c1d25]"/>
+                                                </motion.div>) : null}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
+                        </motion.div>)}
+                </AnimatePresence>
+
+                <motion.button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsOpen((prev) => !prev);
+                    }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    aria-label={isOpen ? "Hide navigation" : "Show navigation"}
+                    aria-expanded={isOpen}
+                    className={cn(
+                        "relative z-50 flex h-12 w-8 items-center justify-center rounded-full pointer-events-auto select-none touch-manipulation",
+                        "border border-pink-400/60 dark:border-[#832b61] bg-gradient-to-tr from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 text-white",
+                        "shadow-[0_4px_16px_rgba(244,63,94,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] cursor-pointer",
+                        "transition-all duration-150",
+                        "focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 dark:focus:ring-offset-[#1c1b1f]"
+                    )}
+                >
+                    {activeRecommendation && !isOpen && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-4 w-4 bg-pink-500 text-[9px] font-bold text-white items-center justify-center">1</span>
+                        </span>
+                    )}
                 <AnimatePresence mode="wait" initial={false}>
                     {isOpen ? (<motion.span key="chevron-right" initial={{ opacity: 0, rotate: -90 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: 90 }} transition={{ duration: 0.2 }} className="flex items-center justify-center">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 text-white drop-shadow-sm">

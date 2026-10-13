@@ -102,7 +102,7 @@ export async function GET(request: Request) {
             if (hrData) {
                 const rawRole = (hrData.role || hrData.position || '').trim();
                 if (/admin/i.test(rawRole)) userRole = 'Admin';
-                else if (/manager|office-in-charge|project coordinator/i.test(rawRole)) userRole = 'Manager';
+                else if (/manager|purchase|purchasing|office-in-charge|project coordinator/i.test(rawRole)) userRole = 'Purchase Officer';
                 else if (/operator|appraiser/i.test(rawRole)) userRole = 'Operator';
                 else if (/executive/i.test(rawRole)) userRole = 'Executive';
                 else userRole = hrData.role || 'Employee';
@@ -119,9 +119,12 @@ export async function GET(request: Request) {
             }
         }
 
+        const isSupplier = (userRole || '').toLowerCase() === 'supplier';
+        const finalIsRemembered = Boolean(isRemembered && isSupplier);
+
         return NextResponse.json({
             found: true,
-            remember_me: isRemembered,
+            remember_me: finalIsRemembered,
             is_same_device: isTokenMatch,
             expires_at: session.expires_at,
             hr_employee_name: session.hr_employee_name,

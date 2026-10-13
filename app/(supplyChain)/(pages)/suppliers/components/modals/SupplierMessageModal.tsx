@@ -73,13 +73,33 @@ export function SupplierMessageModal({
     const currentUserRole = user.getRole();
     const currentUserId = user.getUserId();
 
+    const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(supplier);
+
+    useEffect(() => {
+        setActiveSupplier(supplier);
+        if (supplier?.name) {
+            const cleanName = supplier.name.split(" - ")[0].trim();
+            supabase
+                .from("suppliers")
+                .select("*")
+                .or(`name.ilike.%${cleanName}%,name.ilike.%${supplier.name.trim()}%`)
+                .limit(1)
+                .maybeSingle()
+                .then(({ data }) => {
+                    if (data && data.id) {
+                        setActiveSupplier(data as Supplier);
+                    }
+                });
+        }
+    }, [supplier?.id, supplier?.name, isOpen]);
+
     // Reset visible limit on supplier or modal open change
     useEffect(() => {
         setVisibleMessageLimit(25);
         setSelectedPo("");
         setInputText("");
         setShowSupplierDetails(false);
-    }, [supplier?.id, isOpen]);
+    }, [activeSupplier?.id, supplier?.id, isOpen]);
 
     const hasMoreMessages = messages.length > visibleMessageLimit;
     const hiddenCount = Math.max(0, messages.length - visibleMessageLimit);
@@ -102,9 +122,62 @@ export function SupplierMessageModal({
         setShowScrollBottom(!isNearBottom);
     };
 
+    // Filter messages to private thread between current logged-in staff and supplier
+    const isMessageInMyThread = (msg: any, allMsgs?: any[]) => {
+        if (!msg) return false;
+        const myId = currentUserId?.trim();
+        const myEmail = currentUserEmail?.toLowerCase().trim();
+        const myName = currentUserName?.toLowerCase().trim();
+
+        if (msg.sender_type === "internal") {
+            return Boolean(
+                (myId && msg.sender_id === myId) ||
+                (myEmail && msg.sender_email?.toLowerCase().trim() === myEmail) ||
+                (myName && msg.sender_name?.toLowerCase().trim() === myName)
+            );
+        }
+
+        if (msg.sender_type === "supplier") {
+            if (Array.isArray(msg.attachments)) {
+                const target = msg.attachments.find(
+                    (a: any) => a && (a.type === "target_recipient" || a.recipient_id || a.recipient_email || a.staff_id || a.staff_email)
+                );
+                if (target) {
+                    const targetId = target.recipient_id || target.staff_id;
+                    const targetEmail = (target.recipient_email || target.staff_email || "").toLowerCase().trim();
+                    const targetName = (target.recipient_name || target.staff_name || "").toLowerCase().trim();
+
+                    return Boolean(
+                        (myId && targetId === myId) ||
+                        (myEmail && targetEmail === myEmail) ||
+                        (myName && targetName === myName)
+                    );
+                }
+            }
+
+            // Fallback for legacy messages
+            const pool = allMsgs || messages;
+            if (pool && pool.length > 0) {
+                const internalSenders = pool
+                    .filter((m: any) => m.sender_type === "internal")
+                    .map((m: any) => m.sender_email?.toLowerCase().trim() || m.sender_name?.toLowerCase().trim());
+                const uniqueInternalSenders = Array.from(new Set(internalSenders));
+                if (uniqueInternalSenders.length <= 1) {
+                    if (uniqueInternalSenders.length === 0) return true;
+                    const sender = uniqueInternalSenders[0];
+                    return Boolean((myEmail && sender === myEmail) || (myName && sender === myName));
+                }
+            }
+            return false;
+        }
+
+        return false;
+    };
+
     // Load messages & purchase orders for this supplier
     const fetchChatData = async (showLoading = true) => {
-        if (!supplier) return;
+        const currentSupp = activeSupplier || supplier;
+        if (!currentSupp || !currentSupp.id) return;
         if (showLoading) setIsLoading(true);
 
         try {
@@ -112,7 +185,7 @@ export function SupplierMessageModal({
             const { data: pos } = await supabase
                 .from("purchase_orders")
                 .select("id, po_number, status, total_amount")
-                .eq("supplier_id", supplier.id)
+                .eq("supplier_id", currentSupp.id)
                 .order("created_at", { ascending: false });
 
             setPurchaseOrders(pos || []);
@@ -121,22 +194,21 @@ export function SupplierMessageModal({
             const { data: msgs, error } = await supabase
                 .from("messages")
                 .select("*")
-                .eq("supplier_id", supplier.id)
+                .eq("supplier_id", currentSupp.id)
                 .order("created_at", { ascending: true });
 
             if (!error && msgs) {
-                setMessages(msgs);
+                const threadMsgs = msgs.filter((m: any) => isMessageInMyThread(m, msgs));
+                setMessages(threadMsgs);
 
-                // Automatically mark unread messages from this supplier as read
-                const hasUnread = msgs.some((m: any) => m.sender_type === "supplier" && !m.is_read);
-                if (hasUnread) {
-                    onMessagesRead?.(supplier.id);
+                // Automatically mark unread messages from this supplier in this thread as read
+                const unreadInThread = threadMsgs.filter((m: any) => m.sender_type === "supplier" && !m.is_read);
+                if (unreadInThread.length > 0) {
+                    onMessagesRead?.(currentSupp.id);
                     supabase
                         .from("messages")
                         .update({ is_read: true })
-                        .eq("supplier_id", supplier.id)
-                        .eq("sender_type", "supplier")
-                        .eq("is_read", false)
+                        .in("id", unreadInThread.map((m: any) => m.id))
                         .then();
                 }
             } else {
@@ -152,34 +224,38 @@ export function SupplierMessageModal({
     };
 
     useEffect(() => {
-        if (!isOpen || !supplier) return;
+        const currentSupp = activeSupplier || supplier;
+        if (!isOpen || !currentSupp || !currentSupp.id) return;
 
         fetchChatData(true);
 
         // Realtime subscription (INSERT, UPDATE with filter, and unfiltered DELETE)
         const channel = supabase
-            .channel(`supplier_chat_${supplier.id}_${Date.now()}`)
+            .channel(`supplier_chat_${currentSupp.id}_${Date.now()}`)
             .on(
                 "postgres_changes",
                 {
                     event: "INSERT",
                     schema: "public",
                     table: "messages",
-                    filter: `supplier_id=eq.${supplier.id}`,
+                    filter: `supplier_id=eq.${currentSupp.id}`,
                 },
                 (payload) => {
                     if (payload.new) {
-                        if (payload.new.sender_type === "supplier" && !payload.new.is_read) {
-                            onMessagesRead?.(supplier.id);
+                        const newMsg = payload.new;
+                        if (!isMessageInMyThread(newMsg)) return;
+
+                        if (newMsg.sender_type === "supplier" && !newMsg.is_read) {
+                            onMessagesRead?.(currentSupp.id);
                             supabase
                                 .from("messages")
                                 .update({ is_read: true })
-                                .eq("id", payload.new.id)
+                                .eq("id", newMsg.id)
                                 .then();
                         }
                         setMessages((prev) => {
-                            if (prev.some((m) => m.id === payload.new.id)) return prev;
-                            return [...prev, { ...payload.new, is_read: true }];
+                            if (prev.some((m) => m.id === newMsg.id)) return prev;
+                            return [...prev, { ...newMsg, is_read: true }];
                         });
                         setTimeout(() => scrollToBottom("smooth"), 50);
                     }
@@ -191,7 +267,7 @@ export function SupplierMessageModal({
                     event: "UPDATE",
                     schema: "public",
                     table: "messages",
-                    filter: `supplier_id=eq.${supplier.id}`,
+                    filter: `supplier_id=eq.${currentSupp.id}`,
                 },
                 (payload) => {
                     if (payload.new) {
@@ -219,30 +295,43 @@ export function SupplierMessageModal({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [isOpen, supplier?.id]);
+    }, [isOpen, activeSupplier?.id, supplier?.id, currentUserEmail, currentUserId]);
 
     // Send Message
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
-        if (!inputText.trim() || !supplier || isSending) return;
+        const currentSupp = activeSupplier || supplier;
+        if (!inputText.trim() || !currentSupp || !currentSupp.id || isSending) return;
 
         setIsSending(true);
         const text = inputText.trim();
         setInputText("");
 
         const tempId = `temp_${Date.now()}`;
+        const recipientMetadata = {
+            type: "target_recipient",
+            recipient_id: currentSupp.id,
+            recipient_name: currentSupp.name,
+            recipient_email: currentSupp.email,
+            staff_id: currentUserId || null,
+            staff_email: currentUserEmail || null,
+            staff_name: currentUserName || null,
+            staff_role: currentUserRole || null,
+        };
+
         const newMsg = {
             id: tempId,
-            supplier_id: supplier.id,
+            supplier_id: currentSupp.id,
+            supplier_name: currentSupp.name,
             purchase_order_id: selectedPo || null,
             sender_type: "internal",
             sender_id: currentUserId || null,
             sender_name: currentUserName || "Supply Chain Staff",
             sender_email: currentUserEmail || "staff@airship.com",
-            sender_role: currentUserRole || "Manager",
-            role: currentUserRole || "Manager",
+            sender_role: currentUserRole || "Purchase Officer",
+            role: currentUserRole || "Purchase Officer",
             message: text,
-            attachments: [],
+            attachments: [recipientMetadata],
             is_read: false,
             created_at: new Date().toISOString(),
         };
@@ -252,7 +341,11 @@ export function SupplierMessageModal({
         setTimeout(() => scrollToBottom("smooth"), 50);
 
         try {
-            const { data, error } = await supabase
+            let data: any = null;
+            let error: any = null;
+
+            // Attempt direct Supabase insert first
+            const directRes = await supabase
                 .from("messages")
                 .insert({
                     supplier_id: newMsg.supplier_id,
@@ -264,14 +357,29 @@ export function SupplierMessageModal({
                     sender_role: newMsg.sender_role,
                     role: newMsg.role,
                     message: newMsg.message,
-                    attachments: [],
+                    attachments: newMsg.attachments,
                     is_read: false,
                     created_at: newMsg.created_at,
                 })
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (directRes.error) {
+                // If RLS or client error, fallback seamlessly to backend API
+                console.warn("Direct Supabase insert failed, attempting /api/messages fallback:", directRes.error);
+                const apiRes = await fetch("/api/messages", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(newMsg),
+                });
+                const apiJson = await apiRes.json();
+                if (!apiJson.success) {
+                    throw new Error(apiJson.error || directRes.error.message);
+                }
+                data = apiJson.data;
+            } else {
+                data = directRes.data;
+            }
 
             if (data) {
                 setMessages((prev) => 
@@ -306,7 +414,14 @@ export function SupplierMessageModal({
                 .from("messages")
                 .delete()
                 .eq("id", msgId);
-            if (error) throw error;
+            if (error) {
+                // Try API fallback
+                const apiRes = await fetch(`/api/messages?id=${encodeURIComponent(msgId)}`, {
+                    method: "DELETE",
+                });
+                const apiJson = await apiRes.json();
+                if (!apiJson.success) throw new Error(apiJson.error || error.message);
+            }
             toast.success("Message deleted");
         } catch (err: any) {
             console.error("Failed to delete message:", err);
@@ -356,9 +471,9 @@ export function SupplierMessageModal({
                 avatarBg: "bg-indigo-500 text-white"
             };
         }
-        if (r.includes("MANAGER")) {
+        if (r.includes("PURCHASE OFFICER") || r.includes("PURCHASE_OFFICER") || r.includes("MANAGER")) {
             return {
-                label: "Manager",
+                label: "Purchase Officer",
                 className: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/25",
                 avatarBg: "bg-purple-500 text-white"
             };
@@ -385,6 +500,7 @@ export function SupplierMessageModal({
     };
 
     if (!isOpen || !supplier) return null;
+    const displaySupplier = activeSupplier || supplier;
 
     return (
         <Portal>
@@ -396,7 +512,7 @@ export function SupplierMessageModal({
                 />
 
                 {/* Main Modal Shell */}
-                <div className="relative bg-[#f0f3f8] dark:bg-[#1e2130] rounded-[28px] max-w-4xl w-full h-[700px] max-h-[94vh] flex flex-col border border-white/80 dark:border-white/[0.12] shadow-[14px_14px_40px_rgba(166,175,195,0.4),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[16px_16px_40px_#0a0c13,-8px_-8px_30px_#2d3249] z-10 overflow-hidden">
+                <div className="relative bg-[#f0f3f8] dark:bg-[#1e2130] rounded-[28px] max-w-4xl w-full h-[700px] max-h-[94vh] flex flex-col border border-slate-200/80 dark:border-white/[0.12] shadow-none z-10 overflow-hidden">
                     
                     {/* Header */}
                     <div className="p-4 sm:px-6 bg-[#ebf0f7]/95 dark:bg-[#1e2130]/95 border-b border-slate-200/60 dark:border-white/[0.08] flex items-center justify-between gap-3 shadow-xs">
@@ -407,42 +523,42 @@ export function SupplierMessageModal({
                                 </div>
                                 <span 
                                     className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#ebf0f7] dark:border-[#1e2130] ${
-                                        supplier.is_active ? "bg-emerald-500" : "bg-slate-400"
+                                        displaySupplier.is_active ? "bg-emerald-500" : "bg-slate-400"
                                     }`} 
-                                    title={supplier.is_active ? "Active Supplier" : "Inactive Supplier"}
+                                    title={displaySupplier.is_active ? "Active Supplier" : "Inactive Supplier"}
                                 />
                             </div>
 
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <h3 className="font-black text-slate-900 dark:text-white text-base sm:text-lg truncate tracking-tight">
-                                        {supplier.name}
+                                        {displaySupplier.name}
                                     </h3>
                                     <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200/90 dark:bg-[#25283b] text-slate-600 dark:text-slate-200 border border-slate-300/60 dark:border-white/[0.08]">
-                                        SUP-{String(supplier.id).padStart(3, "0")}
+                                        SUP-{String(displaySupplier.id).padStart(3, "0")}
                                     </span>
-                                    {supplier.category && (
+                                    {displaySupplier.category && (
                                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
-                                            {supplier.category}
+                                            {displaySupplier.category}
                                         </span>
                                     )}
                                 </div>
 
                                 <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium flex-wrap">
-                                    {supplier.contact_person && (
+                                    {displaySupplier.contact_person && (
                                         <span className="flex items-center gap-1">
                                             <User className="w-3 h-3 text-pink-500/70 shrink-0" />
-                                            <span className="truncate">{supplier.contact_person}</span>
+                                            <span className="truncate">{displaySupplier.contact_person}</span>
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
                                         <Mail className="w-3 h-3 text-pink-500/70 shrink-0" />
-                                        <span className="truncate">{supplier.email}</span>
+                                        <span className="truncate">{displaySupplier.email}</span>
                                     </span>
-                                    {supplier.phone && (
+                                    {displaySupplier.phone && (
                                         <span className="hidden md:flex items-center gap-1">
                                             <Phone className="w-3 h-3 text-pink-500/70 shrink-0" />
-                                            <span>{supplier.phone}</span>
+                                            <span>{displaySupplier.phone}</span>
                                         </span>
                                     )}
                                 </div>
@@ -491,15 +607,15 @@ export function SupplierMessageModal({
                         <div className="p-3.5 sm:px-6 bg-[#ebf0f7]/90 dark:bg-[#151722]/95 border-b border-slate-200/60 dark:border-white/[0.06] grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs animate-in slide-in-from-top-2 duration-150">
                             <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                                 <MapPin className="w-4 h-4 text-pink-500 shrink-0" />
-                                <span className="truncate">{supplier.location || "Location not set"}</span>
+                                <span className="truncate">{displaySupplier.location || "Location not set"}</span>
                             </div>
                             <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                                 <Package className="w-4 h-4 text-pink-500 shrink-0" />
-                                <span className="truncate">{supplier.products || "No product catalog listed"}</span>
+                                <span className="truncate">{displaySupplier.products || "No product catalog listed"}</span>
                             </div>
                             <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                                 <Shield className="w-4 h-4 text-pink-500 shrink-0" />
-                                <span>Status: <b>{supplier.is_active ? "Verified Active" : "Inactive"}</b></span>
+                                <span>Status: <b>{displaySupplier.is_active ? "Verified Active" : "Inactive"}</b></span>
                             </div>
                         </div>
                     )}

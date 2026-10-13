@@ -16,11 +16,11 @@ interface AiChartGeneratorTabProps {
 const STORAGE_KEY = "AIRSHIP_EXECUTIVE_AI_CHARTS_CACHE_V3";
 
 const QUICK_SUGGESTIONS = [
-    { label: "Cross-Table Record Synthesis", prompt: "Show data in different tables in 1 chart or summary: compare inventory_items, suppliers, couriers, user_activity, and documents.", mode: "both" as const, domain: "all" },
+    { label: "Cross-Table Record Synthesis", prompt: "Show data in different tables in 1 chart or summary: compare inventory_items, suppliers, purchase_orders, user_activity, and documents.", mode: "both" as const, domain: "all" },
     { label: "Inventory Stock by Category", prompt: "Show inventory stock unit distribution and low stock items across categories.", mode: "both" as const, domain: "inventory" },
     { label: "User Activity & Security Logs", prompt: "Analyze recent user activity logs and system security events.", mode: "both" as const, domain: "user-activity" },
     { label: "Compliance Documents Audit", prompt: "Audit all active and archived compliance documents by type and supplier.", mode: "both" as const, domain: "documents" },
-    { label: "Registered Courier Partners", prompt: "Compare registered courier partners and carrier allocation capacity.", mode: "chart" as const, domain: "parcels" },
+    { label: "Purchase Orders & PO Spend", prompt: "Compare purchase orders by status, supplier, and total amount.", mode: "chart" as const, domain: "procurement" },
     { label: "Trash & Archives Inspection", prompt: "Check trash and archived records across all modules.", mode: "text" as const, domain: "trash" },
     { label: "Suppliers & Vendor Network", prompt: "Analyze approved suppliers by business category and location.", mode: "both" as const, domain: "suppliers" },
 ];
@@ -515,7 +515,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                     domain: targetDomain,
                     clientSummary: executiveData ? {
                         pageKpis: executiveData.pageKpis,
-                        courierBreakdown: executiveData.courierBreakdown,
+                        supplierCategoryBreakdown: executiveData.supplierCategoryBreakdown,
                         statusBreakdown: executiveData.statusBreakdown,
                         inventoryCategoryBreakdown: executiveData.inventoryCategoryBreakdown,
                         procurementStatusBreakdown: executiveData.procurementStatusBreakdown,
@@ -710,7 +710,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                 <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400 px-1">
                     <div className="flex items-center gap-1.5">
                         <i className="fas fa-shield-halved text-pink-500 text-[10px]" />
-                        <span>Database Scope: Inventory SKUs, Logistics Parcels, Courier Partners, Suppliers, User Activity Logs, Compliance Documents.</span>
+                        <span>Database Scope: Inventory SKUs, Suppliers, Purchase Orders, User Activity Logs, Compliance Documents.</span>
                     </div>
                     <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
                         Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[9px] shadow-sm">Enter</kbd> to analyze, <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[9px] shadow-sm">Shift+Enter</kbd> for new line
@@ -988,7 +988,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                                                     <div className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400 pt-2.5 border-t border-slate-200/60 dark:border-slate-800">
                                                         <div className="font-bold text-amber-700 dark:text-amber-300 mb-1">Available Schema Tables (tables.sql):</div>
                                                         <div className="flex flex-wrap gap-1 mt-1">
-                                                            {(['parcels', 'inventory_items', 'purchase_orders', 'purchase_requests', 'suppliers', 'couriers', 'documents', 'user_activity', 'receiving_queue', 'trash'] as const).map(t => (
+                                                            {(['inventory_items', 'purchase_orders', 'purchase_requests', 'suppliers', 'documents', 'user_activity', 'trash'] as const).map(t => (
                                                                 <span key={t} className="px-2 py-0.5 rounded-lg bg-[#ebf0f7] dark:bg-[#14151c] text-slate-700 dark:text-slate-300 font-mono text-[9px] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3)]">
                                                                     {t}
                                                                 </span>
@@ -1088,10 +1088,9 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                                 </span>
                                 {[
                                     { name: 'inventory_items', prompt: 'Inventory Stock by Category' },
-                                    { name: 'parcels', prompt: 'Parcels Logistics Status' },
                                     { name: 'purchase_orders', prompt: 'Purchase Orders & Spend' },
+                                    { name: 'purchase_requests', prompt: 'Pending Purchase Requests' },
                                     { name: 'suppliers', prompt: 'Suppliers & Vendor Network' },
-                                    { name: 'couriers', prompt: 'Registered Courier Partners' },
                                     { name: 'documents', prompt: 'Compliance Documents Audit' },
                                     { name: 'user_activity', prompt: 'User Activity & Audit Logs' }
                                 ].map((tbl, idx) => (

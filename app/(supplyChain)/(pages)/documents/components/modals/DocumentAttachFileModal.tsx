@@ -59,7 +59,7 @@ export function DocumentAttachFileModal({
             // Duplicate check against existing documents by filename & size
             const { supabase } = await import('../../../../lib/services/client/supabase');
             const { data: existingDocs } = await supabase
-                .from('documents')
+                .from('supplier_documents')
                 .select('id, file_name, file_size')
                 .ilike('file_name', selectedFile.name)
                 .eq('file_size', selectedFile.size)
@@ -124,23 +124,7 @@ export function DocumentAttachFileModal({
                 return;
             }
 
-            if (ocrData.success && !ocrData.is_valid_system_doc) {
-                if (!isPrivileged) {
-                    toast.error(
-                        `Document Rejected: ${ocrData.rejection_reason || 'File detected as unrelated to supply chain operations.'}`,
-                        { id: toastId, duration: 6000 }
-                    );
-                    return;
-                } else {
-                    // Admin / Executive override path
-                    setOcrWarning(
-                        `Warning: Gemini OCR detected "${ocrData.detected_type || 'Unrelated media'}". ${ocrData.rejection_reason || 'This media does not match standard supply chain documents.'} As an Admin/Executive, you may proceed with an override.`
-                    );
-                    setOverrideAllowed(true);
-                    toast.warning('AI Warning: Out-of-scope media detected. Review warning below to proceed.', { id: toastId });
-                    return;
-                }
-            }
+            // Proceed without rejecting out-of-scope media, allowing user to upload any photo or document
 
             // Check extracted content similarity against trash archive and existing active documents
             const ocrTextToCompare = ocrData?.extracted_text || ocrData?.extracted?.text || ocrData?.photo_description;
@@ -187,7 +171,7 @@ export function DocumentAttachFileModal({
 
                     // Check active documents
                     const { data: existingExtractedDocs } = await supabase
-                        .from('documents')
+                        .from('supplier_documents')
                         .select('id, title, file_name, file_size, supplier, po_number, extracted')
                         .neq('id', targetDoc.id)
                         .order('created_at', { ascending: false })
@@ -257,7 +241,10 @@ export function DocumentAttachFileModal({
                     upsert: true,
                 });
 
-            if (uploadError) throw uploadError;
+            const { data: publicUrlData } = supabase.storage
+                .from('documents')
+                .getPublicUrl(filePath);
+            const filePublicUrl = publicUrlData?.publicUrl || null;
 
             // Update document row
             const updatePayload: any = {
@@ -265,6 +252,7 @@ export function DocumentAttachFileModal({
                 file_size: selectedFile.size,
                 file_type: selectedFile.type || fileExt,
                 storage_path: filePath,
+                file_url: filePublicUrl,
                 updated_at: new Date().toISOString(),
             };
 
@@ -278,7 +266,7 @@ export function DocumentAttachFileModal({
             }
 
             const { error: updateError } = await supabase
-                .from('documents')
+                .from('supplier_documents')
                 .update(updatePayload)
                 .eq('id', targetDoc.id);
 

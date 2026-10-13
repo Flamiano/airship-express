@@ -1,28 +1,4 @@
 
-export interface Parcel {
-    id: number;
-    barcode: string;
-    tracking_number: string;
-    sender_name: string | null;
-    customer_name: string | null;
-    customer_number: string | null;
-    destination: string | null;
-    city?: string | null;
-    region?: string | null;
-    courier: string | null;
-    driver_name?: string | null;
-    bulk_qr_code?: string | null;
-    bulk_qr_city?: string | null;
-    bulk_qr_courier?: string | null;
-    status: string;
-    scanned_by?: string | null;
-    scanner_name?: string | null;
-    scanner_email?: string | null;
-    scanner_role?: string | null;
-    created_at: string;
-    updated_at: string;
-}
-
 export interface DriverOption {
     name: string;
     count: number;
@@ -59,33 +35,96 @@ export interface LatestPOInfo {
     pending_pr_id?: string;
 }
 
+export interface PurchaseRequestItemEntry {
+    id?: string;
+    name: string;
+    item_name?: string;
+    item_code?: string;
+    category?: string;
+    quantity: number;
+    approved_quantity?: number;
+    exported_quantity?: number;
+    remaining_quantity?: number;
+    unit?: string;
+    specs?: string;
+    specifications?: string;
+    remarks?: string;
+    issued_quantity?: number;
+    deficit_quantity?: number;
+    is_released?: boolean;
+    is_issued?: boolean;
+    is_approved?: boolean;
+    is_approve?: boolean;
+    status?: string;
+}
+
 export interface InventoryRequest {
     id: string;
-    inventory_items_id?: number | null;
     request_number?: string;
+    request_type?: 'Regular' | 'Advance' | string;
+    type?: string;
+    description?: string;
+    purpose?: string | null;
+    requested_by?: string | null;
+    requester_name?: string | null;
+    requester_position?: string | null;
+    requester_contact?: string | null;
+    department?: string | null;
+    requested_for?: string | null;
+    items?: PurchaseRequestItemEntry[];
+    priority?: 'Normal' | 'Urgent' | 'Critical' | string;
+    needed_by_date?: string | null;
+    urgency_reason?: string | null;
+    advance_reason?: string | null;
+    requester_notes?: string | null;
+    status: 'Pending' | 'Approved' | 'Rejected' | 'Completed' | 'pending' | 'approved' | 'rejected' | 'received' | 'fulfilled';
+    reviewed_by?: string | null;
+    reviewed_at?: string | null;
+    rejection_reason?: string | null;
+    admin_notes?: string | null;
+    requires_bidding?: boolean;
+    bidding_status?: string | null;
+    purchase_order_id?: string | null;
+    completed_at?: string | null;
+    created_by?: string | null;
+    created_at: string;
+    updated_at?: string;
+    
+    // Legacy & computed compatibility fields
+    inventory_items_id?: number | null;
     item_id?: string | null;
     item_code?: string | null;
     item_name: string;
     quantity_requested: number;
-    department?: string | null;
+    unit?: string;
     message?: string | null;
+    remarks?: string | null;
     approved_or_rejected_by?: string | null;
     possible_delivery_date?: string | null;
     requester_system?: string | null;
-    requested_by?: string | null;
-    purpose?: string | null;
-    remarks?: string | null;
-    status: 'pending' | 'approved' | 'rejected' | 'received' | 'fulfilled';
-    rejection_reason?: string | null;
     is_internal?: boolean;
     Internal_request?: boolean | null;
     internal_request?: boolean | null;
-    created_at: string;
-    updated_at?: string;
     approved_at?: string | null;
     approved_by?: string | null;
+    approver_name?: string | null;
     fulfilled_at?: string | null;
     fulfilled_by?: string | null;
+    is_released?: boolean;
+    is_issued?: boolean;
+    inventory_item?: InventoryItem | null;
+    matched_inventory_items?: InventoryItem[];
+    current_stock?: number;
+    available_stock?: number;
+    is_stock_feasible?: boolean;
+    quantity_approved?: number;
+    quantity_exported?: number;
+    quantity_remaining?: number;
+    issued_quantity?: number;
+    deficit_quantity?: number;
+    is_partial_handover?: boolean;
+    is_partially_approved?: boolean;
+    is_zero_exported?: boolean;
 }
 
 export interface InventoryItem {
@@ -96,6 +135,7 @@ export interface InventoryItem {
     current_stock: number;
     unit: string;
     minimum_stock: number;
+    min_stock?: number;
     storage_location: string;
     status: 'available' | 'low-stock' | 'out-of-stock';
     updated_at: string;
@@ -108,6 +148,7 @@ export interface InventoryItem {
     force_updated_at?: string | null;
     force_reason?: string | null;
     exporting_stock?: number;
+    quarantine_stock?: number;
     available_stock?: number;
     pending_requests_count?: number;
 }
@@ -123,10 +164,6 @@ export interface Supplier {
     is_active: boolean;
 }
 
-export interface GroupedParcels {
-    date: string;
-    parcels: Parcel[];
-}
 
 export interface AddItemFormData {
     item_code: string;
@@ -182,3 +219,42 @@ export interface PurchaseRequestFormData {
     reason: string;
     status: string;
 }
+
+export type StockMovementType = 'Stock In' | 'Stock Out' | 'Adjustment';
+
+export interface StockMovement {
+    id: string;
+    item_id?: string | number | null;
+    item_code: string;
+    item_name: string;
+    movement_type: StockMovementType;
+    quantity: number;
+    previous_stock: number;
+    new_stock: number;
+    reference?: string | null;
+    reference_number?: string | null;
+    reason?: string | null;
+    notes?: string | null;
+    department?: string | null;
+    performed_by: string;
+    performed_by_id?: string | null;
+    created_at: string;
+    metadata?: Record<string, any>;
+}
+
+export interface StockMovementStats {
+    totalStockIn: number;
+    totalStockOut: number;
+    adjustmentsCount: number;
+    netAdjustments: number;
+    movementsToday: number;
+}
+
+export interface StockMovementsQueryParams {
+    search?: string;
+    type?: string;
+    dateRange?: string; // 'all' | 'today' | 'week' | 'month'
+    userDepartment?: string;
+    page?: number;
+    limit?: number;
+}

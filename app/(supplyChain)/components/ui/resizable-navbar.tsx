@@ -282,7 +282,7 @@ export const NavbarLogo = () => {
   );
 };
 
-type NavbarButtonProps<T extends React.ComponentType<{ className?: string; size?: number; title?: string }>> = {
+type NavbarButtonProps<T extends React.ElementType = "button"> = {
   as?: T;
   href?: string;
   children: React.ReactNode;
@@ -290,7 +290,7 @@ type NavbarButtonProps<T extends React.ComponentType<{ className?: string; size?
   variant?: "primary" | "secondary" | "dark" | "gradient";
 } & Omit<React.ComponentPropsWithoutRef<T>, "as" | "className">;
 
-export function NavbarButton<T extends React.ComponentType<{ className?: string; size?: number; title?: string }> = "button">({
+export function NavbarButton<T extends React.ElementType = "button">({
   as,
   href,
   children,
@@ -298,7 +298,7 @@ export function NavbarButton<T extends React.ComponentType<{ className?: string;
   variant = "primary",
   ...props
 }: NavbarButtonProps<T>) {
-  const Tag = as || "button";
+  const Tag = (as || "button") as any;
 
   const baseStyles =
     "px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 inline-flex items-center justify-center active:scale-95 text-center shadow-xs cursor-pointer";

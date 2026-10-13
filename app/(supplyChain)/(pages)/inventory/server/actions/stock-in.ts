@@ -4,6 +4,7 @@
 import { supabase } from '../../../../lib/services/client/supabase';
 import { revalidatePath } from 'next/cache';
 import { calculateItemStatus } from '../../utils/helpers';
+import { logStockMovement } from '../stock-movements';
 
 export interface StockInParams {
     inventory_item_id: string | number;
@@ -350,6 +351,27 @@ export async function stockInItemAction(params: StockInParams): Promise<StockInR
                         .eq('id', poId);
                 }
             }
+        }
+
+        // Record audit trail in Stock Movements
+        try {
+            const poNum = poi?.purchase_orders?.po_number || reference || (poi ? `PO-${poi.id}` : null);
+            await logStockMovement({
+                item_id: item.id,
+                item_code: item.item_code || item.sku || 'N/A',
+                item_name: item.item_name,
+                movement_type: 'Stock In',
+                quantity: quantity,
+                previous_stock: item.current_stock,
+                new_stock: newStock,
+                reference_number: poNum || 'PO-DELIVERY',
+                reason: remarks || (poi ? `Received delivery for PO ${poNum}` : 'Received warehouse delivery'),
+                department: 'Supply Chain / Warehouse',
+                performed_by: userRole ? `${userRole} Staff` : 'Warehouse Staff',
+                performed_by_id: validUserUUID,
+            });
+        } catch (smErr) {
+            console.warn('Failed to record stock movement audit entry:', smErr);
         }
 
         revalidatePath('/inventory');

@@ -1,9 +1,22 @@
 // app/(supplyChain)/(pages)/forecast/api/route.ts
 
-import { NextResponse } from 'next/server';
-import { supabase } from '../../../lib/services/client/supabase';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
+import { GoogleGenAI } from '@google/genai';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
+const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
+                       process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_ANON_KEY || '';
+
+const dbClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 let wasmInitialized = false;
 let anofoxLib: any = null;
@@ -24,102 +37,20 @@ async function getAnofox() {
                 wasmInitialized = true;
             }
         } catch (err) {
-            console.error('Error initializing WASM in API route:', err);
-            await anofoxLib.default();
-            wasmInitialized = true;
+            console.warn('WASM sync init warning in forecast API, falling back to default:', err);
+            try {
+                await anofoxLib.default();
+                wasmInitialized = true;
+            } catch (fallbackErr) {
+                console.error('Failed to initialize anofox WASM:', fallbackErr);
+            }
         }
     }
     return anofoxLib;
 }
 
-// Generate unified chronological date timeline
-function buildTimeline(dateMap: Map<string, number>, maxWindowDays = 30) {
-    let sortedDates: string[] = [];
-    let dailyCounts: number[] = [];
-
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const todayDate = new Date(todayStr + 'T00:00:00Z');
-
-    if (dateMap.size > 0) {
-        const rawDateKeys = Array.from(dateMap.keys()).sort();
-        const firstDate = new Date(rawDateKeys[0] + 'T00:00:00Z');
-        const dbLastDate = new Date(rawDateKeys[rawDateKeys.length - 1] + 'T00:00:00Z');
-        const lastDate = dbLastDate > todayDate ? dbLastDate : todayDate;
-
-        let cur = new Date(firstDate);
-        while (cur <= lastDate) {
-            const dStr = cur.toISOString().split('T')[0];
-            sortedDates.push(dStr);
-            dailyCounts.push(dateMap.get(dStr) || 0);
-            cur.setUTCDate(cur.getUTCDate() + 1);
-        }
-    } else {
-        let cur = new Date(todayDate.getTime() - (maxWindowDays - 1) * 24 * 60 * 60 * 1000);
-        while (cur <= todayDate) {
-            const dStr = cur.toISOString().split('T')[0];
-            sortedDates.push(dStr);
-            dailyCounts.push(0);
-            cur.setUTCDate(cur.getUTCDate() + 1);
-        }
-    }
-
-    let displayDates: string[] = [];
-    let displayCounts: number[] = [];
-    let aggregationType = 'Daily';
-
-    const totalDays = sortedDates.length;
-
-    if (totalDays <= 30) {
-        displayDates = [...sortedDates];
-        displayCounts = [...dailyCounts];
-        aggregationType = 'Daily';
-    } else {
-        let bucketSize = 7;
-        if (totalDays <= 60) {
-            bucketSize = 7;
-            aggregationType = 'Weekly';
-        } else if (totalDays <= 90) {
-            bucketSize = 14;
-            aggregationType = 'Bi-Weekly';
-        } else {
-            bucketSize = 28;
-            aggregationType = 'Monthly';
-        }
-
-        for (let i = 0; i < totalDays; i += bucketSize) {
-            const endIdx = Math.min(i + bucketSize - 1, totalDays - 1);
-            const startStr = sortedDates[i];
-            const endStr = sortedDates[endIdx];
-
-            const startParts = startStr.split('-');
-            const endParts = endStr.split('-');
-
-            const label = startStr === endStr
-                ? `${startParts[1]}/${startParts[2]}`
-                : `${startParts[1]}/${startParts[2]}-${endParts[1]}/${endParts[2]}`;
-
-            let sum = 0;
-            for (let j = i; j <= endIdx; j++) {
-                sum += dailyCounts[j];
-            }
-
-            displayDates.push(label);
-            displayCounts.push(sum);
-        }
-    }
-
-    return {
-        dates: sortedDates,
-        counts: dailyCounts,
-        displayDates,
-        displayCounts,
-        aggregationType
-    };
-}
-
-// Croston's Method with Syntetos-Boylan Approximation (SBA) for intermittent / sporadic demand
-function runCrostonSBAForecast(
+// Croston's Method with Syntetos-Boylan Approximation (SBA) for intermittent & sporadic demand
+function runCrostonSBA(
     counts: number[],
     horizon: number = 7,
     alpha: number = 0.15
@@ -145,844 +76,1149 @@ function runCrostonSBAForecast(
         }
     }
 
-    // Syntetos-Boylan Approximation (SBA) factor: (1 - alpha / 2) prevents positive bias
+    // Syntetos-Boylan Approximation (SBA) factor: (1 - alpha / 2) debiases Croston's positive skew
     const sbaFactor = 1 - alpha / 2;
     const expectedDailyDemand = p > 0 ? Math.max(0, sbaFactor * (z / p)) : 0;
 
-    // Also look at recent active run-rate (past 7 to 14 days) to allow responsiveness to recent active bursts
+    // Recent recency run-rate weighting (past 7 to 14 days)
     const recent7 = counts.slice(-7);
-    const recent7Avg = recent7.reduce((a, b) => a + b, 0) / 7;
+    const recent7Avg = recent7.length > 0 ? recent7.reduce((a, b) => a + b, 0) / recent7.length : 0;
     const recent14 = counts.slice(-14);
-    const recent14Avg = recent14.reduce((a, b) => a + b, 0) / 14;
+    const recent14Avg = recent14.length > 0 ? recent14.reduce((a, b) => a + b, 0) / recent14.length : 0;
 
-    // Blend Croston expected rate with recent active rate (damped to prevent runaway extrapolation)
-    const activeBlend = Math.max(recent7Avg * 0.7 + recent14Avg * 0.3, expectedDailyDemand);
-    const dailyBase = Math.round(activeBlend);
+    const blendedDaily = Math.max(
+        0,
+        expectedDailyDemand * 0.7 + (recent7Avg * 0.2 + recent14Avg * 0.1)
+    );
 
     const predictions: number[] = [];
     const lower: number[] = [];
     const upper: number[] = [];
 
-    // Daily distribution with slight realistic decay if demand is sporadic
     for (let h = 0; h < horizon; h++) {
-        const decay = Math.pow(0.96, h); // gentle decay for unconfirmed sporadic demand
-        const val = Math.max(0, Math.round(activeBlend * decay));
+        // slight temporal decay for unconfirmed sporadic demand
+        const val = Math.max(0, Math.round(blendedDaily * Math.pow(0.98, h)));
         predictions.push(val);
-        lower.push(Math.max(0, Math.round(val * 0.6)));
-        upper.push(Math.max(1, Math.round(val * 1.4)));
+        lower.push(Math.max(0, Math.round(val * 0.5)));
+        upper.push(Math.max(1, Math.round(val * 1.5 + 1)));
     }
 
     return {
         predictions,
         lower,
         upper,
-        confidence: '85%',
+        confidence: counts.some(c => c > 0) ? '82%' : '40%',
         model_used: "Croston's Intermittent Demand (SBA-Calibrated)"
     };
 }
 
-// Reusable TimeSeries Forecaster with Intermittent & Sparse Data Protection
-function runTimeSeriesForecast(
-    anofox: any,
+// Moving Average & Baseline Forecaster
+function runMovingAverageForecast(
     counts: number[],
     horizon: number = 7,
-    confidenceLevel: number = 0.95
-): {
+    windowSize: number = 7
+): { predictions: number[]; lower: number[]; upper: number[]; confidence: string; model_used: string } {
+    if (!counts || counts.length === 0) {
+        return {
+            predictions: Array(horizon).fill(0),
+            lower: Array(horizon).fill(0),
+            upper: Array(horizon).fill(0),
+            confidence: '0%',
+            model_used: 'Zero Baseline'
+        };
+    }
+
+    const window = counts.slice(-windowSize);
+    const avg = window.reduce((a, b) => a + b, 0) / window.length;
+    const roundedAvg = Math.max(0, Math.round(avg));
+
+    return {
+        predictions: Array(horizon).fill(roundedAvg),
+        lower: Array(horizon).fill(Math.max(0, Math.round(roundedAvg * 0.7))),
+        upper: Array(horizon).fill(Math.max(1, Math.round(roundedAvg * 1.3))),
+        confidence: '70%',
+        model_used: `Moving Average (${windowSize}-Day Window)`
+    };
+}
+
+// Robust Multi-Method Forecaster with Chronological Validation
+async function executeTimeSeriesForecast(
+    counts: number[],
+    horizon: number = 7
+): Promise<{
     predictions: number[];
     lower: number[];
     upper: number[];
     confidence: string;
     model_used: string;
-} {
-    const { TimeSeries, HoltWintersForecaster, AutoThetaForecaster, NaiveForecaster } = anofox;
-    let predictions: number[] = [];
-    let lower: number[] = [];
-    let upper: number[] = [];
-    let confidence = '0%';
-    let model_used = 'Naive Baseline';
-
-    if (!counts || counts.length === 0 || counts.every(c => c === 0)) {
-        const avg = counts && counts.length > 0 ? Math.round(counts.reduce((a, b) => a + b, 0) / counts.length) : 0;
-        return {
-            predictions: Array(horizon).fill(avg),
-            lower: Array(horizon).fill(Math.max(0, Math.round(avg * 0.7))),
-            upper: Array(horizon).fill(Math.max(1, Math.round(avg * 1.3))),
-            confidence: counts && counts.length > 0 ? '30%' : '0%',
-            model_used: 'Baseline Zero-State'
-        };
-    }
-
+    evaluation: {
+        has_evaluation: boolean;
+        mae: number;
+        rmse: number;
+        wape: number;
+        accuracy_percentage: number;
+        actual_holdout_sum: number;
+        forecast_holdout_sum: number;
+        model_tested: string;
+    } | null;
+}> {
     const totalDays = counts.length;
-    const zeroDays = counts.filter(c => c === 0).length;
-    const sparsity = zeroDays / totalDays;
+    const nonZeroCount = counts.filter(c => c > 0).length;
+    const zeroDaysFraction = totalDays > 0 ? (totalDays - nonZeroCount) / totalDays : 1;
     const totalVolume = counts.reduce((a, b) => a + b, 0);
 
-    // If data is highly intermittent / sporadic (e.g., > 50% zeros or long dormancy gaps)
-    if (sparsity >= 0.50 && totalDays >= 14) {
-        return runCrostonSBAForecast(counts, horizon);
+    // If zero observations throughout the entire history
+    if (totalVolume === 0) {
+        return {
+            predictions: Array(horizon).fill(0),
+            lower: Array(horizon).fill(0),
+            upper: Array(horizon).fill(0),
+            confidence: '0%',
+            model_used: 'Zero-Demand Baseline (No Historical Consumption)',
+            evaluation: null
+        };
     }
 
-    const ts = new TimeSeries(new Float64Array(counts));
-
-    if (counts.length >= 14) {
-        try {
-            const model = HoltWintersForecaster.auto(7, 'additive');
-            model.fit(ts);
-            const fc = model.predictWithIntervals(horizon, confidenceLevel);
-            predictions = Array.from(fc.values as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            lower = Array.from((fc.lower || []) as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            upper = Array.from((fc.upper || []) as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            confidence = '95%';
-            model_used = 'Holt-Winters Seasonal Additive (Auto-parameterized)';
-        } catch {
-            const model = new AutoThetaForecaster();
-            model.fit(ts);
-            const fc = model.predictWithIntervals(horizon, confidenceLevel);
-            predictions = Array.from(fc.values as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            lower = Array.from((fc.lower || []) as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            upper = Array.from((fc.upper || []) as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            confidence = '90%';
-            model_used = 'AutoTheta Time-Series Forecaster';
-        }
-    } else if (counts.length >= 6) {
-        try {
-            const model = new AutoThetaForecaster();
-            model.fit(ts);
-            const fc = model.predictWithIntervals(horizon, confidenceLevel);
-            predictions = Array.from(fc.values as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            lower = Array.from((fc.lower || []) as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            upper = Array.from((fc.upper || []) as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            confidence = '80%';
-            model_used = 'AutoTheta Time-Series Forecaster';
-        } catch {
-            const model = new NaiveForecaster();
-            model.fit(ts);
-            const fc = model.predict(horizon);
-            predictions = Array.from(fc.values as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-            lower = predictions.map(v => Math.max(0, Math.round(v * 0.8)));
-            upper = predictions.map(v => Math.round(v * 1.2));
-            confidence = '50%';
-            model_used = 'Naive Forecaster';
-        }
-    } else {
-        const model = new NaiveForecaster();
-        model.fit(ts);
-        const fc = model.predict(horizon);
-        predictions = Array.from(fc.values as Float64Array).map((v: number) => Math.max(0, Math.round(v)));
-        lower = predictions.map(v => Math.max(0, Math.round(v * 0.8)));
-        upper = predictions.map(v => Math.round(v * 1.2));
-        confidence = counts.length >= 3 ? '40%' : '20%';
-        model_used = 'Naive Baseline Extrapolation';
-    }
-
-    // Runaway Trend Guardrail: Check if Holt-Winters produced an explosive overshoot
-    const predictedSum = predictions.reduce((a, b) => a + b, 0);
-    const recent14Sum = counts.slice(-14).reduce((a, b) => a + b, 0);
-    const recent7Sum = counts.slice(-7).reduce((a, b) => a + b, 0);
-    const maxPlausibleWeekSum = Math.max(recent7Sum * 2, recent14Sum * 1.5, totalVolume > 0 ? Math.round(totalVolume * 0.8) : 10);
-
-    if (predictedSum > maxPlausibleWeekSum && counts.length >= 14) {
-        // Dampen back to calibrated Croston / EMA rate
-        const croston = runCrostonSBAForecast(counts, horizon);
-        predictions = croston.predictions;
-        lower = croston.lower;
-        upper = croston.upper;
-        confidence = '88%';
-        model_used = 'Damped Trend (Intermittent-Calibrated)';
-    }
-
-    return {
-        predictions,
-        lower,
-        upper,
-        confidence,
-        model_used
-    };
-}
-
-// process supabase parcels
-function processDailyParcelData(parcels: any[]) {
-    const courierCounts: Record<string, number> = {};
-    const statusCounts: Record<string, number> = {};
-    const dailyMap = new Map<string, number>();
-    const monthMap = new Map<string, number>();
-    const dayOfWeekMap: Record<string, number> = {
-        'Sunday': 0, 'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0, 'Friday': 0, 'Saturday': 0
-    };
-    const dayOfWeekNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const hourMap: Record<number, number> = {};
-    for (let h = 0; h < 24; h++) hourMap[h] = 0;
-
-    parcels.forEach((p) => {
-        const courier = (p.courier || 'Unknown').trim();
-        courierCounts[courier] = (courierCounts[courier] || 0) + 1;
-        const status = (p.status || 'Unknown').trim();
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-
-        if (p.created_at) {
-            const d = new Date(p.created_at);
-            const dateStr = d.toISOString().split('T')[0];
-            const monthStr = dateStr.slice(0, 7);
-            const dayName = dayOfWeekNames[d.getDay()];
-            const hour = d.getHours();
-
-            dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + 1);
-            monthMap.set(monthStr, (monthMap.get(monthStr) || 0) + 1);
-            dayOfWeekMap[dayName] = (dayOfWeekMap[dayName] || 0) + 1;
-            hourMap[hour] = (hourMap[hour] || 0) + 1;
-        }
-    });
-
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    let busiestMonth = { month: 'N/A', count: 0 };
-    monthMap.forEach((cnt, mo) => {
-        if (cnt > busiestMonth.count || (busiestMonth.month === 'N/A' && cnt > 0)) {
-            const [y, m] = mo.split('-');
-            const monthIdx = parseInt(m) - 1;
-            const monthName = (monthIdx >= 0 && monthIdx < 12) ? monthNames[monthIdx] : `Month ${m}`;
-            busiestMonth = { month: `${monthName} ${y}`, count: cnt };
-        }
-    });
-
-    let busiestDay = { day: 'N/A', count: 0 };
-    Object.entries(dayOfWeekMap).forEach(([day, cnt]) => {
-        if (cnt > busiestDay.count) {
-            busiestDay = { day, count: cnt };
-        }
-    });
-
-    let busiestHour = { timeRange: 'N/A', count: 0 };
-    Object.entries(hourMap).forEach(([hrStr, cnt]) => {
-        const hr = parseInt(hrStr);
-        if (cnt > busiestHour.count) {
-            const formatHour = (h: number) => {
-                const period = h >= 12 ? 'PM' : 'AM';
-                const standardHr = h % 12 === 0 ? 12 : h % 12;
-                return `${standardHr}:00 ${period}`;
-            };
-            busiestHour = {
-                timeRange: `${formatHour(hr)} - ${formatHour((hr + 1) % 24)}`,
-                count: cnt
-            };
-        }
-    });
-
-    const timeline = buildTimeline(dailyMap, 30);
-
-    return {
-        ...timeline,
-        totalParcels: parcels.length,
-        courierCounts,
-        statusCounts,
-        peakInsights: {
-            busiestMonth,
-            busiestDay,
-            busiestHour
-        }
-    };
-}
-
-// process supabase pos
-function processMonthlyExpenseData(purchaseOrders: any[]) {
-    const monthlyMap = new Map<string, number>();
-    let totalExpenseSum = 0;
-
-    purchaseOrders.forEach((po) => {
-        const amount = Number(po.total_amount) || 0;
-        totalExpenseSum += amount;
-        if (po.created_at) {
-            const month = new Date(po.created_at).toISOString().slice(0, 7);
-            monthlyMap.set(month, (monthlyMap.get(month) || 0) + amount);
-        }
-    });
-
-    const months = Array.from(monthlyMap.keys()).sort();
-    const amounts = months.map(m => monthlyMap.get(m) || 0);
-
-    return {
-        months,
-        amounts,
-        totalExpenseSum,
-        poCount: purchaseOrders.length
-    };
-}
-
-// process blocked devices
-function processBlockedDevicesData(devices: any[]) {
-    const dailyMap = new Map<string, number>();
-    const reasonsCount: Record<string, number> = {};
-    const platformBreakdown = { mobile: 0, desktop: 0, tablet: 0, unknown: 0 };
-    let activeBlockedCount = 0;
-    let unblockedCount = 0;
-
-    devices.forEach((d) => {
-        if (d.status === 'blocked') activeBlockedCount++;
-        else if (d.status === 'unblocked') unblockedCount++;
-
-        const reason = (d.reason || 'Security Lockout / Tampering').trim();
-        reasonsCount[reason] = (reasonsCount[reason] || 0) + 1;
-
-        // Platform detection from user agent
-        const ua = (d.user_agent || '').toLowerCase();
-        if (/ipad|tablet|(android(?!.*mobile))/i.test(ua)) platformBreakdown.tablet++;
-        else if (/mobile|iphone|android/i.test(ua)) platformBreakdown.mobile++;
-        else if (/windows|macintosh|linux/i.test(ua)) platformBreakdown.desktop++;
-        else platformBreakdown.unknown++;
-
-        const ts = d.blocked_at || d.created_at;
-        if (ts) {
-            const dateStr = new Date(ts).toISOString().split('T')[0];
-            dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + 1);
-        }
-    });
-
-    const timeline = buildTimeline(dailyMap, 30);
-
-    return {
-        ...timeline,
-        totalBlocked: devices.length,
-        activeBlockedCount,
-        unblockedCount,
-        reasonsBreakdown: reasonsCount,
-        platformBreakdown
-    };
-}
-
-// process active users and sessions
-function processActiveUsersData(sessions: any[]) {
-    const dailyMap = new Map<string, number>();
-    const hourMap: Record<number, number> = {};
-    const dayOfWeekMap: Record<string, number> = {
-        'Sunday': 0, 'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0, 'Friday': 0, 'Saturday': 0
-    };
-    const dayOfWeekNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    for (let h = 0; h < 24; h++) hourMap[h] = 0;
-
-    let currentActiveCount = 0;
-    const activeAccountIds = new Set<string>();
-
-    sessions.forEach((s) => {
-        if (s.is_active) {
-            currentActiveCount++;
-            if (s.user_id) activeAccountIds.add(s.user_id);
-        }
-
-        if (s.created_at) {
-            const d = new Date(s.created_at);
-            const dateStr = d.toISOString().split('T')[0];
-            const dayName = dayOfWeekNames[d.getDay()];
-            const hour = d.getHours();
-
-            dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + 1);
-            dayOfWeekMap[dayName] = (dayOfWeekMap[dayName] || 0) + 1;
-            hourMap[hour] = (hourMap[hour] || 0) + 1;
-        }
-    });
-
-    let busiestHour = { timeRange: '9:00 AM - 10:00 AM', count: 0 };
-    Object.entries(hourMap).forEach(([hrStr, cnt]) => {
-        const hr = parseInt(hrStr);
-        if (cnt > busiestHour.count) {
-            const formatHour = (h: number) => {
-                const period = h >= 12 ? 'PM' : 'AM';
-                const standardHr = h % 12 === 0 ? 12 : h % 12;
-                return `${standardHr}:00 ${period}`;
-            };
-            busiestHour = {
-                timeRange: `${formatHour(hr)} - ${formatHour((hr + 1) % 24)}`,
-                count: cnt
-            };
-        }
-    });
-
-    let busiestDay = { day: 'Monday', count: 0 };
-    Object.entries(dayOfWeekMap).forEach(([day, cnt]) => {
-        if (cnt > busiestDay.count) {
-            busiestDay = { day, count: cnt };
-        }
-    });
-
-    const timeline = buildTimeline(dailyMap, 30);
-
-    return {
-        ...timeline,
-        totalSessions: sessions.length,
-        currentActiveUsers: currentActiveCount,
-        uniqueActiveUsers: activeAccountIds.size,
-        hourlyDistribution: hourMap,
-        busiestHour,
-        busiestDay
-    };
-}
-
-// process users and positions
-function processUsersAndPositionsData(users: any[]) {
-    const positionsBreakdown: Record<string, number> = {};
-    const rolesBreakdown: Record<string, number> = {};
-    const departmentsBreakdown: Record<string, number> = {};
-    const monthlySignupMap = new Map<string, number>();
-    let activeUsersCount = 0;
-
-    users.forEach((u) => {
-        if (u.status === 'Active' || u.is_active === true) {
-            activeUsersCount++;
-        }
-
-        // Position breakdown
-        const pos = (u.position || 'Office Staff').trim();
-        positionsBreakdown[pos] = (positionsBreakdown[pos] || 0) + 1;
-
-        // Role breakdown
-        const role = (u.role || 'Staff').trim();
-        rolesBreakdown[role] = (rolesBreakdown[role] || 0) + 1;
-
-        // Department breakdown
-        if (u.department) {
-            const dept = u.department.trim();
-            departmentsBreakdown[dept] = (departmentsBreakdown[dept] || 0) + 1;
-        }
-
-        // Signup history
-        if (u.created_at) {
-            const ym = new Date(u.created_at).toISOString().slice(0, 7);
-            monthlySignupMap.set(ym, (monthlySignupMap.get(ym) || 0) + 1);
-        }
-    });
-
-    const signupMonths = Array.from(monthlySignupMap.keys()).sort();
-    const signupCounts = signupMonths.map(m => monthlySignupMap.get(m) || 0);
-
-    return {
-        totalUsers: users.length,
-        activeUsersCount: activeUsersCount || users.length,
-        positionsBreakdown,
-        rolesBreakdown,
-        departmentsBreakdown,
-        signupHistory: {
-            months: signupMonths,
-            counts: signupCounts
-        }
-    };
-}
-
-// process appeals data
-function processAppealsData(appeals: any[]) {
-    const dailyMap = new Map<string, number>();
-    let pendingCount = 0;
-    let approvedCount = 0;
-    let rejectedCount = 0;
-    const roleBreakdown: Record<string, number> = {};
-
-    appeals.forEach((a) => {
-        const st = (a.status || 'pending').toLowerCase();
-        if (st === 'pending') pendingCount++;
-        else if (st === 'approved') approvedCount++;
-        else if (st === 'rejected') rejectedCount++;
-
-        const role = (a.user_role || 'Staff').trim();
-        roleBreakdown[role] = (roleBreakdown[role] || 0) + 1;
-
-        if (a.created_at) {
-            const dateStr = new Date(a.created_at).toISOString().split('T')[0];
-            dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + 1);
-        }
-    });
-
-    const timeline = buildTimeline(dailyMap, 30);
-    const resolvedTotal = approvedCount + rejectedCount;
-    const resolutionRate = appeals.length > 0 ? Math.round((resolvedTotal / appeals.length) * 100) : 100;
-
-    return {
-        ...timeline,
-        totalAppeals: appeals.length,
-        pendingCount,
-        approvedCount,
-        rejectedCount,
-        resolutionRate,
-        roleBreakdown
-    };
-}
-
-export async function GET() {
+    let anofox: any = null;
     try {
-        const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
+        anofox = await getAnofox();
+    } catch (e) {
+        console.warn('Could not load anofox WASM; using native statistical models:', e);
+    }
 
-        // fetch all records across supply chain database in parallel
+    // 1. Chronological Holdout Validation (if at least 14 days of data)
+    let evaluationResult: any = null;
+    let preferredModelType: 'croston' | 'autotheta' | 'holtwinters' | 'moving_avg' = 'croston';
+
+    if (totalDays >= 14 && nonZeroCount >= 2) {
+        const holdoutSize = Math.min(horizon, 7, Math.floor(totalDays / 3));
+        const trainCounts = counts.slice(0, totalDays - holdoutSize);
+        const actualHoldout = counts.slice(totalDays - holdoutSize);
+        const actualHoldoutSum = actualHoldout.reduce((a, b) => a + b, 0);
+
+        // Candidate 1: Croston SBA
+        const crostonHoldout = runCrostonSBA(trainCounts, holdoutSize).predictions;
+        const crostonMae = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (crostonHoldout[i] || 0)), 0) / holdoutSize;
+
+        // Candidate 2: Moving Average (7-day)
+        const maHoldout = runMovingAverageForecast(trainCounts, holdoutSize, 7).predictions;
+        const maMae = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (maHoldout[i] || 0)), 0) / holdoutSize;
+
+        let bestMae = crostonMae;
+        preferredModelType = 'croston';
+
+        if (maMae < bestMae) {
+            bestMae = maMae;
+            preferredModelType = 'moving_avg';
+        }
+
+        // Candidate 3: AutoTheta / HoltWinters if anofox available and data not hyper-sparse
+        if (anofox && zeroDaysFraction < 0.65 && trainCounts.length >= 7) {
+            try {
+                const { TimeSeries, AutoThetaForecaster, HoltWintersForecaster } = anofox;
+                const tsTrain = new TimeSeries(new Float64Array(trainCounts));
+
+                let wasmPreds: number[] = [];
+                let wasmModelName = 'AutoTheta';
+                try {
+                    const hw = HoltWintersForecaster.auto(7, 'additive');
+                    hw.fit(tsTrain);
+                    const hwFc = hw.predict(holdoutSize);
+                    wasmPreds = Array.from(hwFc.values as Float64Array).map(v => Math.max(0, Math.round(v)));
+                    wasmModelName = 'HoltWinters';
+                } catch {
+                    const at = new AutoThetaForecaster();
+                    at.fit(tsTrain);
+                    const atFc = at.predict(holdoutSize);
+                    wasmPreds = Array.from(atFc.values as Float64Array).map(v => Math.max(0, Math.round(v)));
+                    wasmModelName = 'AutoTheta';
+                }
+
+                const wasmMae = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (wasmPreds[i] || 0)), 0) / holdoutSize;
+                if (wasmMae < bestMae) {
+                    bestMae = wasmMae;
+                    preferredModelType = wasmModelName === 'HoltWinters' ? 'holtwinters' : 'autotheta';
+                }
+            } catch (err) {
+                // Ignore WASM error during validation
+            }
+        }
+
+        // Compute chosen model holdout error metrics
+        const chosenHoldoutPreds = preferredModelType === 'croston' ? crostonHoldout :
+            preferredModelType === 'moving_avg' ? maHoldout :
+            runCrostonSBA(trainCounts, holdoutSize).predictions;
+
+        const totalAbsErr = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (chosenHoldoutPreds[i] || 0)), 0);
+        const mae = totalAbsErr / holdoutSize;
+        const mse = actualHoldout.reduce((sum, act, i) => sum + Math.pow(act - (chosenHoldoutPreds[i] || 0), 2), 0) / holdoutSize;
+        const rmse = Math.sqrt(mse);
+        const forecastHoldoutSum = chosenHoldoutPreds.reduce((a, b) => a + b, 0);
+
+        let wape = actualHoldoutSum > 0 ? (totalAbsErr / actualHoldoutSum) * 100 : 0;
+        let accuracy = actualHoldoutSum > 0 ? Math.max(0, Math.min(100, Math.round(100 - wape))) : (forecastHoldoutSum === 0 ? 100 : 50);
+
+        evaluationResult = {
+            has_evaluation: true,
+            mae: Math.round(mae * 100) / 100,
+            rmse: Math.round(rmse * 100) / 100,
+            wape: Math.round(wape * 10) / 10,
+            accuracy_percentage: accuracy,
+            actual_holdout_sum: actualHoldoutSum,
+            forecast_holdout_sum: forecastHoldoutSum,
+            model_tested: preferredModelType
+        };
+    }
+
+    // 2. Generate final forward forecast on entire series
+    // Intermittent data or sparse points: Croston SBA
+    if (zeroDaysFraction >= 0.40 || nonZeroCount < 5 || preferredModelType === 'croston') {
+        const croston = runCrostonSBA(counts, horizon);
+        return {
+            ...croston,
+            evaluation: evaluationResult
+        };
+    }
+
+    // Moving average preferred
+    if (preferredModelType === 'moving_avg' || !anofox) {
+        const ma = runMovingAverageForecast(counts, horizon, 7);
+        return {
+            ...ma,
+            evaluation: evaluationResult
+        };
+    }
+
+    // Advanced WASM model execution
+    try {
+        const { TimeSeries, AutoThetaForecaster, HoltWintersForecaster } = anofox;
+        const ts = new TimeSeries(new Float64Array(counts));
+
+        let predictions: number[] = [];
+        let lower: number[] = [];
+        let upper: number[] = [];
+        let modelUsed = '';
+        let confidence = '88%';
+
+        if (preferredModelType === 'holtwinters' && counts.length >= 14) {
+            try {
+                const model = HoltWintersForecaster.auto(7, 'additive');
+                model.fit(ts);
+                const fc = model.predictWithIntervals(horizon, 0.90);
+                predictions = Array.from(fc.values as Float64Array).map(v => Math.max(0, Math.round(v)));
+                lower = Array.from((fc.lower || []) as Float64Array).map(v => Math.max(0, Math.round(v)));
+                upper = Array.from((fc.upper || []) as Float64Array).map(v => Math.max(0, Math.round(v)));
+                modelUsed = 'Holt-Winters Additive Seasonality';
+                confidence = '92%';
+            } catch {
+                const model = new AutoThetaForecaster();
+                model.fit(ts);
+                const fc = model.predictWithIntervals(horizon, 0.90);
+                predictions = Array.from(fc.values as Float64Array).map(v => Math.max(0, Math.round(v)));
+                lower = Array.from((fc.lower || []) as Float64Array).map(v => Math.max(0, Math.round(v)));
+                upper = Array.from((fc.upper || []) as Float64Array).map(v => Math.max(0, Math.round(v)));
+                modelUsed = 'AutoTheta Time-Series Forecaster';
+                confidence = '88%';
+            }
+        } else {
+            const model = new AutoThetaForecaster();
+            model.fit(ts);
+            const fc = model.predictWithIntervals(horizon, 0.90);
+            predictions = Array.from(fc.values as Float64Array).map(v => Math.max(0, Math.round(v)));
+            lower = Array.from((fc.lower || []) as Float64Array).map(v => Math.max(0, Math.round(v)));
+            upper = Array.from((fc.upper || []) as Float64Array).map(v => Math.max(0, Math.round(v)));
+            modelUsed = 'AutoTheta Time-Series Forecaster';
+            confidence = '86%';
+        }
+
+        // Explosive trend guardrail: ensure Holt-Winters / AutoTheta did not blow up
+        const predictedSum = predictions.reduce((a, b) => a + b, 0);
+        const recent14Sum = counts.slice(-14).reduce((a, b) => a + b, 0);
+        const maxPlausible = Math.max(recent14Sum * 2, totalVolume * 0.8, 10);
+
+        if (predictedSum > maxPlausible) {
+            const fallback = runCrostonSBA(counts, horizon);
+            return {
+                ...fallback,
+                model_used: 'Damped Trend (Outlier Guardrail Applied)',
+                evaluation: evaluationResult
+            };
+        }
+
+        return {
+            predictions,
+            lower,
+            upper,
+            confidence,
+            model_used: modelUsed,
+            evaluation: evaluationResult
+        };
+    } catch (err) {
+        console.warn('WASM fit failed, defaulting to Croston SBA:', err);
+        const fallback = runCrostonSBA(counts, horizon);
+        return {
+            ...fallback,
+            evaluation: evaluationResult
+        };
+    }
+}
+
+// Generate Gemini AI Executive Insights
+async function generateGeminiInsights(context: {
+    totalItems: number;
+    forecastHorizon: number;
+    totalDemand: number;
+    criticalCount: number;
+    lowStockCount: number;
+    normalCount: number;
+    criticalItems: { item_code: string; item_name: string; available_stock: number; forecast_demand: number; projected_stock: number; unit: string }[];
+    topConsumed: { item_name: string; total_quantity: number; unit: string }[];
+    fastMoving: { item_name: string; growth: number }[];
+    departmentBreakdown: { department: string; total_quantity: number }[];
+    hasThreeYearsHistory?: boolean;
+    historySpanDays?: number;
+}) {
+    const apiKey = process.env.GEMINI_SUPPLYCHAIN_API_KEY || process.env.GEMINI_API_KEY;
+    const modelName = process.env.GEMINI_SUPPLYCHAIN_MODEL || 'gemini-2.5-flash';
+
+    if (!context.hasThreeYearsHistory) {
+        return {
+            summary: `Automated data validation: Historical inventory records span ${context.historySpanDays || 0} days, which is less than the mandatory 3-year (1,095-day) threshold. Demand predictions are marked invalid with 0% AI confidence. Historical consumption charts remain available for operational tracking, but predictive extrapolation is suppressed.`,
+            critical_shortages: context.criticalItems.map(i => `${i.item_name} (${i.item_code}): Current stock is ${i.available_stock} ${i.unit}. Urgent replenishment required based on current physical buffer, though automated future demand prediction is disabled.`),
+            trend_observations: context.fastMoving.length > 0 
+                ? context.fastMoving.map(i => `${i.item_name} shows notable historical consumption momentum across recorded movements.`)
+                : ['Historical movements show early issuance activity, but lack longitudinal multi-year seasonality.'],
+            procurement_actions: [
+                `Base near-term purchasing decisions on current physical stock and pending requisition requests rather than AI projections.`,
+                `Review min-max inventory safety buffers for ${context.lowStockCount} items currently near or below safety levels.`,
+                `Accumulate continuous stock-out audit logs until a 3-year baseline (1,095 days) is established for reliable AI forecasting.`
+            ],
+            uncertainty_notes: [
+                `AI Confidence: 0%. Historical records span only ${context.historySpanDays || 0} days (minimum required: 1,095 days / 3 years).`,
+                `Time-series models (Croston SBA & seasonal decomposition) require a 3-year longitudinal baseline to isolate multi-year seasonality from erratic variance.`,
+                `Demand prediction is disabled until sufficient 3-year historical depth is achieved.`
+            ]
+        };
+    }
+
+    if (!apiKey) {
+        return {
+            summary: `Automated inventory analysis for ${context.totalItems} catalog items across a ${context.forecastHorizon}-day horizon. Overall projected demand is ${context.totalDemand} units with ${context.criticalCount} critical shortages and ${context.lowStockCount} items at low-stock risk.`,
+            critical_shortages: context.criticalItems.map(i => `${i.item_name} (${i.item_code}): Projected deficit of ${Math.abs(i.projected_stock)} ${i.unit} (Current: ${i.available_stock}, Predicted Demand: ${i.forecast_demand}). Immediate purchase order required.`),
+            trend_observations: context.fastMoving.map(i => `${i.item_name} shows accelerating consumption with +${i.growth}% demand momentum.`),
+            procurement_actions: [
+                `Issue emergency purchase orders for ${context.criticalCount} items projected to fall below zero.`,
+                `Review safety stock buffers for ${context.lowStockCount} items nearing minimum thresholds.`,
+                `Prioritize top operational departments: ${context.departmentBreakdown.slice(0, 3).map(d => `${d.department} (${d.total_quantity} units)`).join(', ')}.`
+            ],
+            uncertainty_notes: [
+                'Forecasts reflect actual historical stock issuances. Unrecorded internal requisitions are not factored.',
+                'Incoming quantities depend on vendor lead times adhering to scheduled purchase order delivery dates.'
+            ]
+        };
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        const prompt = `
+You are the Senior Supply Chain and Inventory Intelligence Analyst for Airship Express.
+Analyze this strictly factual inventory forecast data. DO NOT invent or alter quantities, prices, or status values.
+
+Operational Forecast Data:
+- Total Items Evaluated: ${context.totalItems}
+- Forecast Horizon: ${context.forecastHorizon} Days
+- Total Forecasted Demand: ${context.totalDemand} units
+- Critical Items (Projected Stock < 0): ${context.criticalCount}
+- Low Stock Risk Items (Projected Stock <= Min Buffer): ${context.lowStockCount}
+- Normal Stock Items: ${context.normalCount}
+- Critical Items List: ${JSON.stringify(context.criticalItems)}
+- Top Consumed Supplies: ${JSON.stringify(context.topConsumed)}
+- Fast-Moving / Increasing Demand: ${JSON.stringify(context.fastMoving)}
+- Department Consumption Breakdown: ${JSON.stringify(context.departmentBreakdown)}
+
+Format your response as valid, clean JSON with this exact structure:
+{
+  "summary": "2-3 sentences executive summary synthesizing the operational stock posture, primary demand pressures, and risk exposure.",
+  "critical_shortages": ["Bullet point explaining why each critical item is at risk and recommended replenishment"],
+  "trend_observations": ["Bullet point summarizing noticeable consumption velocity, shifts, or department usage patterns"],
+  "procurement_actions": ["Specific, actionable instructions for the Procurement & Warehousing teams"],
+  "uncertainty_notes": ["Explicit data boundaries, lead time dependencies, or intermittent demand caveats"]
+}
+`;
+
+        const response = await ai.interactions.create({
+            model: modelName,
+            input: prompt,
+            response_format: { type: 'object' }
+        } as any);
+
+        const text = response.output_text || '';
+        const parsed = JSON.parse(text);
+        return {
+            summary: parsed.summary || 'Forecast intelligence generated successfully.',
+            critical_shortages: Array.isArray(parsed.critical_shortages) ? parsed.critical_shortages : [],
+            trend_observations: Array.isArray(parsed.trend_observations) ? parsed.trend_observations : [],
+            procurement_actions: Array.isArray(parsed.procurement_actions) ? parsed.procurement_actions : [],
+            uncertainty_notes: Array.isArray(parsed.uncertainty_notes) ? parsed.uncertainty_notes : []
+        };
+    } catch (err) {
+        console.warn('Gemini AI generation failed, falling back to rule-based insights:', err);
+        return {
+            summary: `Automated inventory analysis for ${context.totalItems} items over a ${context.forecastHorizon}-day horizon. Projected demand is ${context.totalDemand} units with ${context.criticalCount} critical shortages and ${context.lowStockCount} low-stock warnings.`,
+            critical_shortages: context.criticalItems.map(i => `${i.item_name} (${i.item_code}): Projected deficit of ${Math.abs(i.projected_stock)} ${i.unit}. Urgent PO reorder recommended.`),
+            trend_observations: context.fastMoving.map(i => `${i.item_name} shows accelerating consumption trend.`),
+            procurement_actions: [
+                `Issue replenishment orders for ${context.criticalCount} critical items immediately.`,
+                `Inspect buffer thresholds for ${context.lowStockCount} items at low stock risk.`
+            ],
+            uncertainty_notes: [
+                'Model predictions reflect actual stock-out logs; periods without consumption are treated according to intermittent demand algorithms.'
+            ]
+        };
+    }
+}
+
+export async function GET(request: NextRequest) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const periodParam = searchParams.get('period') || '30';
+        const startDateParam = searchParams.get('startDate') || searchParams.get('from');
+        const endDateParam = searchParams.get('endDate') || searchParams.get('to');
+        const horizonDays = parseInt(searchParams.get('horizon') || '7', 10);
+        const validHorizonDays = [7, 14, 30].includes(horizonDays) ? horizonDays : 7;
+        const categoryFilter = searchParams.get('category') || 'all';
+        const searchQuery = (searchParams.get('search') || '').toLowerCase().trim();
+        const riskFilter = searchParams.get('risk') || 'all';
+
+        // 1. Calculate Date Windows
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const todayMs = new Date(todayStr + 'T00:00:00Z').getTime();
+
+        let validPeriodDays = 30;
+        let startPeriodDate: Date;
+        let startPeriodStr: string;
+
+        if (startDateParam && endDateParam) {
+            const parsedStart = new Date(startDateParam + 'T00:00:00Z');
+            const parsedEnd = new Date(endDateParam + 'T23:59:59Z');
+            if (!isNaN(parsedStart.getTime()) && !isNaN(parsedEnd.getTime()) && parsedEnd >= parsedStart) {
+                validPeriodDays = Math.max(1, Math.round((parsedEnd.getTime() - parsedStart.getTime()) / (24 * 60 * 60 * 1000)));
+                startPeriodDate = parsedStart;
+                startPeriodStr = startDateParam;
+            } else {
+                validPeriodDays = 30;
+                startPeriodDate = new Date(todayMs - (validPeriodDays - 1) * 24 * 60 * 60 * 1000);
+                startPeriodStr = startPeriodDate.toISOString().split('T')[0];
+            }
+        } else {
+            const parsedDays = parseInt(periodParam, 10);
+            validPeriodDays = [30, 90, 180, 210, 365].includes(parsedDays) ? parsedDays : 30;
+            startPeriodDate = new Date(todayMs - (validPeriodDays - 1) * 24 * 60 * 60 * 1000);
+            startPeriodStr = startPeriodDate.toISOString().split('T')[0];
+        }
+
+        const horizonEndDate = new Date(todayMs + validHorizonDays * 24 * 60 * 60 * 1000);
+        const horizonEndStr = horizonEndDate.toISOString().split('T')[0];
+
+        // 2. Fetch Data from Supabase in Parallel
         const [
-            { data: parcels, error: parcelErr },
-            { data: expenses, error: expenseErr },
-            { data: blockedDevices, error: blockedErr },
-            { data: sessions, error: sessionErr },
-            { data: users, error: userErr },
-            { data: appeals, error: appealErr }
+            { data: rawItems, error: itemsErr },
+            { data: rawMovements, error: smErr },
+            { data: rawAllStockOuts, error: allSmErr },
+            { data: rawRequests, error: reqErr },
+            { data: rawPOs, error: poErr },
+            { data: rawPOIs, error: poiErr },
+            { data: rawEarliestMovement, error: earliestSmErr }
         ] = await Promise.all([
-            supabase
-                .from('parcels')
-                .select('id, barcode, tracking_number, courier, status, created_at')
-                .gte('created_at', sixMonthsAgo)
+            dbClient.from('inventory_items').select('*').order('item_name', { ascending: true }),
+            dbClient
+                .from('stock_movements')
+                .select('*')
+                .gte('created_at', startPeriodDate.toISOString())
                 .order('created_at', { ascending: true }),
-            supabase
+            dbClient
+                .from('stock_movements')
+                .select('item_id, item_code, item_name, movement_type, quantity, created_at')
+                .ilike('movement_type', 'stock out')
+                .order('created_at', { ascending: false }),
+            dbClient
+                .from('inventory_requests')
+                .select('*')
+                .or('status.ilike.approved,status.ilike.pending'),
+            dbClient
                 .from('purchase_orders')
-                .select('id, po_number, supplier_name, total_amount, paid, status, created_at')
-                .gte('created_at', sixMonthsAgo)
-                .order('created_at', { ascending: true }),
-            supabase
-                .from('blocked_devices')
-                .select('id, user_id, device_name, user_agent, ip_address, blocked_at, status, reason, created_at')
-                .order('created_at', { ascending: true }),
-            supabase
-                .from('sessions')
-                .select('id, user_id, is_active, created_at, expires_at, user_agent, ip_address, email, remember_me, users(display_name, email, role, position, department)')
-                .order('created_at', { ascending: true }),
-            supabase
-                .from('users')
-                .select('id, display_name, email, role, position, department, status, created_at')
-                .order('created_at', { ascending: true }),
-            supabase
-                .from('appeals')
-                .select('id, blocked_device_id, user_agent, user_email, user_name, user_role, appeal_message, response_message, status, created_at, resolved_at')
+                .select('id, po_number, status, delivery_date, fully_received')
+                .not('status', 'in', '("Cancelled","Rejected")')
+                .neq('fully_received', true),
+            dbClient
+                .from('purchase_order_items')
+                .select('id, purchase_order_id, inventory_item_id, item_name, quantity_ordered, quantity_received'),
+            dbClient
+                .from('stock_movements')
+                .select('created_at')
                 .order('created_at', { ascending: true })
+                .limit(1)
         ]);
 
-        if (parcelErr) console.error('Supabase parcel error:', parcelErr);
-        if (expenseErr) console.error('Supabase purchase_orders error:', expenseErr);
-        if (blockedErr) console.error('Supabase blocked_devices error:', blockedErr);
-        if (sessionErr) console.error('Supabase sessions error:', sessionErr);
-        if (userErr) console.error('Supabase users error:', userErr);
-        if (appealErr) console.error('Supabase appeals error:', appealErr);
+        if (itemsErr) console.error('Error fetching inventory items:', itemsErr);
+        if (smErr) console.error('Error fetching stock movements:', smErr);
+        if (allSmErr) console.error('Error fetching all stock outs:', allSmErr);
+        if (reqErr) console.error('Error fetching inventory requests:', reqErr);
+        if (poErr) console.error('Error fetching purchase orders:', poErr);
+        if (poiErr) console.error('Error fetching PO items:', poiErr);
+        if (earliestSmErr) console.error('Error fetching earliest stock movement:', earliestSmErr);
 
-        const parcelList = parcels || [];
-        const expenseList = expenses || [];
-        const blockedList = blockedDevices || [];
-        const sessionList = sessions || [];
-        const userList = users || [];
-        const appealList = appeals || [];
+        const items = rawItems || [];
+        const stockMovements = rawMovements || [];
+        const allStockOuts = rawAllStockOuts || [];
+        const requests = rawRequests || [];
+        const purchaseOrders = rawPOs || [];
+        const purchaseOrderItems = rawPOIs || [];
 
-        // filter paid pos
-        const validStatuses = ['Confirmed', 'Delivered'];
-        const qualifiedExpenseList = expenseList.filter(po =>
-            po.paid === true && validStatuses.includes(po.status)
-        );
+        // 3-Year Historical Span Calculation:
+        // Rule: If historical inventory records span less than 3 years (1,095 days),
+        // prediction is marked invalid with 0% AI confidence.
+        const earliestMovementAt = rawEarliestMovement && rawEarliestMovement.length > 0 ? rawEarliestMovement[0]?.created_at : null;
+        const earliestDate = earliestMovementAt ? new Date(earliestMovementAt) : null;
+        const earliestDateMs = earliestDate ? earliestDate.getTime() : null;
+        const historySpanDays = earliestDateMs ? Math.max(0, Math.floor((todayMs - earliestDateMs) / (1000 * 60 * 60 * 24))) : 0;
+        const THREE_YEARS_DAYS = 365 * 3; // 1,095 days
+        const hasThreeYearsHistory = historySpanDays >= THREE_YEARS_DAYS;
+        const isPredictionValid = hasThreeYearsHistory;
 
-        // aggregate records
-        const parcelAgg = processDailyParcelData(parcelList);
-        const expenseAgg = processMonthlyExpenseData(qualifiedExpenseList);
-        const blockedAgg = processBlockedDevicesData(blockedList);
-        const sessionAgg = processActiveUsersData(sessionList);
-        const userAgg = processUsersAndPositionsData(userList);
-        const appealAgg = processAppealsData(appealList);
-
-        // load forecast engine
-        const anofox = await getAnofox();
-
-        // 1. Forecast Parcels
-        const parcelFc = runTimeSeriesForecast(anofox, parcelAgg.counts, 7, 0.95);
-        const totalNextWeekParcels = parcelFc.predictions.reduce((a, b) => a + b, 0);
-
-        // future dates starting from tomorrow
-        const lastDateStr = parcelAgg.dates[parcelAgg.dates.length - 1] || new Date().toISOString().split('T')[0];
-        const next7Days: string[] = [];
-        const baseDate = new Date(lastDateStr + 'T00:00:00Z');
-        for (let i = 1; i <= 7; i++) {
-            const nextD = new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000);
-            next7Days.push(nextD.toISOString().split('T')[0]);
-        }
-
-        // Previous week evaluation for parcels
-        let prevWeekEvaluation = {
-            has_evaluation: false,
-            date_range: 'Previous 7 Days',
-            actual_volume: 0,
-            predicted_volume: 0,
-            met_percentage: 0,
-            accuracy_percentage: 0,
-            status: 'No Prior Data' as 'Exceeded' | 'Met' | 'Near Target' | 'Under Target' | 'No Prior Data',
-            status_tone: 'neutral' as 'emerald' | 'pink' | 'amber' | 'neutral',
-            summary: 'Insufficient historical data to evaluate prior week forecast accuracy.'
-        };
-
-        if (parcelAgg.counts.length >= 7) {
-            const targetDays = 7;
-            const endIdx = parcelAgg.counts.length;
-            const startIdx = Math.max(0, endIdx - targetDays);
-            const prevDates = parcelAgg.dates.slice(startIdx, endIdx);
-            const prevCounts = parcelAgg.counts.slice(startIdx, endIdx);
-            const prevActual = prevCounts.reduce((a, b) => a + b, 0);
-
-            let prevPredicted = 0;
-            if (startIdx >= 7) {
-                const priorSlice = parcelAgg.counts.slice(0, startIdx);
-                const priorFc = runTimeSeriesForecast(anofox, priorSlice, targetDays, 0.95);
-                prevPredicted = priorFc.predictions.reduce((a, b) => a + b, 0);
+        // Build overall latest issuance date lookup map
+        const lastIssuanceOverallMap = new Map<string, string>();
+        allStockOuts.forEach((sm: any) => {
+            const idKey = sm.item_id ? String(sm.item_id) : null;
+            const nameKey = (sm.item_name || '').toLowerCase().trim();
+            const dateStr = sm.created_at ? sm.created_at.split('T')[0] : null;
+            if (dateStr) {
+                if (idKey && !lastIssuanceOverallMap.has(idKey)) lastIssuanceOverallMap.set(idKey, dateStr);
+                if (nameKey && !lastIssuanceOverallMap.has(nameKey)) lastIssuanceOverallMap.set(nameKey, dateStr);
             }
-            if (prevPredicted === 0) {
-                const priorSlice = parcelAgg.counts.slice(0, startIdx);
-                const avg = priorSlice.length > 0 ? (priorSlice.reduce((a, b) => a + b, 0) / priorSlice.length) * targetDays : prevActual;
-                prevPredicted = Math.max(1, Math.round(avg));
-            }
+        });
 
-            const metPct = prevPredicted > 0 ? Math.round((prevActual / prevPredicted) * 100) : 100;
-            const error = Math.abs(prevActual - prevPredicted);
-            const accPct = Math.max(0, Math.round((1 - error / Math.max(prevActual, prevPredicted, 1)) * 100));
+        // 3. Map Unfulfilled / Approved Requests (exporting stock)
+        const exportingMap = new Map<string, number>();
+        const pendingCountMap = new Map<string, number>();
+        let totalPendingReqQty = 0;
+        let pendingRequestsCount = 0;
+        const itemsWithPendingSet = new Set<string>();
 
-            let status: 'Exceeded' | 'Met' | 'Near Target' | 'Under Target' = 'Met';
-            let statusTone: 'emerald' | 'pink' | 'amber' = 'emerald';
-            if (metPct >= 100) { status = 'Exceeded'; statusTone = 'emerald'; }
-            else if (metPct >= 90) { status = 'Met'; statusTone = 'emerald'; }
-            else if (metPct >= 75) { status = 'Near Target'; statusTone = 'pink'; }
-            else { status = 'Under Target'; statusTone = 'amber'; }
+        requests.forEach((req: any) => {
+            const status = (req.status || '').toLowerCase();
+            const qty = Number(req.quantity_requested || req.quantity || 0);
+            const idKey = req.inventory_items_id ? String(req.inventory_items_id) : (req.item_id ? String(req.item_id) : null);
+            const nameKey = (req.item_name || '').toLowerCase().trim();
 
-            const formatReadable = (isoStr: string) => {
-                const parts = isoStr.split('-');
-                if (parts.length === 3) {
-                    const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    const m = mNames[parseInt(parts[1], 10) - 1] || parts[1];
-                    return `${m} ${parseInt(parts[2], 10)}`;
+            if (status === 'approved') {
+                if (idKey) exportingMap.set(idKey, (exportingMap.get(idKey) || 0) + qty);
+                if (nameKey) exportingMap.set(nameKey, (exportingMap.get(nameKey) || 0) + qty);
+            } else if (status === 'pending') {
+                totalPendingReqQty += qty;
+                pendingRequestsCount++;
+                if (idKey) {
+                    pendingCountMap.set(idKey, (pendingCountMap.get(idKey) || 0) + 1);
+                    itemsWithPendingSet.add(idKey);
                 }
-                return isoStr;
-            };
+                if (nameKey) {
+                    pendingCountMap.set(nameKey, (pendingCountMap.get(nameKey) || 0) + 1);
+                    itemsWithPendingSet.add(nameKey);
+                }
+            }
+        });
 
-            const rangeStr = prevDates.length > 0
-                ? `${formatReadable(prevDates[0])} - ${formatReadable(prevDates[prevDates.length - 1])}, ${prevDates[0].split('-')[0]}`
-                : 'Previous 7 Days';
+        // 4. Map Eligible Outstanding Purchase Order Incoming Quantities
+        const activePOMap = new Map<string, any>();
+        purchaseOrders.forEach((po: any) => {
+            activePOMap.set(String(po.id), po);
+        });
 
-            prevWeekEvaluation = {
-                has_evaluation: true,
-                date_range: rangeStr,
-                actual_volume: prevActual,
-                predicted_volume: prevPredicted,
-                met_percentage: metPct,
-                accuracy_percentage: accPct,
-                status,
-                status_tone: statusTone,
-                summary: `Previous week (${rangeStr}) achieved ${metPct}% of forecasted volume (${prevActual} actual vs ${prevPredicted} predicted parcels).`
-            };
+        // Map item incoming qty (only if delivery_date is within forecast horizon)
+        const incomingQtyMap = new Map<string, { totalQty: number; details: any[] }>();
+
+        purchaseOrderItems.forEach((poi: any) => {
+            const po = activePOMap.get(String(poi.purchase_order_id));
+            if (!po) return;
+
+            const qtyOrdered = Number(poi.quantity_ordered || 0);
+            const qtyReceived = Number(poi.quantity_received || 0);
+            const outstanding = Math.max(0, qtyOrdered - qtyReceived);
+
+            if (outstanding <= 0) return;
+
+            // Delivery date validation: eligible within the selected forecast horizon
+            let isEligible = true;
+            if (po.delivery_date) {
+                const delivDateStr = String(po.delivery_date).split('T')[0];
+                if (delivDateStr > horizonEndStr) {
+                    isEligible = false;
+                }
+            }
+
+            if (isEligible) {
+                const idKey = poi.inventory_item_id ? String(poi.inventory_item_id) : null;
+                const nameKey = (poi.item_name || '').toLowerCase().trim();
+
+                const detail = {
+                    po_number: po.po_number || 'PO-Unknown',
+                    delivery_date: po.delivery_date || 'Within Horizon',
+                    quantity: outstanding
+                };
+
+                if (idKey) {
+                    const curr = incomingQtyMap.get(idKey) || { totalQty: 0, details: [] };
+                    curr.totalQty += outstanding;
+                    curr.details.push(detail);
+                    incomingQtyMap.set(idKey, curr);
+                }
+                if (nameKey) {
+                    const curr = incomingQtyMap.get(nameKey) || { totalQty: 0, details: [] };
+                    curr.totalQty += outstanding;
+                    curr.details.push(detail);
+                    incomingQtyMap.set(nameKey, curr);
+                }
+            }
+        });
+
+        // 5. Build Chronological Date Array for Historical Period
+        const historicalDates: string[] = [];
+        let dCur = new Date(startPeriodDate);
+        const todayObj = new Date(todayMs);
+        while (dCur <= todayObj) {
+            historicalDates.push(dCur.toISOString().split('T')[0]);
+            dCur.setUTCDate(dCur.getUTCDate() + 1);
         }
 
-        // 2. Forecast Expenses
-        let expensePrediction = 0;
-        let expenseLower = 0;
-        let expenseUpper = 0;
-        let expenseConfidence = '0%';
-        let expenseModelUsed = 'AutoTheta Forecaster';
-        let expenseExplanation = 'Calculated from paid purchase orders (Confirmed/Delivered) in Supabase.';
-
-        if (expenseAgg.amounts.length > 0) {
-            const expFc = runTimeSeriesForecast(anofox, expenseAgg.amounts, 1, 0.90);
-            expensePrediction = expFc.predictions[0] || 0;
-            expenseLower = expFc.lower[0] || Math.round(expensePrediction * 0.85);
-            expenseUpper = expFc.upper[0] || Math.round(expensePrediction * 1.15);
-            expenseConfidence = expFc.confidence;
-            expenseModelUsed = expFc.model_used;
-            expenseExplanation = `Calculated from ${expenseAgg.months.length} monthly billing cycles. The ${expenseModelUsed} isolates expenditure trajectory at a ${expenseConfidence} confidence boundary.`;
+        // 6. Build Chronological Forecast Dates
+        const forecastDates: string[] = [];
+        for (let h = 1; h <= validHorizonDays; h++) {
+            const fDate = new Date(todayMs + h * 24 * 60 * 60 * 1000);
+            forecastDates.push(fDate.toISOString().split('T')[0]);
         }
 
-        // 3. Forecast Blocked Devices
-        const blockedFc = runTimeSeriesForecast(anofox, blockedAgg.counts, 7, 0.90);
-        const totalNextWeekBlocked = blockedFc.predictions.reduce((a, b) => a + b, 0);
+        // 7. Group Stock Out Movements by Item and Date
+        // Actual stock issuance / stock-out records as primary demand source!
+        const itemDemandHistoryMap = new Map<string, Map<string, number>>();
+        const departmentConsumptionMap = new Map<string, { count: number; totalQty: number }>();
+        const dailyGlobalDemandMap = new Map<string, number>();
 
-        let threatRiskLevel: 'Low' | 'Moderate' | 'Elevated' | 'Critical' = 'Low';
-        if (totalNextWeekBlocked >= 15 || blockedAgg.activeBlockedCount >= 10) threatRiskLevel = 'Critical';
-        else if (totalNextWeekBlocked >= 8 || blockedAgg.activeBlockedCount >= 5) threatRiskLevel = 'Elevated';
-        else if (totalNextWeekBlocked >= 3 || blockedAgg.activeBlockedCount >= 2) threatRiskLevel = 'Moderate';
+        stockMovements.forEach((sm: any) => {
+            const movementType = (sm.movement_type || '').toLowerCase();
+            if (movementType !== 'stock out') return; // strictly actual consumption!
 
-        const blockedExplanation = blockedAgg.totalBlocked > 0
-            ? `Analyzed ${blockedAgg.totalBlocked} device security lockouts across ${blockedAgg.dates.length} days. Projections estimate ${totalNextWeekBlocked} security interventions over the next 7 days with ${blockedFc.confidence} confidence.`
-            : `No blocked devices recorded in the database. Baseline security posture is healthy.`;
+            const qty = Math.abs(Number(sm.quantity || 0));
+            if (qty <= 0) return;
 
-        // 4. Forecast Active Users & Sessions
-        const sessionFc = runTimeSeriesForecast(anofox, sessionAgg.counts, 7, 0.95);
-        const totalNextWeekSessions = sessionFc.predictions.reduce((a, b) => a + b, 0);
-        const avgDailySessions = sessionFc.predictions.length > 0 ? Math.round(totalNextWeekSessions / 7) : 0;
-        const maxCapacity = 100;
-        const utilizationPct = Math.min(100, Math.round((sessionAgg.currentActiveUsers / maxCapacity) * 100));
+            const dateStr = sm.created_at ? sm.created_at.split('T')[0] : todayStr;
+            const idKey = sm.item_id ? String(sm.item_id) : null;
+            const nameKey = (sm.item_name || '').toLowerCase().trim();
+            const dept = (sm.department || 'Warehouse Operations').trim();
 
-        const userSessionExplanation = `Evaluated ${sessionAgg.totalSessions} login sessions. Daily active user sessions projected to average ${avgDailySessions} sessions/day over the next 7 days (Concurrency utilization: ${utilizationPct}%). Peak operational activity clusters around ${sessionAgg.busiestHour.timeRange}.`;
+            // Department stats
+            const deptStats = departmentConsumptionMap.get(dept) || { count: 0, totalQty: 0 };
+            deptStats.count++;
+            deptStats.totalQty += qty;
+            departmentConsumptionMap.set(dept, deptStats);
 
-        // 5. Users and Positions Analytics & Growth Forecast
-        const totalUsers = userAgg.totalUsers;
-        const monthlySignups = userAgg.signupHistory.counts;
-        const recentSignupsAvg = monthlySignups.length > 0 ? (monthlySignups.reduce((a, b) => a + b, 0) / monthlySignups.length) : 1;
-        const projectedNextMonthUsers = totalUsers + Math.max(1, Math.round(recentSignupsAvg));
-        const userGrowthRate = totalUsers > 0 ? Number(((recentSignupsAvg / totalUsers) * 100).toFixed(1)) : 5.0;
+            // Global daily demand
+            dailyGlobalDemandMap.set(dateStr, (dailyGlobalDemandMap.get(dateStr) || 0) + qty);
 
-        const positionsExplanation = `Workforce spans ${Object.keys(userAgg.positionsBreakdown).length} distinct roles/positions across ${totalUsers} registered user profiles. Projected headcount expands to ${projectedNextMonthUsers} accounts next month (+${userGrowthRate}% growth rate).`;
+            // Item-level daily demand
+            const updateItemMap = (key: string) => {
+                if (!itemDemandHistoryMap.has(key)) {
+                    itemDemandHistoryMap.set(key, new Map<string, number>());
+                }
+                const dateMap = itemDemandHistoryMap.get(key)!;
+                dateMap.set(dateStr, (dateMap.get(dateStr) || 0) + qty);
+            };
 
-        // 6. Forecast Appeals
-        const appealFc = runTimeSeriesForecast(anofox, appealAgg.counts, 7, 0.90);
-        const totalNextWeekAppeals = appealFc.predictions.reduce((a, b) => a + b, 0);
-        const appealsExplanation = appealAgg.totalAppeals > 0
-            ? `Evaluated ${appealAgg.totalAppeals} user unblock appeals. Resolution efficiency stands at ${appealAgg.resolutionRate}% (${appealAgg.approvedCount} approved, ${appealAgg.rejectedCount} rejected, ${appealAgg.pendingCount} pending review). Next 7 days project ${totalNextWeekAppeals} incoming appeal requests.`
-            : `No unblock appeals logged in Supabase. Lockout remediation queue is clear.`;
+            if (idKey) updateItemMap(idKey);
+            if (nameKey) updateItemMap(nameKey);
+        });
+
+        // 8. Forecast Computation for each inventory item
+        const forecastedItemsList: any[] = [];
+        let globalForecastDaily = Array(validHorizonDays).fill(0);
+        let globalForecastLower = Array(validHorizonDays).fill(0);
+        let globalForecastUpper = Array(validHorizonDays).fill(0);
+        const unitDemandMap: Record<string, number> = {};
+
+        let itemsWithUsableDataCount = 0;
+        let totalAccuracySum = 0;
+        let evaluatedItemsCount = 0;
+        let totalMaeSum = 0;
+
+        for (const item of items) {
+            const idKey = String(item.id);
+            const nameKey = (item.item_name || '').toLowerCase().trim();
+
+            const exporting = exportingMap.get(idKey) ?? exportingMap.get(nameKey) ?? 0;
+            const currentStock = Math.max(0, Number(item.current_stock || 0));
+            const availableStock = Math.max(0, currentStock - exporting);
+            const minimumStock = Math.max(0, Number(item.minimum_stock || 0));
+
+            // Extract item's daily history
+            const historyMap = itemDemandHistoryMap.get(idKey) || itemDemandHistoryMap.get(nameKey) || new Map<string, number>();
+            const dailyCounts = historicalDates.map(d => historyMap.get(d) || 0);
+            const totalConsumedPeriod = dailyCounts.reduce((a, b) => a + b, 0);
+            const consumptionEventsCount = dailyCounts.filter(c => c > 0).length;
+
+            if (consumptionEventsCount > 0) {
+                itemsWithUsableDataCount++;
+            }
+
+            // Demand trend velocity (first half vs second half of historical period)
+            const mid = Math.floor(dailyCounts.length / 2);
+            const firstHalfSum = dailyCounts.slice(0, mid).reduce((a, b) => a + b, 0);
+            const secondHalfSum = dailyCounts.slice(mid).reduce((a, b) => a + b, 0);
+
+            let demandTrend: 'Increasing' | 'Decreasing' | 'Stable' | 'Insufficient Data' = 'Stable';
+            let trendPercentage = 0;
+
+            if (totalConsumedPeriod === 0) {
+                demandTrend = 'Insufficient Data';
+            } else if (firstHalfSum === 0 && secondHalfSum > 0) {
+                demandTrend = 'Increasing';
+                trendPercentage = 100;
+            } else if (firstHalfSum > 0 && secondHalfSum === 0) {
+                demandTrend = 'Decreasing';
+                trendPercentage = -100;
+            } else if (firstHalfSum > 0) {
+                trendPercentage = Math.round(((secondHalfSum - firstHalfSum) / firstHalfSum) * 100);
+                if (trendPercentage >= 15) demandTrend = 'Increasing';
+                else if (trendPercentage <= -15) demandTrend = 'Decreasing';
+                else demandTrend = 'Stable';
+            }
+
+            // Execute time series forecasting model or invalidate if data is < 3 years old
+            let itemDailyPredictions: number[];
+            let lowerBounds: number[];
+            let upperBounds: number[];
+            let confidenceStr: string;
+            let modelUsedStr: string;
+            let forecastDemandSum = 0;
+            let itemEvaluation: any = null;
+
+            if (!hasThreeYearsHistory) {
+                itemDailyPredictions = Array(validHorizonDays).fill(0);
+                lowerBounds = Array(validHorizonDays).fill(0);
+                upperBounds = Array(validHorizonDays).fill(0);
+                confidenceStr = "0%";
+                modelUsedStr = "No Prediction (< 3 Yrs Data)";
+                forecastDemandSum = 0;
+                itemEvaluation = {
+                    has_evaluation: false,
+                    accuracy_percentage: 0,
+                    mae: 0,
+                    rmse: 0,
+                    wape: 0,
+                    model_tested: "No Prediction (< 3 Years Data)"
+                };
+            } else {
+                const forecastResult = await executeTimeSeriesForecast(dailyCounts, validHorizonDays);
+                itemDailyPredictions = forecastResult.predictions;
+                lowerBounds = forecastResult.lower;
+                upperBounds = forecastResult.upper;
+                confidenceStr = forecastResult.confidence;
+                modelUsedStr = forecastResult.model_used;
+                forecastDemandSum = itemDailyPredictions.reduce((a, b) => a + b, 0);
+                itemEvaluation = forecastResult.evaluation;
+            }
+
+            // Incoming purchase orders
+            const incomingInfo = incomingQtyMap.get(idKey) || incomingQtyMap.get(nameKey) || { totalQty: 0, details: [] };
+            const expectedIncoming = incomingInfo.totalQty;
+
+            // Projected stock calculation:
+            // Projected Stock = Current Available Stock + Expected Incoming Quantity - Forecast Demand
+            const projectedStock = availableStock + expectedIncoming - forecastDemandSum;
+
+            // Risk Level:
+            // - Critical: projected stock is below zero.
+            // - Low Stock Risk: projected stock is at or below the minimum stock level.
+            // - Normal: projected stock remains above the minimum stock level.
+            let riskLevel: 'Critical' | 'Low Stock Risk' | 'Normal' = 'Normal';
+            let recommendedAction = hasThreeYearsHistory
+                ? `Adequate Stock Level — Buffer of ${Math.max(0, projectedStock - minimumStock)} ${item.unit || 'units'} above minimum safety threshold.`
+                : `Adequate Stock Level — Buffer of ${Math.max(0, projectedStock - minimumStock)} ${item.unit || 'units'} above minimum safety threshold (Prediction disabled: 0% confidence, requires 3+ years history).`;
+
+            if (projectedStock < 0) {
+                riskLevel = 'Critical';
+                recommendedAction = `Immediate Reorder Required — Projected stockout deficit of ${Math.abs(projectedStock)} ${item.unit || 'units'}.`;
+            } else if (projectedStock <= minimumStock) {
+                riskLevel = 'Low Stock Risk';
+                recommendedAction = `Prepare Requisition — Projected stock (${projectedStock}) will deplete below minimum safety level (${minimumStock} ${item.unit || 'units'}).`;
+            }
+
+            // Accumulate units breakdown
+            const unit = item.unit || 'units';
+            unitDemandMap[unit] = (unitDemandMap[unit] || 0) + forecastDemandSum;
+
+            // Aggregate global timeline
+            for (let h = 0; h < validHorizonDays; h++) {
+                globalForecastDaily[h] += itemDailyPredictions[h] || 0;
+                globalForecastLower[h] += lowerBounds[h] || 0;
+                globalForecastUpper[h] += upperBounds[h] || 0;
+            }
+
+            // Evaluation aggregation
+            if (hasThreeYearsHistory && itemEvaluation && itemEvaluation.has_evaluation) {
+                totalAccuracySum += itemEvaluation.accuracy_percentage;
+                totalMaeSum += itemEvaluation.mae;
+                evaluatedItemsCount++;
+            }
+
+            const lastIssuanceDate = lastIssuanceOverallMap.get(idKey) || lastIssuanceOverallMap.get(nameKey) || null;
+            const daysSinceLastIssuance = lastIssuanceDate
+                ? Math.max(0, Math.floor((todayMs - new Date(lastIssuanceDate + 'T00:00:00Z').getTime()) / (24 * 60 * 60 * 1000)))
+                : null;
+
+            const itemCreatedAt = item.created_at ? new Date(item.created_at).getTime() : todayMs;
+            const daysSinceCreated = Math.max(0, Math.floor((todayMs - itemCreatedAt) / (24 * 60 * 60 * 1000)));
+
+            let stockStatus: 'Out of Stock' | 'Low Stock' | 'Adequate Stock' = 'Adequate Stock';
+            if (availableStock <= 0) {
+                stockStatus = 'Out of Stock';
+            } else if (availableStock <= minimumStock) {
+                stockStatus = 'Low Stock';
+            }
+
+            let movementClassification = 'Moderate Mover';
+            if (daysSinceCreated <= 30 && totalConsumedPeriod === 0) {
+                movementClassification = 'Newly Added';
+            } else if (totalConsumedPeriod === 0 && daysSinceLastIssuance !== null && daysSinceLastIssuance > 180) {
+                movementClassification = 'Dead Stock Candidate';
+            } else if (totalConsumedPeriod === 0 && daysSinceLastIssuance !== null && daysSinceLastIssuance > 90) {
+                movementClassification = 'Dormant Stock';
+            } else if (totalConsumedPeriod === 0) {
+                movementClassification = 'Zero Movement (Period)';
+            } else if (totalConsumedPeriod > 0 && availableStock > (minimumStock * 3) && (totalConsumedPeriod / validPeriodDays) < 0.05) {
+                movementClassification = 'Excess Stock Risk';
+            } else if (totalConsumedPeriod > 0 && (totalConsumedPeriod / validPeriodDays) < 0.1) {
+                movementClassification = 'Slow Mover';
+            } else if (totalConsumedPeriod > 0) {
+                movementClassification = 'Fast Mover';
+            }
+
+            forecastedItemsList.push({
+                id: item.id,
+                item_code: item.item_code,
+                item_name: item.item_name,
+                category: item.category || 'Uncategorized',
+                unit: item.unit || 'units',
+                current_stock: currentStock,
+                exporting_stock: exporting,
+                available_stock: availableStock,
+                minimum_stock: minimumStock,
+                purchase_price: Number(item.purchase_price || 0),
+                supplier: item.supplier || 'N/A',
+                created_at: item.created_at || null,
+                days_since_created: daysSinceCreated,
+
+                is_prediction_valid: isPredictionValid,
+                prediction_message: hasThreeYearsHistory
+                    ? "Prediction valid"
+                    : `Data is not enough for prediction. Requires at least 3 years (1,095 days) of continuous records. Current dataset span: ${historySpanDays} days. AI confidence is 0%.`,
+
+                total_consumed_period: totalConsumedPeriod,
+                consumption_events_count: consumptionEventsCount,
+                average_daily_consumption: Math.round((totalConsumedPeriod / validPeriodDays) * 100) / 100,
+                zero_days_fraction: Math.round(((validPeriodDays - consumptionEventsCount) / validPeriodDays) * 100) / 100,
+                demand_trend: demandTrend,
+                trend_percentage: trendPercentage,
+
+                last_issuance_date: lastIssuanceDate,
+                days_since_last_issuance: daysSinceLastIssuance,
+                stock_status: stockStatus,
+                movement_classification: movementClassification,
+
+                forecast_demand: forecastDemandSum,
+                daily_predictions: itemDailyPredictions,
+                prediction_dates: forecastDates,
+                lower_bounds: lowerBounds,
+                upper_bounds: upperBounds,
+                confidence: confidenceStr,
+                model_used: modelUsedStr,
+
+                expected_incoming: expectedIncoming,
+                incoming_pos_details: incomingInfo.details,
+
+                projected_stock: projectedStock,
+                risk_level: riskLevel,
+                recommended_action: recommendedAction,
+                evaluation: itemEvaluation
+            });
+        }
+
+        // 9. Aggregate Historical Consumption Statistics
+        const historicalDemands = historicalDates.map(d => dailyGlobalDemandMap.get(d) || 0);
+
+        // Weekly aggregation for consumption overview
+        const weeklyLabels: string[] = [];
+        const weeklyTotals: number[] = [];
+        for (let i = 0; i < historicalDates.length; i += 7) {
+            const chunkEnd = Math.min(i + 6, historicalDates.length - 1);
+            const label = `${historicalDates[i].slice(5)} - ${historicalDates[chunkEnd].slice(5)}`;
+            let sum = 0;
+            for (let j = i; j <= chunkEnd; j++) {
+                sum += historicalDemands[j] || 0;
+            }
+            weeklyLabels.push(label);
+            weeklyTotals.push(sum);
+        }
+
+        // Monthly aggregation
+        const monthlyMap = new Map<string, number>();
+        historicalDates.forEach((d, idx) => {
+            const m = d.slice(0, 7);
+            monthlyMap.set(m, (monthlyMap.get(m) || 0) + (historicalDemands[idx] || 0));
+        });
+        const monthlyLabels = Array.from(monthlyMap.keys());
+        const monthlyTotals = monthlyLabels.map(m => monthlyMap.get(m) || 0);
+
+        // Top consumed supplies
+        const topConsumedSupplies = [...forecastedItemsList]
+            .filter(item => item.total_consumed_period > 0)
+            .sort((a, b) => b.total_consumed_period - a.total_consumed_period)
+            .slice(0, 10)
+            .map(item => ({
+                item_code: item.item_code,
+                item_name: item.item_name,
+                unit: item.unit,
+                total_quantity: item.total_consumed_period,
+                events: item.consumption_events_count
+            }));
+
+        // Increasing vs Decreasing demand
+        const increasingItems = forecastedItemsList
+            .filter(i => i.demand_trend === 'Increasing' && i.total_consumed_period > 0)
+            .sort((a, b) => b.trend_percentage - a.trend_percentage)
+            .slice(0, 5)
+            .map(i => ({ item_code: i.item_code, item_name: i.item_name, growth: i.trend_percentage }));
+
+        const decreasingItems = forecastedItemsList
+            .filter(i => i.demand_trend === 'Decreasing' && i.total_consumed_period > 0)
+            .sort((a, b) => a.trend_percentage - b.trend_percentage)
+            .slice(0, 5)
+            .map(i => ({ item_code: i.item_code, item_name: i.item_name, decline: i.trend_percentage }));
+
+        const departmentBreakdown = Array.from(departmentConsumptionMap.entries())
+            .map(([department, data]) => ({
+                department,
+                count: data.count,
+                total_quantity: data.totalQty
+            }))
+            .sort((a, b) => b.total_quantity - a.total_quantity);
+
+        // 10. Summary Metrics Calculations
+        const criticalCount = forecastedItemsList.filter(i => i.risk_level === 'Critical').length;
+        const lowStockCount = forecastedItemsList.filter(i => i.risk_level === 'Low Stock Risk').length;
+        const normalCount = forecastedItemsList.filter(i => i.risk_level === 'Normal').length;
+        const potentialShortages = criticalCount + lowStockCount;
+        const totalForecastDemandSum = forecastedItemsList.reduce((acc, i) => acc + i.forecast_demand, 0);
+
+        const avgAccuracy = hasThreeYearsHistory ? (evaluatedItemsCount > 0 ? Math.round(totalAccuracySum / evaluatedItemsCount) : null) : 0;
+        const avgMae = hasThreeYearsHistory ? (evaluatedItemsCount > 0 ? Math.round((totalMaeSum / evaluatedItemsCount) * 100) / 100 : null) : 0;
+
+        // 11. Generate Gemini AI Insights Context
+        const criticalItemsSummary = forecastedItemsList
+            .filter(i => i.risk_level === 'Critical')
+            .slice(0, 6)
+            .map(i => ({
+                item_code: i.item_code,
+                item_name: i.item_name,
+                available_stock: i.available_stock,
+                forecast_demand: i.forecast_demand,
+                projected_stock: i.projected_stock,
+                unit: i.unit
+            }));
+
+        const aiInsights = await generateGeminiInsights({
+            totalItems: forecastedItemsList.length,
+            forecastHorizon: validHorizonDays,
+            totalDemand: totalForecastDemandSum,
+            criticalCount,
+            lowStockCount,
+            normalCount,
+            criticalItems: criticalItemsSummary,
+            topConsumed: topConsumedSupplies.slice(0, 5),
+            fastMoving: increasingItems,
+            departmentBreakdown,
+            hasThreeYearsHistory,
+            historySpanDays
+        });
+
+        // 12. Apply Optional Server-Side Filter for items response if queried directly
+        let filteredItems = [...forecastedItemsList];
+        if (categoryFilter && categoryFilter !== 'all') {
+            filteredItems = filteredItems.filter(i => (i.category || '').toLowerCase() === categoryFilter.toLowerCase());
+        }
+        if (searchQuery) {
+            filteredItems = filteredItems.filter(i =>
+                i.item_name.toLowerCase().includes(searchQuery) ||
+                i.item_code.toLowerCase().includes(searchQuery)
+            );
+        }
+        if (riskFilter && riskFilter !== 'all') {
+            if (riskFilter === 'critical' || riskFilter === 'shortage') {
+                filteredItems = filteredItems.filter(i => i.risk_level === 'Critical');
+            } else if (riskFilter === 'low_stock' || riskFilter === 'low') {
+                filteredItems = filteredItems.filter(i => i.risk_level === 'Low Stock Risk');
+            } else if (riskFilter === 'normal') {
+                filteredItems = filteredItems.filter(i => i.risk_level === 'Normal');
+            }
+        }
+
+        // 13. Fast-Moving and Slowest-Moving Items Computation
+        const fastMovingItems = [...forecastedItemsList]
+            .filter(i => i.total_consumed_period > 0)
+            .sort((a, b) => b.total_consumed_period - a.total_consumed_period)
+            .map(i => ({
+                id: i.id,
+                item_code: i.item_code,
+                item_name: i.item_name,
+                category: i.category,
+                unit: i.unit,
+                total_quantity_issued: i.total_consumed_period,
+                issuance_transactions_count: i.consumption_events_count,
+                average_daily_issued: i.average_daily_consumption,
+                usable_stock: i.available_stock,
+                current_stock: i.current_stock,
+                minimum_stock: i.minimum_stock,
+                last_issuance_date: i.last_issuance_date,
+                days_since_last_issuance: i.days_since_last_issuance,
+                stock_status: i.stock_status,
+                movement_classification: i.movement_classification
+            }));
+
+        const slowMovingItems = [...forecastedItemsList]
+            .sort((a, b) => {
+                if (a.total_consumed_period !== b.total_consumed_period) {
+                    return a.total_consumed_period - b.total_consumed_period;
+                }
+                const aDays = a.days_since_last_issuance ?? 9999;
+                const bDays = b.days_since_last_issuance ?? 9999;
+                return bDays - aDays;
+            })
+            .map(i => ({
+                id: i.id,
+                item_code: i.item_code,
+                item_name: i.item_name,
+                category: i.category,
+                unit: i.unit,
+                total_quantity_issued: i.total_consumed_period,
+                issuance_transactions_count: i.consumption_events_count,
+                average_daily_issued: i.average_daily_consumption,
+                usable_stock: i.available_stock,
+                current_stock: i.current_stock,
+                minimum_stock: i.minimum_stock,
+                last_issuance_date: i.last_issuance_date,
+                days_since_last_issuance: i.days_since_last_issuance,
+                days_since_created: i.days_since_created,
+                created_at: i.created_at,
+                is_zero_issue: i.total_consumed_period === 0,
+                stock_status: i.stock_status,
+                movement_classification: i.movement_classification
+            }));
+
+        const zeroIssueItems = slowMovingItems.filter(i => i.is_zero_issue);
+        const lowConsumptionItems = slowMovingItems.filter(i => !i.is_zero_issue);
+
+        const itemMovementAnalytics = {
+            period_days: validPeriodDays,
+            start_date: startPeriodStr,
+            end_date: todayStr,
+            total_catalog_items: items.length,
+            active_moving_items_count: fastMovingItems.length,
+            zero_issuance_items_count: zeroIssueItems.length,
+            low_consumption_items_count: lowConsumptionItems.length,
+            fast_moving_items: fastMovingItems,
+            slow_moving_items: slowMovingItems,
+            zero_issue_items: zeroIssueItems,
+            low_consumption_items: lowConsumptionItems,
+            ranking_method_explanation: "Items are ranked based strictly on actual completed warehouse stock-out issuances during the selected calendar period. Average daily consumption is computed by dividing net issued quantity by the full number of calendar days in the period (including zero-issue days). Items with zero issues are tracked separately from low-consumption items, and newly cataloged items (<30 days old) are protected from inaccurate obsolete classifications."
+        };
 
         return NextResponse.json({
             success: true,
-            raw_db_stats: {
-                total_parcels_in_db: parcelAgg.totalParcels,
-                total_pos_in_db: expenseList.length,
-                total_paid_pos_in_db: qualifiedExpenseList.length,
-                total_blocked_devices_in_db: blockedAgg.totalBlocked,
-                total_sessions_in_db: sessionAgg.totalSessions,
-                total_users_in_db: userAgg.totalUsers,
-                total_appeals_in_db: appealAgg.totalAppeals,
-                courier_breakdown: parcelAgg.courierCounts,
-                status_breakdown: parcelAgg.statusCounts,
-                positions_breakdown: userAgg.positionsBreakdown,
-                roles_breakdown: userAgg.rolesBreakdown,
+            timestamp: new Date().toISOString(),
+            historical_period_days: validPeriodDays,
+            horizon_days: validHorizonDays,
+            summary: {
+                total_items: items.length,
+                items_forecasted: hasThreeYearsHistory ? itemsWithUsableDataCount : 0,
+                has_sufficient_data: hasThreeYearsHistory && itemsWithUsableDataCount > 0,
+                has_three_years_history: hasThreeYearsHistory,
+                is_prediction_valid: isPredictionValid,
+                history_span_days: historySpanDays,
+                required_history_days: THREE_YEARS_DAYS,
+                earliest_record_date: earliestMovementAt ? earliestMovementAt.split('T')[0] : null,
+                total_predicted_demand: totalForecastDemandSum,
+                primary_units_breakdown: unitDemandMap,
+                potential_shortages: potentialShortages,
+                critical_count: criticalCount,
+                low_stock_count: lowStockCount,
+                normal_count: normalCount,
+                average_accuracy: avgAccuracy,
+                average_mae: avgMae,
+                accuracy_label: hasThreeYearsHistory
+                    ? (avgAccuracy !== null ? `${avgAccuracy}% Mean Holdout Accuracy` : 'Insufficient Evaluation Holdout Data')
+                    : '0% Confidence — Insufficient History (< 3 Years Required)',
+                prediction_status: hasThreeYearsHistory ? "Valid Prediction" : "Invalid Prediction (0% Confidence)",
+                prediction_message: hasThreeYearsHistory
+                    ? "Historical records meet 3-year minimum threshold."
+                    : `Data is not enough for prediction. Time-series forecasting requires at least 3 years (1,095 days) of continuous historical records. Current dataset span: ${historySpanDays} days. AI Confidence: 0%.`
             },
-            parcel_7_day: {
-                predictions: parcelFc.predictions,
-                confidence_interval: {
-                    lower: parcelFc.lower,
-                    upper: parcelFc.upper
-                },
-                total_next_week: totalNextWeekParcels,
-                confidence: parcelFc.confidence,
-                model_used: parcelFc.model_used,
-                engine: "@sipemu/anofox-forecast (Rust/WASM)",
-                explanation: `Calculated by analyzing ${parcelAgg.dates.length} days of historical parcel intake via ${parcelFc.model_used}.`,
-                dates: next7Days,
-                previous_week_evaluation: prevWeekEvaluation,
-                historical: {
-                    dates: parcelAgg.dates,
-                    counts: parcelAgg.counts,
-                    display_dates: parcelAgg.displayDates,
-                    display_counts: parcelAgg.displayCounts,
-                    aggregation_type: parcelAgg.aggregationType,
-                    total_actual: parcelAgg.totalParcels
-                },
-                peak_insights: parcelAgg.peakInsights
+            chart_timeline: {
+                historical_dates: historicalDates,
+                historical_demands: historicalDemands,
+                forecast_dates: forecastDates,
+                forecast_demands: globalForecastDaily,
+                forecast_lower: globalForecastLower,
+                forecast_upper: globalForecastUpper
             },
-            expense_next_month: {
-                prediction: expensePrediction,
-                confidence_interval: {
-                    lower: expenseLower,
-                    upper: expenseUpper
-                },
-                confidence: expenseConfidence,
-                model_used: expenseModelUsed,
-                engine: "@sipemu/anofox-forecast (Rust/WASM)",
-                explanation: expenseExplanation,
-                historical: {
-                    months: expenseAgg.months,
-                    amounts: expenseAgg.amounts,
-                    total_actual: expenseAgg.totalExpenseSum
+            items: filteredItems,
+            allItemsCount: forecastedItemsList.length,
+            item_movement_analytics: itemMovementAnalytics,
+            consumption_analysis: {
+                dates: historicalDates,
+                daily_totals: historicalDemands,
+                weekly_labels: weeklyLabels,
+                weekly_totals: weeklyTotals,
+                monthly_labels: monthlyLabels,
+                monthly_totals: monthlyTotals,
+                department_breakdown: departmentBreakdown,
+                top_consumed_items: topConsumedSupplies,
+                increasing_items: increasingItems,
+                decreasing_items: decreasingItems,
+                unmet_requests_summary: {
+                    total_pending_qty: totalPendingReqQty,
+                    pending_requests_count: pendingRequestsCount,
+                    items_with_pending: itemsWithPendingSet.size
                 }
             },
-            blocked_devices_forecast: {
-                total_blocked: blockedAgg.totalBlocked,
-                active_blocked_count: blockedAgg.activeBlockedCount,
-                unblocked_count: blockedAgg.unblockedCount,
-                risk_level: threatRiskLevel,
-                predictions: blockedFc.predictions,
-                confidence_interval: {
-                    lower: blockedFc.lower,
-                    upper: blockedFc.upper
-                },
-                total_next_week: totalNextWeekBlocked,
-                confidence: blockedFc.confidence,
-                model_used: blockedFc.model_used,
-                engine: "@sipemu/anofox-forecast (Rust/WASM)",
-                explanation: blockedExplanation,
-                dates: next7Days,
-                historical: {
-                    dates: blockedAgg.dates,
-                    counts: blockedAgg.counts,
-                    display_dates: blockedAgg.displayDates,
-                    display_counts: blockedAgg.displayCounts,
-                    aggregation_type: blockedAgg.aggregationType,
-                    total_actual: blockedAgg.totalBlocked
-                },
-                reasons_breakdown: blockedAgg.reasonsBreakdown,
-                platform_breakdown: blockedAgg.platformBreakdown
-            },
-            active_users_forecast: {
-                current_active_users: sessionAgg.currentActiveUsers,
-                unique_active_users: sessionAgg.uniqueActiveUsers,
-                total_sessions: sessionAgg.totalSessions,
-                busiest_hour: sessionAgg.busiestHour,
-                busiest_day: sessionAgg.busiestDay,
-                capacity_utilization: {
-                    current_active: sessionAgg.currentActiveUsers,
-                    max_capacity: maxCapacity,
-                    utilization_percentage: utilizationPct
-                },
-                predictions: sessionFc.predictions,
-                confidence_interval: {
-                    lower: sessionFc.lower,
-                    upper: sessionFc.upper
-                },
-                total_next_week: totalNextWeekSessions,
-                avg_daily_projected: avgDailySessions,
-                confidence: sessionFc.confidence,
-                model_used: sessionFc.model_used,
-                engine: "@sipemu/anofox-forecast (Rust/WASM)",
-                explanation: userSessionExplanation,
-                dates: next7Days,
-                historical: {
-                    dates: sessionAgg.dates,
-                    counts: sessionAgg.counts,
-                    display_dates: sessionAgg.displayDates,
-                    display_counts: sessionAgg.displayCounts,
-                    aggregation_type: sessionAgg.aggregationType,
-                    total_actual: sessionAgg.totalSessions
-                },
-                hourly_distribution: sessionAgg.hourlyDistribution
-            },
-            users_positions_analytics: {
-                total_users: userAgg.totalUsers,
-                active_users_count: userAgg.activeUsersCount,
-                positions_breakdown: userAgg.positionsBreakdown,
-                roles_breakdown: userAgg.rolesBreakdown,
-                departments_breakdown: userAgg.departmentsBreakdown,
-                predicted_next_month_users: projectedNextMonthUsers,
-                growth_rate_percentage: userGrowthRate,
-                confidence: "85%",
-                explanation: positionsExplanation,
-                signup_history: userAgg.signupHistory
-            },
-            appeals_forecast: {
-                total_appeals: appealAgg.totalAppeals,
-                pending_count: appealAgg.pendingCount,
-                approved_count: appealAgg.approvedCount,
-                rejected_count: appealAgg.rejectedCount,
-                resolution_rate: appealAgg.resolutionRate,
-                role_breakdown: appealAgg.roleBreakdown,
-                predictions: appealFc.predictions,
-                confidence_interval: {
-                    lower: appealFc.lower,
-                    upper: appealFc.upper
-                },
-                total_next_week: totalNextWeekAppeals,
-                confidence: appealFc.confidence,
-                model_used: appealFc.model_used,
-                engine: "@sipemu/anofox-forecast (Rust/WASM)",
-                explanation: appealsExplanation,
-                dates: next7Days,
-                historical: {
-                    dates: appealAgg.dates,
-                    counts: appealAgg.counts,
-                    display_dates: appealAgg.displayDates,
-                    display_counts: appealAgg.displayCounts,
-                    aggregation_type: appealAgg.aggregationType,
-                    total_actual: appealAgg.totalAppeals
-                }
-            },
-            timestamp: new Date().toISOString()
+            ai_insights: aiInsights,
+            persistence_info: {
+                is_persisted: false,
+                message: "Historical forecast runs are dynamically generated in real time from immutable inventory audit logs. To persist execution snapshots across sessions, a dedicated 'forecast_runs' and 'forecast_run_items' schema can be introduced.",
+                required_schema: "CREATE TABLE forecast_runs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), horizon_days INT, period_days INT, items_count INT, accuracy_pct NUMERIC, created_at TIMESTAMPTZ DEFAULT now());"
+            }
         });
-
-    } catch (error: any) {
-        console.error('Forecast route error:', error);
+    } catch (err: any) {
+        console.error('Unexpected error in forecast API route:', err);
         return NextResponse.json(
             {
                 success: false,
-                error: error.message || 'Failed to generate forecast'
+                error: err?.message || 'Failed to generate demand forecast.'
             },
             { status: 500 }
         );
     }
 }
 
+export async function POST(request: NextRequest) {
+    // Allows POST with JSON body for larger filter payloads
+    return GET(request);
+}

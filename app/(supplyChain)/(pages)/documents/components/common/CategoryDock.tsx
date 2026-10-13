@@ -19,7 +19,7 @@ const DOCUMENT_TYPES = [
     "Invoice",
     "Delivery Receipt",
     "Parcel Condition",
-    "Courier Handover",
+    "Logistics Handover",
     "Vehicle Maintenance",
 ];
 

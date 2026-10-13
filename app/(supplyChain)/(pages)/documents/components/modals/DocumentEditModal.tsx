@@ -1,7 +1,7 @@
 // modal for editing document metadata with read-only media preview and version bump
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Document, Supplier } from '../../types';
 import { getFileIcon, getFileColor, formatFileSize } from '../../utils/formatters';
 import { AppButton } from '../../../../components/ui/AppButton';
@@ -13,6 +13,7 @@ interface DocumentEditModalProps {
     editPreviewLoading: boolean;
     editPreviewUrl: string | null;
     suppliers: Supplier[];
+    purchaseOrders?: Array<{ id: string; po_number: string; supplier_id?: number | null; supplier_name?: string }>;
     onClose: () => void;
     onSubmit: (e: React.FormEvent<HTMLFormElement>) => Promise<void>;
     onDownloadFile: (doc: Document) => void;
@@ -24,10 +25,30 @@ export function DocumentEditModal({
     editPreviewLoading,
     editPreviewUrl,
     suppliers,
+    purchaseOrders = [],
     onClose,
     onSubmit,
     onDownloadFile
 }: DocumentEditModalProps) {
+    const [selectedSupplierName, setSelectedSupplierName] = useState(editingDoc?.supplier || "");
+    const [selectedPoNumber, setSelectedPoNumber] = useState(editingDoc?.po_number || "");
+    const [isCustomPo, setIsCustomPo] = useState(false);
+
+    useEffect(() => {
+        if (editingDoc) {
+            setSelectedSupplierName(editingDoc.supplier || "");
+            setSelectedPoNumber(editingDoc.po_number || "");
+        }
+    }, [editingDoc]);
+
+    const filteredPos = useMemo(() => {
+        if (!selectedSupplierName) return purchaseOrders;
+        const matched = purchaseOrders.filter(
+            (p) => (p.supplier_name || '').toLowerCase() === selectedSupplierName.toLowerCase()
+        );
+        return matched.length > 0 ? matched : purchaseOrders;
+    }, [purchaseOrders, selectedSupplierName]);
+
     if (!isOpen || !editingDoc) return null;
 
     const isImage = editingDoc.file_type.toLowerCase().includes('jpg') ||
@@ -167,21 +188,22 @@ export function DocumentEditModal({
                                     <option value="Invoice" className="dark:bg-slate-900">Invoice</option>
                                     <option value="Delivery Receipt" className="dark:bg-slate-900">Delivery Receipt</option>
                                     <option value="Parcel Condition" className="dark:bg-slate-900">Parcel Condition</option>
-                                    <option value="Courier Handover" className="dark:bg-slate-900">Courier Handover</option>
+                                    <option value="Logistics Handover" className="dark:bg-slate-900">Logistics Handover</option>
                                     <option value="Vehicle Maintenance" className="dark:bg-slate-900">Vehicle Maintenance</option>
                                     <option value="Other" className="dark:bg-slate-900">Other</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">
                                     Supplier
                                 </label>
                                 <select
                                     name="supplier"
-                                    defaultValue={editingDoc.supplier || ''}
+                                    value={selectedSupplierName}
+                                    onChange={(e) => setSelectedSupplierName(e.target.value)}
                                     className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 px-3.5 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer"
                                 >
                                     <option value="" className="dark:bg-slate-900 text-slate-400">Select supplier</option>
@@ -191,26 +213,58 @@ export function DocumentEditModal({
                                 </select>
                             </div>
                             <div>
-                                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">
-                                    PO Number
-                                </label>
-                                <input
-                                    name="poNumber"
-                                    defaultValue={editingDoc.po_number || ''}
-                                    className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 px-3.5 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-pink-500 transition-all"
-                                    placeholder="e.g. PO-2026-0031"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">
-                                    Parcel Batch
-                                </label>
-                                <input
-                                    name="parcelBatch"
-                                    defaultValue={editingDoc.parcel_batch || ''}
-                                    className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 px-3.5 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-pink-500 transition-all"
-                                    placeholder="e.g. PB-2026-045"
-                                />
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                        PO Number
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsCustomPo(!isCustomPo);
+                                        }}
+                                        className="text-[10px] text-pink-600 dark:text-pink-400 hover:underline font-semibold"
+                                    >
+                                        {isCustomPo ? "Choose from list" : "+ Enter custom PO"}
+                                    </button>
+                                </div>
+                                {isCustomPo ? (
+                                    <input
+                                        name="poNumber"
+                                        value={selectedPoNumber}
+                                        onChange={(e) => setSelectedPoNumber(e.target.value)}
+                                        className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 px-3.5 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-pink-500 transition-all"
+                                        placeholder="e.g. PO-2026-0031"
+                                    />
+                                ) : (
+                                    <select
+                                        name="poNumber"
+                                        value={selectedPoNumber}
+                                        onChange={(e) => {
+                                            if (e.target.value === '__custom__') {
+                                                setIsCustomPo(true);
+                                                setSelectedPoNumber("");
+                                            } else {
+                                                setSelectedPoNumber(e.target.value);
+                                            }
+                                        }}
+                                        className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl py-2 px-3.5 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer"
+                                    >
+                                        <option value="" className="dark:bg-slate-900 text-slate-400">Select PO Number</option>
+                                        {editingDoc.po_number && !filteredPos.some(p => p.po_number === editingDoc.po_number) && (
+                                            <option value={editingDoc.po_number} className="dark:bg-slate-900">
+                                                {editingDoc.po_number} (Current)
+                                            </option>
+                                        )}
+                                        {filteredPos.map((po) => (
+                                            <option key={po.id || po.po_number} value={po.po_number} className="dark:bg-slate-900">
+                                                {po.po_number} {po.supplier_name ? `(${po.supplier_name})` : ''}
+                                            </option>
+                                        ))}
+                                        <option value="__custom__" className="dark:bg-slate-900 font-semibold text-pink-600 dark:text-pink-400">
+                                            + Enter custom PO Number
+                                        </option>
+                                    </select>
+                                )}
                             </div>
                         </div>
 

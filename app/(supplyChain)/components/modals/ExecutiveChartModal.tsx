@@ -199,7 +199,7 @@ export default function ExecutiveChartModal({
             status: item.badge || "Recorded",
             amount: item.value,
             description: item.subtitle || `Detailed record from ${title}`,
-            isParcel: item.title.toLowerCase().includes("parcel") || item.title.toLowerCase().includes("tracking") || title.toLowerCase().includes("parcel"),
+            isParcel: false,
         });
     };
 

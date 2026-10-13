@@ -209,9 +209,11 @@ export async function POST(request: Request) {
                 p === 'OFFICE-IN-CHARGE' ||
                 p === 'OFFICE IN CHARGE' ||
                 p === 'PROJECT COORDINATOR' ||
-                p === 'MANAGER'
+                p === 'MANAGER' ||
+                p === 'PURCHASE OFFICER' ||
+                p === 'PURCHASING OFFICER'
             ) {
-                effectiveRole = 'Manager';
+                effectiveRole = 'Purchase Officer';
             } else if (p === 'APPRAISER' || p === 'OPERATOR') {
                 effectiveRole = 'Operator';
             } else {
@@ -290,7 +292,7 @@ export async function POST(request: Request) {
                 user_agent: userAgent,
                 ip_address: ipAddress,
                 created_at: new Date().toISOString(),
-                is_allow: isManagerOrAdmin, // Admin/Executive default to true
+                is_allow: true, // 7 days a week, 24/7 enabled by default
                 allowed_days: DEFAULT_ALLOWED_DAYS,
                 allowed_time_start: DEFAULT_TIME_START,
                 allowed_time_end: DEFAULT_TIME_END,
@@ -305,15 +307,14 @@ export async function POST(request: Request) {
             );
         }
 
-        // initialize default access control rule (default is_allow: false, allowed days: Mon-Fri, 7am-5pm)
+        // initialize default access control rule (7 days a week, 24/7, enabled)
         try {
-            const isManagerOrAdmin = ['admin', 'executive'].includes((role || '').toLowerCase().trim());
             await saveUserAccessRule({
                 email,
                 user_id: userId,
                 display_name: displayName,
                 role: effectiveRole,
-                is_allow: isManagerOrAdmin, // Admins/Executives allowed by default, staff/operators default false
+                is_allow: true, // 7 days a week, 24/7 enabled by default
                 allowed_days: DEFAULT_ALLOWED_DAYS,
                 allowed_time_start: DEFAULT_TIME_START,
                 allowed_time_end: DEFAULT_TIME_END,
@@ -343,7 +344,7 @@ export async function POST(request: Request) {
         // determine redirect based on role
         const roleRedirects: Record<string, string> = {
             'Admin': '/procurement',
-            'Manager': '/warehousing?tab=incoming',
+            'Purchase Officer': '/warehousing',
             'Staff': '/documents',
             'Employee': '/documents',
             'Operator': '/warehousing?tab=incoming',
