@@ -1,6 +1,13 @@
+// app/(spnc)/spnc/app/api/service-providers/route.ts
+//
+//   GET   → all providers that are not archived (includes the pending_* columns)
+//   POST  → admin only: create a provider
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditActor, logAuditEvent } from "../../../lib/audit";
 import { getSupabaseClient } from "../../../lib/supabase";
+import { getSessionUserId } from "../../../lib/currentUser";
+import { normalizeSessionRole } from "../../../lib/session";
+import { can } from "../../../lib/rbac";
 
 // Lists only providers that are not archived.
 export async function GET(req: NextRequest) {
@@ -21,6 +28,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseClient();
+
+  // Admins only (the "Add Provider" button is hidden for employees, but the server must enforce it too).
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+  const { data: me } = await supabase.from("users").select("role").eq("id", userId).maybeSingle();
+  if (!can(normalizeSessionRole(me?.role), "providers:create")) {
+    return NextResponse.json({ message: "Only admins can add providers." }, { status: 403 });
+  }
+
   const body = await req.json();
   const {
     name, type, agency, department, contact_person, email, phone,
@@ -30,8 +48,6 @@ export async function POST(req: NextRequest) {
   if (!name || !type) {
     return NextResponse.json({ message: "Company name and type are required." }, { status: 400 });
   }
-
-  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase
     .from("service_providers")

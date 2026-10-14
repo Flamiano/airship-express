@@ -64,18 +64,33 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     notes,
   } = body;
 
-  if (!schedule_code || !route_id || !departure_datetime || !arrival_datetime) {
-    return NextResponse.json({ message: "Schedule code, route, departure, and arrival are required." }, { status: 400 });
+  // Route is optional here: deliveries added automatically by Route Planning may not have a
+  // matching route yet. The Schedules form still requires a route before it sends anything.
+  if (!schedule_code || !departure_datetime || !arrival_datetime) {
+    return NextResponse.json({ message: "Schedule code, departure, and arrival are required." }, { status: 400 });
   }
 
   const supabase = getSupabaseClient();
+
+  // The route decides the provider (same rule as the Schedules form)
+  let providerId: string | null = service_provider_id || null;
+  if (route_id) {
+    const { data: route } = await supabase.from("routes").select("service_provider_id").eq("id", route_id).maybeSingle();
+    if (route?.service_provider_id) providerId = String(route.service_provider_id);
+  }
+
+  // Older schedule columns sent by Route Planning: only updated when they are sent
+  const extra: Record<string, unknown> = {};
+  for (const key of ["vehicle", "cargo_details", "tracking"]) {
+    if (key in body) extra[key] = body[key] || null;
+  }
 
   const { data, error } = await supabase
     .from("schedules")
     .update({
       schedule_code,
-      route_id,
-      service_provider_id: service_provider_id || null,
+      route_id: route_id || null,
+      service_provider_id: providerId,
       departure_datetime,
       arrival_datetime,
       frequency: frequency || "weekly",
@@ -85,6 +100,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       cutoff_hours: cutoff_hours ?? 24,
       status: status || "scheduled",
       notes: notes || null,
+      ...extra,
     })
     .eq("id", id)
     .select("*")

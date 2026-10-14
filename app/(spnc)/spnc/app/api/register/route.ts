@@ -1,5 +1,7 @@
+// Save as: app/(spnc)/spnc/app/api/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { createSessionToken, SESSION_COOKIE_NAME } from "../../../lib/session";
 
@@ -8,7 +10,12 @@ export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, full_name } = await req.json();
+    const { email, password, full_name, keep_current_session } = await req.json();
+
+    // true when an admin creates an account from the Employee Activity pop-up:
+    // the account is created, but the admin stays logged in as themselves.
+    // (Safe: this only skips logging in — the new account is always an "employee".)
+    const keepCurrentSession = keep_current_session === true;
 
     if (!email || !password || !full_name) {
       return NextResponse.json(
@@ -32,7 +39,7 @@ export async function POST(req: NextRequest) {
       .from("users")
       .select("id")
       .eq("email", normalizedEmail)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return NextResponse.json(
@@ -46,9 +53,14 @@ export async function POST(req: NextRequest) {
     const { data: user, error } = await supabase
       .from("users")
       .insert({
+        id: randomUUID(), // users.id has no default in the database
+        created_at: new Date().toISOString(), // same for created_at
         email: normalizedEmail,
         password: hashedPassword,
         full_name,
+        // RBAC: public sign-up can never create an admin. Admins are created
+        // from the admin "Create Account" page (api/users).
+        role: "employee",
       })
       .select()
       .single();
@@ -61,12 +73,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const token = await createSessionToken({
-      userId: user.id,
-      email: user.email,
-      full_name: user.full_name,
-    });
-
     const response = NextResponse.json({
       success: true,
       user: {
@@ -74,6 +80,16 @@ export async function POST(req: NextRequest) {
         full_name: user.full_name,
         email: user.email,
       },
+    });
+
+    // Created by an admin from the pop-up → don't replace the admin's login with the new account
+    if (keepCurrentSession) return response;
+
+    // Normal sign-up on the register page → log the new user in
+    const token = await createSessionToken({
+      userId: user.id,
+      email: user.email,
+      full_name: user.full_name,
     });
 
     response.cookies.set(SESSION_COOKIE_NAME, token, {

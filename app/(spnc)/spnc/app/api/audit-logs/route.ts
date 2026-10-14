@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { normalizeSessionRole, SESSION_COOKIE_NAME, verifySessionToken } from "../../../lib/session";
+import { can } from "../../../lib/rbac";
 
 const EVENT_TYPES = ["login", "logout", "session_timeout", "user_activity", "archive"] as const;
 
@@ -33,6 +34,11 @@ export async function GET(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  // RBAC: only roles with audit-logs:view (admin) may read the logs.
+  if (!can(user.role, "audit-logs:view")) {
+    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
   const params = request.nextUrl.searchParams;

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Calendar,
   Pencil,
-  Archive,
   X,
   Loader2,
   ChevronLeft,
@@ -18,6 +17,8 @@ import {
   Search,
   Truck,
   Map as MapIcon,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
@@ -31,6 +32,9 @@ const STATUS_OPTIONS = ["scheduled", "delayed", "cancelled", "completed"];
 const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_EVENTS_PER_CELL = 3;
+const DAY_RECENT_SEARCHES_KEY = "schedules_day_recent_searches";
+const MAX_DAY_RECENT_SEARCHES = 5;
+const DAY_LIST_PAGE_SIZE = 10; // schedules + trips shown per page in the selected-day list, with Back / Next
 
 type RouteItem = {
   id: string;
@@ -182,6 +186,53 @@ function scheduleRouteLabel(r: Schedule["routes"], fallbackId: string) {
     return `${r.origin} → ${r.destination}${r.mode_of_transport ? ` (${r.mode_of_transport})` : ""}`;
   }
   return r.route_name;
+}
+
+/* ---------- Deliveries from Route Planning ----------
+ * The Service Network & Route Planning page adds every planned delivery to public.schedules automatically
+ * (schedule codes "SCH-SHP-…"). This page reloads schedules every LIVE_REFRESH_MS, when the tab is focused,
+ * and immediately when Route Planning announces a change on the "spnc-schedules" channel, so those
+ * deliveries land on the calendar by themselves.
+ */
+const LIVE_REFRESH_MS = 15_000;
+const SCHEDULES_CHANNEL = "spnc-schedules";
+
+const isFromRoutePlanning = (s: Pick<Schedule, "schedule_code" | "notes">) =>
+  (s.schedule_code || "").toUpperCase().startsWith("SCH-SHP-") || (s.notes || "").startsWith("From Route Planning");
+
+// Route text for a schedule: the linked route, or (for Route Planning deliveries without a route yet) the path in the notes
+function scheduleLabel(s: Schedule) {
+  if (s.routes) return scheduleRouteLabel(s.routes, s.route_id);
+  const fromNotes = (s.notes || "").split("\n").find((l) => l.startsWith("Route: "));
+  if (fromNotes) return fromNotes.replace(/^Route:\s*/, "").replace(/\s*·\s*[\d.,]+\s*km$/, "");
+  return s.route_id ? s.route_id : "No route linked";
+}
+
+/* ---------- Upcoming / On-going / Delivered (same tabs as the Route Planning page) ----------
+ * Worked out from the times, so it is always current:
+ *   Upcoming  = departure still ahead
+ *   On-going  = departed, not arrived yet
+ *   Delivered = arrival time passed, or the schedule is marked completed
+ */
+type DayTab = "upcoming" | "ongoing" | "delivered";
+const DAY_TABS: { key: DayTab; label: string }[] = [
+  { key: "upcoming", label: "Upcoming deliveries" },
+  { key: "ongoing", label: "On-going deliveries" },
+  { key: "delivered", label: "Delivered" },
+];
+
+function schedulePhase(s: Pick<Schedule, "status" | "departure_datetime" | "arrival_datetime">, now: number): DayTab {
+  if ((s.status || "").toLowerCase() === "completed") return "delivered";
+  const dep = new Date(s.departure_datetime).getTime();
+  const arr = new Date(s.arrival_datetime).getTime();
+  if (Number.isFinite(arr) && now >= arr) return "delivered";
+  if (Number.isFinite(dep) && now >= dep) return "ongoing";
+  return "upcoming";
+}
+
+function tripPhase(ev: { checkpoint: { status: string } }): DayTab {
+  const st = (ev.checkpoint.status || "").toLowerCase();
+  return st === "delivered" || st === "completed" ? "delivered" : "ongoing";
 }
 
 function routeAddressLine(r: Schedule["routes"]) {
@@ -417,6 +468,29 @@ function SingleSelectDropdown({
   );
 }
 
+// ---- Trip details shown in the Edit Schedule form (data from trips + trip_overview) ----
+type TripRow = Record<string, unknown> & { id: string; trip_code?: string };
+type TripOverview = Record<string, unknown> | null;
+type LinkedTrip = { trip: TripRow; overview: TripOverview };
+
+// Fields only appear if that column exists on your trips table.
+const TRIP_FIELDS: { group: string; key: string; label: string; type?: "number"; placeholder?: string }[] = [
+  { group: "Vehicle", key: "vehicle_plate_no", label: "Plate No.", placeholder: "NBC 1234" },
+  { group: "Vehicle", key: "vehicle_type", label: "Type", placeholder: "10-Wheeler Truck" },
+  { group: "Vehicle", key: "vehicle_make_model", label: "Make / Model", placeholder: "Isuzu Giga" },
+  { group: "Vehicle", key: "vehicle_capacity_tons", label: "Capacity (t)", type: "number", placeholder: "12" },
+  { group: "Driver", key: "driver_name", label: "Driver", placeholder: "Juan Dela Cruz" },
+  { group: "Driver", key: "driver_license_no", label: "License No.", placeholder: "N01-12-345678" },
+  { group: "Driver", key: "driver_contact_no", label: "Contact No.", placeholder: "0917 123 4567" },
+  { group: "Driver", key: "helper_name", label: "Helper", placeholder: "Pedro Santos" },
+  { group: "Cargo", key: "cargo_description", label: "Description", placeholder: "Canned goods (palletized)" },
+  { group: "Cargo", key: "cargo_quantity", label: "Quantity", type: "number", placeholder: "20" },
+  { group: "Cargo", key: "cargo_unit", label: "Unit", placeholder: "pallets" },
+  { group: "Cargo", key: "cargo_weight_kg", label: "Weight (kg)", type: "number", placeholder: "9500" },
+];
+
+const tripValue = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+
 export default function SchedulesPage() {
   const { theme } = useShell();
   const isDark = theme === "dark";
@@ -429,12 +503,68 @@ export default function SchedulesPage() {
   const [tripLogKey, setTripLogKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tripsLoaded, setTripsLoaded] = useState(false);
+  // Live link with Route Planning
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const [liveRefreshing, setLiveRefreshing] = useState(false);
 
   // ---- Anomaly alert highlight ----
   // Alerts open /spnc/app/schedules?highlight=<trip or schedule id>&highlightName=<"TRP-0102 · NBC 1234">&field=…
   // The calendar jumps to that day and outlines the trip (and its schedule) in red; the trip log below does the same.
   const [hlTripId, setHlTripId] = useState<string | null>(null);
   const [hlScheduleId, setHlScheduleId] = useState<string | null>(null);
+  const [dayPage, setDayPage] = useState(1); // page of the selected-day list
+  const [dayTab, setDayTab] = useState<DayTab>("upcoming");
+  // Search of the selected-day list (same behaviour as the Rates search):
+  // type, then press Enter or the pink button; recent searches show when the box is focused.
+  const [daySearch, setDaySearch] = useState(""); // the search applied to the list
+  const [daySearchInput, setDaySearchInput] = useState(""); // what's typed in the box
+  const [dayRecent, setDayRecent] = useState<string[]>([]);
+  const [showDayRecent, setShowDayRecent] = useState(false);
+  const daySearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(DAY_RECENT_SEARCHES_KEY);
+      if (stored) setDayRecent(JSON.parse(stored));
+    } catch {
+      // ignore unavailable/corrupt storage
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (daySearchRef.current && !daySearchRef.current.contains(e.target as Node)) setShowDayRecent(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function persistDayRecent(next: string[]) {
+    setDayRecent(next);
+    try {
+      window.localStorage.setItem(DAY_RECENT_SEARCHES_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }
+
+  function runDaySearch(term: string = daySearchInput) {
+    const trimmed = term.trim();
+    setDaySearchInput(term);
+    setDaySearch(trimmed);
+    setShowDayRecent(false);
+    if (trimmed) {
+      persistDayRecent(
+        [trimmed, ...dayRecent.filter((t) => t.toLowerCase() !== trimmed.toLowerCase())].slice(0, MAX_DAY_RECENT_SEARCHES)
+      );
+    }
+  }
+
+  function clearDaySearch() {
+    setDaySearchInput("");
+    setDaySearch("");
+  }
+  const [nowTick, setNowTick] = useState(() => Date.now()); // moves deliveries between tabs as time passes
   const [hlLabel, setHlLabel] = useState<string | null>(null);
   const [hlMissing, setHlMissing] = useState<string | null>(null);
   const handledSearch = useRef<string | null>(null);
@@ -487,10 +617,14 @@ export default function SchedulesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Linked trip(s) for the schedule being edited
+  const [linkedTrips, setLinkedTrips] = useState<LinkedTrip[]>([]);
+  const [activeTripIdx, setActiveTripIdx] = useState(0);
+  const [tripForm, setTripForm] = useState<Record<string, string>>({});
+  const [tripLoading, setTripLoading] = useState(false);
+  const [tripLoadError, setTripLoadError] = useState<string | null>(null);
   const [showFieldErrors, setShowFieldErrors] = useState(false);
 
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [form, setForm] = useState(emptyForm);
 
@@ -560,16 +694,20 @@ export default function SchedulesPage() {
     ? "bg-[#10B981]/15 text-[#6EE7B7] border-l-[#10B981]"
     : "bg-[#D1FAE5] text-[#047857] border-l-[#10B981]";
 
-  async function fetchSchedules() {
-    setLoading(true);
+  // silent = background refresh (no spinner, the calendar stays where it is)
+  async function fetchSchedules(silent = false) {
+    if (silent) setLiveRefreshing(true);
+    else setLoading(true);
     try {
       const res = await fetch("/spnc/app/api/schedules", { cache: "no-store" });
       const data = await res.json();
       setSchedules(data.schedules || []);
+      setLastSynced(new Date());
     } catch (err) {
       console.error("Fetch schedules failed:", err);
     } finally {
-      setLoading(false);
+      if (silent) setLiveRefreshing(false);
+      else setLoading(false);
     }
   }
 
@@ -608,12 +746,41 @@ export default function SchedulesPage() {
   useEffect(() => {
     function handleFocus() {
       void fetchTrips();
+      if (!modalOpen) void fetchSchedules(true);
     }
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalOpen]);
+
+  // Live: deliveries planned in Route Planning appear on the calendar automatically.
+  // Paused while the schedule form is open so nothing changes under you.
+  useEffect(() => {
+    if (modalOpen) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void fetchSchedules(true);
+    };
+    const timer = window.setInterval(refresh, LIVE_REFRESH_MS);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(SCHEDULES_CHANNEL);
+      channel.onmessage = () => void fetchSchedules(true);
+    } catch {
+      // BroadcastChannel not available: the timer still refreshes
+    }
+    return () => {
+      window.clearInterval(timer);
+      channel?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalOpen]);
 
   const filteredSchedules = schedules;
+
+  // New day selected → first page of its list
+  useEffect(() => {
+    setDayPage(1);
+  }, [selectedDay]);
 
   // ---- Anomaly alert highlight: find the trip / schedule, jump the calendar to its day ----
   useEffect(() => {
@@ -758,15 +925,98 @@ export default function SchedulesPage() {
     return { departures, arrivals };
   }, [eventsByDay, tripEventsByDay, viewMonth]);
 
-  const selectedEvents = eventsByDay.get(dayKey(selectedDay)) || [];
-  const selectedTripEvents = tripEventsByDay.get(dayKey(selectedDay)) || [];
+  // Search: code, route, provider, vehicle, cargo, notes, status — and for trips: trip code, plate, driver, location
+  const dayQuery = daySearch.trim().toLowerCase();
+  const matches = (...parts: (string | null | undefined)[]) =>
+    !dayQuery || parts.filter(Boolean).join(" ").toLowerCase().includes(dayQuery);
+  // Each schedule's Departs row comes first, its Arrives row right under it.
+  // Schedules are ordered by departure time (then code), so the same code always stays together.
+  const allDaySchedEvents = [...(eventsByDay.get(dayKey(selectedDay)) || [])].sort((a, b) => {
+    const da = new Date(a.schedule.departure_datetime).getTime();
+    const db = new Date(b.schedule.departure_datetime).getTime();
+    if (da !== db) return da - db;
+    const byCode = (a.schedule.schedule_code || "").localeCompare(b.schedule.schedule_code || "");
+    if (byCode !== 0) return byCode;
+    if (a.schedule.id !== b.schedule.id) return a.schedule.id.localeCompare(b.schedule.id);
+    return a.kind === b.kind ? 0 : a.kind === "departure" ? -1 : 1;
+  });
+  const allDayTripEvents = tripEventsByDay.get(dayKey(selectedDay)) || [];
+  const daySchedEvents = allDaySchedEvents.filter(({ schedule: sc }) =>
+    matches(
+      sc.schedule_code,
+      scheduleLabel(sc),
+      routeAddressLine(sc.routes),
+      sc.service_providers?.name,
+      sc.status,
+      sc.frequency,
+      sc.notes,
+      (sc as Schedule & { vehicle?: string | null }).vehicle,
+      (sc as Schedule & { cargo_details?: string | null }).cargo_details
+    )
+  );
+  const dayTripEvents = allDayTripEvents.filter(({ trip: t, checkpoint: cp }) =>
+    matches(t.trip_code, t.vehicle_plate_no, t.driver_name, cp.location, cp.status)
+  );
+  const dayTotal = daySchedEvents.length + dayTripEvents.length;
+  const tabCount = (tab: DayTab) =>
+    daySchedEvents.filter((ev) => schedulePhase(ev.schedule, nowTick) === tab).length +
+    dayTripEvents.filter((ev) => tripPhase(ev) === tab).length;
+  const tabCounts: Record<DayTab, number> = { upcoming: tabCount("upcoming"), ongoing: tabCount("ongoing"), delivered: tabCount("delivered") };
+
+  // the list shows the open tab only
+  const selectedEvents = daySchedEvents.filter((ev) => schedulePhase(ev.schedule, nowTick) === dayTab);
+  const selectedTripEvents = dayTripEvents.filter((ev) => tripPhase(ev) === dayTab);
   const selectedTotal = selectedEvents.length + selectedTripEvents.length;
+
+  // 10 per page: schedule events first, then trip events, split across pages in that order
+  const dayPages = Math.max(1, Math.ceil(selectedTotal / DAY_LIST_PAGE_SIZE));
+  const dayPageNow = Math.min(dayPage, dayPages);
+  const pageStart = (dayPageNow - 1) * DAY_LIST_PAGE_SIZE;
+  const pageEnd = pageStart + DAY_LIST_PAGE_SIZE;
+  const pagedSelectedEvents = selectedEvents.slice(pageStart, pageEnd);
+  const pagedSelectedTripEvents = selectedTripEvents.slice(
+    Math.max(0, pageStart - selectedEvents.length),
+    Math.max(0, pageEnd - selectedEvents.length)
+  );
+
+  // Anomaly highlight: open the page that holds the highlighted schedule / trip
+  useEffect(() => {
+    const i = hlScheduleId ? selectedEvents.findIndex((ev) => ev.schedule.id === hlScheduleId) : -1;
+    const j = i < 0 && hlTripId ? selectedTripEvents.findIndex((ev) => ev.trip.id === hlTripId) : -1;
+    const idx = i >= 0 ? i : j >= 0 ? selectedEvents.length + j : -1;
+    if (idx >= 0) setDayPage(Math.floor(idx / DAY_LIST_PAGE_SIZE) + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hlScheduleId, hlTripId, selectedTotal]);
   const selectedDepartures =
-    selectedEvents.filter((e) => e.kind === "departure").length +
-    selectedTripEvents.filter((e) => e.kind === "departure").length;
+    daySchedEvents.filter((e) => e.kind === "departure").length + dayTripEvents.filter((e) => e.kind === "departure").length;
   const selectedArrivals =
-    selectedEvents.filter((e) => e.kind === "arrival").length +
-    selectedTripEvents.filter((e) => e.kind === "arrival").length;
+    daySchedEvents.filter((e) => e.kind === "arrival").length + dayTripEvents.filter((e) => e.kind === "arrival").length;
+
+  // Tick every 30 s so deliveries move from Upcoming → On-going → Delivered on their own
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    setDayPage(1);
+  }, [daySearch]);
+
+  // New day: open the first tab that has something (Upcoming → On-going → Delivered)
+  useEffect(() => {
+    const first = DAY_TABS.find((t) => tabCounts[t.key] > 0);
+    setDayTab(first ? first.key : "upcoming");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDay]);
+
+  // Anomaly highlight: open the tab of the highlighted schedule / trip
+  useEffect(() => {
+    const ev = hlScheduleId ? daySchedEvents.find((e) => e.schedule.id === hlScheduleId) : undefined;
+    if (ev) return setDayTab(schedulePhase(ev.schedule, Date.now()));
+    const tev = hlTripId ? dayTripEvents.find((e) => e.trip.id === hlTripId) : undefined;
+    if (tev) setDayTab(tripPhase(tev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hlScheduleId, hlTripId, dayTotal]);
 
   // "YYYY-MM" keys of months that have at least one departure or arrival.
   const monthsWithEvents = useMemo(() => {
@@ -836,11 +1086,73 @@ export default function SchedulesPage() {
       notes: s.notes || "",
     });
     setModalOpen(true);
+    void loadLinkedTrips(s.id);
+  }
+
+  function tripToForm(t: TripRow) {
+    const f: Record<string, string> = {};
+    for (const fd of TRIP_FIELDS) if (fd.key in t) f[fd.key] = tripValue(t[fd.key]);
+    return f;
+  }
+
+  async function loadLinkedTrips(scheduleId: string) {
+    setLinkedTrips([]);
+    setTripForm({});
+    setActiveTripIdx(0);
+    setTripLoadError(null);
+    setTripLoading(true);
+    try {
+      const res = await fetch(`/spnc/app/api/schedules/${scheduleId}/trip`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTripLoadError(data.message || "Couldn't load the trip for this schedule.");
+        return;
+      }
+      const list: LinkedTrip[] = data.trips ?? [];
+      setLinkedTrips(list);
+      if (list[0]) setTripForm(tripToForm(list[0].trip));
+    } catch {
+      setTripLoadError("Couldn't reach the server to load the trip.");
+    } finally {
+      setTripLoading(false);
+    }
+  }
+
+  function switchTrip(idx: number) {
+    setActiveTripIdx(idx);
+    setTripForm(tripToForm(linkedTrips[idx].trip));
+  }
+
+  // Saves the trip part of the Edit form. Returns an error message, or null when fine.
+  async function saveTripDetails(): Promise<string | null> {
+    if (!editingId) return null;
+    const current = linkedTrips[activeTripIdx]?.trip;
+    if (!current) return null;
+    const original = tripToForm(current);
+    const changed = Object.keys(tripForm).some((k) => tripForm[k] !== original[k]);
+    if (!changed) return null;
+    try {
+      const res = await fetch(`/spnc/app/api/schedules/${editingId}/trip`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trip_id: current.id, ...tripForm }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data.message || "Schedule saved, but the trip details could not be updated.";
+      }
+      return null;
+    } catch {
+      return "Schedule saved, but the trip details could not be updated (no connection).";
+    }
   }
 
   function closeModal() {
     setModalOpen(false);
     resetForm();
+    setLinkedTrips([]);
+    setTripForm({});
+    setTripLoadError(null);
   }
 
   // Picking a route locks the Service Provider to that route's provider.
@@ -868,13 +1180,17 @@ export default function SchedulesPage() {
   async function handleSave() {
     const missing: string[] = [];
     if (!form.schedule_code.trim()) missing.push("Schedule Code");
-    if (!form.route_id) missing.push("Route");
     if (!form.departure_datetime) missing.push("Departure");
     if (!form.arrival_datetime) missing.push("Arrival");
-    if (!form.capacity.trim()) missing.push("Capacity");
-    if (form.frequency.length === 0) missing.push("Frequency");
-    if (form.day_of_week.length === 0) missing.push("Day of Week");
-    if (form.unit_type.length === 0) missing.push("Unit Type");
+    // Edit only shows Code, Departure, Arrival and Notes — the other fields keep their
+    // saved values (loaded in openEditModal) and are sent back unchanged.
+    if (!editingId) {
+      if (!form.route_id) missing.push("Route");
+      if (!form.capacity.trim()) missing.push("Capacity");
+      if (form.frequency.length === 0) missing.push("Frequency");
+      if (form.day_of_week.length === 0) missing.push("Day of Week");
+      if (form.unit_type.length === 0) missing.push("Unit Type");
+    }
 
     if (missing.length > 0) {
       setSaveError(`Please fill in: ${missing.join(", ")}.`);
@@ -925,6 +1241,15 @@ export default function SchedulesPage() {
         return;
       }
 
+      // Save the linked trip's vehicle / driver / cargo too (Edit only)
+      const tripErr = await saveTripDetails();
+      if (tripErr) {
+        setSaveError(tripErr);
+        fetchSchedules();
+        return;
+      }
+      if (editingId) setTripLogKey((k) => k + 1); // refresh the Trip Log table
+
       // Jump the calendar to the saved departure so the user sees it land.
       goToMonth(departure);
       setSelectedDay(new Date(departure.getFullYear(), departure.getMonth(), departure.getDate()));
@@ -937,26 +1262,6 @@ export default function SchedulesPage() {
       setSaveError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleArchive(id: string) {
-    if (!confirm("Archive this schedule?")) return;
-    setDeletingId(id);
-    setDeleteError(null);
-    try {
-      const res = await fetch(`/spnc/app/api/schedules/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setDeleteError(data.message || "Could not archive schedule.");
-        return;
-      }
-      fetchSchedules();
-    } catch (err) {
-      console.error("Archive schedule failed:", err);
-      setDeleteError("Couldn't reach the server. Check your connection and try again.");
-    } finally {
-      setDeletingId(null);
     }
   }
 
@@ -975,9 +1280,32 @@ export default function SchedulesPage() {
       />
 
       <div className="px-5">
-        {deleteError && (
-          <div className="mb-3 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-1.5 text-xs text-[#E2685A]">{deleteError}</div>
-        )}
+        {/* Live link with Route Planning */}
+        <div className={`mb-3 flex flex-wrap items-center gap-3 text-[11px] ${mutedText}`}>
+          <span className="flex items-center gap-1.5 font-semibold text-[#1FA968]">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1FA968] opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#1FA968]" />
+            </span>
+            Live
+          </span>
+          <span>
+            Deliveries planned in Route Planning are added to this calendar automatically ·{" "}
+            {schedules.filter(isFromRoutePlanning).length} on the calendar · updated{" "}
+            {lastSynced ? lastSynced.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—"}
+          </span>
+          <button
+            type="button"
+            onClick={() => void fetchSchedules(true)}
+            disabled={liveRefreshing || loading}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-semibold transition disabled:opacity-50 ${
+              isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <RefreshCw size={11} className={liveRefreshing ? "animate-spin" : ""} /> Refresh
+          </button>
+        </div>
+
 
         {loading ? (
           <div className="flex flex-col items-center gap-2 py-10">
@@ -1221,9 +1549,9 @@ export default function SchedulesPage() {
                                 }}
                                 title={`${ev.kind === "departure" ? "Departs" : "Arrives"} ${formatTime(ev.at)} · ${
                                   ev.schedule.schedule_code
-                                } · ${scheduleRouteLabel(ev.schedule.routes, ev.schedule.route_id)}${
+                                } · ${scheduleLabel(ev.schedule)}${
                                   routeAddressLine(ev.schedule.routes) ? ` (${routeAddressLine(ev.schedule.routes)})` : ""
-                                } · ${ev.schedule.status}`}
+                                } · ${ev.schedule.status}${isFromRoutePlanning(ev.schedule) ? " · from Route Planning" : ""}`}
                                 style={hlScheduleId === ev.schedule.id ? hlItemStyle : undefined}
                                 className={`flex w-full items-center gap-1 truncate rounded border-l-2 px-1 py-0.5 text-[11px] transition hover:opacity-80 ${eventColor(
                                   ev.kind
@@ -1235,6 +1563,7 @@ export default function SchedulesPage() {
                                   <ArrowDownLeft size={10} className="shrink-0" />
                                 )}
                                 <span className="shrink-0 font-medium">{formatTime(ev.at)}</span>
+                                {isFromRoutePlanning(ev.schedule) && <Truck size={10} className="shrink-0" aria-label="From Route Planning" />}
                                 <span className="truncate">{ev.schedule.schedule_code}</span>
                               </button>
                             ))}
@@ -1311,28 +1640,183 @@ export default function SchedulesPage() {
             )}
 
             <div ref={dayPanelRef} className={`mt-4 scroll-mt-4 rounded-lg border ${gridBorder} ${isDark ? "bg-[#121B26]" : "bg-white"}`}>
-              <div className={`flex items-center justify-between border-b px-3 py-2.5 ${gridBorder}`}>
+              <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5 ${gridBorder}`}>
                 <div>
                   <h3 className={`text-xs font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
                     {selectedDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
                   </h3>
                   <p className={`text-[11px] ${mutedText}`}>
-                    {selectedTotal === 0
+                    {allDaySchedEvents.length + allDayTripEvents.length === 0
                       ? "Nothing departing or arriving"
+                      : dayQuery
+                      ? `${dayTotal} matching “${daySearch.trim()}”`
                       : `${selectedDepartures} departing · ${selectedArrivals} arriving`}
                   </p>
                 </div>
+
+                <div className="relative w-full max-w-xs" ref={daySearchRef}>
+                  <input
+                    type="text"
+                    value={daySearchInput}
+                    onChange={(e) => {
+                      setDaySearchInput(e.target.value);
+                      if (!e.target.value.trim()) setDaySearch(""); // emptied the box → show everything again
+                    }}
+                    onFocus={() => setShowDayRecent(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        runDaySearch();
+                      } else if (e.key === "Escape") {
+                        setShowDayRecent(false);
+                      }
+                    }}
+                    placeholder="Search code, route, provider, trip…"
+                    aria-label="Search this day's schedules and trips"
+                    className={`w-full rounded-md border py-1.5 pl-3 pr-16 text-xs outline-none focus:border-[#F2419B] ${
+                      isDark
+                        ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                        : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                  <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                    {daySearchInput && (
+                      <button
+                        type="button"
+                        onClick={clearDaySearch}
+                        aria-label="Clear search"
+                        title="Clear"
+                        className={`flex h-6 w-6 items-center justify-center rounded-md transition ${
+                          isDark ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        }`}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => runDaySearch()}
+                      aria-label="Search"
+                      title="Search"
+                      className="flex h-6 w-7 items-center justify-center rounded-md bg-[#F2419B] text-white transition hover:bg-[#F55CAB]"
+                    >
+                      <Search size={13} />
+                    </button>
+                  </div>
+
+                  {showDayRecent && dayRecent.length > 0 && (
+                    <div
+                      className={`absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-md border shadow-lg ${
+                        isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      <div className={`flex items-center justify-between px-3 py-2 text-[10px] font-medium uppercase tracking-wide ${mutedText}`}>
+                        <span>Recent searches</span>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            persistDayRecent([]);
+                          }}
+                          className={`normal-case ${isDark ? "text-[#8FA0AF] hover:text-[#F2F1EC]" : "text-gray-400 hover:text-gray-700"}`}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <ul>
+                        {dayRecent.map((term) => (
+                          <li key={term}>
+                            <div
+                              className={`group flex cursor-pointer items-center justify-between px-3 py-1.5 text-xs ${
+                                isDark ? "text-[#C7D1DA] hover:bg-[#182230]" : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                runDaySearch(term);
+                              }}
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <Clock size={12} className={`shrink-0 ${isDark ? "text-[#4B5A68]" : "text-gray-400"}`} />
+                                <span className="truncate">{term}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  persistDayRecent(dayRecent.filter((t) => t !== term));
+                                }}
+                                aria-label={`Remove "${term}" from recent searches`}
+                                className={`opacity-0 transition group-hover:opacity-100 ${
+                                  isDark ? "text-[#4B5A68] hover:text-[#F2F1EC]" : "text-gray-300 hover:text-gray-600"
+                                }`}
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Upcoming / On-going / Delivered */}
+              <div className={`flex border-b px-2 ${gridBorder}`}>
+                {DAY_TABS.map((t) => {
+                  const on = dayTab === t.key;
+                  const color = t.key === "upcoming" ? "#F2419B" : t.key === "ongoing" ? "#38BDF8" : "#1FA968";
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => {
+                        setDayTab(t.key);
+                        setDayPage(1);
+                      }}
+                      className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition ${
+                        on ? "" : `border-transparent ${mutedText} hover:opacity-80`
+                      }`}
+                      style={on ? { borderColor: color, color: isDark ? "#F2F1EC" : "#111827" } : undefined}
+                    >
+                      {t.label}
+                      <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: `${color}22`, color }}>
+                        {tabCounts[t.key]}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               {selectedTotal === 0 ? (
                 <p className={`px-3 py-6 text-center text-xs ${mutedText}`}>
-                  {schedules.length === 0 && trips.length === 0 ? "No schedules or trips yet." : "No matching schedules or trips on this day."}
+                  {schedules.length === 0 && trips.length === 0
+                    ? "No schedules or trips yet."
+                    : dayQuery
+                    ? `Nothing in this tab matches “${daySearch.trim()}”.`
+                    : dayTab === "upcoming"
+                    ? "No upcoming deliveries on this day."
+                    : dayTab === "ongoing"
+                    ? "Nothing on the road on this day."
+                    : "Nothing delivered on this day yet."}
                 </p>
               ) : (
                 <ul className={`divide-y ${isDark ? "divide-[#23303D]" : "divide-gray-200"}`}>
-                  {selectedEvents.map((ev) => {
+                  {pagedSelectedEvents.map((ev) => {
                     const s = ev.schedule;
-                    const sc = statusColor(s.status);
+                    const phase = schedulePhase(s, nowTick);
+                    const st = (s.status || "").toLowerCase();
+                    const badge =
+                      st === "cancelled" ? "cancelled" : st === "delayed" && phase !== "delivered" ? "delayed" : phase === "delivered" ? "completed" : phase;
+                    const badgeLabel =
+                      badge === "cancelled" ? "Cancelled" : badge === "delayed" ? "Delayed" : badge === "completed" ? "Delivered" : badge === "ongoing" ? "On-going" : "Upcoming";
+                    const sc =
+                      badge === "ongoing"
+                        ? isDark
+                          ? { bg: "bg-[#38BDF8]/15", text: "text-[#7DD3FC]" }
+                          : { bg: "bg-[#E0F2FE]", text: "text-[#0369A1]" }
+                        : statusColor(badge === "upcoming" ? "scheduled" : badge);
                     return (
                       <li key={ev.key} className="flex flex-wrap items-center gap-3 px-3 py-2.5" style={hlScheduleId === s.id ? hlRowStyle : undefined}>
                         <div className={`flex w-24 shrink-0 items-center gap-1 rounded border-l-2 px-1.5 py-1 text-[11px] font-medium ${eventColor(ev.kind)}`}>
@@ -1343,10 +1827,19 @@ export default function SchedulesPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm font-semibold text-[#F2419B]">{s.schedule_code}</span>
-                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize ${sc.bg} ${sc.text}`}>{s.status}</span>
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${sc.bg} ${sc.text}`}>{badgeLabel}</span>
+                            {isFromRoutePlanning(s) && (
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                  isDark ? "bg-[#1A2530] text-[#7DD3FC]" : "bg-[#E0F2FE] text-[#0369A1]"
+                                }`}
+                              >
+                                <Truck size={10} /> Route Planning
+                              </span>
+                            )}
                           </div>
                           <div className={`truncate text-xs ${isDark ? "text-[#C7D1DA]" : "text-gray-700"}`}>
-                            {scheduleRouteLabel(s.routes, s.route_id)}
+                            {scheduleLabel(s)}
                             {routeAddressLine(s.routes) && <span className={`ml-1.5 text-[11px] ${mutedText}`}>{routeAddressLine(s.routes)}</span>}
                           </div>
                           <div className={`text-[11px] ${mutedText}`}>
@@ -1367,24 +1860,12 @@ export default function SchedulesPage() {
                           <button type="button" onClick={() => openEditModal(s)} aria-label={`Edit ${s.schedule_code}`} title="Edit" className={iconBtn}>
                             <Pencil size={13} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleArchive(s.id)}
-                            disabled={deletingId === s.id}
-                            aria-label={`Archive ${s.schedule_code}`}
-                            title="Archive"
-                            className={`flex h-7 w-7 items-center justify-center rounded-md text-[#E2685A] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                              isDark ? "hover:bg-[#2A1212]" : "hover:bg-[#FBE4E1]"
-                            }`}
-                          >
-                            {deletingId === s.id ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
-                          </button>
                         </div>
                       </li>
                     );
                   })}
 
-                  {selectedTripEvents.map((ev) => {
+                  {pagedSelectedTripEvents.map((ev) => {
                     const t = ev.trip;
                     const sc = statusColor(ev.checkpoint.status === "delivered" ? "completed" : ev.checkpoint.status);
                     return (
@@ -1437,6 +1918,34 @@ export default function SchedulesPage() {
                     );
                   })}
                 </ul>
+              )}
+
+              {selectedTotal > DAY_LIST_PAGE_SIZE && (
+                <div className={`flex items-center justify-center gap-4 border-t px-3 py-2.5 ${gridBorder}`}>
+                  <button
+                    type="button"
+                    onClick={() => setDayPage(Math.max(1, dayPageNow - 1))}
+                    disabled={dayPageNow === 1}
+                    className={`flex items-center gap-1 rounded-md border px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <ChevronLeft size={14} /> Back
+                  </button>
+                  <span className={`text-xs ${mutedText}`}>
+                    Page {dayPageNow} of {dayPages} · {selectedTotal} items
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDayPage(Math.min(dayPages, dayPageNow + 1))}
+                    disabled={dayPageNow === dayPages}
+                    className={`flex items-center gap-1 rounded-md border px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    Next <ChevronRight size={14} />
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1507,6 +2016,8 @@ export default function SchedulesPage() {
                 />
               </div>
 
+              {!editingId && (
+                <>
               <div className="relative" ref={routeMenuRef}>
                 <p className={`mb-1 text-[11px] font-medium tracking-wide uppercase ${mutedText}`}>Route *</p>
                 {routes.length === 0 ? (
@@ -1623,6 +2134,8 @@ export default function SchedulesPage() {
                 </div>
                 <p className={`mt-1 text-[11px] ${mutedText}`}>Fixed to the selected route's provider — cannot be changed here.</p>
               </div>
+                </>
+              )}
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
@@ -1649,6 +2162,8 @@ export default function SchedulesPage() {
                 </div>
               </div>
 
+              {!editingId && (
+                <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className={`mb-1 text-[11px] font-medium tracking-wide uppercase ${mutedText}`}>Capacity *</p>
@@ -1719,6 +2234,8 @@ export default function SchedulesPage() {
                 isDark={isDark}
                 mutedText={mutedText}
               />
+                </>
+              )}
 
               <div>
                 <p className={`mb-1 text-[11px] font-medium tracking-wide uppercase ${mutedText}`}>Notes</p>
@@ -1733,6 +2250,111 @@ export default function SchedulesPage() {
                   }`}
                 />
               </div>
+
+              {editingId && (
+                <div className={`rounded-lg border p-3 ${isDark ? "border-[#23303D] bg-[#0B1220]/40" : "border-gray-200 bg-gray-50"}`}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className={`flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase ${isDark ? "text-[#F2F1EC]" : "text-gray-800"}`}>
+                      <Truck size={13} className="text-[#F2419B]" /> Trip Details
+                    </p>
+                    {linkedTrips.length > 1 && (
+                      <div className="flex gap-1">
+                        {linkedTrips.map((lt, i) => (
+                          <button
+                            key={lt.trip.id}
+                            type="button"
+                            onClick={() => switchTrip(i)}
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              i === activeTripIdx ? "bg-[#F2419B] text-white" : isDark ? "bg-[#1A2530] text-[#8FA0AF]" : "bg-gray-200 text-gray-600"
+                            }`}
+                          >
+                            {String(lt.trip.trip_code ?? `Trip ${i + 1}`)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {tripLoading ? (
+                    <p className={`flex items-center gap-1.5 text-xs ${mutedText}`}>
+                      <Loader2 size={13} className="animate-spin" /> Loading trip…
+                    </p>
+                  ) : tripLoadError ? (
+                    <p className="text-xs text-[#E2685A]">{tripLoadError}</p>
+                  ) : linkedTrips.length === 0 ? (
+                    <p className={`text-xs ${mutedText}`}>No trip is linked to this schedule yet.</p>
+                  ) : (
+                    (() => {
+                      const lt = linkedTrips[activeTripIdx];
+                      const o = lt.overview;
+                      const status = o?.current_status ? String(o.current_status).replace(/_/g, " ") : "not started";
+                      const lastUpdate = o?.last_update ? new Date(String(o.last_update)) : null;
+                      const groups = ["Vehicle", "Driver", "Cargo"]
+                        .map((g) => ({ g, fields: TRIP_FIELDS.filter((f) => f.group === g && f.key in tripForm) }))
+                        .filter((x) => x.fields.length > 0);
+                      return (
+                        <div className="space-y-3">
+                          {/* Read-only summary from trip_overview */}
+                          <div className={`space-y-0.5 text-xs ${isDark ? "text-[#C7D1DA]" : "text-gray-700"}`}>
+                            <p>
+                              <span className="font-semibold text-[#F2419B]">{String(lt.trip.trip_code ?? "")}</span>
+                              <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize ${isDark ? "bg-[#1A2530] text-[#7DD3FC]" : "bg-[#E0F2FE] text-[#0369A1]"}`}>
+                                {status}
+                              </span>
+                            </p>
+                            {o?.route_code || o?.route_name ? (
+                              <p className={mutedText}>
+                                Route: {String(o?.route_code ?? "")} {o?.route_name ? `· ${String(o.route_name)}` : ""}
+                              </p>
+                            ) : null}
+                            {o?.origin || o?.destination ? (
+                              <p className={mutedText}>
+                                {String(o?.origin ?? "—")} → {String(o?.destination ?? "—")}
+                                {o?.distance_km != null ? ` · ${String(o.distance_km)} km` : ""}
+                                {o?.estimated_transit_hours != null ? ` · ~${String(o.estimated_transit_hours)} h` : ""}
+                              </p>
+                            ) : null}
+                            {o?.service_provider_name ? <p className={mutedText}>Provider: {String(o.service_provider_name)}</p> : null}
+                            {o?.last_location ? (
+                              <p className={mutedText}>
+                                Last seen: {String(o.last_location)}
+                                {lastUpdate && !Number.isNaN(lastUpdate.getTime()) ? ` · ${lastUpdate.toLocaleString()}` : ""}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          {/* Editable trip fields */}
+                          {groups.map(({ g, fields }) => (
+                            <div key={g}>
+                              <p className={`mb-1 text-[10px] font-semibold tracking-wider uppercase ${mutedText}`}>{g}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {fields.map((f) => (
+                                  <label key={f.key} className={f.key === "cargo_description" ? "col-span-2" : ""}>
+                                    <span className={`mb-0.5 block text-[10px] ${mutedText}`}>{f.label}</span>
+                                    <input
+                                      type={f.type === "number" ? "number" : "text"}
+                                      inputMode={f.type === "number" ? "decimal" : undefined}
+                                      min={f.type === "number" ? 0 : undefined}
+                                      value={tripForm[f.key] ?? ""}
+                                      placeholder={f.placeholder}
+                                      onChange={(e) => setTripForm({ ...tripForm, [f.key]: e.target.value })}
+                                      className={`w-full rounded-md border px-2 py-1.5 text-xs outline-none focus:border-[#F2419B] ${
+                                        isDark
+                                          ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                                          : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+                                      }`}
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
 
               {saveError && (
                 <div className="border border-[#E2685A]/40 bg-[#E2685A]/10 px-2.5 py-1.5 text-xs text-[#E2685A]">{saveError}</div>

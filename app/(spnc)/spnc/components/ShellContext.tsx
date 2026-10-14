@@ -6,6 +6,12 @@ import { usePathname, useRouter } from "next/navigation";
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 const LAST_ACTIVITY_KEY = "spnc-last-activity";
 
+// SPNC sign-in lives in app/(auth)/spncAuth/login (page.tsx + OtpForm.tsx).
+// "(auth)" is a route group, so it is not part of the URL: the page is served at /spncAuth/login.
+const SPNC_LOGIN_PATH = "/spncAuth/login";
+// Every page under /spncAuth (login, OTP step, …) is public: no session check, no inactivity timer.
+const isSpncAuthPath = (path: string | null) => !!path && (path === "/spncAuth" || path.startsWith("/spncAuth/"));
+
 type ShellContextType = {
   sidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
@@ -37,7 +43,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem("theme");
       if (saved === "light" || saved === "dark") setTheme(saved);
 
-      if (pathname === "/spncAuth/login") {
+      if (isSpncAuthPath(pathname)) {
         sessionStorage.removeItem(LAST_ACTIVITY_KEY);
         setSessionActive(false);
         setRole(null);
@@ -54,12 +60,14 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
       fetch("/spnc/app/api/sessions", { cache: "no-store" })
         .then(async (response) => {
-          const data = await response.json();
+          const data = await response.json().catch(() => ({}));
           setSessionActive(response.ok);
           setRole(response.ok ? data.user?.role || null : null);
           if (!response.ok) {
-            // Server says the session is genuinely invalid — clear the marker too.
+            // Server says the session is genuinely invalid — clear the marker too
+            // and send the user to the SPNC sign-in page.
             sessionStorage.removeItem(LAST_ACTIVITY_KEY);
+            router.replace(SPNC_LOGIN_PATH);
           }
         })
         .catch(() => {
@@ -74,7 +82,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [pathname]);
+  }, [pathname, router]);
 
   // --- Inactivity timer ---
   useEffect(() => {
@@ -137,7 +145,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   function goToLogin() {
     setSessionTimedOut(false);
-    router.push("/spnc/app/login");
+    router.push(SPNC_LOGIN_PATH);
     router.refresh();
   }
 

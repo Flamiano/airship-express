@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
+import { can } from "../../lib/rbac";
 
 type AuditLog = {
   id: string;
@@ -381,12 +382,15 @@ export default function AuditLogsPage() {
   const [refreshTick, setRefreshTick] = useState(0);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const authorized = !roleLoading && !!role;
+  // RBAC: only roles with audit-logs:view (admin) may use this page.
+  const authorized = !roleLoading && can(role, "audit-logs:view");
 
   useEffect(() => {
-    if (!roleLoading && !role) {
+    if (roleLoading) return;
+    if (!role) {
       router.replace("/spnc/app/login");
-      return;
+    } else if (!can(role, "audit-logs:view")) {
+      router.replace("/spnc/app/dashboard"); // signed in, but not allowed here
     }
   }, [role, roleLoading, router]);
 

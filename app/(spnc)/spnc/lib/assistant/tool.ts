@@ -21,7 +21,8 @@ import {
   type Shipment,
   type Snapshot,
 } from "./network";
-import { masterDataAlerts } from "./anomalies";
+import { masterDataAlerts, fixHref } from "./anomalies";
+import { buildScanInput } from "./anomalyInput";
 
 /* ------------------------------------------------------------------ */
 /* UI blocks                                                           */
@@ -140,6 +141,105 @@ function perfBrief(p: Performance) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Live route and schedule checks (no AI, read straight from Supabase) */
+/* ------------------------------------------------------------------ */
+// The same automatic pre-checks the AI scan uses (routeChecks.ts), run on every request,
+// so route and schedule problems show up in the chat right away instead of after the
+// 10-minute cached AI scan. If the AI scan already reported a record, its alert wins.
+
+type Row = Record<string, unknown>;
+
+const routeFlagField = (flag: string) => {
+  const t = flag.toLowerCase();
+  if (t.includes("service provider")) return "service_provider_id";
+  if (t.includes("origin and destination are the same")) return "destination";
+  if (t.includes("transit")) return "estimated_transit_hours";
+  if (t.includes("distance")) return "distance_km";
+  return "route_code";
+};
+
+const scheduleFlagField = (flag: string) => {
+  const t = flag.toLowerCase();
+  if (t.includes("route")) return "route_id";
+  if (t.includes("arrival")) return "arrival_datetime";
+  if (t.includes("departure")) return "departure_datetime";
+  return "status";
+};
+
+const routeFlagSeverity = (flag: string): Alert["severity"] =>
+  /missing|^same origin, destination, mode and provider/i.test(flag) ? "medium" : "high";
+const scheduleFlagSeverity = (flag: string): Alert["severity"] => (/marked delayed/i.test(flag) ? "medium" : "high");
+
+const flagsOf = (r: Row) => (Array.isArray(r.flags) ? (r.flags as unknown[]).map(String) : []);
+
+let liveCache: { at: number; alerts: Alert[] } | null = null;
+const LIVE_CACHE_MS = 20_000;
+
+async function liveNetworkAlerts(): Promise<Alert[]> {
+  if (liveCache && Date.now() - liveCache.at < LIVE_CACHE_MS) return liveCache.alerts;
+  try {
+    const input = await buildScanInput();
+    const out: Alert[] = [];
+
+    for (const r of (input.routes ?? []) as Row[]) {
+      const subject = [r.route_code, r.route_name].filter(Boolean).join(" · ") || "Route";
+      flagsOf(r).forEach((flag, i) => {
+        const field = routeFlagField(flag);
+        out.push({
+          id: `live-route-${r.id}-${i}`,
+          severity: routeFlagSeverity(flag),
+          kind: "route_issue",
+          title: `Route problem: ${subject}`,
+          detail: flag.charAt(0).toUpperCase() + flag.slice(1),
+          subject,
+          expected: "No problems found by the route checks",
+          current: flag,
+          href: fixHref("/spnc/app/routes", r.id, field, subject),
+          recordId: String(r.id),
+          field,
+          source: "rules",
+        });
+      });
+    }
+
+    for (const s of (input.schedules ?? []) as Row[]) {
+      const subject = String(s.schedule_code ?? "Schedule");
+      flagsOf(s).forEach((flag, i) => {
+        const field = scheduleFlagField(flag);
+        out.push({
+          id: `live-schedule-${s.id}-${i}`,
+          severity: scheduleFlagSeverity(flag),
+          kind: "schedule_issue",
+          title: `Schedule problem: ${subject}`,
+          detail: flag.charAt(0).toUpperCase() + flag.slice(1),
+          subject,
+          expected: "No problems found by the schedule checks",
+          current: flag,
+          href: fixHref("/spnc/app/schedules", s.id, field, subject),
+          recordId: String(s.id),
+          field,
+          source: "rules",
+        });
+      });
+    }
+
+    liveCache = { at: Date.now(), alerts: out };
+    return out;
+  } catch (err) {
+    console.error("Assistant: live route/schedule checks failed:", err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/** Live alerts for records the AI scan has not already reported. */
+function notCoveredByAi(live: Alert[], ai: Alert[]): Alert[] {
+  const covered = new Set(
+    ai.filter((a) => a.kind === "route_issue" || a.kind === "schedule_issue").map((a) => String(a.recordId ?? ""))
+  );
+  return live.filter((a) => !covered.has(String(a.recordId ?? "")));
+}
+
+/* ------------------------------------------------------------------ */
 /* Tool implementations                                                */
 /* ------------------------------------------------------------------ */
 
@@ -147,7 +247,8 @@ async function networkOverview(): Promise<ToolResult> {
   const snap = await loadSnapshot();
   const perf = performanceOf(snap.shipments);
   const md = await masterDataAlerts(snap.providers.map((p) => p.raw), "cached-only");
-  const alerts = [...(await readStoredAlerts()), ...computeAlerts(snap), ...md.rules, ...md.ai];
+  const live = notCoveredByAi(await liveNetworkAlerts(), md.ai);
+  const alerts = [...(await readStoredAlerts()), ...computeAlerts(snap), ...md.rules, ...md.ai, ...live];
   const exceptions = computeExceptions(snap);
   const highAlerts = alerts.filter((a) => a.severity === "high").length;
 
@@ -417,7 +518,9 @@ async function listAlerts(args: { severity?: string; category?: string }): Promi
   const md = wantData
     ? await masterDataAlerts(snap.providers.map((p) => p.raw), "run")
     : { rules: [], ai: [], aiEnabled: false, aiError: null as string | null };
-  const anomalies = [...md.ai, ...md.rules];
+  // Route and schedule problems found right now by the automatic checks (skips records the AI already reported)
+  const live = wantData || wantNetwork ? notCoveredByAi(await liveNetworkAlerts(), md.ai) : [];
+  const anomalies = [...md.ai, ...md.rules, ...live];
 
   const rank = { high: 0, medium: 1, low: 2 } as const;
   const sev = norm(args.severity);
@@ -446,7 +549,7 @@ async function listAlerts(args: { severity?: string; category?: string }): Promi
             items: data.slice(0, MAX_ROWS),
             more: Math.max(0, data.length - MAX_ROWS),
           }
-        : { type: "note", text: "No anomalies in providers, rates or SOPs.", tone: "good" }
+        : { type: "note", text: "No anomalies in providers, rates, SOPs, routes or schedules.", tone: "good" }
     );
 
   return {
@@ -518,6 +621,87 @@ async function listRoutes(args: { search?: string }): Promise<ToolResult> {
           },
         ]
       : [{ type: "note", text: "No routes match that." }],
+  };
+}
+
+/** Routes and schedules with problems, read live (distance, transit time, status, provider, timing). */
+async function networkProblems(args: { search?: string }): Promise<ToolResult> {
+  const input = await buildScanInput();
+  const q = (args.search ?? "").trim().toLowerCase();
+  const match = (r: Row) => !q || Object.values(r).filter((v) => typeof v === "string").join(" ").toLowerCase().includes(q);
+
+  const allRoutes = (input.routes ?? []) as Row[];
+  const routes = allRoutes.filter((r) => flagsOf(r).length && match(r));
+  const schedules = ((input.schedules ?? []) as Row[]).filter((s) => flagsOf(s).length && match(s));
+
+  const blocks: Block[] = [
+    {
+      type: "stats",
+      title: "Routes and schedules right now",
+      items: [
+        { label: "Routes", value: String(allRoutes.length) },
+        { label: "Routes with problems", value: String(routes.length), tone: routes.length ? "bad" : "good" },
+        { label: "Schedules with problems", value: String(schedules.length), tone: schedules.length ? "bad" : "good" },
+      ],
+    },
+  ];
+  if (routes.length)
+    blocks.push({
+      type: "table",
+      title: `Routes with problems (${routes.length})`,
+      columns: ["Route", "Origin → Destination", "Provider", "Problems"],
+      rows: routes.slice(0, MAX_ROWS).map((r) => [
+        String(r.route_code ?? r.route_name ?? "Route"),
+        `${r.origin ?? "?"} → ${r.destination ?? "?"}`,
+        String(r.provider ?? "—"),
+        flagsOf(r).join("; "),
+      ]),
+      tones: routes.slice(0, MAX_ROWS).map(() => "bad" as Tone),
+      more: Math.max(0, routes.length - MAX_ROWS),
+    });
+  if (schedules.length)
+    blocks.push({
+      type: "table",
+      title: `Schedules with problems (${schedules.length})`,
+      columns: ["Schedule", "Route", "Status", "Problems"],
+      rows: schedules.slice(0, MAX_ROWS).map((s) => [
+        String(s.schedule_code ?? "Schedule"),
+        String(s.route ?? "—"),
+        String(s.status ?? "—"),
+        flagsOf(s).join("; "),
+      ]),
+      tones: schedules.slice(0, MAX_ROWS).map(() => "bad" as Tone),
+      more: Math.max(0, schedules.length - MAX_ROWS),
+    });
+  if (!routes.length && !schedules.length)
+    blocks.push({ type: "note", text: "No problems found in routes or schedules.", tone: "good" });
+
+  return {
+    data: {
+      routes_total: allRoutes.length,
+      routes_with_problems: routes.slice(0, 40).map((r) => ({
+        route: r.route_code,
+        name: r.route_name,
+        origin: r.origin,
+        destination: r.destination,
+        mode: r.mode,
+        provider: r.provider ?? null,
+        status: r.status,
+        distance_km: r.distance_km ?? null,
+        transit_hours: r.eta_hours ?? null,
+        problems: flagsOf(r),
+      })),
+      schedules_with_problems: schedules.slice(0, 40).map((s) => ({
+        schedule: s.schedule_code,
+        route: s.route ?? null,
+        status: s.status,
+        planned_departure: s.planned_departure,
+        planned_arrival: s.planned_arrival,
+        problems: flagsOf(s),
+      })),
+    },
+    blocks,
+    suggestions: ["Alerts", "Network Overview", "Delayed Shipments"],
   };
 }
 
@@ -659,7 +843,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "list_alerts",
     description:
-      "Open alerts. Network alerts: delays, overdue arrivals, no tracking update, overloads, delayed schedules. Data anomalies in providers/rates/SOPs: expired or expiring rates, price outliers, overdue SOP reviews, low ratings, missing contacts, rates on inactive providers, plus AI-detected anomalies (duplicates, inconsistent codes, placeholder names, contradictions).",
+      "Open alerts. Network alerts: delays, overdue arrivals, no tracking update, overloads, delayed schedules. Data anomalies in providers/rates/SOPs: expired or expiring rates, price outliers, overdue SOP reviews, low ratings, missing contacts, rates on inactive providers, plus AI-detected anomalies (duplicates, inconsistent codes, placeholder names, contradictions). Also route and schedule problems found live: routes with no or inactive provider, missing or impossible distance and transit time, duplicate routes, schedules whose arrival passed, never started, or with no or inactive route.",
     input_schema: {
       type: "object",
       properties: {
@@ -680,6 +864,13 @@ export const TOOLS: ToolDef[] = [
     description: "Routes with origin/destination, mode, assigned provider and on-time performance.",
     input_schema: { type: "object", properties: { search: { type: "string" } } },
     run: (a) => listRoutes(a),
+  },
+  {
+    name: "network_problems",
+    description:
+      "Live check of the network setup: routes with problems (no provider, inactive provider, same origin and destination, missing or impossible distance or transit time, duplicate code or lane) and schedules with problems (arrival passed but not completed, never started, delayed, no route or inactive route). Use for questions like which routes have no provider, which schedules are late, or what is wrong with the routes.",
+    input_schema: { type: "object", properties: { search: { type: "string", description: "Optional text filter, e.g. a route code or provider name" } } },
+    run: (a) => networkProblems(a),
   },
   {
     name: "provider_rates",

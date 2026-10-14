@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditActor, logAuditEvent } from "../../../../../lib/audit";
 import { getSupabaseClient } from "../../../../../lib/supabase";
+import { requirePermission } from "../../../../../lib/authz";
 
 // Which table each archived entity lives in, and which column holds its display name.
 // Several spellings are accepted so it works with whatever entity_type your DELETE routes log.
@@ -48,6 +49,10 @@ const RESTORE_TARGETS: Record<string, RestoreTarget> = {
 };
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  // RBAC: restoring archived records is an audit-log action, so admin only (401 / 403 otherwise).
+  const auth = await requirePermission(request, "audit-logs:view");
+  if (!auth.ok) return auth.response;
+
   const actor = await getAuditActor(request);
   if (!actor) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

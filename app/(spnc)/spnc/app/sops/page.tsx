@@ -1,12 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
 import {
   ClipboardList,
-  Calendar,
-  FileText,
-  User,
+  Plus,
   Pencil,
   Archive,
   X,
@@ -18,23 +15,22 @@ import {
   Check,
   ChevronDown,
   Clock,
-  Inbox,
-  CheckCircle2,
-  XCircle,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
 import SpncAssistant from "../../components/SpncAssistant";
+import { can } from "../../lib/rbac";
 
 const CATEGORY_OPTIONS = ["handling", "documentation", "customs", "safety", "storage", "transport", "general"];
 // Status is no longer shown or edited on this page. New SOPs are saved as NEW_SOP_STATUS;
-// edited SOPs keep the status they already have. (The column is still used for requests.)
+// edited SOPs keep the status they already have.
 const NEW_SOP_STATUS = "published";
 const PAGE_SIZE = 5;
-const REQUESTS_PAGE_SIZE = 5; // requests shown per page in the Requests table
 const RECENT_SEARCHES_KEY = "sops_recent_searches";
 const MAX_RECENT_SEARCHES = 5;
+const TABLE_SCROLL_STEP = 320; // pixels moved per click on the table's left/right buttons
 // Anomaly alert highlight (dashboard alert / assistant "Fix" link: ?highlight=<sop id>&field=<field>&highlightName=<code · title>)
 // Which table column shows each field, so the right cell gets the stronger red.
 const FIELD_TO_COLUMN: Record<string, string> = {
@@ -67,32 +63,48 @@ type SOP = {
   content?: string | null;
   owner?: string | null;
   status: string;
-  department?: string | null; // which department the SOP belongs to / sent the request
-  created_at?: string | null; // when the request was sent
+  department?: string | null; // which department the SOP belongs to
+  created_at?: string | null;
+  // Approval flow: filled in when an employee edits an SOP and an admin hasn't decided yet.
+  pending_changes?: PendingChanges | null;
+  pending_by_name?: string | null;
+  pending_at?: string | null;
 };
 
-/* ---------- SOP requests ----------
- * Requests live in the same sops table. Another department inserts a row with status = 'pending'.
- * Approve sets the status to APPROVED_STATUS (it then shows in the SOP table); Decline sets 'declined'.
- */
-const APPROVED_STATUS = "published";
+/* Rows with status 'pending' or 'declined' (requests from other departments) are kept out of the SOP table. */
 const REQUEST_STATUSES = ["pending", "declined"];
 const isRequest = (s: SOP) => REQUEST_STATUSES.includes(s.status);
 
-const REQUEST_STATUS_STYLE: Record<string, { label: string; dark: string; light: string }> = {
-  pending: { label: "Pending", dark: "bg-[#2E2410] text-[#F2A23B]", light: "bg-[#FDF1DE] text-[#C77E12]" },
-  approved: { label: "Approved", dark: "bg-[#0F2E22] text-[#3BD68A]", light: "bg-[#E1F7EC] text-[#1FA968]" },
-  declined: { label: "Declined", dark: "bg-[#2A1212] text-[#E2685A]", light: "bg-[#FBE4E1] text-[#D9483A]" },
+// An employee's edit that is waiting for an admin: { field: { from, to } }
+type PendingChanges = Record<string, { from: unknown; to: unknown }>;
+
+// True when an employee edit is waiting for an admin on this SOP.
+const hasPending = (s: SOP) => !!s.pending_changes && Object.keys(s.pending_changes).length > 0;
+
+// Tolerates casing/whitespace differences ("Admin", " admin ") from the session.
+const isAdminRole = (role: unknown) => typeof role === "string" && role.trim().toLowerCase() === "admin";
+
+// Friendly names for the fields shown in the "Pending approvals" panel.
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  sop_code: "SOP code",
+  category: "Category",
+  scope: "Scope",
+  department: "Department",
+  version: "Version",
+  effective_date: "Effective date",
+  review_date: "Review date",
+  content: "Procedure",
+  owner: "Owner",
+  status: "Status",
 };
 
-function formatRequestDate(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return {
-    date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-    time: d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-  };
+// How a value is shown in the "Pending approvals" panel (long procedure text is shortened)
+function formatChangeValue(field: string, value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  const text = String(value);
+  if (field === "content") return text.length > 80 ? `${text.slice(0, 80).replace(/\s+/g, " ")}…` : text;
+  return text;
 }
 
 // Every column in public.sops except title/sop_code can be null; fill safe defaults once.
@@ -111,222 +123,17 @@ function normalizeSop(s: Partial<SOP> & { id: string }): SOP {
     status: s.status ?? "draft",
     department: s.department ?? null,
     created_at: s.created_at ?? null,
+    pending_changes: s.pending_changes ?? null,
+    pending_by_name: s.pending_by_name ?? null,
+    pending_at: s.pending_at ?? null,
   };
 }
 
-function SopRequestsTable({
-  isDark,
-  requests,
-  busyId,
-  error,
-  onApprove,
-  onDecline,
-  highlightId,
-}: {
-  highlightId?: string | null;
-  isDark: boolean;
-  requests: SOP[] | null;
-  busyId: string | null;
-  error: string | null;
-  onApprove: (s: SOP) => void;
-  onDecline: (s: SOP) => void;
-}) {
-  const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
-  const pendingCount = requests?.filter((r) => r.status === "pending").length ?? 0;
-
-  // Show 5 requests per page with Back / Next.
-  const [reqPage, setReqPage] = useState(1);
-  const [reqPageLoading, setReqPageLoading] = useState(false);
-
-  // Anomaly alert: jump to the page that contains the highlighted request once requests load.
-  useEffect(() => {
-    if (!highlightId || !requests) return;
-    const idx = requests.findIndex((r) => r.id === highlightId);
-    if (idx >= 0) setReqPage(Math.floor(idx / REQUESTS_PAGE_SIZE) + 1);
-  }, [highlightId, requests]);
-  const total = requests?.length ?? 0;
-  const reqTotalPages = Math.max(1, Math.ceil(total / REQUESTS_PAGE_SIZE));
-  const currentPage = Math.min(reqPage, reqTotalPages);
-  const pagedRequests = requests?.slice((currentPage - 1) * REQUESTS_PAGE_SIZE, currentPage * REQUESTS_PAGE_SIZE) ?? [];
-  // Same short loading spinner as the main table's Back / Next.
-  function goToReqPage(next: number) {
-    if (next < 1 || next > reqTotalPages || next === currentPage) return;
-    setReqPageLoading(true);
-    setTimeout(() => {
-      setReqPage(next);
-      setReqPageLoading(false);
-    }, 400);
-  }
-  const pagerBtn = `flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-    isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
-  }`;
-
-  return (
-    <section className="mb-8">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Inbox size={18} className="text-[#F2419B]" />
-        <h2
-          className={`text-base font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          SOP Requests
-        </h2>
-        {requests && (
-          <span className="rounded-full bg-[#F2419B] px-2 py-0.5 text-[11px] font-bold text-white">
-            {pendingCount} pending
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <div className="mb-3 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">{error}</div>
-      )}
-
-      <div className={`overflow-hidden rounded-lg border ${isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
-        {requests === null ? (
-          <div className="flex items-center justify-center gap-2 py-10">
-            <Loader2 size={20} className="animate-spin text-[#F2419B]" />
-            <span className="text-sm font-semibold text-[#F2419B]">Loading requests</span>
-          </div>
-        ) : reqPageLoading ? (
-          <div className="flex items-center justify-center gap-2 py-10">
-            <Loader2 size={20} className="animate-spin text-[#F2419B]" />
-            <span className="text-sm font-semibold text-[#F2419B]">Loading</span>
-          </div>
-        ) : requests.length === 0 ? (
-          <p className={`px-4 py-10 text-center text-sm ${muted}`}>No SOP requests from other departments yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left">
-              <thead className={`sticky top-0 z-[1] ${isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}`}>
-                <tr>
-                  {["Request", "Department", "Category", "Description", "Request Sent", "Action"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className={isDark ? "divide-y divide-[#23303D] text-[#C7D1DA]" : "divide-y divide-gray-200 text-gray-700"}>
-                {pagedRequests.map((r) => {
-                  const status = REQUEST_STATUS_STYLE[r.status] ?? REQUEST_STATUS_STYLE.pending;
-                  const sent = formatRequestDate(r.created_at);
-                  const busy = busyId === r.id;
-                  const description = r.scope || r.content;
-                  return (
-                    <tr
-                      key={r.id}
-                      id={`sop-request-${r.id}`}
-                      style={highlightId === r.id ? { outline: "2px solid #E5484D", outlineOffset: -2, background: "rgba(229, 72, 77, 0.1)" } : undefined}
-                      className={
-                        highlightId === r.id
-                          ? `${HIGHLIGHT_ROW} outline outline-2 -outline-offset-2 outline-[#E5484D]`
-                          : isDark
-                          ? "hover:bg-[#182230]"
-                          : "hover:bg-gray-50"
-                      }
-                    >
-                      <td className="px-4 py-3 align-middle">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                              isDark ? "bg-[#1A2530] text-[#F2419B]" : "bg-[#FCE7F3] text-[#F2419B]"
-                            }`}
-                          >
-                            <ClipboardList size={16} />
-                          </div>
-                          <div className="min-w-0 max-w-[15rem]">
-                            <div className="truncate text-sm font-semibold text-[#F2419B]" title={r.title}>{r.title}</div>
-                            <div className={`whitespace-nowrap text-xs ${muted}`}>{r.sop_code} · v{r.version}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3 align-middle text-sm font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
-                        {r.department || <span className={muted}>—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-middle text-sm capitalize">{r.category}</td>
-                      <td className="max-w-md px-4 py-3 align-middle text-sm">
-                        {description ? <span className="line-clamp-2">{description}</span> : <span className={muted}>—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-middle">
-                        {sent ? (
-                          <>
-                            <div className="text-sm">{sent.date}</div>
-                            <div className={`text-xs ${muted}`}>{sent.time}</div>
-                          </>
-                        ) : (
-                          <span className={muted}>—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-middle">
-                        {r.status === "pending" ? (
-                          busy ? (
-                            <Loader2 size={18} className="animate-spin text-[#F2419B]" />
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => onApprove(r)}
-                                disabled={busyId !== null}
-                                className="flex items-center gap-1 rounded-md bg-[#1FA968] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#23BF76] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Check size={14} />
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onDecline(r)}
-                                disabled={busyId !== null}
-                                className={`flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold text-[#E2685A] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                  isDark ? "border-[#E2685A]/40 hover:bg-[#2A1212]" : "border-[#E2685A]/50 hover:bg-[#FBE4E1]"
-                                }`}
-                              >
-                                <X size={14} />
-                                Decline
-                              </button>
-                            </div>
-                          )
-                        ) : (
-                          <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${isDark ? status.dark : status.light}`}>
-                            {status.label}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {total > REQUESTS_PAGE_SIZE && (
-        <div className="mt-3 flex items-center justify-center gap-4">
-          <button type="button" onClick={() => goToReqPage(currentPage - 1)} disabled={currentPage === 1 || reqPageLoading} className={pagerBtn}>
-            <ChevronLeft size={16} />
-            Back
-          </button>
-          <span className={`text-sm ${muted}`}>
-            Page {currentPage} of {reqTotalPages}
-          </span>
-          <button type="button" onClick={() => goToReqPage(currentPage + 1)} disabled={currentPage === reqTotalPages || reqPageLoading} className={pagerBtn}>
-            Next
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 /* ---------- Confirmation window (replaces the browser's confirm() popup) ---------- */
-type ConfirmKind = "approve" | "decline" | "archive";
+type ConfirmKind = "archive";
 type ConfirmState = { kind: ConfirmKind; sop: SOP } | null;
 
 const CONFIRM_COPY: Record<ConfirmKind, { title: string; action: string; busy: string; tone: "green" | "red" }> = {
-  approve: { title: "Approve this SOP request?", action: "Approve", busy: "Approving…", tone: "green" },
-  decline: { title: "Decline this SOP request?", action: "Decline", busy: "Declining…", tone: "red" },
   archive: { title: "Archive this SOP?", action: "Archive", busy: "Archiving…", tone: "red" },
 };
 
@@ -360,31 +167,17 @@ function ConfirmDialog({
   const { kind, sop } = state;
   const copy = CONFIRM_COPY[kind];
   const green = copy.tone === "green";
-  const sent = formatRequestDate(sop.created_at);
   const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
   const strong = isDark ? "text-[#F2F1EC]" : "text-gray-900";
-  const Icon = kind === "approve" ? CheckCircle2 : kind === "decline" ? XCircle : AlertTriangle;
+  const Icon = AlertTriangle;
 
-  const message =
-    kind === "approve" ? (
-      <>
-        It will be added to the SOP table as <span className={`font-semibold ${strong}`}>Published</span> and become an official procedure.
-      </>
-    ) : kind === "decline" ? (
-      <>The request will be marked as <span className="font-semibold text-[#E2685A]">Declined</span> and won&apos;t be added to the SOP table.</>
-    ) : (
-      <>This SOP will be removed from the list. This can&apos;t be undone from this page.</>
-    );
+  const message = <>This SOP will be removed from the list. This can&apos;t be undone from this page.</>;
 
   const details: { label: string; value: string }[] = [
     { label: "Department", value: sop.department || "—" },
     { label: "Category", value: sop.category ? sop.category.charAt(0).toUpperCase() + sop.category.slice(1) : "—" },
-    kind === "archive"
-      ? { label: "Owner", value: sop.owner || "—" }
-      : { label: "Request sent", value: sent ? `${sent.date} · ${sent.time}` : "—" },
-    kind === "archive"
-      ? { label: "Review date", value: sop.review_date || "—" }
-      : { label: "Description", value: sop.scope || sop.content || "—" },
+    { label: "Owner", value: sop.owner || "—" },
+    { label: "Review date", value: sop.review_date || "—" },
   ];
 
   return (
@@ -489,7 +282,7 @@ function ConfirmDialog({
                 green ? "bg-[#1FA968] hover:bg-[#23BF76]" : "bg-[#E2685A] hover:bg-[#D9483A]"
               }`}
             >
-              {busy ? <Loader2 size={16} className="animate-spin" /> : kind === "approve" ? <Check size={16} /> : kind === "decline" ? <X size={16} /> : <Archive size={16} />}
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}
               {busy ? copy.busy : copy.action}
             </button>
           </div>
@@ -604,10 +397,469 @@ function Dropdown({
   );
 }
 
+/* ---------- Freight operations SOPs ----------
+ * The SOPs below cover the whole freight operation run by Service Provider and Network Control:
+ * provider accreditation → rates → route planning → dispatch → transit → hand-over → delivery → returns.
+ * SOP-01 to SOP-05 use the same codes the Service Network & Route Planning page attaches to each
+ * delivery, so a code shown on a planned delivery opens the same procedure here.
+ *
+ * On the first visit each one is saved to Supabase through the same POST route as "New SOP"
+ * (admins only on the server). Codes that were saved are remembered in this browser, so an
+ * archived SOP isn't added back. If saving fails (e.g. an employee opened the page first),
+ * they are still shown from this list; Edit and Archive then work on this page only, for admins.
+ */
+const SPNC_DEPT = "Service Provider and Network Control";
+const SEED_ID_PREFIX = "seed-";
+const SEEDED_SOPS_KEY = "sops_seeded_codes_v1";
+const LIVE_REFRESH_MS = 30_000; // reload SOPs from Supabase every 30 seconds while the page is open
+const isSeedSop = (id: string) => id.startsWith(SEED_ID_PREFIX);
+const sameText = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+// Which freight-operations module each built-in SOP is used in (shown under the SOP code).
+const SOP_MODULES: Record<string, string[]> = {
+  "SOP-01": ["Route Planning", "Deliveries"],
+  "SOP-02": ["Route Planning", "Shipments"],
+  "SOP-03": ["Route Planning", "Deliveries"],
+  "SOP-04": ["Route Planning", "Deliveries"],
+  "SOP-05": ["Deliveries"],
+  "SOP-06": ["Service Providers"],
+  "SOP-07": ["Rates & Tariffs"],
+  "SOP-08": ["Route Planning", "Service Providers"],
+  "SOP-09": ["Schedules & Timetable"],
+  "SOP-10": ["Service Providers", "Deliveries"],
+  "SOP-11": ["Deliveries", "Route Planning"],
+  "SOP-12": ["Deliveries", "Service Providers"],
+  "SOP-13": ["Shipments", "Deliveries"],
+};
+
+const SEED_EFFECTIVE = "2026-10-01";
+const SEED_REVIEW = "2027-04-01"; // every SOP is reviewed after 6 months
+
+const SEED_SOPS: Omit<SOP, "id">[] = [
+  {
+    sop_code: "SOP-01",
+    title: "Pre-dispatch checklist",
+    category: "transport",
+    scope: "Every planned delivery, before the vehicle leaves the origin hub",
+    content: [
+      "1. Confirm the route, provider and departure slot assigned in Route Planning.",
+      "2. Check the vehicle: OR/CR, tires, lights, brakes, fuel and that it matches the planned vehicle type.",
+      "3. Check the driver: valid driver's license for the vehicle class and fit to drive.",
+      "4. Check the load against the shipment: piece count, weight, seals and labels.",
+      "5. Attach the SOPs that apply (port, cold-chain or heavy vehicle) to the trip.",
+      "6. Mark the delivery as departed only after every item above is checked.",
+    ].join("\n"),
+    owner: "Network Control Dispatcher",
+  },
+  {
+    sop_code: "SOP-02",
+    title: "Port and customs documents",
+    category: "customs",
+    scope: "Routes that start or end at a port hub (Manila, Batangas, Subic)",
+    content: [
+      "1. Confirm the Bureau of Customs release of the shipment before booking the pick-up.",
+      "2. Carry the bill of lading, commercial invoice, packing list and gate pass for the container.",
+      "3. Book the port pick-up / return slot with the terminal and record it on the delivery.",
+      "4. Check the container number and seal number at the gate against the documents.",
+      "5. Return empty containers to the depot named by the shipping line within the free time.",
+      "6. File copies of all port documents with the delivery record.",
+    ].join("\n"),
+    owner: "Customs & Documentation Officer",
+  },
+  {
+    sop_code: "SOP-03",
+    title: "Cold-chain handling",
+    category: "handling",
+    scope: "Reefer truck deliveries (chilled and frozen goods)",
+    content: [
+      "1. Pre-cool the reefer to the set temperature before loading.",
+      "2. Chilled goods: keep at 0–4 °C. Frozen goods: keep at −18 °C or colder, unless the shipper states otherwise.",
+      "3. Log the temperature at loading, at every stop and at delivery.",
+      "4. Keep door openings short; never leave the reefer unit off while loaded.",
+      "5. If the temperature goes out of range, report it at once under SOP-11.",
+      "6. Hand the temperature log to the receiver with the proof of delivery.",
+    ].join("\n"),
+    owner: "Cold-Chain Coordinator",
+  },
+  {
+    sop_code: "SOP-04",
+    title: "Heavy vehicle routing and weigh-in",
+    category: "safety",
+    scope: "10-wheeler trucks and container trailers",
+    content: [
+      "1. Plan the route around truck-ban roads and hours in Metro Manila (check the current MMDA truck ban schedule).",
+      "2. Keep the load within the legal axle load limit under the Anti-Overloading Act (RA 8794).",
+      "3. Stop at weighbridges when required and keep the weigh ticket with the trip papers.",
+      "4. Use only routes and bridges rated for the vehicle's weight and height.",
+      "5. Secure the load (lashing, twist locks) before departure and after any re-stack.",
+    ].join("\n"),
+    owner: "Fleet Safety Officer",
+  },
+  {
+    sop_code: "SOP-05",
+    title: "Proof of delivery",
+    category: "documentation",
+    scope: "Every completed delivery",
+    content: [
+      "1. Check the receiver's name and ID against the delivery record.",
+      "2. Count the pieces and check for damage together with the receiver.",
+      "3. Get the receiver's signature, the date and time, and a photo of the delivered goods.",
+      "4. Note any damage or shortage on the POD before signing off.",
+      "5. Upload the POD to the delivery record the same day and mark the delivery as Delivered.",
+    ].join("\n"),
+    owner: "Delivery Operations Supervisor",
+  },
+  {
+    sop_code: "SOP-06",
+    title: "Service provider accreditation and review",
+    category: "general",
+    scope: "All carriers, forwarders, couriers and partners in Service Provider Management",
+    content: [
+      "1. Collect the provider's business registration, contact person, hotline and email, office address and service modes.",
+      "2. Confirm the contact details from the provider's official channels before saving them.",
+      "3. Record the contract reference and attach the signed agreement (PDF).",
+      "4. Set the provider to Active only after the documents are complete.",
+      "5. Review each provider every 6 months: on-time rate, damage claims and rating.",
+      "6. Set the provider to Inactive if it stops operating or fails the review.",
+    ].join("\n"),
+    owner: "Service Provider Manager",
+  },
+  {
+    sop_code: "SOP-07",
+    title: "Rate and tariff update approval",
+    category: "documentation",
+    scope: "Every rate in Rates & Tariffs Management",
+    content: [
+      "1. Take rates only from the provider's published rate card or a signed quotation.",
+      "2. Record the source of the rate in the rate's notes.",
+      "3. Keep a rate as Draft until the amount is confirmed; only confirmed rates may be Active.",
+      "4. Set Valid From / Valid To for every rate; a rate past Valid To is set to Expired.",
+      "5. Notify Finance when a rate is added or changed.",
+    ].join("\n"),
+    owner: "Rates & Tariffs Analyst",
+  },
+  {
+    sop_code: "SOP-08",
+    title: "Route planning and provider assignment",
+    category: "transport",
+    scope: "Every shipment request received from Shipments",
+    content: [
+      "1. Review the request: origin, destination, cargo and vehicle type.",
+      "2. Compare the route options by distance, transit time and cost.",
+      "3. Assign an Active provider that serves both hubs and has the vehicle type.",
+      "4. Pick a departure slot from the timetable that meets the requested delivery time.",
+      "5. Attach the SOPs that apply and confirm the plan; the delivery moves to Upcoming.",
+    ].join("\n"),
+    owner: "Network Planner",
+  },
+  {
+    sop_code: "SOP-09",
+    title: "Schedule and transit timetable changes",
+    category: "transport",
+    scope: "Departure slots and lane transit times in Schedules & Timetable",
+    content: [
+      "1. Change a slot or transit time only with the reason recorded (traffic, provider capacity, port schedule).",
+      "2. Check which Upcoming deliveries use the slot before changing it.",
+      "3. Re-plan or notify the affected deliveries and providers.",
+      "4. Publish the updated timetable and note the effective date.",
+    ].join("\n"),
+    owner: "Network Planner",
+  },
+  {
+    sop_code: "SOP-10",
+    title: "Courier drop-off and parcel hand-over",
+    category: "handling",
+    scope: "Parcels handed to courier partners (J&T Home, LBC, Flash Home, Shopee Xpress, Ninja Van, GoGo Xpress)",
+    content: [
+      "1. Pack each parcel within the courier's size and weight limits.",
+      "2. Print and attach the courier's airway bill / waybill.",
+      "3. Hand the parcels to the courier rider or drop-off point and get the receipt or scan confirmation.",
+      "4. Record the courier tracking number on the delivery.",
+      "5. Check tracking daily until delivered; follow SOP-12 for failed deliveries.",
+    ].join("\n"),
+    owner: "Last-Mile Coordinator",
+  },
+  {
+    sop_code: "SOP-11",
+    title: "Delay, incident and anomaly response",
+    category: "safety",
+    scope: "Delayed deliveries, accidents, cargo damage, temperature breaches and anomaly alerts",
+    content: [
+      "1. The driver or provider reports the incident to Network Control right away.",
+      "2. Make sure people are safe first; call emergency services if needed.",
+      "3. Record what happened, where and when, with photos.",
+      "4. Inform the shipper of the delay or damage and the new ETA.",
+      "5. Re-plan the delivery or send a replacement vehicle if needed.",
+      "6. For anomaly alerts, open the flagged record, fix the field and dismiss the alert.",
+      "7. File a damage or loss claim with the provider within the agreed period.",
+    ].join("\n"),
+    owner: "Network Control Lead",
+  },
+  {
+    sop_code: "SOP-12",
+    title: "Failed delivery and return to sender (RTS)",
+    category: "general",
+    scope: "Deliveries that could not be completed",
+    content: [
+      "1. Record the reason for the failed attempt (receiver absent, wrong address, refused).",
+      "2. Contact the receiver to arrange a second attempt.",
+      "3. After the provider's maximum attempts, mark the parcel for return to sender.",
+      "4. Track the return until it reaches the origin hub and inform the shipper.",
+      "5. Check any return fee against the provider's rate before approving payment.",
+    ].join("\n"),
+    owner: "Delivery Operations Supervisor",
+  },
+  {
+    sop_code: "SOP-13",
+    title: "Hub receiving and temporary storage",
+    category: "storage",
+    scope: "Cargo received at a hub before dispatch",
+    content: [
+      "1. Check the shipment documents against the cargo received (pieces, weight, seals).",
+      "2. Report shortages or damage before signing for the cargo.",
+      "3. Label and store the cargo by destination and departure slot.",
+      "4. Keep cold-chain goods in temperature-controlled storage (SOP-03).",
+      "5. Release cargo only to the vehicle assigned in Route Planning.",
+    ].join("\n"),
+    owner: "Hub Supervisor",
+  },
+].map((x) => ({
+  ...x,
+  version: "1.0",
+  effective_date: SEED_EFFECTIVE,
+  review_date: SEED_REVIEW,
+  status: NEW_SOP_STATUS,
+  department: SPNC_DEPT,
+  created_at: null,
+}));
+
+function readSeededCodes(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(SEEDED_SOPS_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]).map((c) => c.toLowerCase()) : []);
+  } catch {
+    return new Set();
+  }
+}
+function writeSeededCodes(codes: Set<string>) {
+  try {
+    window.localStorage.setItem(SEEDED_SOPS_KEY, JSON.stringify([...codes]));
+  } catch {
+    // ignore unavailable storage
+  }
+}
+// A built-in SOP counts as already saved if the database has its code or its title.
+const inRows = (rows: SOP[], seed: Omit<SOP, "id">) =>
+  rows.some((r) => sameText(r.sop_code, seed.sop_code) || sameText(r.title, seed.title));
+
+function formatSyncTime(d: Date | null) {
+  return d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—";
+}
+
+/* ---------- SOP details window ----------
+ * Opens from the eye button or by clicking the SOP title. Shows the description (scope),
+ * the full procedure as numbered steps, who owns it, its dates and where it is used.
+ */
+function formatSopDate(v?: string | null) {
+  if (!v) return null;
+  const [y, m, d] = String(v).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return String(v);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function daysFromToday(v?: string | null) {
+  if (!v) return null;
+  const [y, m, d] = String(v).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, d).getTime() - today.getTime()) / 86_400_000);
+}
+
+// "1. Do this" / "2) Do that" / "- item" → separate steps; plain paragraphs stay as text.
+function splitSteps(content?: string | null) {
+  return (content ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^(\d+)[.)]\s+(.*)$/) ?? line.match(/^[-•*]\s+()(.*)$/);
+      return m ? { num: m[1] || null, text: m[2], isStep: true } : { num: null, text: line, isStep: false };
+    });
+}
+
+function SopDetails({
+  sop,
+  isDark,
+  onClose,
+  onEdit,
+}: {
+  sop: SOP | null;
+  isDark: boolean;
+  onClose: () => void;
+  onEdit: (s: SOP) => void;
+}) {
+  useEffect(() => {
+    if (!sop) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sop, onClose]);
+
+  if (!sop) return null;
+  const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
+  const strong = isDark ? "text-[#F2F1EC]" : "text-gray-900";
+  const panel = isDark ? "border-[#23303D] bg-[#0B1220]" : "border-gray-200 bg-gray-50";
+  const steps = splitSteps(sop.content);
+  const modules = SOP_MODULES[sop.sop_code.toUpperCase()] ?? [];
+  const reviewIn = daysFromToday(sop.review_date);
+  const review =
+    reviewIn === null
+      ? null
+      : reviewIn < 0
+      ? { text: `Review overdue by ${-reviewIn} day${reviewIn === -1 ? "" : "s"}`, cls: "text-[#E2685A]" }
+      : reviewIn <= 30
+      ? { text: reviewIn === 0 ? "Review due today" : `Review due in ${reviewIn} day${reviewIn === 1 ? "" : "s"}`, cls: isDark ? "text-[#F2A23B]" : "text-[#C9791A]" }
+      : { text: `Next review in ${reviewIn} days`, cls: muted };
+
+  const facts: { label: string; value: string }[] = [
+    { label: "SOP code", value: sop.sop_code || "—" },
+    { label: "Version", value: sop.version ? `v${sop.version}` : "—" },
+    { label: "Category", value: sop.category ? sop.category.charAt(0).toUpperCase() + sop.category.slice(1) : "—" },
+    { label: "Owner", value: sop.owner || "—" },
+    { label: "Department", value: sop.department || "—" },
+    { label: "Status", value: sop.status ? sop.status.charAt(0).toUpperCase() + sop.status.slice(1) : "—" },
+    { label: "Effective", value: formatSopDate(sop.effective_date) ?? "—" },
+    { label: "Review", value: formatSopDate(sop.review_date) ?? "—" },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[55] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sop-details-title"
+    >
+      <div
+        className={`flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-2xl ${
+          isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"
+        }`}
+        style={{ animation: "sopDetailsIn 160ms ease-out" }}
+      >
+        <style>{`@keyframes sopDetailsIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}`}</style>
+        <div className="h-1.5 w-full bg-[#F2419B]" />
+
+        {/* Header */}
+        <div className="flex items-start gap-4 p-6 pb-4">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${isDark ? "bg-[#1A2530] text-[#F2419B]" : "bg-[#FCE7F3] text-[#F2419B]"}`}>
+            <ClipboardList size={22} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 id="sop-details-title" className={`text-lg font-semibold leading-snug ${strong}`} style={{ fontFamily: "var(--font-display)" }}>
+              {sop.title || "Untitled SOP"}
+            </h3>
+            <p className={`mt-0.5 text-xs ${muted}`}>
+              {sop.sop_code} · v{sop.version} · {sop.department || "No department"}
+            </p>
+            {modules.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {modules.map((m) => (
+                  <span key={m} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${isDark ? "bg-[#1A2530] text-[#7DD3FC]" : "bg-[#E0F2FE] text-[#0369A1]"}`}>
+                    {m}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className={`-mr-2 -mt-2 rounded-md p-1.5 transition ${isDark ? "text-[#8FA0AF] hover:bg-[#1A2530]" : "text-gray-400 hover:bg-gray-100"}`}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body (scrolls) */}
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 pb-6">
+          <section>
+            <h4 className={`mb-1.5 text-[11px] font-semibold uppercase tracking-wide ${muted}`}>Description</h4>
+            <p className={`text-sm leading-relaxed ${strong}`}>{sop.scope || "No description yet. Edit the SOP to add one."}</p>
+          </section>
+
+          <section>
+            <h4 className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${muted}`}>
+              Procedure{steps.some((x) => x.isStep) ? ` · ${steps.filter((x) => x.isStep).length} steps` : ""}
+            </h4>
+            {steps.length === 0 ? (
+              <p className={`text-sm ${muted}`}>No procedure content yet.</p>
+            ) : (
+              <ol className={`space-y-2 rounded-xl border p-4 ${panel}`}>
+                {steps.map((step, i) => (
+                  <li key={i} className="flex gap-3 text-sm leading-relaxed">
+                    {step.isStep ? (
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F2419B] text-[11px] font-bold text-white">
+                        {step.num ?? "•"}
+                      </span>
+                    ) : null}
+                    <span className={strong}>{step.text}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section>
+            <h4 className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${muted}`}>Details</h4>
+            <dl className={`grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border p-4 sm:grid-cols-4 ${panel}`}>
+              {facts.map((f) => (
+                <div key={f.label} className="min-w-0">
+                  <dt className={`text-[10px] font-semibold uppercase tracking-wide ${muted}`}>{f.label}</dt>
+                  <dd className={`mt-0.5 break-words text-sm ${strong}`}>{f.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {review && <p className={`mt-2 text-xs font-medium ${review.cls}`}>{review.text}</p>}
+          </section>
+        </div>
+
+        {/* Footer */}
+        <div className={`flex gap-3 border-t px-6 py-4 ${isDark ? "border-[#23303D]" : "border-gray-200"}`}>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`flex-1 rounded-lg border py-2.5 text-sm font-medium transition ${
+              isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() => onEdit(sop)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB]"
+          >
+            <Pencil size={15} />
+            Edit SOP
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SOPsPage() {
-  const { theme } = useShell();
+  const { theme, role, roleLoading } = useShell();
   const isDark = theme === "dark";
-  const router = useRouter();
+  // Only admins can add SOPs and archive them. Employees' edits are sent to an admin for approval.
+  const canAddSop = !roleLoading && isAdminRole(role);
+  const canApprove = !roleLoading && can(role, "sops:approve");
 
   const [sops, setSops] = useState<SOP[]>([]);
   const [loading, setLoading] = useState(true);
@@ -620,6 +872,24 @@ export default function SOPsPage() {
   const [showRecentSearches, setShowRecentSearches] = useState(false);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
+  // Table left/right scrolling (arrow buttons above the table)
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  function scrollTable(direction: "left" | "right") {
+    tableScrollRef.current?.scrollBy({
+      left: direction === "left" ? -TABLE_SCROLL_STEP : TABLE_SCROLL_STEP,
+      behavior: "smooth",
+    });
+  }
+
+  // Built-in freight-operations SOPs
+  const seedAttempted = useRef(false); // only try saving them to Supabase once per visit
+  const archivedSeeds = useRef<Set<string>>(new Set()); // built-in SOPs archived on this page only
+
+  // Live data: SOPs are reloaded from Supabase every LIVE_REFRESH_MS
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const [liveRefreshing, setLiveRefreshing] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -630,13 +900,11 @@ export default function SOPsPage() {
 
   const [form, setForm] = useState(emptyForm);
 
-  // SOP requests (rows with status 'pending' / 'declined')
-  const [showRequests, setShowRequests] = useState(false);
-  const [requests, setRequests] = useState<SOP[] | null>(null);
-  const [requestActionId, setRequestActionId] = useState<string | null>(null);
-  const [requestError, setRequestError] = useState<string | null>(null);
+  // Approval flow
+  const [notice, setNotice] = useState<string | null>(null); // green message, e.g. "sent to an admin for approval"
+  const [reviewingId, setReviewingId] = useState<string | null>(null); // SOP being approved/declined
 
-  // Styled confirmation window for Approve / Decline / Archive
+  // Styled confirmation window for Archive
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -653,6 +921,12 @@ export default function SOPsPage() {
   // Rows showing their full details ("See more")
   const [expandedSops, setExpandedSops] = useState<Set<string>>(() => new Set());
 
+  // SOP shown in the details window (eye button / click on the title).
+  // Kept by id so the window shows the latest data after a live refresh.
+  const [viewingSopId, setViewingSopId] = useState<string | null>(null);
+  const viewingSop = viewingSopId ? sops.find((x) => x.id === viewingSopId) ?? null : null;
+  const setViewingSop = (x: SOP | null) => setViewingSopId(x ? x.id : null);
+
   function toggleExpanded(id: string) {
     setExpandedSops((prev) => {
       const next = new Set(prev);
@@ -662,102 +936,140 @@ export default function SOPsPage() {
     });
   }
 
-  async function fetchSops() {
-    setLoading(true);
+  async function readSops(): Promise<SOP[]> {
+    const res = await fetch("/spnc/app/api/sops", { cache: "no-store" });
+    if (!res.ok) throw new Error(`SOP request failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data.sops)
+      ? data.sops.filter((x: Partial<SOP>) => typeof x.id === "string").map(normalizeSop)
+      : [];
+  }
+
+  // First visit: save built-in SOPs that aren't in Supabase yet.
+  // Only admins can create SOPs on the server, so for employees this fails quietly and the
+  // built-in SOPs are shown from SEED_SOPS instead.
+  async function seedMissingSops(rows: SOP[]): Promise<SOP[]> {
+    if (seedAttempted.current) return rows;
+    seedAttempted.current = true;
+    const seeded = readSeededCodes();
+    const missing = SEED_SOPS.filter((x) => !inRows(rows, x) && !seeded.has(x.sop_code.toLowerCase()));
+    if (missing.length === 0) return rows;
+
+    const results = await Promise.all(
+      missing.map((x) =>
+        fetch("/spnc/app/api/sops", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: x.title,
+            sop_code: x.sop_code,
+            category: x.category,
+            scope: x.scope ?? "",
+            department: x.department,
+            version: x.version,
+            effective_date: x.effective_date,
+            review_date: x.review_date,
+            content: x.content ?? "",
+            owner: x.owner ?? "",
+            status: x.status,
+          }),
+        })
+          .then((r) => r.ok)
+          .catch(() => false)
+      )
+    );
+    missing.forEach((x, i) => {
+      if (results[i]) seeded.add(x.sop_code.toLowerCase());
+    });
+    writeSeededCodes(seeded);
+    return results.some(Boolean) ? readSops() : rows;
+  }
+
+  // Built-in SOPs that aren't in Supabase are shown from SEED_SOPS, keeping edits made on this page.
+  function withLocalSeeds(rows: SOP[], prev: SOP[]): SOP[] {
+    const seeded = readSeededCodes();
+    const local = SEED_SOPS.filter(
+      (x) => !inRows(rows, x) && !seeded.has(x.sop_code.toLowerCase()) && !archivedSeeds.current.has(x.sop_code.toLowerCase())
+    ).map((x) => {
+      const id = SEED_ID_PREFIX + x.sop_code.toLowerCase();
+      return prev.find((p) => p.id === id) ?? normalizeSop({ ...x, id });
+    });
+    return [...rows, ...local];
+  }
+
+  // silent = live refresh in the background (no loading spinner, the table stays where it is)
+  async function fetchSops(silent = false) {
+    if (silent) setLiveRefreshing(true);
+    else setLoading(true);
     try {
-      const res = await fetch("/spnc/app/api/sops", { cache: "no-store" });
-      if (!res.ok) throw new Error(`SOP request failed (${res.status})`);
-      const data = await res.json();
-      setSops(
-        Array.isArray(data.sops)
-          ? data.sops.filter((x: Partial<SOP>) => typeof x.id === "string").map(normalizeSop)
-          : []
-      );
+      let rows = await readSops();
+      rows = await seedMissingSops(rows);
+      setSops((prev) => withLocalSeeds(rows, prev));
+      setLastSynced(new Date());
+      setLiveError(null);
     } catch (err) {
       console.error("Fetch SOPs failed:", err);
+      setSops((prev) => (prev.length ? prev : withLocalSeeds([], prev)));
+      setLiveError("Couldn't reach the server. Showing the last loaded SOPs.");
     } finally {
-      setLoading(false);
+      if (silent) setLiveRefreshing(false);
+      else setLoading(false);
     }
   }
 
   useEffect(() => {
     fetchSops();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- SOP requests: load, approve, decline ----
-  // Reloaded from Supabase every time the Requests table is opened.
-  async function loadRequests() {
-    setRequestError(null);
-    try {
-      const res = await fetch("/spnc/app/api/sops", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || `Couldn't load requests (HTTP ${res.status}).`);
-      const all: SOP[] = Array.isArray(data.sops)
-        ? data.sops.filter((x: Partial<SOP>) => typeof x.id === "string").map(normalizeSop)
-        : [];
-      setSops(all);
-      setRequests(
-        all.filter(isRequest).sort((a, b) => {
-          // pending first, then newest first
-          if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
-          return (b.created_at ?? "").localeCompare(a.created_at ?? "");
-        })
-      );
-    } catch (err) {
-      console.error("Fetch SOP requests failed:", err);
-      setRequests([]);
-      setRequestError(err instanceof Error ? err.message : "Couldn't load requests.");
-    }
-  }
-
+  // ---- Live refresh ----
+  // Reload every LIVE_REFRESH_MS while the tab is visible, and right away when you come back to the tab.
+  // Paused while the Edit form or a confirmation window is open so nothing changes under you.
   useEffect(() => {
-    if (showRequests) {
-      setRequests(null);
-      loadRequests();
-    }
+    if (modalOpen || confirmState) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") fetchSops(true);
+    };
+    const timer = window.setInterval(tick, LIVE_REFRESH_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showRequests]);
+  }, [modalOpen, confirmState]);
 
-  // Saves the new status through the existing update route. The full SOP is sent
-  // (same shape as the Edit form) with only the status changed.
-  async function setRequestStatus(r: SOP, status: string) {
-    const res = await fetch(`/spnc/app/api/sops/${r.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: r.title,
-        sop_code: r.sop_code,
-        category: r.category,
-        scope: r.scope ?? "",
-        department: r.department ?? null,
-        version: r.version,
-        effective_date: r.effective_date || null,
-        review_date: r.review_date || null,
-        content: r.content ?? "",
-        owner: r.owner ?? "",
-        status,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Couldn't update the request.");
+  // Auto-hide the green notice after a few seconds
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 10000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-    // Approved SOPs appear in the SOP table right away.
-    setSops((prev) => prev.map((x) => (x.id === r.id ? { ...x, status } : x)));
-    // Keep the row in the requests list with an Approved / Declined badge until it's reopened.
-    setRequests(
-      (prev) => prev?.map((x) => (x.id === r.id ? { ...x, status: status === APPROVED_STATUS ? "approved" : status } : x)) ?? prev
-    );
+  // Admin: approve or decline an employee's pending edit.
+  async function reviewSop(id: string, action: "approve" | "decline") {
+    if (!canApprove || reviewingId) return;
+    setReviewingId(id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/spnc/app/api/sops/${id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Could not process the request.");
+      setNotice(action === "approve" ? "Changes approved and applied." : "Changes declined. The SOP was left as it was.");
+      await fetchSops(true);
+    } catch (err) {
+      console.error("Review failed:", err);
+      setDeleteError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setReviewingId(null);
+    }
   }
 
-  // Approve / Decline / Archive open the confirmation window; the action runs when it's confirmed.
-  function handleApproveRequest(r: SOP) {
-    setConfirmError(null);
-    setConfirmState({ kind: "approve", sop: r });
-  }
-  function handleDeclineRequest(r: SOP) {
-    setConfirmError(null);
-    setConfirmState({ kind: "decline", sop: r });
-  }
+  // Archive opens the confirmation window; the action runs when it's confirmed.
   function closeConfirm() {
     if (confirmBusy) return;
     setConfirmState(null);
@@ -770,17 +1082,19 @@ export default function SOPsPage() {
     setConfirmError(null);
     try {
       if (kind === "archive") {
-        setDeletingId(sop.id);
-        const res = await fetch(`/spnc/app/api/sops/${sop.id}`, { method: "DELETE" });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.message || "Could not archive SOP.");
+        if (isSeedSop(sop.id)) {
+          // Built-in SOP that isn't in Supabase: remove it from this page only.
+          archivedSeeds.current.add(sop.sop_code.toLowerCase());
+          setSops((prev) => prev.filter((x) => x.id !== sop.id));
+        } else {
+          setDeletingId(sop.id);
+          const res = await fetch(`/spnc/app/api/sops/${sop.id}`, { method: "DELETE" });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || "Could not archive SOP.");
+          }
+          fetchSops();
         }
-        fetchSops();
-      } else {
-        setRequestActionId(sop.id);
-        setRequestError(null);
-        await setRequestStatus(sop, kind === "approve" ? APPROVED_STATUS : "declined");
       }
       setConfirmState(null);
     } catch (err) {
@@ -788,7 +1102,6 @@ export default function SOPsPage() {
       setConfirmError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setConfirmBusy(false);
-      setRequestActionId(null);
       setDeletingId(null);
     }
   }
@@ -838,8 +1151,9 @@ export default function SOPsPage() {
 
   // Official SOPs = everything that isn't a pending/declined request.
   const officialSops = sops.filter((x) => !isRequest(x));
-  // Number shown in the red circle on the Requests button.
-  const pendingRequestCount = sops.filter((x) => x.status === "pending").length;
+
+  // SOPs that have an employee edit waiting for an admin.
+  const pendingList = officialSops.filter(hasPending);
 
   const filteredSops = officialSops.filter((sop) => {
     const query = searchTerm.trim().toLowerCase();
@@ -927,16 +1241,6 @@ export default function SOPsPage() {
       setExpandedSops((prev) => new Set(prev).add(s.id)); // show the full title/owner
       return;
     }
-    // A pending/declined request → open the Requests table instead.
-    const req = sops.find(byId) ?? sops.find(byName);
-    if (req) {
-      setShowRequests(true);
-      setHighlightMissing(null);
-      setHighlightId(req.id);
-      setHighlightField(target.field);
-      setHighlightColumn(null);
-      return;
-    }
     console.warn("[SOPs] Anomaly alert: SOP not found", target);
     setHighlightMissing(target.name || target.id || "the SOP");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -959,13 +1263,13 @@ export default function SOPsPage() {
   useEffect(() => {
     if (!highlightId) return;
     const t = window.setTimeout(() => {
-      (document.getElementById(`sop-row-${highlightId}`) ?? document.getElementById(`sop-request-${highlightId}`))?.scrollIntoView({
+      document.getElementById(`sop-row-${highlightId}`)?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
     }, 150);
     return () => window.clearTimeout(t);
-  }, [highlightId, page, requests, loading]);
+  }, [highlightId, page, loading]);
 
   function clearHighlight() {
     setHighlightId(null);
@@ -991,6 +1295,13 @@ export default function SOPsPage() {
     setEditingId(null);
     setSaveError(null);
     setShowFieldErrors(false);
+  }
+
+  // Add SOP (admins only): opens the same form as Edit, empty.
+  function openAddModal() {
+    if (!canAddSop) return;
+    resetForm();
+    setModalOpen(true);
   }
 
   function openEditModal(s: SOP) {
@@ -1026,6 +1337,11 @@ export default function SOPsPage() {
   }
 
   async function handleSave() {
+    if (!editingId && !canAddSop) {
+      setSaveError("Only admins can add SOPs.");
+      return;
+    }
+
     const missing: string[] = [];
     if (!form.title.trim()) missing.push("Title");
     if (!form.sop_code.trim()) missing.push("SOP Code");
@@ -1064,6 +1380,46 @@ export default function SOPsPage() {
       status: form.status,
     };
 
+    // Built-in SOP that isn't in Supabase: update it on this page only (admins only,
+    // because these edits never reach the server and so can't go through approval).
+    if (editingId && isSeedSop(editingId)) {
+      if (!canApprove) {
+        setSaving(false);
+        setSaveError("This SOP isn't saved to the database yet. Ask an admin to update it.");
+        return;
+      }
+      setSops((prev) => prev.map((x) => (x.id === editingId ? normalizeSop({ ...x, ...payload, id: x.id }) : x)));
+      if (editingId === highlightId) clearHighlight();
+      setSaving(false);
+      closeModal();
+      return;
+    }
+
+    // Employees: if nothing changed, say so here instead of getting a 400 from the server.
+    if (editingId && !canApprove) {
+      const original = sops.find((x) => x.id === editingId);
+      const text = (v: unknown) => String(v ?? "").trim();
+      const day = (v: unknown) => text(v).slice(0, 10);
+      const nothingChanged =
+        !!original &&
+        text(payload.title) === text(original.title) &&
+        text(payload.sop_code) === text(original.sop_code) &&
+        text(payload.category) === text(original.category) &&
+        text(payload.scope) === text(original.scope) &&
+        text(payload.department) === text(original.department) &&
+        text(payload.version) === text(original.version) &&
+        day(payload.effective_date) === day(original.effective_date) &&
+        day(payload.review_date) === day(original.review_date) &&
+        text(payload.content) === text(original.content) &&
+        text(payload.owner) === text(original.owner) &&
+        text(payload.status) === text(original.status);
+      if (nothingChanged) {
+        setSaving(false);
+        setSaveError("You haven't changed anything yet. Edit a field, then submit for approval.");
+        return;
+      }
+    }
+
     try {
       const url = editingId ? `/spnc/app/api/sops/${editingId}` : "/spnc/app/api/sops";
       const method = editingId ? "PUT" : "POST";
@@ -1080,6 +1436,14 @@ export default function SOPsPage() {
         return;
       }
 
+      // Employee edit: the server saved it as a pending request instead of changing the SOP.
+      if (res.status === 202) {
+        setNotice("Your changes were sent to an admin for approval. The SOP will update once approved.");
+        closeModal();
+        fetchSops();
+        return;
+      }
+
       // The flagged SOP was just fixed, so remove its red highlight.
       if (editingId && editingId === highlightId) clearHighlight();
       closeModal();
@@ -1093,6 +1457,7 @@ export default function SOPsPage() {
   }
 
   function handleArchive(id: string) {
+    if (!canApprove) return; // admins only (the server enforces this too)
     const sop = sops.find((s) => s.id === id);
     if (!sop) return;
     setDeleteError(null);
@@ -1109,40 +1474,61 @@ export default function SOPsPage() {
       />
 
       <div className="px-8">
-        {/* Pink Requests button with a red circle showing the number of pending requests */}
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowRequests((v) => !v)}
-            aria-expanded={showRequests}
-            aria-label={`${showRequests ? "Hide requests" : "Requests"}${pendingRequestCount ? ` (${pendingRequestCount} pending)` : ""}`}
-            className="relative flex items-center gap-2 rounded-md bg-[#F2419B] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#F55CAB]"
-          >
-            <Inbox size={16} />
-            {showRequests ? "Hide Requests" : "Requests"}
-            {pendingRequestCount > 0 && (
-              <span
-                className={`absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#E5484D] px-1.5 text-[11px] font-bold leading-none text-white ring-2 ${
-                  isDark ? "ring-[#0B1220]" : "ring-white"
-                }`}
-              >
-                {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {showRequests && (
-          <SopRequestsTable
-            isDark={isDark}
-            requests={requests}
-            busyId={requestActionId}
-            error={requestError}
-            onApprove={handleApproveRequest}
-            onDecline={handleDeclineRequest}
-            highlightId={highlightId}
-          />
+        {/* Add SOP: admins only */}
+        {canAddSop && (
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="flex items-center gap-2 rounded-md bg-[#F2419B] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#F55CAB]"
+            >
+              <Plus size={16} />
+              Add SOP
+            </button>
+          </div>
         )}
+
+        {notice && (
+          <div
+            role="status"
+            className="mb-4 flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500"
+          >
+            <Check size={16} className="shrink-0" />
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="ml-auto rounded p-0.5 hover:opacity-70">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Live status */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className={`flex flex-wrap items-center gap-3 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span className="relative flex h-2.5 w-2.5">
+                {!liveError && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1FA968] opacity-60" />}
+                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${liveError ? "bg-[#E2685A]" : "bg-[#1FA968]"}`} />
+              </span>
+              <span className={liveError ? "text-[#E2685A]" : "text-[#1FA968]"}>{liveError ? "Offline" : "Live"}</span>
+            </span>
+            <span>
+              {officialSops.length} SOP{officialSops.length === 1 ? "" : "s"} · updated {formatSyncTime(lastSynced)} · refreshes every{" "}
+              {LIVE_REFRESH_MS / 1000}s
+            </span>
+            {liveError && <span className="text-[#E2685A]">{liveError}</span>}
+            <button
+              type="button"
+              onClick={() => fetchSops(true)}
+              disabled={liveRefreshing || loading}
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-semibold transition disabled:opacity-50 ${
+                isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              <RefreshCw size={12} className={liveRefreshing ? "animate-spin" : ""} />
+              Refresh
+            </button>
+          </div>
+        </div>
 
         {highlightMissing && !highlightId && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-[#F2A23B]/50 bg-[#F2A23B]/10 px-3 py-2 text-sm text-[#C9791A]">
@@ -1163,7 +1549,7 @@ export default function SOPsPage() {
                 return s ? [s.sop_code, s.title].filter(Boolean).join(" · ") : "This SOP";
               })()}
               {highlightField ? ` · check ${highlightField.replace(/_/g, " ")}` : ""}
-              {" "}(outlined in red). {sops.find((x) => x.id === highlightId && isRequest(x)) ? "Review the request below." : "Edit the SOP to fix it."}
+              {" "}(outlined in red). Edit the SOP to fix it.
             </span>
             <button type="button" onClick={clearHighlight} className="ml-auto rounded px-2 py-0.5 text-xs font-semibold hover:bg-[#E5484D]/15">
               Dismiss
@@ -1174,6 +1560,63 @@ export default function SOPsPage() {
         {deleteError && (
           <div className="mb-4 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
             {deleteError}
+          </div>
+        )}
+
+        {/* Pending approvals: admins only */}
+        {canApprove && pendingList.length > 0 && (
+          <div className={`mb-6 rounded-lg border p-4 ${isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
+            <h2
+              className={`mb-3 flex items-center gap-2 text-base font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              <Clock size={16} className="text-amber-500" />
+              Pending approvals
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">{pendingList.length}</span>
+            </h2>
+            <ul className="space-y-3">
+              {pendingList.map((s) => (
+                <li
+                  key={s.id}
+                  className={`rounded-md border p-3 text-sm ${isDark ? "border-[#2C4356] text-[#C7D1DA]" : "border-gray-200 text-gray-700"}`}
+                >
+                  <div className="font-semibold text-[#F2419B]">{[s.sop_code, s.title].filter(Boolean).join(" · ")}</div>
+                  <div className={`mb-2 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Requested by {s.pending_by_name || "an employee"}
+                    {s.pending_at ? ` · ${new Date(s.pending_at).toLocaleString()}` : ""}
+                  </div>
+                  <ul className="mb-3 space-y-1 text-xs">
+                    {Object.entries(s.pending_changes ?? {}).map(([field, c]) => (
+                      <li key={field}>
+                        <span className="font-semibold">{FIELD_LABELS[field] ?? field}:</span>{" "}
+                        <span className="line-through opacity-60">{formatChangeValue(field, c.from)}</span>
+                        {" → "}
+                        <span className="font-medium">{formatChangeValue(field, c.to)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={reviewingId !== null}
+                      onClick={() => reviewSop(s.id, "approve")}
+                      className="flex items-center gap-1.5 rounded-md bg-[#1FA968] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#23BF76] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {reviewingId === s.id && <Loader2 size={12} className="animate-spin" />}
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewingId !== null}
+                      onClick={() => reviewSop(s.id, "decline")}
+                      className="rounded-md bg-[#E2685A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D9483A] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -1236,9 +1679,15 @@ export default function SOPsPage() {
                     isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"
                   }`}
                 >
-                  {/* Scrollbar hidden; the table can still be swiped sideways on very small screens */}
-                  <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <table className="min-w-full divide-y divide-[#23303D] text-left">
+                  
+                  {/* Visible thin scrollbar: drag it, use the buttons above, shift + mouse wheel, or swipe on touch screens */}
+                  <div
+                    ref={tableScrollRef}
+                    className={`overflow-x-auto [scrollbar-width:thin] ${
+                      isDark ? "[scrollbar-color:#2C4356_transparent]" : "[scrollbar-color:#D1D5DB_transparent]"
+                    }`}
+                  >
+                    <table className="min-w-[64rem] divide-y divide-[#23303D] text-left">
                       <thead className={isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}>
                         <tr>
                           {['SOP', 'Department', 'Category', 'Owner', 'Effective', 'Review', 'Actions'].map((header) => (
@@ -1270,15 +1719,45 @@ export default function SOPsPage() {
                                     s.title.length > SOP_PREVIEW_CHARS || (s.owner || "").length > OWNER_PREVIEW_CHARS;
                                   return (
                                     <div className="max-w-[15rem]">
-                                      <div
-                                        className={`font-semibold text-[#F2419B] ${isExpanded ? "" : "truncate whitespace-nowrap"}`}
-                                        title={s.title}
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingSop(s)}
+                                        className={`block max-w-full text-left font-semibold text-[#F2419B] hover:underline ${isExpanded ? "" : "truncate whitespace-nowrap"}`}
+                                        title={`${s.title} (click to view details)`}
                                       >
                                         {s.title}
-                                      </div>
+                                      </button>
                                       <div className={`mt-0.5 whitespace-nowrap text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                                         {s.sop_code} · v{s.version}
                                       </div>
+                                      {hasPending(s) && (
+                                        <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-amber-500">
+                                          <Clock size={10} />
+                                          Pending approval
+                                        </div>
+                                      )}
+                                      {s.scope && (
+                                        <div
+                                          className={`mt-0.5 text-xs ${isExpanded ? "" : "line-clamp-2"} ${isDark ? "text-[#C7D1DA]" : "text-gray-600"}`}
+                                          title={s.scope}
+                                        >
+                                          {s.scope}
+                                        </div>
+                                      )}
+                                      {SOP_MODULES[s.sop_code.toUpperCase()] && (
+                                        <div className="mt-1 flex flex-wrap gap-1" title="Freight operations module that uses this SOP">
+                                          {SOP_MODULES[s.sop_code.toUpperCase()].map((m) => (
+                                            <span
+                                              key={m}
+                                              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                isDark ? "bg-[#1A2530] text-[#7DD3FC]" : "bg-[#E0F2FE] text-[#0369A1]"
+                                              }`}
+                                            >
+                                              {m}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
                                       {hasMore && (
                                         <button
                                           type="button"
@@ -1312,7 +1791,7 @@ export default function SOPsPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => router.push(`/spnc/app/sops/${s.id}`)}
+                                    onClick={() => setViewingSop(s)}
                                     aria-label={`View ${s.title}`}
                                     title="View SOP details"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
@@ -1326,7 +1805,18 @@ export default function SOPsPage() {
                                   <button
                                     type="button"
                                     onClick={() => openEditModal(s)}
-                                    className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                                    disabled={!canApprove && (isSeedSop(s.id) || hasPending(s))}
+                                    aria-label={`Edit ${s.title}`}
+                                    title={
+                                      !canApprove && isSeedSop(s.id)
+                                        ? "Not saved to the database yet. Ask an admin to update it."
+                                        : !canApprove && hasPending(s)
+                                        ? "An edit is already waiting for admin approval"
+                                        : canApprove
+                                        ? "Edit SOP"
+                                        : "Edit SOP (needs admin approval)"
+                                    }
+                                    className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                       isDark
                                         ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]"
                                         : "text-gray-500 hover:bg-gray-200 hover:text-gray-900"
@@ -1334,14 +1824,19 @@ export default function SOPsPage() {
                                   >
                                     <Pencil size={15} />
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleArchive(s.id)}
-                                    disabled={deletingId === s.id}
-                                    className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    <Archive size={15} />
-                                  </button>
+                                  {/* Archive: admins only */}
+                                  {canApprove && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleArchive(s.id)}
+                                      disabled={deletingId === s.id}
+                                      aria-label={`Archive ${s.title}`}
+                                      title="Archive SOP"
+                                      className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <Archive size={15} />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1416,6 +1911,14 @@ export default function SOPsPage() {
                 <X size={20} />
               </button>
             </div>
+
+            {/* Employees: tell them their edit will need an admin's approval */}
+            {editingId && !canApprove && (
+              <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+                <Clock size={14} className="mt-0.5 shrink-0" />
+                <span>Your changes won&apos;t be applied right away. They will be sent to an admin for approval.</span>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div>
@@ -1605,14 +2108,35 @@ export default function SOPsPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB] disabled:cursor-not-allowed disabled:bg-[#4B5A68]"
               >
                 {saving && <Loader2 size={16} className="animate-spin" />}
-                {saving ? (editingId ? "Updating…" : "Saving…") : editingId ? "Update" : "Save"}
+                {saving
+                  ? editingId
+                    ? canApprove
+                      ? "Updating…"
+                      : "Submitting…"
+                    : "Saving…"
+                  : editingId
+                  ? canApprove
+                    ? "Update"
+                    : "Submit for approval"
+                  : "Save"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Approve / Decline / Archive confirmation */}
+      {/* SOP details window */}
+      <SopDetails
+        sop={viewingSop}
+        isDark={isDark}
+        onClose={() => setViewingSop(null)}
+        onEdit={(x) => {
+          setViewingSop(null);
+          openEditModal(x);
+        }}
+      />
+
+      {/* Archive confirmation */}
       <ConfirmDialog
         state={confirmState}
         isDark={isDark}

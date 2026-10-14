@@ -15,21 +15,34 @@ import {
   Check,
   ChevronDown,
   Clock,
-  Inbox,
   Bell,
-  CheckCircle2,
-  XCircle,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
 import SpncAssistant from "../../components/SpncAssistant";
+import { can } from "../../lib/rbac";
 
 const CHARGE_TYPE_OPTIONS = ["per_kg", "per_container", "per_km", "flat", "per_pallet"];
 const CURRENCY_OPTIONS = ["PHP", "USD", "EUR", "GBP", "JPY", "CNY"];
 const STATUS_OPTIONS = ["draft", "active", "expired"];
 const PAGE_SIZE = 5;
-const REQUESTS_PAGE_SIZE = 5; // requests shown per page in the Requests table
+// Fixed table layout: each column keeps the same width on every page, and short pages are
+// padded with empty rows so the table (and the Back / Next buttons) never move.
+const RATE_COLUMNS: { label: string; width: number }[] = [
+  { label: "Rate", width: 260 },
+  { label: "Provider", width: 170 },
+  { label: "Department", width: 190 },
+  { label: "Charge Type", width: 110 },
+  { label: "Amount", width: 130 },
+  { label: "Validity", width: 240 },
+  { label: "Status", width: 120 },
+  { label: "Notify Finance", width: 120 },
+  { label: "Actions", width: 130 },
+];
+const RATE_TABLE_WIDTH = RATE_COLUMNS.reduce((sum, c) => sum + c.width, 0);
+const RATE_ROW_HEIGHT = 92; // px, every row is this tall
 const RECENT_SEARCHES_KEY = "rates_recent_searches";
 const MAX_RECENT_SEARCHES = 5;
 
@@ -68,6 +81,22 @@ const FIELD_TO_COLUMN: Record<string, string> = {
 const HIGHLIGHT_ROW = "bg-[#E5484D]/10";
 const HIGHLIGHT_CELL = "bg-[#E5484D]/20";
 
+// Friendly names for the fields shown in the "Pending approvals" panel.
+const FIELD_LABELS: Record<string, string> = {
+  rate_code: "Rate code",
+  description: "Description",
+  department: "Department",
+  charge_type: "Charge type",
+  currency: "Currency",
+  base_rate: "Base rate",
+  min_charge: "Min charge",
+  surcharge_pct: "Surcharge %",
+  valid_from: "Valid from",
+  valid_to: "Valid to",
+  status: "Status",
+  notes: "Notes",
+};
+
 function formatMoney(currency: string, amount: number) {
   const symbol = CURRENCY_SYMBOLS[currency] || currency + " ";
   const value = Number.isFinite(amount) ? amount : 0;
@@ -99,6 +128,9 @@ function daysUntil(v?: string | null) {
   return Math.round((new Date(y, m - 1, d).getTime() - today.getTime()) / 86_400_000);
 }
 
+// An employee's edit that is waiting for an admin: { field: { from, to } }
+type PendingChanges = Record<string, { from: unknown; to: unknown }>;
+
 type Rate = {
   id: string;
   rate_code: string;
@@ -114,38 +146,138 @@ type Rate = {
   notes?: string | null;
   department?: string | null; // which department sent the request
   created_at?: string | null; // when the request was sent
+  // Approval flow: filled in when an employee edits a rate and an admin hasn't decided yet.
+  pending_changes?: PendingChanges | null;
+  pending_by_name?: string | null;
+  pending_at?: string | null;
 };
 
-/* ---------- Rate requests ----------
- * Requests live in the same rates table. Another department inserts a row with status = 'pending'.
- * Approve sets status = 'active' (it then shows in the rates table); Decline sets status = 'declined'.
+// How a value is shown in the "Pending approvals" panel
+function formatChangeValue(field: string, value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (field === "charge_type") return CHARGE_TYPE_LABELS[String(value)] || String(value);
+  if (field === "valid_from" || field === "valid_to") return formatValidDate(String(value)) ?? String(value);
+  if (field === "base_rate" || field === "min_charge" || field === "surcharge_pct") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toFixed(2) : String(value);
+  }
+  return String(value);
+}
+
+/* ---------- Service provider rates ----------
+ * Each rate code starts with the provider's prefix (e.g. "GGX-SP-GMM" = GoGo Xpress),
+ * which is how the Provider column is filled. All amounts are per parcel in PHP.
+ *
+ * Sources (checked Oct 2026):
+ *  - GoGo Xpress: official delivery-fee page "Pinas-Wide Friendly Delivery Fees" (updated Jun 17, 2025)
+ *    and the official "Sulit Bundles" announcement (₱50 flat, NCR to NCR, small pouch up to 3 kg).
+ *  - J&T Express: Moneymax J&T rate guide (2023 rate card), shipments from Metro Manila.
+ *  - LBC: Moneymax LBC guide, pick-up rates, Metro Manila column.
+ *  - Shopee Xpress, Ninja Van, Flash Home, J&T Cargo, Air21, Express Pay, TikTok Shop: no public
+ *    domestic rate card found, so they are added as Draft with ₱0.00 ("Quote needed")
+ *    until the provider gives a quotation.
  */
+const PROVIDER_PREFIXES: Record<string, string> = {
+  GGX: "GoGo Xpress",
+  JNT: "J&T Express / J&T Home",
+  JNTC: "J&T Cargo",
+  LBC: "LBC Drop-off Service",
+  SPX: "Shopee Xpress",
+  NV: "Ninja Van",
+  FLH: "Flash Home",
+  A21: "Air21",
+  EXP: "Express Pay",
+  TTS: "TikTok Shop",
+};
+
+function providerOf(code?: string | null) {
+  const prefix = String(code ?? "").split("-")[0].toUpperCase();
+  return PROVIDER_PREFIXES[prefix] ?? null;
+}
+
+// A rate with no published amount yet (Draft + 0) shows "Quote needed" instead of ₱0.00
+const needsQuote = (r: Pick<Rate, "status" | "base_rate">) => r.status === "draft" && Number(r.base_rate) === 0;
+const amountLabel = (r: Rate) => (needsQuote(r) ? "Quote needed" : formatMoney(r.currency, Number(r.base_rate)));
+
+// Every rate on this page belongs to the Service Provider and Network Control department.
+const SPNC_DEPT = "Service Provider and Network Control";
+const SEED_DEPT = SPNC_DEPT;
+
+// Tolerates casing/whitespace differences ("Admin", " admin ") from the session, like toRole() in lib/rbac.ts.
+const isAdminRole = (role: unknown) => typeof role === "string" && role.trim().toLowerCase() === "admin";
+const QUOTE_NOTE = "No public domestic rate card found. Request a quotation from the provider, enter the amount, then set to Active.";
+
+const SEED_RATES: Omit<Rate, "id">[] = [
+  // ---- GoGo Xpress (official, updated Jun 17, 2025) ----
+  { rate_code: "GGX-SP-GMM", description: "GoGo Xpress · Small pouch (max 3 kg) · Greater Metro Manila → GMM", charge_type: "flat", currency: "PHP", base_rate: 71.43, min_charge: 71.43, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table. Free pick-up and COD; item protection free up to ₱500.", department: SEED_DEPT },
+  { rate_code: "GGX-SP-LUZ", description: "GoGo Xpress · Small pouch (max 3 kg) · GMM → Luzon", charge_type: "flat", currency: "PHP", base_rate: 150, min_charge: 150, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table.", department: SEED_DEPT },
+  { rate_code: "GGX-SP-VIS", description: "GoGo Xpress · Small pouch (max 3 kg) · GMM → Visayas", charge_type: "flat", currency: "PHP", base_rate: 180, min_charge: 180, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table.", department: SEED_DEPT },
+  { rate_code: "GGX-SP-MIN", description: "GoGo Xpress · Small pouch (max 3 kg) · GMM → Mindanao", charge_type: "flat", currency: "PHP", base_rate: 200, min_charge: 200, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table.", department: SEED_DEPT },
+  { rate_code: "GGX-MP-GMM", description: "GoGo Xpress · Medium pouch (max 5 kg) · GMM → GMM", charge_type: "flat", currency: "PHP", base_rate: 89.29, min_charge: 89.29, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table (second size tier). Confirm the pouch size with the GoGo Xpress fee calculator.", department: SEED_DEPT },
+  { rate_code: "GGX-MP-LUZ", description: "GoGo Xpress · Medium pouch (max 5 kg) · GMM → Luzon", charge_type: "flat", currency: "PHP", base_rate: 167.5, min_charge: 167.5, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table (second size tier).", department: SEED_DEPT },
+  { rate_code: "GGX-MP-VIS", description: "GoGo Xpress · Medium pouch (max 5 kg) · GMM → Visayas", charge_type: "flat", currency: "PHP", base_rate: 280, min_charge: 280, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table (second size tier).", department: SEED_DEPT },
+  { rate_code: "GGX-MP-MIN", description: "GoGo Xpress · Medium pouch (max 5 kg) · GMM → Mindanao", charge_type: "flat", currency: "PHP", base_rate: 320, min_charge: 320, surcharge_pct: 0, valid_from: "2025-06-17", valid_to: "2026-12-31", status: "active", notes: "Official GoGo Xpress delivery fee table (second size tier).", department: SEED_DEPT },
+  { rate_code: "GGX-SULIT-NCR", description: "GoGo Xpress · Sulit Bundle · NCR → NCR, small pouch up to 3 kg (₱500 per 10 deliveries)", charge_type: "flat", currency: "PHP", base_rate: 50, min_charge: 50, surcharge_pct: 0, valid_from: "2026-04-10", valid_to: "2026-12-31", status: "active", notes: "Prepaid via GCash. Metro Manila deliveries only.", department: SEED_DEPT },
+
+  // ---- J&T Express (2023 rate card, from Metro Manila) — also used for J&T Home drop-off points ----
+  { rate_code: "JNT-MM-MM-0.5", description: "J&T Express · Metro Manila → Metro Manila · 500 g and below", charge_type: "flat", currency: "PHP", base_rate: 85, min_charge: 85, surcharge_pct: 0, valid_from: "2023-01-01", valid_to: "2026-12-31", status: "active", notes: "2023 published rate card (Moneymax). Re-verify with J&T before quoting.", department: SEED_DEPT },
+  { rate_code: "JNT-MM-MM-1", description: "J&T Express · Metro Manila → Metro Manila · 500 g – 1 kg", charge_type: "flat", currency: "PHP", base_rate: 115, min_charge: 115, surcharge_pct: 0, valid_from: "2023-01-01", valid_to: "2026-12-31", status: "active", notes: "2023 published rate card (Moneymax).", department: SEED_DEPT },
+  { rate_code: "JNT-MM-MM-3", description: "J&T Express · Metro Manila → Metro Manila · 1 – 3 kg", charge_type: "flat", currency: "PHP", base_rate: 155, min_charge: 155, surcharge_pct: 0, valid_from: "2023-01-01", valid_to: "2026-12-31", status: "active", notes: "2023 published rate card (Moneymax).", department: SEED_DEPT },
+  { rate_code: "JNT-MM-LUZ-0.5", description: "J&T Express · Metro Manila → Luzon · 500 g and below", charge_type: "flat", currency: "PHP", base_rate: 95, min_charge: 95, surcharge_pct: 0, valid_from: "2023-01-01", valid_to: "2026-12-31", status: "active", notes: "2023 published rate card (Moneymax).", department: SEED_DEPT },
+  { rate_code: "JNT-MM-LUZ-1", description: "J&T Express · Metro Manila → Luzon · 500 g – 1 kg", charge_type: "flat", currency: "PHP", base_rate: 165, min_charge: 165, surcharge_pct: 0, valid_from: "2023-01-01", valid_to: "2026-12-31", status: "active", notes: "2023 published rate card (Moneymax).", department: SEED_DEPT },
+  { rate_code: "JNT-MM-LUZ-3", description: "J&T Express · Metro Manila → Luzon · 1 – 3 kg", charge_type: "flat", currency: "PHP", base_rate: 190, min_charge: 190, surcharge_pct: 0, valid_from: "2023-01-01", valid_to: "2026-12-31", status: "active", notes: "2023 published rate card (Moneymax).", department: SEED_DEPT },
+
+  // ---- LBC (pick-up rates, Metro Manila) ----
+  { rate_code: "LBC-NPS-MM", description: "LBC · N-Pack Small 14\" x 9.5\" (1 kg) · Metro Manila", charge_type: "flat", currency: "PHP", base_rate: 80, min_charge: 80, surcharge_pct: 0, valid_from: "2025-01-01", valid_to: "2026-12-31", status: "active", notes: "LBC pick-up rate (Moneymax guide). Check the LBC rate calculator for provincial rates.", department: SEED_DEPT },
+  { rate_code: "LBC-NPL-MM", description: "LBC · N-Pack Large 18\" x 12\" (3 kg) · Metro Manila", charge_type: "flat", currency: "PHP", base_rate: 80, min_charge: 80, surcharge_pct: 0, valid_from: "2025-01-01", valid_to: "2026-12-31", status: "active", notes: "LBC pick-up rate (Moneymax guide).", department: SEED_DEPT },
+  { rate_code: "LBC-KBS-MM", description: "LBC · Kilo Box Small 9\" x 5\" x 3\" (3 kg) · Metro Manila", charge_type: "flat", currency: "PHP", base_rate: 80, min_charge: 80, surcharge_pct: 0, valid_from: "2025-01-01", valid_to: "2026-12-31", status: "active", notes: "LBC pick-up rate (Moneymax guide).", department: SEED_DEPT },
+  { rate_code: "LBC-KBM-MM", description: "LBC · Kilo Box Medium 10.5\" x 14\" x 7\" (5 kg) · Metro Manila", charge_type: "flat", currency: "PHP", base_rate: 220, min_charge: 220, surcharge_pct: 0, valid_from: "2025-01-01", valid_to: "2026-12-31", status: "active", notes: "LBC pick-up rate (Moneymax guide).", department: SEED_DEPT },
+
+  // ---- Providers with no public rate card: Draft, "Quote needed" ----
+  { rate_code: "JNTC-STD", description: "J&T Cargo · Bulky / heavy cargo · rate per kg", charge_type: "per_kg", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: QUOTE_NOTE, department: SEED_DEPT },
+  { rate_code: "SPX-STD", description: "Shopee Xpress · Standard delivery (fee set by Shopee at checkout)", charge_type: "flat", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: QUOTE_NOTE, department: SEED_DEPT },
+  { rate_code: "NV-STD", description: "Ninja Van · Standard parcel (rates via account manager)", charge_type: "flat", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: QUOTE_NOTE, department: SEED_DEPT },
+  { rate_code: "FLH-STD", description: "Flash Home · Drop-off parcel (Flash Express rates)", charge_type: "flat", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: QUOTE_NOTE, department: SEED_DEPT },
+  { rate_code: "A21-STD", description: "Air21 · Domestic express (service status unconfirmed)", charge_type: "flat", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: "Provider set to Inactive: DFA moved its passport deliveries from AIR21 to LBC in Dec 2024. " + QUOTE_NOTE, department: SEED_DEPT },
+  { rate_code: "EXP-STD", description: "Express Pay · Courier drop-off (franchise payment center)", charge_type: "flat", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: QUOTE_NOTE, department: SEED_DEPT },
+  { rate_code: "TTS-STD", description: "TikTok Shop · Platform shipping (fee set by TikTok Shop at checkout)", charge_type: "flat", currency: "PHP", base_rate: 0, min_charge: 0, surcharge_pct: 0, valid_from: "2026-10-12", valid_to: "2026-12-31", status: "draft", notes: QUOTE_NOTE, department: SEED_DEPT },
+];
+
+// Built-in rates are saved to Supabase once (POST /api/rates). Codes already saved are remembered
+// in this browser so an archived rate isn't added back on the next visit.
+const SEEDED_KEY = "rates_seeded_codes_v1";
+const SEED_ID_PREFIX = "seed-";
+const isSeedRate = (id: string) => id.startsWith(SEED_ID_PREFIX);
+const sameCode = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+function readSeededCodes(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(SEEDED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]).map((c) => c.toLowerCase()) : []);
+  } catch {
+    return new Set();
+  }
+}
+function writeSeededCodes(codes: Set<string>) {
+  try {
+    window.localStorage.setItem(SEEDED_KEY, JSON.stringify([...codes]));
+  } catch {
+    // ignore unavailable storage
+  }
+}
+
+/* Rows with status 'pending' or 'declined' (requests from other departments) are kept out of the rates table. */
 const REQUEST_STATUSES = ["pending", "declined"];
 const isRequest = (r: Rate) => REQUEST_STATUSES.includes(r.status);
 
-const REQUEST_STATUS_STYLE: Record<string, { label: string; dark: string; light: string }> = {
-  pending: { label: "Pending", dark: "bg-[#2E2410] text-[#F2A23B]", light: "bg-[#FDF1DE] text-[#C77E12]" },
-  approved: { label: "Approved", dark: "bg-[#0F2E22] text-[#3BD68A]", light: "bg-[#E1F7EC] text-[#1FA968]" },
-  declined: { label: "Declined", dark: "bg-[#2A1212] text-[#E2685A]", light: "bg-[#FBE4E1] text-[#D9483A]" },
-};
-
-function formatRequestDate(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return {
-    date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-    time: d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-  };
-}
+// True when an employee edit is waiting for an admin on this rate.
+const hasPending = (r: Rate) => !!r.pending_changes && Object.keys(r.pending_changes).length > 0;
 
 /* ---------- Confirmation window (replaces the browser's confirm() / alert() popups) ---------- */
-type ConfirmKind = "approve" | "decline" | "archive" | "notify";
+type ConfirmKind = "archive" | "notify";
 type ConfirmState = { kind: ConfirmKind; rate: Rate } | null;
 
 const CONFIRM_COPY: Record<ConfirmKind, { title: string; action: string; busy: string; tone: "green" | "red" | "pink" }> = {
-  approve: { title: "Approve this rate request?", action: "Approve", busy: "Approving…", tone: "green" },
-  decline: { title: "Decline this rate request?", action: "Decline", busy: "Declining…", tone: "red" },
   archive: { title: "Archive this rate?", action: "Archive", busy: "Archiving…", tone: "red" },
   notify: { title: "Notify Finance", action: "OK", busy: "OK", tone: "pink" },
 };
@@ -178,10 +310,9 @@ function ConfirmDialog({
   if (!state) return null;
   const { kind, rate: r } = state;
   const copy = CONFIRM_COPY[kind];
-  const sent = formatRequestDate(r.created_at);
   const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
   const strong = isDark ? "text-[#F2F1EC]" : "text-gray-900";
-  const Icon = kind === "approve" ? CheckCircle2 : kind === "decline" ? XCircle : kind === "notify" ? Bell : AlertTriangle;
+  const Icon = kind === "notify" ? Bell : AlertTriangle;
   const tone = {
     green: { bar: "bg-[#1FA968]", icon: isDark ? "bg-[#0F2E22] text-[#3BD68A]" : "bg-[#E1F7EC] text-[#1FA968]", btn: "bg-[#1FA968] hover:bg-[#23BF76]" },
     red: { bar: "bg-[#E2685A]", icon: isDark ? "bg-[#2A1212] text-[#E2685A]" : "bg-[#FBE4E1] text-[#D9483A]", btn: "bg-[#E2685A] hover:bg-[#D9483A]" },
@@ -189,13 +320,7 @@ function ConfirmDialog({
   }[copy.tone];
 
   const message =
-    kind === "approve" ? (
-      <>
-        It will be added to the rates table as <span className={`font-semibold ${strong}`}>Active</span>.
-      </>
-    ) : kind === "decline" ? (
-      <>The request will be marked as <span className="font-semibold text-[#E2685A]">Declined</span> and won&apos;t be added to the rates table.</>
-    ) : kind === "archive" ? (
+    kind === "archive" ? (
       <>This rate will be removed from the list. This can&apos;t be undone from this page.</>
     ) : (
       <>The Finance system isn&apos;t connected yet, so nothing was sent. Once it is, this button will send the rate below to Finance.</>
@@ -203,8 +328,9 @@ function ConfirmDialog({
 
   const left = daysUntil(r.valid_to);
   const details: { label: string; value: string; wide?: boolean }[] = [
-    { label: "Amount", value: formatMoney(r.currency, Number(r.base_rate)) },
+    { label: "Amount", value: amountLabel(r) },
     { label: "Charge type", value: CHARGE_TYPE_LABELS[r.charge_type] || r.charge_type || "—" },
+    { label: "Provider", value: providerOf(r.rate_code) || "—" },
     { label: "Department", value: r.department || "—" },
     {
       label: "Validity",
@@ -212,13 +338,9 @@ function ConfirmDialog({
         r.valid_from || r.valid_to
           ? `${formatValidDate(r.valid_from) ?? "—"} → ${formatValidDate(r.valid_to) ?? "—"}${left !== null && left < 0 ? " (ended)" : ""}`
           : "—",
+      wide: true,
     },
-    ...(kind === "approve" || kind === "decline"
-      ? [
-          { label: "Request sent", value: sent ? `${sent.date} · ${sent.time}` : "—" },
-          { label: "Description", value: r.description || "—", wide: true },
-        ]
-      : [{ label: "Status", value: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : "—" }]),
+    { label: "Status", value: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : "—" },
   ];
 
   return (
@@ -307,10 +429,6 @@ function ConfirmDialog({
             >
               {busy ? (
                 <Loader2 size={16} className="animate-spin" />
-              ) : kind === "approve" ? (
-                <Check size={16} />
-              ) : kind === "decline" ? (
-                <X size={16} />
               ) : kind === "archive" ? (
                 <Archive size={16} />
               ) : null}
@@ -323,219 +441,10 @@ function ConfirmDialog({
   );
 }
 
-function RateRequestsTable({
-  isDark,
-  requests,
-  busyId,
-  error,
-  onApprove,
-  onDecline,
-  highlightId,
-}: {
-  highlightId?: string | null;
-  isDark: boolean;
-  requests: Rate[] | null;
-  busyId: string | null;
-  error: string | null;
-  onApprove: (r: Rate) => void;
-  onDecline: (r: Rate) => void;
-}) {
-  const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
-  const pendingCount = requests?.filter((r) => r.status === "pending").length ?? 0;
-
-  // Show 5 requests per page with Back / Next.
-  const [reqPage, setReqPage] = useState(1);
-  const [reqPageLoading, setReqPageLoading] = useState(false);
-
-  // Anomaly alert: jump to the page that contains the highlighted request once requests load.
-  useEffect(() => {
-    if (!highlightId || !requests) return;
-    const idx = requests.findIndex((r) => r.id === highlightId);
-    if (idx >= 0) setReqPage(Math.floor(idx / REQUESTS_PAGE_SIZE) + 1);
-  }, [highlightId, requests]);
-  const total = requests?.length ?? 0;
-  const reqTotalPages = Math.max(1, Math.ceil(total / REQUESTS_PAGE_SIZE));
-  const currentPage = Math.min(reqPage, reqTotalPages);
-  const pagedRequests = requests?.slice((currentPage - 1) * REQUESTS_PAGE_SIZE, currentPage * REQUESTS_PAGE_SIZE) ?? [];
-  // Same short loading spinner as the main table's Back / Next.
-  function goToReqPage(next: number) {
-    if (next < 1 || next > reqTotalPages || next === currentPage) return;
-    setReqPageLoading(true);
-    setTimeout(() => {
-      setReqPage(next);
-      setReqPageLoading(false);
-    }, 400);
-  }
-  const pagerBtn = `flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-    isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
-  }`;
-
-  return (
-    <section className="mb-8">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Inbox size={18} className="text-[#F2419B]" />
-        <h2
-          className={`text-base font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Rate Requests
-        </h2>
-        {requests && (
-          <span className="rounded-full bg-[#F2419B] px-2 py-0.5 text-[11px] font-bold text-white">
-            {pendingCount} pending
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <div className="mb-3 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">{error}</div>
-      )}
-
-      <div className={`overflow-hidden rounded-lg border ${isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
-        {requests === null ? (
-          <div className="flex items-center justify-center gap-2 py-10">
-            <Loader2 size={20} className="animate-spin text-[#F2419B]" />
-            <span className="text-sm font-semibold text-[#F2419B]">Loading requests</span>
-          </div>
-        ) : reqPageLoading ? (
-          <div className="flex items-center justify-center gap-2 py-10">
-            <Loader2 size={20} className="animate-spin text-[#F2419B]" />
-            <span className="text-sm font-semibold text-[#F2419B]">Loading</span>
-          </div>
-        ) : requests.length === 0 ? (
-          <p className={`px-4 py-10 text-center text-sm ${muted}`}>No rate requests from other departments yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left">
-              <thead className={`sticky top-0 z-[1] ${isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}`}>
-                <tr>
-                  {["Request", "Department", "Amount", "Description", "Request Sent", "Action"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className={isDark ? "divide-y divide-[#23303D] text-[#C7D1DA]" : "divide-y divide-gray-200 text-gray-700"}>
-                {pagedRequests.map((r) => {
-                  const status = REQUEST_STATUS_STYLE[r.status] ?? REQUEST_STATUS_STYLE.pending;
-                  const sent = formatRequestDate(r.created_at);
-                  const busy = busyId === r.id;
-                  return (
-                    <tr
-                      key={r.id}
-                      id={`rate-request-${r.id}`}
-                      style={highlightId === r.id ? { outline: "2px solid #E5484D", outlineOffset: -2, background: "rgba(229, 72, 77, 0.1)" } : undefined}
-                      className={
-                        highlightId === r.id
-                          ? `${HIGHLIGHT_ROW} outline outline-2 -outline-offset-2 outline-[#E5484D]`
-                          : isDark
-                          ? "hover:bg-[#182230]"
-                          : "hover:bg-gray-50"
-                      }
-                    >
-                      <td className="px-4 py-3 align-middle">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                              isDark ? "bg-[#1A2530] text-[#F2419B]" : "bg-[#FCE7F3] text-[#F2419B]"
-                            }`}
-                          >
-                            <DollarSign size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="whitespace-nowrap text-sm font-semibold text-[#F2419B]">{r.rate_code}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3 align-middle text-sm font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
-                        {r.department || <span className={muted}>—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-middle">
-                        <div className={`text-sm font-bold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
-                          {formatMoney(r.currency, Number(r.base_rate))}
-                        </div>
-                        <div className={`text-xs ${muted}`}>{CHARGE_TYPE_LABELS[r.charge_type] || r.charge_type}</div>
-                      </td>
-                      <td className="max-w-md px-4 py-3 align-middle text-sm">
-                        {r.description ? <span className="line-clamp-2">{r.description}</span> : <span className={muted}>—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-middle">
-                        {sent ? (
-                          <>
-                            <div className="text-sm">{sent.date}</div>
-                            <div className={`text-xs ${muted}`}>{sent.time}</div>
-                          </>
-                        ) : (
-                          <span className={muted}>—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-middle">
-                        {r.status === "pending" ? (
-                          busy ? (
-                            <Loader2 size={18} className="animate-spin text-[#F2419B]" />
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => onApprove(r)}
-                                disabled={busyId !== null}
-                                className="flex items-center gap-1 rounded-md bg-[#1FA968] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#23BF76] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Check size={14} />
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onDecline(r)}
-                                disabled={busyId !== null}
-                                className={`flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold text-[#E2685A] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                  isDark ? "border-[#E2685A]/40 hover:bg-[#2A1212]" : "border-[#E2685A]/50 hover:bg-[#FBE4E1]"
-                                }`}
-                              >
-                                <X size={14} />
-                                Decline
-                              </button>
-                            </div>
-                          )
-                        ) : (
-                          <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${isDark ? status.dark : status.light}`}>
-                            {status.label}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {total > REQUESTS_PAGE_SIZE && (
-        <div className="mt-3 flex items-center justify-center gap-4">
-          <button type="button" onClick={() => goToReqPage(currentPage - 1)} disabled={currentPage === 1 || reqPageLoading} className={pagerBtn}>
-            <ChevronLeft size={16} />
-            Back
-          </button>
-          <span className={`text-sm ${muted}`}>
-            Page {currentPage} of {reqTotalPages}
-          </span>
-          <button type="button" onClick={() => goToReqPage(currentPage + 1)} disabled={currentPage === reqTotalPages || reqPageLoading} className={pagerBtn}>
-            Next
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 const emptyForm = {
   rate_code: "",
   description: "",
-  department: "",
+  department: SPNC_DEPT,
   charge_type: "per_kg",
   currency: "PHP",
   base_rate: "",
@@ -546,7 +455,6 @@ const emptyForm = {
   status: "draft",
   notes: "",
 };
-
 
 type DropdownOption = { value: string; label: string; hint?: string; badge?: string };
 
@@ -682,7 +590,12 @@ function Dropdown({
 }
 
 export default function RatesPage() {
-  const { theme } = useShell();
+  const { theme, role, roleLoading } = useShell();
+  // Only admins can add rates; employees don't see the Add button.
+  const canAddRate = !roleLoading && isAdminRole(role);
+  // Admins approve/decline employee edits and are the only ones who can archive.
+  // Employees' edits are sent to an admin instead of changing the rate right away.
+  const canApprove = !roleLoading && can(role, "rates:approve");
   const isDark = theme === "dark";
   const router = useRouter();
 
@@ -697,6 +610,11 @@ export default function RatesPage() {
   const [showRecentSearches, setShowRecentSearches] = useState(false);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
+  // Built-in provider rates
+  const seedAttempted = useRef(false); // only try saving them to Supabase once per visit
+  const archivedSeeds = useRef<Set<string>>(new Set()); // local-only built-in rates archived on this page
+  const deptUpdated = useRef(false); // only move old departments to SPNC once per visit
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -705,16 +623,13 @@ export default function RatesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Approval flow
+  const [notice, setNotice] = useState<string | null>(null); // green message, e.g. "sent to an admin for approval"
+  const [reviewingId, setReviewingId] = useState<string | null>(null); // rate being approved/declined
+
   const [form, setForm] = useState(emptyForm);
 
-
-  // Rate requests (rows with status 'pending' / 'declined')
-  const [showRequests, setShowRequests] = useState(false);
-  const [requests, setRequests] = useState<Rate[] | null>(null);
-  const [requestActionId, setRequestActionId] = useState<string | null>(null);
-  const [requestError, setRequestError] = useState<string | null>(null);
-
-  // Styled confirmation window for Approve / Decline / Archive / Notify Finance
+  // Styled confirmation window for Archive / Notify Finance
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -774,16 +689,6 @@ export default function RatesPage() {
       setHighlightColumn(FIELD_TO_COLUMN[target.field ?? ""] ?? "Rate");
       return;
     }
-    // It's a pending/declined request → open the Requests table instead.
-    const req = rates.find(byId) ?? rates.find(match);
-    if (req) {
-      setShowRequests(true);
-      setHighlightMissing(null);
-      setHighlightId(req.id);
-      setHighlightField(target.field);
-      setHighlightColumn(null);
-      return;
-    }
     console.warn("[Rates] Anomaly alert: rate not found", target);
     setHighlightMissing(target.name || target.id || "the rate");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -812,13 +717,13 @@ export default function RatesPage() {
   useEffect(() => {
     if (!highlightId) return;
     const t = window.setTimeout(() => {
-      (document.getElementById(`rate-row-${highlightId}`) ?? document.getElementById(`rate-request-${highlightId}`))?.scrollIntoView({
+      document.getElementById(`rate-row-${highlightId}`)?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
     }, 150);
     return () => window.clearTimeout(t);
-  }, [highlightId, page, requests, loading]);
+  }, [highlightId, page, loading]);
 
   function clearHighlight() {
     setHighlightId(null);
@@ -850,14 +755,103 @@ export default function RatesPage() {
     }
   }
 
+  // ---- Load rates (+ built-in provider rates) ----
+  async function readRates(): Promise<Rate[]> {
+    const res = await fetch("/spnc/app/api/rates", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || `Couldn't load rates (HTTP ${res.status}).`);
+    return Array.isArray(data.rates) ? data.rates : [];
+  }
+
+  // First load: save built-in rates that aren't in Supabase yet (through the same POST route as "New Rate").
+  // Only admins can create rates on the server, so for employees this fails quietly and the
+  // built-in rates are shown from SEED_RATES instead.
+  async function seedMissingRates(rows: Rate[]): Promise<Rate[]> {
+    if (seedAttempted.current) return rows;
+    seedAttempted.current = true;
+    const seeded = readSeededCodes();
+    const missing = SEED_RATES.filter((s) => !rows.some((r) => sameCode(r.rate_code, s.rate_code)) && !seeded.has(s.rate_code.toLowerCase()));
+    if (missing.length === 0) return rows;
+
+    const results = await Promise.all(
+      missing.map((s) =>
+        fetch("/spnc/app/api/rates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...s, notes: s.notes ?? "" }),
+        })
+          .then((r) => r.ok)
+          .catch(() => false)
+      )
+    );
+    missing.forEach((s, i) => {
+      if (results[i]) seeded.add(s.rate_code.toLowerCase());
+    });
+    writeSeededCodes(seeded);
+    return results.some(Boolean) ? readRates() : rows;
+  }
+
+  // Built-in rates that couldn't be saved are still shown (from SEED_RATES), keeping any local edits.
+  function withLocalSeeds(rows: Rate[], prev: Rate[]): Rate[] {
+    const seeded = readSeededCodes();
+    const local = SEED_RATES.filter(
+      (s) =>
+        !rows.some((r) => sameCode(r.rate_code, s.rate_code)) &&
+        !seeded.has(s.rate_code.toLowerCase()) &&
+        !archivedSeeds.current.has(s.rate_code.toLowerCase())
+    ).map((s) => {
+      const id = SEED_ID_PREFIX + s.rate_code.toLowerCase();
+      return prev.find((p) => p.id === id) ?? { ...s, id, created_at: null };
+    });
+    return [...rows, ...local];
+  }
+
+  // Rates saved earlier with another department (e.g. "Rates & Tariffs") are moved to
+  // Service Provider and Network Control, through the same PUT route as the Edit form.
+  // Admins only: for an employee this would create approval requests by itself.
+  async function updateDepartments(rows: Rate[]): Promise<Rate[]> {
+    const outdated = rows.filter(
+      (r) => !isSeedRate(r.id) && !isRequest(r) && !hasPending(r) && (r.department ?? "").trim() !== SPNC_DEPT
+    );
+    if (outdated.length === 0) return rows;
+
+    const results = await Promise.all(
+      outdated.map((r) =>
+        fetch(`/spnc/app/api/rates/${r.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rate_code: r.rate_code,
+            description: r.description ?? "",
+            charge_type: r.charge_type,
+            currency: r.currency,
+            base_rate: Number(r.base_rate),
+            min_charge: Number(r.min_charge ?? 0),
+            surcharge_pct: Number(r.surcharge_pct ?? 0),
+            valid_from: r.valid_from || null,
+            valid_to: r.valid_to || null,
+            status: r.status,
+            notes: r.notes ?? "",
+            department: SPNC_DEPT,
+          }),
+        })
+          .then((res) => res.ok)
+          .catch(() => false)
+      )
+    );
+    const updated = new Set(outdated.filter((_, i) => results[i]).map((r) => r.id));
+    return rows.map((r) => (updated.has(r.id) ? { ...r, department: SPNC_DEPT } : r));
+  }
+
   async function fetchRates() {
     setLoading(true);
     try {
-      const res = await fetch("/spnc/app/api/rates", { cache: "no-store" });
-      const data = await res.json();
-      setRates(Array.isArray(data.rates) ? data.rates : []);
+      let rows = await readRates();
+      rows = await seedMissingRates(rows);
+      setRates((prev) => withLocalSeeds(rows, prev));
     } catch (err) {
       console.error("Fetch rates failed:", err);
+      setRates((prev) => withLocalSeeds([], prev));
     } finally {
       setLoading(false);
     }
@@ -865,81 +859,51 @@ export default function RatesPage() {
 
   useEffect(() => {
     fetchRates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- Rate requests: load, approve, decline ----
-  // Reloaded from Supabase every time the Requests table is opened.
-  async function loadRequests() {
-    setRequestError(null);
-    try {
-      const res = await fetch("/spnc/app/api/rates", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || `Couldn't load requests (HTTP ${res.status}).`);
-      const all: Rate[] = Array.isArray(data.rates) ? data.rates : [];
-      setRates(all);
-      setRequests(
-        all.filter(isRequest).sort((a, b) => {
-          // pending first, then newest first
-          if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
-          return (b.created_at ?? "").localeCompare(a.created_at ?? "");
-        })
-      );
-    } catch (err) {
-      console.error("Fetch rate requests failed:", err);
-      setRequests([]);
-      setRequestError(err instanceof Error ? err.message : "Couldn't load requests.");
-    }
-  }
-
+  // Once the rates are loaded and we know the user is an admin, move old departments to SPNC (once per visit).
   useEffect(() => {
-    if (showRequests) {
-      setRequests(null);
-      loadRequests();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showRequests]);
-
-  // Saves the new status through the existing update route. The full rate is sent
-  // (same shape as the Edit form) with only the status changed.
-  async function setRequestStatus(r: Rate, status: "active" | "declined") {
-    const res = await fetch(`/spnc/app/api/rates/${r.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rate_code: r.rate_code,
-        description: r.description ?? "",
-        charge_type: r.charge_type,
-        currency: r.currency,
-        base_rate: Number(r.base_rate),
-        min_charge: Number(r.min_charge ?? 0),
-        surcharge_pct: Number(r.surcharge_pct ?? 0),
-        valid_from: r.valid_from || null,
-        valid_to: r.valid_to || null,
-        notes: r.notes ?? "",
-        department: r.department ?? null,
-        status,
-      }),
+    if (loading || !canApprove || deptUpdated.current) return;
+    deptUpdated.current = true;
+    updateDepartments(rates).then((updated) => {
+      const byId = new Map(updated.map((r) => [r.id, r]));
+      setRates((prev) => prev.map((r) => byId.get(r.id) ?? r));
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Couldn't update the request.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, canApprove]);
 
-    // Approved rates become "active" and appear in the rates table right away.
-    setRates((prev) => prev.map((x) => (x.id === r.id ? { ...x, status } : x)));
-    // Keep the row in the requests list with an Approved / Declined badge until it's reopened.
-    setRequests(
-      (prev) => prev?.map((x) => (x.id === r.id ? { ...x, status: status === "active" ? "approved" : status } : x)) ?? prev
-    );
+  // Auto-hide the green notice after a few seconds
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 10000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  // Admin: approve or decline an employee's pending edit.
+  async function reviewRate(id: string, action: "approve" | "decline") {
+    if (!canApprove || reviewingId) return;
+    setReviewingId(id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/spnc/app/api/rates/${id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Could not process the request.");
+      setNotice(action === "approve" ? "Changes approved and applied." : "Changes declined. The rate was left as it was.");
+      await fetchRates();
+    } catch (err) {
+      console.error("Review failed:", err);
+      setDeleteError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setReviewingId(null);
+    }
   }
 
-  // Approve / Decline / Archive / Notify open the confirmation window; the action runs when it's confirmed.
-  function handleApproveRequest(r: Rate) {
-    setConfirmError(null);
-    setConfirmState({ kind: "approve", rate: r });
-  }
-  function handleDeclineRequest(r: Rate) {
-    setConfirmError(null);
-    setConfirmState({ kind: "decline", rate: r });
-  }
+  // Archive / Notify open the confirmation window; the action runs when it's confirmed.
   // Placeholder: the Finance system isn't connected yet, so this only shows a message.
   // When it is, send the rate to Finance in runConfirmed() (e.g. call your Finance API with r.id).
   function handleNotifyFinance(r: Rate) {
@@ -962,18 +926,20 @@ export default function RatesPage() {
     setConfirmError(null);
     try {
       if (kind === "archive") {
-        setDeletingId(rate.id);
-        setDeleteError(null);
-        const res = await fetch(`/spnc/app/api/rates/${rate.id}`, { method: "DELETE" });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.message || "Could not archive rate.");
+        if (isSeedRate(rate.id)) {
+          // Built-in rate that isn't in Supabase: remove it from the page only.
+          archivedSeeds.current.add(rate.rate_code.toLowerCase());
+          setRates((prev) => prev.filter((x) => x.id !== rate.id));
+        } else {
+          setDeletingId(rate.id);
+          setDeleteError(null);
+          const res = await fetch(`/spnc/app/api/rates/${rate.id}`, { method: "DELETE" });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || "Could not archive rate.");
+          }
+          fetchRates();
         }
-        fetchRates();
-      } else {
-        setRequestActionId(rate.id);
-        setRequestError(null);
-        await setRequestStatus(rate, kind === "approve" ? "active" : "declined");
       }
       setConfirmState(null);
     } catch (err) {
@@ -981,7 +947,6 @@ export default function RatesPage() {
       setConfirmError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setConfirmBusy(false);
-      setRequestActionId(null);
       setDeletingId(null);
     }
   }
@@ -1031,8 +996,9 @@ export default function RatesPage() {
 
   // Official rates = everything that isn't a pending/declined request.
   const officialRates = rates.filter((r) => !isRequest(r));
-  // Number shown in the red circle on the Requests button.
-  const pendingRequestCount = rates.filter((r) => r.status === "pending").length;
+
+  // Rates that have an employee edit waiting for an admin.
+  const pendingList = officialRates.filter(hasPending);
 
   const filteredRates = officialRates.filter((rate) => {
     const query = searchTerm.trim().toLowerCase();
@@ -1040,6 +1006,7 @@ export default function RatesPage() {
 
     const haystack = [
       rate.rate_code,
+      providerOf(rate.rate_code),
       rate.description,
       rate.department,
       rate.charge_type,
@@ -1082,6 +1049,13 @@ export default function RatesPage() {
 
   // Every column in public.rates can be null, so each value gets a safe default here.
   // Dates may be stored with a time ("2026-09-29T00:00:00"); the date input needs "YYYY-MM-DD".
+  // Add Rate (admins only): opens the same form as Edit, empty.
+  function openAddModal() {
+    if (!canAddRate) return;
+    resetForm();
+    setModalOpen(true);
+  }
+
   function openEditModal(r: Rate) {
     const toDateInput = (v?: string | null) => (v ? String(v).slice(0, 10) : "");
     const toNumberInput = (v?: number | null, fallback = "") => (v === null || v === undefined ? fallback : String(v));
@@ -1092,7 +1066,7 @@ export default function RatesPage() {
     setForm({
       rate_code: r.rate_code ?? "",
       description: r.description ?? "",
-      department: r.department ?? "",
+      department: SPNC_DEPT,
       charge_type: CHARGE_TYPE_OPTIONS.includes(r.charge_type) ? r.charge_type : emptyForm.charge_type,
       currency: CURRENCY_OPTIONS.includes(r.currency) ? r.currency : emptyForm.currency,
       base_rate: toMoneyInput(toNumberInput(r.base_rate)),
@@ -1119,6 +1093,11 @@ export default function RatesPage() {
   }
 
   async function handleSave() {
+    if (!editingId && !canAddRate) {
+      setSaveError("Only admins can add rates.");
+      return;
+    }
+
     const missing: string[] = [];
     if (!form.rate_code.trim()) missing.push("Rate Code");
     if (!form.base_rate.trim()) missing.push("Base Rate");
@@ -1138,13 +1117,20 @@ export default function RatesPage() {
       return;
     }
 
-    setSaving(true);
-    setSaveError(null);
+    if (!editingId && rates.some((r) => sameCode(r.rate_code, form.rate_code))) {
+      setSaveError(`Rate code "${form.rate_code.trim()}" already exists. Use a different code.`);
+      return;
+    }
+
+    if (form.status === "active" && Number(form.base_rate) <= 0) {
+      setSaveError("An Active rate needs a Base Rate above 0. Keep it as Draft until the provider sends a quotation.");
+      return;
+    }
 
     const payload = {
       rate_code: form.rate_code,
       description: form.description,
-      department: form.department.trim() || null,
+      department: SPNC_DEPT,
       charge_type: form.charge_type,
       currency: form.currency,
       base_rate: Number(form.base_rate),
@@ -1156,19 +1142,73 @@ export default function RatesPage() {
       notes: form.notes,
     };
 
+    // Built-in rate that isn't in Supabase: update it on the page only (admins only,
+    // because these edits never reach the server and so can't go through approval).
+    if (editingId && isSeedRate(editingId)) {
+      if (!canApprove) {
+        setSaveError("This rate isn't saved to the database yet. Ask an admin to update it.");
+        return;
+      }
+      setRates((prev) => prev.map((x) => (x.id === editingId ? { ...x, ...payload } : x)));
+      if (editingId === highlightId) clearHighlight();
+      closeModal();
+      return;
+    }
+
+    // Employees: if nothing changed, say so here instead of getting a 400 from the server.
+    if (editingId && !canApprove) {
+      const original = rates.find((r) => r.id === editingId);
+      const text = (v: unknown) => String(v ?? "").trim();
+      const money = (v: unknown) => Math.round(Number(v || 0) * 100) / 100;
+      const day = (v: unknown) => text(v).slice(0, 10);
+      const nothingChanged =
+        !!original &&
+        text(payload.rate_code) === text(original.rate_code) &&
+        text(payload.description) === text(original.description) &&
+        text(payload.charge_type) === text(original.charge_type) &&
+        text(payload.currency) === text(original.currency) &&
+        money(payload.base_rate) === money(original.base_rate) &&
+        money(payload.min_charge) === money(original.min_charge) &&
+        money(payload.surcharge_pct) === money(original.surcharge_pct) &&
+        day(payload.valid_from) === day(original.valid_from) &&
+        day(payload.valid_to) === day(original.valid_to) &&
+        text(payload.status) === text(original.status) &&
+        text(payload.notes) === text(original.notes);
+      if (nothingChanged) {
+        setSaveError("You haven't changed anything yet. Edit a field, then submit for approval.");
+        return;
+      }
+    }
+
+    setSaving(true);
+    setSaveError(null);
+
     try {
       const url = editingId ? `/spnc/app/api/rates/${editingId}` : "/spnc/app/api/rates";
       const method = editingId ? "PUT" : "POST";
 
+      // Employees don't send the department (it isn't theirs to change), so it never shows up as a pending change.
+      const { department: _department, ...withoutDepartment } = payload;
+      void _department;
+      const body = editingId && !canApprove ? withoutDepartment : payload;
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setSaveError(data.message || (editingId ? "Could not update rate." : "Could not save rate."));
+        return;
+      }
+
+      // Employee edit: the server saved it as a pending request instead of changing the rate.
+      if (res.status === 202) {
+        setNotice("Your changes were sent to an admin for approval. The rate will update once approved.");
+        closeModal();
+        fetchRates();
         return;
       }
 
@@ -1185,6 +1225,7 @@ export default function RatesPage() {
   }
 
   function handleArchive(id: string) {
+    if (!canApprove) return; // admins only (the server enforces this too)
     const rate = rates.find((r) => r.id === id);
     if (!rate) return;
     setDeleteError(null);
@@ -1201,39 +1242,31 @@ export default function RatesPage() {
       />
 
       <div className="px-8">
-        {/* Pink Requests button with a red circle showing the number of pending requests */}
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowRequests((v) => !v)}
-            aria-expanded={showRequests}
-            aria-label={`${showRequests ? "Hide requests" : "Requests"}${pendingRequestCount ? ` (${pendingRequestCount} pending)` : ""}`}
-            className="relative flex items-center gap-2 rounded-md bg-[#F2419B] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#F55CAB]"
-          >
-            <Inbox size={16} />
-            {showRequests ? "Hide Requests" : "Requests"}
-            {pendingRequestCount > 0 && (
-              <span
-                className={`absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#E5484D] px-1.5 text-[11px] font-bold leading-none text-white ring-2 ${
-                  isDark ? "ring-[#0B1220]" : "ring-white"
-                }`}
-              >
-                {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
-              </span>
-            )}
-          </button>
-        </div>
+        {/* Add Rate: admins only */}
+        {canAddRate && (
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="flex items-center gap-2 rounded-md bg-[#F2419B] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#F55CAB]"
+            >
+              <Plus size={16} />
+              Add Rate
+            </button>
+          </div>
+        )}
 
-        {showRequests && (
-          <RateRequestsTable
-            isDark={isDark}
-            requests={requests}
-            busyId={requestActionId}
-            error={requestError}
-            onApprove={handleApproveRequest}
-            onDecline={handleDeclineRequest}
-            highlightId={highlightId}
-          />
+        {notice && (
+          <div
+            role="status"
+            className="mb-4 flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500"
+          >
+            <Check size={16} className="shrink-0" />
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="ml-auto rounded p-0.5 hover:opacity-70">
+              <X size={14} />
+            </button>
+          </div>
         )}
 
         {highlightMissing && !highlightId && (
@@ -1266,6 +1299,63 @@ export default function RatesPage() {
           </div>
         )}
 
+        {/* Pending approvals: admins only */}
+        {canApprove && pendingList.length > 0 && (
+          <div className={`mb-6 rounded-lg border p-4 ${isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
+            <h2
+              className={`mb-3 flex items-center gap-2 text-base font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              <Clock size={16} className="text-amber-500" />
+              Pending approvals
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">{pendingList.length}</span>
+            </h2>
+            <ul className="space-y-3">
+              {pendingList.map((r) => (
+                <li
+                  key={r.id}
+                  className={`rounded-md border p-3 text-sm ${isDark ? "border-[#2C4356] text-[#C7D1DA]" : "border-gray-200 text-gray-700"}`}
+                >
+                  <div className="font-semibold text-[#F2419B]">{r.rate_code}</div>
+                  <div className={`mb-2 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Requested by {r.pending_by_name || "an employee"}
+                    {r.pending_at ? ` · ${new Date(r.pending_at).toLocaleString()}` : ""}
+                  </div>
+                  <ul className="mb-3 space-y-1 text-xs">
+                    {Object.entries(r.pending_changes ?? {}).map(([field, c]) => (
+                      <li key={field}>
+                        <span className="font-semibold">{FIELD_LABELS[field] ?? field}:</span>{" "}
+                        <span className="line-through opacity-60">{formatChangeValue(field, c.from)}</span>
+                        {" → "}
+                        <span className="font-medium">{formatChangeValue(field, c.to)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={reviewingId !== null}
+                      onClick={() => reviewRate(r.id, "approve")}
+                      className="flex items-center gap-1.5 rounded-md bg-[#1FA968] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#23BF76] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {reviewingId === r.id && <Loader2 size={12} className="animate-spin" />}
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewingId !== null}
+                      onClick={() => reviewRate(r.id, "decline")}
+                      className="rounded-md bg-[#E2685A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D9483A] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-16">
             <Loader2 size={32} className="animate-spin text-[#F2419B]" />
@@ -1289,7 +1379,7 @@ export default function RatesPage() {
                     onChange={(e) => { setSearchInput(e.target.value); if (!e.target.value.trim()) setSearchTerm(""); }}
                     onFocus={() => setShowRecentSearches(true)}
                     onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); runSearch(); } else if (event.key === "Escape") setShowRecentSearches(false); }}
-                    placeholder="Search rate code, department, description..."
+                    placeholder="Search provider, rate code, route, description..."
                     className={`w-full rounded-md border py-2.5 pl-3 pr-20 text-sm outline-none ${
                       isDark
                         ? "border-[#2C4356] bg-[#121B26] text-[#F2F1EC] placeholder:text-[#4B5A68] focus:border-[#F2419B]"
@@ -1324,12 +1414,20 @@ export default function RatesPage() {
                   }`}
                 >
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-[#23303D] text-left">
+                    <table
+                      className="w-full table-fixed divide-y divide-[#23303D] text-left"
+                      style={{ tableLayout: "fixed", minWidth: RATE_TABLE_WIDTH }}
+                    >
+                      <colgroup>
+                        {RATE_COLUMNS.map((c) => (
+                          <col key={c.label} style={{ width: c.width }} />
+                        ))}
+                      </colgroup>
                       <thead className={isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}>
                         <tr>
-                          {['Rate', 'Department', 'Charge Type', 'Amount', 'Validity', 'Status', 'Notify Finance', 'Actions'].map((header) => (
-                            <th key={header} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
-                              {header}
+                          {RATE_COLUMNS.map((c) => (
+                            <th key={c.label} className="truncate px-4 py-3 text-xs font-semibold uppercase tracking-wide">
+                              {c.label}
                             </th>
                           ))}
                         </tr>
@@ -1337,11 +1435,16 @@ export default function RatesPage() {
                       <tbody className={isDark ? "divide-y divide-[#23303D] text-[#C7D1DA]" : "divide-y divide-gray-200 text-gray-700"}>
                         {pagedRates.map((r) => {
                           const sc = statusColor(r.status);
+                          const quote = needsQuote(r);
+                          const pending = hasPending(r);
                           return (
                             <tr
                               key={r.id}
                               id={`rate-row-${r.id}`}
-                              style={highlightId === r.id ? { outline: "2px solid #E5484D", outlineOffset: -2 } : undefined}
+                              style={{
+                                height: RATE_ROW_HEIGHT,
+                                ...(highlightId === r.id ? { outline: "2px solid #E5484D", outlineOffset: -2 } : {}),
+                              }}
                               className={
                                 highlightId === r.id
                                   ? `outline outline-2 -outline-offset-2 outline-[#E5484D]`
@@ -1352,18 +1455,27 @@ export default function RatesPage() {
                             >
                               <td className={`px-4 py-4 align-top ${hlCell(r.id, "Rate")}`} style={hlStyle(r.id, "Rate")}>
                                 <div className="space-y-1">
-                                  <div className="font-semibold text-[#F2419B]">{r.rate_code}</div>
-                                  <div className={`text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                                  <div className="truncate font-semibold text-[#F2419B]" title={r.rate_code}>{r.rate_code}</div>
+                                  <div className={`line-clamp-2 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`} title={r.description || undefined}>
                                     {r.description || "No description"}
                                   </div>
                                 </div>
                               </td>
-                              <td className={`whitespace-nowrap px-4 py-4 align-top ${hlCell(r.id, "Department")}`} style={hlStyle(r.id, "Department")}>{r.department || "—"}</td>
+                              <td className={`px-4 py-4 align-top text-sm font-medium ${hlCell(r.id, "Provider")}`} style={hlStyle(r.id, "Provider")}>
+                                <span className="line-clamp-2">{providerOf(r.rate_code) ?? <span className={isDark ? "text-[#8FA0AF]" : "text-gray-500"}>—</span>}</span>
+                              </td>
+                              <td className={`px-4 py-4 align-top text-sm ${hlCell(r.id, "Department")}`} style={hlStyle(r.id, "Department")}>
+                                <span className="line-clamp-2" title={r.department || undefined}>{r.department || "—"}</span>
+                              </td>
                               <td className={`whitespace-nowrap px-4 py-4 align-top ${hlCell(r.id, "Charge Type")}`} style={hlStyle(r.id, "Charge Type")}>{CHARGE_TYPE_LABELS[r.charge_type] || r.charge_type}</td>
-                              <td className={`px-4 py-4 align-top ${hlCell(r.id, "Amount")}`} style={hlStyle(r.id, "Amount")}>
-                                <span className={`text-base font-bold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
-                                  {formatMoney(r.currency, r.base_rate)}
-                                </span>
+                              <td className={`whitespace-nowrap px-4 py-4 align-top ${hlCell(r.id, "Amount")}`} style={hlStyle(r.id, "Amount")}>
+                                {quote ? (
+                                  <span className={`text-sm font-semibold ${isDark ? "text-[#F2A23B]" : "text-[#C9791A]"}`}>Quote needed</span>
+                                ) : (
+                                  <span className={`text-base font-bold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
+                                    {formatMoney(r.currency, r.base_rate)}
+                                  </span>
+                                )}
                               </td>
                               <td className={`whitespace-nowrap px-4 py-4 align-top ${hlCell(r.id, "Validity")}`} style={hlStyle(r.id, "Validity")}>
                                 {(() => {
@@ -1396,6 +1508,12 @@ export default function RatesPage() {
                                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${sc.bg} ${sc.text}`}>
                                   {r.status}
                                 </span>
+                                {pending && (
+                                  <div className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-amber-500">
+                                    <Clock size={10} />
+                                    Pending approval
+                                  </div>
+                                )}
                               </td>
                               <td className={`whitespace-nowrap px-4 py-4 align-top ${hlCell(r.id, "Notify")}`} style={hlStyle(r.id, "Notify")}>
                                 <button
@@ -1413,9 +1531,10 @@ export default function RatesPage() {
                                   <button
                                     type="button"
                                     onClick={() => router.push(`/spnc/app/rates/${r.id}`)}
+                                    disabled={isSeedRate(r.id)}
                                     aria-label={`View ${r.rate_code}`}
-                                    title="View rate details"
-                                    className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                                    title={isSeedRate(r.id) ? "Not saved to the database yet" : "View rate details"}
+                                    className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                       isDark
                                         ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]"
                                         : "text-gray-500 hover:bg-gray-200 hover:text-gray-900"
@@ -1426,7 +1545,18 @@ export default function RatesPage() {
                                   <button
                                     type="button"
                                     onClick={() => openEditModal(r)}
-                                    className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                                    disabled={!canApprove && (isSeedRate(r.id) || pending)}
+                                    aria-label={`Edit ${r.rate_code}`}
+                                    title={
+                                      !canApprove && isSeedRate(r.id)
+                                        ? "Not saved to the database yet. Ask an admin to update it."
+                                        : !canApprove && pending
+                                        ? "An edit is already waiting for admin approval"
+                                        : canApprove
+                                        ? "Edit rate"
+                                        : "Edit rate (needs admin approval)"
+                                    }
+                                    className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                       isDark
                                         ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]"
                                         : "text-gray-500 hover:bg-gray-200 hover:text-gray-900"
@@ -1434,19 +1564,31 @@ export default function RatesPage() {
                                   >
                                     <Pencil size={15} />
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleArchive(r.id)}
-                                    disabled={deletingId === r.id}
-                                    className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    <Archive size={15} />
-                                  </button>
+                                  {/* Archive: admins only */}
+                                  {canApprove && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleArchive(r.id)}
+                                      disabled={deletingId === r.id}
+                                      aria-label={`Archive ${r.rate_code}`}
+                                      title="Archive rate"
+                                      className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <Archive size={15} />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
                           );
                         })}
+                        {/* Empty rows keep every page the same height */}
+                        {totalPages > 1 &&
+                          Array.from({ length: PAGE_SIZE - pagedRates.length }, (_, i) => (
+                            <tr key={`filler-${i}`} aria-hidden="true" style={{ height: RATE_ROW_HEIGHT }}>
+                              <td colSpan={RATE_COLUMNS.length} />
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>
@@ -1505,7 +1647,7 @@ export default function RatesPage() {
                 className={`text-xl font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
                 style={{ fontFamily: "var(--font-display)" }}
               >
-                {editingId ? "Edit Rate" : "New Rate"}
+                {editingId ? "Edit Rate" : "Add Rate"}
               </h2>
               <button
                 type="button"
@@ -1516,6 +1658,14 @@ export default function RatesPage() {
               </button>
             </div>
 
+            {/* Employees: tell them their edit will need an admin's approval */}
+            {editingId && !canApprove && (
+              <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+                <Clock size={14} className="mt-0.5 shrink-0" />
+                <span>Your changes won&apos;t be applied right away. They will be sent to an admin for approval.</span>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <p className={`mb-1.5 text-xs font-medium tracking-wide uppercase ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
@@ -1523,7 +1673,7 @@ export default function RatesPage() {
                 </p>
                 <input
                   type="text"
-                  placeholder="RAT-001"
+                  placeholder="GGX-SP-GMM"
                   value={form.rate_code}
                   onChange={(e) => setForm({ ...form, rate_code: e.target.value })}
                   className={`w-full rounded-md border px-3 py-2.5 outline-none ${fieldBorderClass(form.rate_code)} ${
@@ -1532,6 +1682,9 @@ export default function RatesPage() {
                       : "bg-white text-gray-900 placeholder:text-gray-400"
                   }`}
                 />
+                <p className={`mt-1 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                  Provider: <span className="font-medium">{providerOf(form.rate_code) ?? "start the code with GGX, JNT, JNTC, LBC, SPX, NV, FLH, A21, EXP or TTS"}</span>
+                </p>
               </div>
 
               <div>
@@ -1553,7 +1706,7 @@ export default function RatesPage() {
                 </p>
                 <input
                   type="text"
-                  placeholder="Standard sea freight per container"
+                  placeholder="GoGo Xpress · Small pouch (max 3 kg) · GMM → Luzon"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className={`w-full rounded-md border px-3 py-2.5 outline-none focus:border-[#F2419B] ${
@@ -1570,13 +1723,14 @@ export default function RatesPage() {
                 </p>
                 <input
                   type="text"
-                  placeholder="e.g. Finance, Operations"
-                  value={form.department}
-                  onChange={(e) => setForm({ ...form, department: e.target.value })}
-                  className={`w-full rounded-md border px-3 py-2.5 outline-none focus:border-[#F2419B] ${
+                  value={SPNC_DEPT}
+                  readOnly
+                  aria-readonly="true"
+                  title="All rates belong to Service Provider and Network Control"
+                  className={`w-full cursor-not-allowed rounded-md border px-3 py-2.5 outline-none ${
                     isDark
-                      ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                      : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+                      ? "border-[#2C4356] bg-[#1A2530] text-[#C7D1DA]"
+                      : "border-gray-300 bg-gray-50 text-gray-700"
                   }`}
                 />
               </div>
@@ -1600,26 +1754,26 @@ export default function RatesPage() {
                     Base Rate *
                   </p>
                   <div className="relative">
-                  <span
-                    className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}
-                  >
-                    {CURRENCY_SYMBOLS[form.currency] ?? form.currency}
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="2800.00"
-                    value={form.base_rate}
-                    onChange={(e) => setForm({ ...form, base_rate: e.target.value })}
-                    onBlur={(e) => setForm((f) => ({ ...f, base_rate: toMoneyInput(e.target.value) }))}
-                    className={`w-full rounded-md border py-2.5 pl-8 pr-3 outline-none ${fieldBorderClass(form.base_rate)} ${
-                      isDark
-                        ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                        : "bg-white text-gray-900 placeholder:text-gray-400"
-                    }`}
-                  />
+                    <span
+                      className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}
+                    >
+                      {CURRENCY_SYMBOLS[form.currency] ?? form.currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder="150.00"
+                      value={form.base_rate}
+                      onChange={(e) => setForm({ ...form, base_rate: e.target.value })}
+                      onBlur={(e) => setForm((f) => ({ ...f, base_rate: toMoneyInput(e.target.value) }))}
+                      className={`w-full rounded-md border py-2.5 pl-8 pr-3 outline-none ${fieldBorderClass(form.base_rate)} ${
+                        isDark
+                          ? "bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                          : "bg-white text-gray-900 placeholder:text-gray-400"
+                      }`}
+                    />
                   </div>
                 </div>
                 <div>
@@ -1627,26 +1781,26 @@ export default function RatesPage() {
                     Min Charge
                   </p>
                   <div className="relative">
-                  <span
-                    className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}
-                  >
-                    {CURRENCY_SYMBOLS[form.currency] ?? form.currency}
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={form.min_charge}
-                    onChange={(e) => setForm({ ...form, min_charge: e.target.value })}
-                    onBlur={(e) => setForm((f) => ({ ...f, min_charge: toMoneyInput(e.target.value) }))}
-                    className={`w-full rounded-md border py-2.5 pl-8 pr-3 outline-none focus:border-[#F2419B] ${
-                      isDark
-                        ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                        : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
-                    }`}
-                  />
+                    <span
+                      className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}
+                    >
+                      {CURRENCY_SYMBOLS[form.currency] ?? form.currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={form.min_charge}
+                      onChange={(e) => setForm({ ...form, min_charge: e.target.value })}
+                      onBlur={(e) => setForm((f) => ({ ...f, min_charge: toMoneyInput(e.target.value) }))}
+                      className={`w-full rounded-md border py-2.5 pl-8 pr-3 outline-none focus:border-[#F2419B] ${
+                        isDark
+                          ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                          : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+                      }`}
+                    />
                   </div>
                 </div>
               </div>
@@ -1719,7 +1873,7 @@ export default function RatesPage() {
                   Notes
                 </p>
                 <textarea
-                  placeholder="Optional notes"
+                  placeholder="Source of the rate, conditions, etc."
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   className={`h-20 w-full resize-none rounded-md border px-3 py-2.5 outline-none focus:border-[#F2419B] ${
@@ -1756,15 +1910,24 @@ export default function RatesPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB] disabled:cursor-not-allowed disabled:bg-[#4B5A68]"
               >
                 {saving && <Loader2 size={16} className="animate-spin" />}
-                {saving ? (editingId ? "Updating…" : "Saving…") : editingId ? "Update" : "Save"}
+                {saving
+                  ? editingId
+                    ? canApprove
+                      ? "Updating…"
+                      : "Submitting…"
+                    : "Saving…"
+                  : editingId
+                  ? canApprove
+                    ? "Update"
+                    : "Submit for approval"
+                  : "Save"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Airship Express AI assistant (floating robot button) */}
-      {/* Approve / Decline / Archive / Notify Finance confirmation */}
+      {/* Archive / Notify Finance confirmation */}
       <ConfirmDialog
         state={confirmState}
         isDark={isDark}
@@ -1774,6 +1937,7 @@ export default function RatesPage() {
         onConfirm={() => void runConfirmed()}
       />
 
+      {/* Airship Express AI assistant (floating robot button) */}
       <SpncAssistant isDark={isDark} />
     </div>
   );

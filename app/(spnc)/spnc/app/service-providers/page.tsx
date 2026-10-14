@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Fragment, type CSSProperties } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -19,15 +19,13 @@ import {
   Eye,
   Check,
   Clock,
-  Inbox,
-  Sparkles,
-  CheckCircle2,
-  XCircle,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { useShell } from "../../components/ShellContext";
 import PageHeader from "../../components/PageHeader";
 import SpncAssistant from "../../components/SpncAssistant";
+import { can } from "../../lib/rbac";
 
 const TYPES: { label: string; value: string }[] = [
   { label: "Carrier", value: "carrier" },
@@ -44,7 +42,6 @@ const STATUSES: { label: string; value: string }[] = [
   { label: "Inactive", value: "inactive" },
 ];
 const PAGE_SIZE = 5;
-const REQUESTS_PAGE_SIZE = 5; // requests shown per page in the Requests table
 const RECENT_SEARCHES_KEY = "service_providers_recent_searches";
 const MAX_RECENT_SEARCHES = 5;
 
@@ -67,6 +64,35 @@ const FIELD_TO_COLUMN: Record<string, string> = {
 };
 const HIGHLIGHT_RED = "#E5484D";
 const HIGHLIGHT_CELL = "bg-[#E5484D]/20"; // the column with the problem: stronger red
+
+// Friendly names for the fields shown in the "Pending approvals" panel.
+const FIELD_LABELS: Record<string, string> = {
+  name: "Company name",
+  type: "Provider type",
+  agency: "Agency",
+  department: "Department",
+  contact_person: "Contact person",
+  email: "Email",
+  phone: "Phone",
+  address: "Address",
+  country: "Country",
+  service_modes: "Service modes",
+  status: "Status",
+  rating: "Rating",
+  contract_ref: "Contract ref",
+  notes: "Notes",
+  attachments: "PDF files",
+};
+
+function formatChangeValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) {
+    // PDF attachments are objects ({ name, dataUrl }): show only the file names
+    const items = value.map((v) => (v && typeof v === "object" && "name" in v ? String((v as { name: unknown }).name) : String(v)));
+    return items.length ? items.join(", ") : "—";
+  }
+  return String(value);
+}
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia",
@@ -239,6 +265,9 @@ type ProviderAttachment = {
   dataUrl: string;
 };
 
+// An employee's edit that is waiting for an admin: { field: { from, to } }
+type PendingChanges = Record<string, { from: unknown; to: unknown }>;
+
 type Provider = {
   id: string;
   name: string;
@@ -257,6 +286,10 @@ type Provider = {
   department: string | null;
   attachments?: ProviderAttachment[];
   created_at?: string | null;
+  // Approval flow: filled in when an employee edits a provider and an admin hasn't decided yet.
+  pending_changes?: PendingChanges | null;
+  pending_by_name?: string | null;
+  pending_at?: string | null;
 };
 
 function createEmptyForm() {
@@ -309,7 +342,211 @@ function normalizeProvider(provider: Partial<Provider> & { id: string }): Provid
     department: provider.department ?? null,
     attachments: provider.attachments,
     created_at: provider.created_at ?? null,
+    pending_changes: provider.pending_changes ?? null,
+    pending_by_name: provider.pending_by_name ?? null,
+    pending_at: provider.pending_at ?? null,
   };
+}
+
+/* ---------- Built-in service providers ----------
+ * The providers below are added to the page automatically, with their company details and contact details.
+ * On the first visit the page tries to save each one to Supabase (POST /api/service-providers). Names that were
+ * saved are remembered in this browser, so a provider you archive is not added back on the next visit.
+ * If the POST route doesn't accept new rows, the providers are still shown from this list; Edit and Archive
+ * then change them on this page only.
+ *
+ * Phone numbers use the same format the Edit form saves: "+63 <digits>" with the leading 0 removed,
+ * e.g. (02) 8911-1888 → "+63 289111888".
+ * Contact details were checked in Oct 2026. Notes starting with "VERIFY:" could not be confirmed from an
+ * official source.
+ */
+const SPNC_DEPT = "Service Provider and Network Control";
+
+// Tolerates casing/whitespace differences ("Admin", " admin ") from the session, like toRole() in lib/rbac.ts.
+const isAdminRole = (role: unknown) => typeof role === "string" && role.trim().toLowerCase() === "admin";
+const SEED_ID_PREFIX = "seed-";
+const SEEDED_PROVIDERS_KEY = "service_providers_seeded_v1";
+const seedId = (name: string) => SEED_ID_PREFIX + name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const isSeed = (id: string) => id.startsWith(SEED_ID_PREFIX);
+const sameName = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+const DEFAULT_PROVIDERS: Omit<Provider, "id">[] = [
+  {
+    name: "GoGo Xpress",
+    type: "carrier",
+    agency: "QuadX Inc.",
+    department: SPNC_DEPT,
+    contact_person: "Customer Care",
+    email: "customercare@gogoxpress.com",
+    phone: "+63 9178417285",
+    address: "Pasig City, Metro Manila",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 4,
+    contract_ref: "SPNC-SP-001",
+    notes: "Door-to-door parcel delivery for online sellers. Free pick-up, free COD, item protection free up to ₱500.",
+  },
+  {
+    name: "J&T Cargo",
+    type: "freight_forwarder",
+    agency: "PH Global Jet Express Inc.",
+    department: SPNC_DEPT,
+    contact_person: "Customer Service Hotline",
+    email: "customerca@jtexpress.ph",
+    phone: "+63 289111888",
+    address: "9th & 11th Floors, Marajo Tower, 4th Ave. cor. 26th St., BGC, Taguig 1630",
+    country: "Philippines",
+    service_modes: ["Road", "Sea"],
+    status: "active",
+    rating: 4,
+    contract_ref: "SPNC-SP-002",
+    notes: "Bulky and heavy cargo. VERIFY: uses the J&T Express main hotline and email; J&T Cargo may have its own line.",
+  },
+  {
+    name: "J&T Home",
+    type: "other",
+    agency: "PH Global Jet Express Inc.",
+    department: SPNC_DEPT,
+    contact_person: "Customer Service Hotline",
+    email: "customerca@jtexpress.ph",
+    phone: "+63 289111888",
+    address: "9th & 11th Floors, Marajo Tower, 4th Ave. cor. 26th St., BGC, Taguig 1630",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 3,
+    contract_ref: "SPNC-SP-003",
+    notes: "J&T drop-off / pick-up partner points. Hotline is open 24/7.",
+  },
+  {
+    name: "LBC Drop-off Service",
+    type: "carrier",
+    agency: "LBC Express Inc.",
+    department: SPNC_DEPT,
+    contact_person: "Customer Care Hotline",
+    email: "customercare@lbcexpress.com",
+    phone: "+63 288585999",
+    address: "LBC Hangar, General Aviation Centre, Domestic Airport Rd., Pasay City",
+    country: "Philippines",
+    service_modes: ["Road", "Air", "Sea"],
+    status: "active",
+    rating: 4,
+    contract_ref: "SPNC-SP-004",
+    notes: "Branch drop-off for documents, parcels and cargo. Business Solutions line: (02) 7908-6522.",
+  },
+  {
+    name: "Shopee Xpress",
+    type: "carrier",
+    agency: "SPX Express Philippines",
+    department: SPNC_DEPT,
+    contact_person: "Customer Service Hotline",
+    email: "support.ph@help.spxexpress.com",
+    phone: "+63 288805200",
+    address: "Metro Manila",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 3,
+    contract_ref: "SPNC-SP-005",
+    notes: "Hotline hours: Mon–Fri 7AM–7PM, Sat–Sun 9AM–6PM. VERIFY: head office address.",
+  },
+  {
+    name: "Ninja Van",
+    type: "carrier",
+    agency: "Ninja Van Philippines",
+    department: SPNC_DEPT,
+    contact_person: "Shipper Care",
+    email: "shippercare_ph@ninjavan.co",
+    phone: "+63 284242181",
+    address: "Taguig City, Metro Manila",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 4,
+    contract_ref: "SPNC-SP-006",
+    notes: "Recipients: support_ph@ninjavan.co. Customer service Mon–Sat 9AM–7PM. Hotline Mon–Fri 9AM–4PM.",
+  },
+  {
+    name: "Flash Home",
+    type: "other",
+    agency: "Flash Express Philippines",
+    department: SPNC_DEPT,
+    contact_person: "Customer Service",
+    email: "customerservice@flashexpress.ph",
+    phone: "+63 285394002",
+    address: "11F Robinsons Cyber Sigma, Lawton Ave., McKinley West, Taguig 1634",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 3,
+    contract_ref: "SPNC-SP-007",
+    notes: "Flash Express drop-off agent / partner network.",
+  },
+  {
+    name: "Air21",
+    type: "carrier",
+    agency: "AIR21",
+    department: SPNC_DEPT,
+    contact_person: "Customer Service",
+    email: null,
+    phone: null,
+    address: "Pasay City, Metro Manila",
+    country: "Philippines",
+    service_modes: ["Air", "Road"],
+    status: "inactive",
+    rating: 2,
+    contract_ref: "SPNC-SP-008",
+    notes: "VERIFY: no current official contact found. DFA moved its passport deliveries from AIR21 to LBC in Dec 2024 after an AIR21 service advisory, so it is set to Inactive.",
+  },
+  {
+    name: "Express Pay",
+    type: "other",
+    agency: "EXPRESSPAY",
+    department: SPNC_DEPT,
+    contact_person: "Head Office",
+    email: null,
+    phone: "+63 9186317663",
+    address: "Manila, Metro Manila",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 3,
+    contract_ref: "SPNC-SP-009",
+    notes: "Franchise payment center with courier drop-off. VERIFY: number is from a business directory; no email found.",
+  },
+  {
+    name: "TikTok Shop",
+    type: "other",
+    agency: "TikTok Shop Philippines",
+    department: SPNC_DEPT,
+    contact_person: "Seller Support (Seller Center)",
+    email: null,
+    phone: null,
+    address: "Metro Manila",
+    country: "Philippines",
+    service_modes: ["Road"],
+    status: "active",
+    rating: 3,
+    contract_ref: "SPNC-SP-010",
+    notes: "VERIFY: no public hotline or email; support is through tickets in TikTok Shop Seller Center. Shipping is by partner couriers (J&T, Flash, etc.).",
+  },
+];
+
+function readSeededNames(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(SEEDED_PROVIDERS_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]).map((n) => n.toLowerCase()) : []);
+  } catch {
+    return new Set();
+  }
+}
+function writeSeededNames(names: Set<string>) {
+  try {
+    window.localStorage.setItem(SEEDED_PROVIDERS_KEY, JSON.stringify([...names]));
+  } catch {
+    // ignore unavailable storage
+  }
 }
 
 function getStep1MissingFieldsMessage(form: ReturnType<typeof createEmptyForm>, customType: string) {
@@ -342,57 +579,15 @@ function getStep2MissingFieldsMessage(form: ReturnType<typeof createEmptyForm>) 
   return null;
 }
 
-/* ---------- Department requests table ----------
- * Requests live in the same Supabase table as providers (public.service_providers).
- * Another department inserts a row with status = 'pending':
- *   name        → Request
- *   department  → Department
- *   notes       → Description
- *   created_at  → Request Sent
- * Approve sets status = 'active' (it then shows in the providers table);
- * Decline sets status = 'declined'.
- */
+/* Rows with status 'pending' or 'declined' (requests from other departments) are kept out of the providers table. */
 const REQUEST_STATUSES = ["pending", "declined"];
 const isRequest = (p: Provider) => REQUEST_STATUSES.includes(p.status);
 
-const REQUEST_STATUS_STYLE: Record<string, { label: string; dark: string; light: string }> = {
-  pending: { label: "Pending", dark: "bg-[#2E2410] text-[#F2A23B]", light: "bg-[#FDF1DE] text-[#C77E12]" },
-  approved: { label: "Approved", dark: "bg-[#0F2E22] text-[#3BD68A]", light: "bg-[#E1F7EC] text-[#1FA968]" },
-  declined: { label: "Declined", dark: "bg-[#2A1212] text-[#E2685A]", light: "bg-[#FBE4E1] text-[#D9483A]" },
-};
-
-function formatRequestDate(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return {
-    date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-    time: d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-  };
-}
-
-// Result of one "Ask AI" request (from /api/request-summary), stored per request id
-type RequestAi = {
-  status: "loading" | "done" | "error";
-  summary?: string;
-  providersNeeded?: number;
-  reason?: string;
-  priority?: "urgent" | "normal" | "low";
-};
-
-const AI_PRIORITY_STYLE: Record<string, string> = {
-  urgent: "bg-[#E5484D] text-white",
-  normal: "bg-[#FDE7F1] text-[#F2419B]",
-  low: "bg-gray-100 text-gray-500",
-};
-
 /* ---------- Confirmation window (replaces the browser's confirm() popup) ---------- */
-type ConfirmKind = "approve" | "decline" | "archive";
+type ConfirmKind = "archive";
 type ConfirmState = { kind: ConfirmKind; provider: Provider } | null;
 
 const CONFIRM_COPY: Record<ConfirmKind, { title: string; action: string; busy: string; tone: "green" | "red" }> = {
-  approve: { title: "Approve this provider request?", action: "Approve", busy: "Approving…", tone: "green" },
-  decline: { title: "Decline this provider request?", action: "Decline", busy: "Declining…", tone: "red" },
   archive: { title: "Archive this provider?", action: "Archive", busy: "Archiving…", tone: "red" },
 };
 
@@ -425,29 +620,18 @@ function ConfirmDialog({
   const { kind, provider: p } = state;
   const copy = CONFIRM_COPY[kind];
   const green = copy.tone === "green";
-  const sent = formatRequestDate(p.created_at);
   const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
   const strong = isDark ? "text-[#F2F1EC]" : "text-gray-900";
-  const Icon = kind === "approve" ? CheckCircle2 : kind === "decline" ? XCircle : AlertTriangle;
+  const Icon = AlertTriangle;
 
-  const message =
-    kind === "approve" ? (
-      <>
-        It will be added to the providers table as <span className={`font-semibold ${strong}`}>Active</span>.
-      </>
-    ) : kind === "decline" ? (
-      <>The request will be marked as <span className="font-semibold text-[#E2685A]">Declined</span> and won&apos;t be added to the providers table.</>
-    ) : (
-      <>This provider will be removed from the list. This can&apos;t be undone from this page.</>
-    );
+  const message = <>This provider will be removed from the list. This can&apos;t be undone from this page.</>;
 
   const details: { label: string; value: string; wide?: boolean }[] = [
     { label: "Type", value: typeLabel(p.type) || "—" },
-    kind === "archive" ? { label: "Status", value: statusLabel(p.status) || "—" } : { label: "Department", value: p.department || p.agency || "—" },
+    { label: "Status", value: statusLabel(p.status) || "—" },
     { label: "Contact person", value: p.contact_person || "—" },
     { label: "Phone", value: displayPhone(p.phone) || "—" },
     { label: "Email", value: p.email || "—", wide: true },
-    ...(kind === "archive" ? [] : [{ label: "Request sent", value: sent ? `${sent.date} · ${sent.time}` : "—", wide: true }]),
   ];
 
   return (
@@ -545,7 +729,7 @@ function ConfirmDialog({
                 green ? "bg-[#1FA968] hover:bg-[#23BF76]" : "bg-[#E2685A] hover:bg-[#D9483A]"
               }`}
             >
-              {busy ? <Loader2 size={16} className="animate-spin" /> : kind === "approve" ? <Check size={16} /> : kind === "decline" ? <X size={16} /> : <Archive size={16} />}
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}
               {busy ? copy.busy : copy.action}
             </button>
           </div>
@@ -555,304 +739,20 @@ function ConfirmDialog({
   );
 }
 
-function DepartmentRequestsTable({
-  isDark,
-  requests,
-  existingProviders,
-  busyId,
-  error,
-  highlightId,
-  onApprove,
-  onDecline,
-}: {
-  isDark: boolean;
-  requests: Provider[] | null;
-  existingProviders: Provider[];
-  busyId: string | null;
-  error: string | null;
-  highlightId?: string | null;
-  onApprove: (r: Provider) => void;
-  onDecline: (r: Provider) => void;
-}) {
-  const muted = isDark ? "text-[#8FA0AF]" : "text-gray-500";
-  const pendingCount = requests?.filter((r) => (r.status ?? "pending") === "pending").length ?? 0;
-
-  // Show 5 requests per page with Back / Next.
-  const [reqPage, setReqPage] = useState(1);
-  const [reqPageLoading, setReqPageLoading] = useState(false);
-  const total = requests?.length ?? 0;
-  const reqTotalPages = Math.max(1, Math.ceil(total / REQUESTS_PAGE_SIZE));
-  const currentPage = Math.min(reqPage, reqTotalPages);
-  const pagedRequests = requests?.slice((currentPage - 1) * REQUESTS_PAGE_SIZE, currentPage * REQUESTS_PAGE_SIZE) ?? [];
-
-  // Anomaly alert: jump to the page that contains the highlighted request once requests load.
-  useEffect(() => {
-    if (!highlightId || !requests) return;
-    const idx = requests.findIndex((r) => r.id === highlightId);
-    if (idx >= 0) setReqPage(Math.floor(idx / REQUESTS_PAGE_SIZE) + 1);
-  }, [highlightId, requests]);
-
-  // Same short loading spinner as the main table's Back / Next.
-  function goToReqPage(next: number) {
-    if (next < 1 || next > reqTotalPages || next === currentPage) return;
-    setReqPageLoading(true);
-    setTimeout(() => {
-      setReqPage(next);
-      setReqPageLoading(false);
-    }, 400);
-  }
-  const pagerBtn = `flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-    isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
-  }`;
-
-  // ---- Ask AI (Groq): one result per request id, each request is only asked once ----
-  const [ai, setAi] = useState<Record<string, RequestAi>>({});
-
-  async function askAi(r: Provider) {
-    const state = ai[r.id]?.status;
-    if (state === "loading" || state === "done") return;
-
-    // Active providers of the same type, so the AI can factor in what you already have.
-    const sameType = existingProviders.filter((p) => p.status === "active" && p.type === r.type);
-
-    setAi((prev) => ({ ...prev, [r.id]: { status: "loading" } }));
-    try {
-      const res = await fetch("/spnc/app/api/request-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: r.name,
-          department: r.department,
-          providerType: typeLabel(r.type),
-          description: r.notes,
-          requestSent: r.created_at,
-          existingSameType: sameType.length,
-          existingNames: sameType.slice(0, 5).map((p) => p.name),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.summary) throw new Error(data.error || "No result");
-      setAi((prev) => ({ ...prev, [r.id]: { status: "done", ...data } }));
-    } catch {
-      setAi((prev) => ({ ...prev, [r.id]: { status: "error" } }));
-    }
-  }
-
-  return (
-    <section className="mb-8">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Inbox size={18} className="text-[#F2419B]" />
-        <h2
-          className={`text-base font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Department Requests
-        </h2>
-        {requests && (
-          <span className="rounded-full bg-[#F2419B] px-2 py-0.5 text-[11px] font-bold text-white">
-            {pendingCount} pending
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <div className="mb-3 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">{error}</div>
-      )}
-
-      <div
-        className={`overflow-hidden rounded-lg border ${
-          isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"
-        }`}
-      >
-        {requests === null ? (
-          <div className="flex items-center justify-center gap-2 py-10">
-            <Loader2 size={20} className="animate-spin text-[#F2419B]" />
-            <span className="text-sm font-semibold text-[#F2419B]">Loading requests</span>
-          </div>
-        ) : reqPageLoading ? (
-          <div className="flex items-center justify-center gap-2 py-10">
-            <Loader2 size={20} className="animate-spin text-[#F2419B]" />
-            <span className="text-sm font-semibold text-[#F2419B]">Loading</span>
-          </div>
-        ) : requests.length === 0 ? (
-          <p className={`px-4 py-10 text-center text-sm ${muted}`}>No requests from other departments yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left">
-              <thead className={`sticky top-0 z-[1] ${isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}`}>
-                <tr>
-                  {["Request", "Department", "Provider Type", "Description", "Request Sent", "Action"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className={isDark ? "divide-y divide-[#23303D] text-[#C7D1DA]" : "divide-y divide-gray-200 text-gray-700"}>
-                {pagedRequests.map((r) => {
-                  const label = typeLabel(r.type);
-                  const statusKey = r.status ?? "pending";
-                  const status = REQUEST_STATUS_STYLE[statusKey] ?? REQUEST_STATUS_STYLE.pending;
-                  const sent = formatRequestDate(r.created_at);
-                  const busy = busyId === r.id;
-                  const result = ai[r.id];
-                  const highlighted = highlightId === r.id;
-                  return (
-                    <Fragment key={r.id}>
-                      <tr
-                        id={`row-${r.id}`}
-                        className={`${isDark ? "hover:bg-[#182230]" : "hover:bg-gray-50"} ${
-                          highlighted ? "ring-2 ring-inset ring-[#E5484D] bg-[#E5484D]/10" : ""
-                        }`}
-                      >
-                        <td className="px-4 py-3 align-middle">
-                          <div className="flex items-center gap-3">
-                            <div
-                              title={label}
-                              aria-label={label}
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                                isDark ? "bg-[#1A2530] text-[#F2419B]" : "bg-[#FCE7F3] text-[#F2419B]"
-                              }`}
-                            >
-                              <Building2 size={16} />
-                            </div>
-                            <span className="text-sm font-semibold text-[#F2419B]">{r.name}</span>
-                          </div>
-                        </td>
-                        <td className={`px-4 py-3 align-middle text-sm font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
-                          {r.department || <span className={muted}>—</span>}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 align-middle text-sm">{label || <span className={muted}>—</span>}</td>
-                        <td className="max-w-md px-4 py-3 align-middle text-sm">
-                          {r.notes ? <span className="line-clamp-2">{r.notes}</span> : <span className={muted}>—</span>}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 align-middle">
-                          {sent ? (
-                            <>
-                              <div className="text-sm">{sent.date}</div>
-                              <div className={`text-xs ${muted}`}>{sent.time}</div>
-                            </>
-                          ) : (
-                            <span className={muted}>—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          {statusKey === "pending" ? (
-                            busy ? (
-                              <Loader2 size={18} className="animate-spin text-[#F2419B]" />
-                            ) : (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => onApprove(r)}
-                                  disabled={busyId !== null}
-                                  className="flex items-center gap-1 rounded-md bg-[#1FA968] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#23BF76] disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <Check size={14} />
-                                  Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onDecline(r)}
-                                  disabled={busyId !== null}
-                                  className={`flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold text-[#E2685A] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                    isDark ? "border-[#E2685A]/40 hover:bg-[#2A1212]" : "border-[#E2685A]/50 hover:bg-[#FBE4E1]"
-                                  }`}
-                                >
-                                  <X size={14} />
-                                  Decline
-                                </button>
-                                {result?.status !== "done" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => askAi(r)}
-                                    disabled={result?.status === "loading"}
-                                    className={`flex items-center gap-1 rounded-md border border-[#F2419B]/40 px-3 py-1.5 text-xs font-semibold text-[#F2419B] transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                                      isDark ? "hover:bg-[#26262E]" : "hover:bg-[#FDE7F1]"
-                                    }`}
-                                  >
-                                    {result?.status === "loading" ? (
-                                      <>
-                                        <Loader2 size={14} className="animate-spin" /> Thinking…
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Sparkles size={14} /> {result?.status === "error" ? "Try again" : "Ask AI"}
-                                      </>
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-                            )
-                          ) : (
-                            <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${isDark ? status.dark : status.light}`}>
-                              {status.label}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-
-                      {result?.status === "done" && (
-                        <tr>
-                          <td colSpan={6} className={`px-4 py-3 ${isDark ? "bg-[#1A2530]" : "bg-[#FDF3F8]"}`}>
-                            <p className="mb-1 flex items-center gap-1 text-[10px] font-bold tracking-wider text-[#F2419B]">
-                              <Sparkles size={12} /> AI SUMMARY
-                            </p>
-                            <p className={`text-sm ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>{result.summary}</p>
-                            <p className={`mt-1.5 flex flex-wrap items-center gap-2 text-xs ${muted}`}>
-                              <span className={`font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}>
-                                Providers needed: {result.providersNeeded}
-                              </span>
-                              <span>·</span>
-                              <span>{result.reason}</span>
-                              <span
-                                className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                  AI_PRIORITY_STYLE[result.priority ?? "normal"]
-                                }`}
-                              >
-                                {result.priority}
-                              </span>
-                            </p>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {total > REQUESTS_PAGE_SIZE && (
-        <div className="mt-3 flex items-center justify-center gap-4">
-          <button type="button" onClick={() => goToReqPage(currentPage - 1)} disabled={currentPage === 1 || reqPageLoading} className={pagerBtn}>
-            <ChevronLeft size={16} />
-            Back
-          </button>
-          <span className={`text-sm ${muted}`}>
-            Page {currentPage} of {reqTotalPages}
-          </span>
-          <button type="button" onClick={() => goToReqPage(currentPage + 1)} disabled={currentPage === reqTotalPages || reqPageLoading} className={pagerBtn}>
-            Next
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 export default function ServiceProvidersPage() {
-  const { theme } = useShell();
+  const { theme, role, roleLoading } = useShell();
+  // Only admins can add providers; employees don't see the Add button.
+  // Same rule as lib/rbac.ts ("providers:create" is admin-only); kept here so this page has no import path to break.
+  const canAddProvider = !roleLoading && isAdminRole(role);
+  // Admins approve/decline employee edits and are the only ones who can archive.
+  // Employees' edits are sent to an admin instead of changing the provider right away.
+  const canApprove = !roleLoading && can(role, "providers:approve");
   const isDark = theme === "dark";
   const router = useRouter();
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [showRequests, setShowRequests] = useState(false); // Requests button toggles the department requests table
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showFieldErrors, setShowFieldErrors] = useState(false);
@@ -866,16 +766,19 @@ export default function ServiceProvidersPage() {
   const [showRecentSearches, setShowRecentSearches] = useState(false);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
+  // Built-in providers
+  const seedAttempted = useRef(false); // only try saving them to Supabase once per visit
+  const archivedSeeds = useRef<Set<string>>(new Set()); // built-in providers archived on this page (not saved to Supabase)
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Department requests
-  const [requests, setRequests] = useState<Provider[] | null>(null);
-  const [requestActionId, setRequestActionId] = useState<string | null>(null);
-  const [requestError, setRequestError] = useState<string | null>(null);
+  // Approval flow
+  const [notice, setNotice] = useState<string | null>(null); // green message, e.g. "sent to an admin for approval"
+  const [reviewingId, setReviewingId] = useState<string | null>(null); // provider being approved/declined
 
-  // Styled confirmation window for Approve / Decline / Archive
+  // Styled confirmation window for Archive
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -934,8 +837,9 @@ export default function ServiceProvidersPage() {
 
   // Official providers = everything that isn't a pending/declined request.
   const officialProviders = providers.filter((p) => !isRequest(p));
-  // Number shown in the red circle on the Requests button.
-  const pendingRequestCount = providers.filter((p) => p.status === "pending").length;
+
+  // Providers that have an employee edit waiting for an admin.
+  const pendingList = officialProviders.filter((p) => p.pending_changes && Object.keys(p.pending_changes).length > 0);
 
   const filteredProviders = officialProviders.filter((provider) => {
     const query = searchTerm.trim().toLowerCase();
@@ -961,14 +865,69 @@ export default function ServiceProvidersPage() {
     return haystack.includes(query);
   });
 
-  async function fetchProviders() {
+  async function readProviders(): Promise<Provider[]> {
     const res = await fetch("/spnc/app/api/service-providers", { cache: "no-store" });
-    const data = await res.json();
-    setProviders(
-      Array.isArray(data.providers)
-        ? data.providers.filter((provider: Partial<Provider>) => typeof provider.id === "string").map(normalizeProvider)
-        : []
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || `Couldn't load providers (HTTP ${res.status}).`);
+    return Array.isArray(data.providers)
+      ? data.providers.filter((provider: Partial<Provider>) => typeof provider.id === "string").map(normalizeProvider)
+      : [];
+  }
+
+  // First visit: save built-in providers that aren't in Supabase yet.
+  async function seedMissingProviders(rows: Provider[]): Promise<Provider[]> {
+    if (seedAttempted.current) return rows;
+    seedAttempted.current = true;
+    const seeded = readSeededNames();
+    const missing = DEFAULT_PROVIDERS.filter(
+      (d) => !rows.some((r) => sameName(r.name, d.name)) && !seeded.has(d.name.toLowerCase())
     );
+    if (missing.length === 0) return rows;
+
+    const results = await Promise.all(
+      missing.map((d) =>
+        fetch("/spnc/app/api/service-providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...d,
+            email: d.email ?? "",
+            phone: d.phone ?? "",
+            notes: d.notes ?? "",
+            attachments: [],
+          }),
+        })
+          .then((r) => r.ok)
+          .catch(() => false)
+      )
+    );
+    missing.forEach((d, i) => {
+      if (results[i]) seeded.add(d.name.toLowerCase());
+    });
+    writeSeededNames(seeded);
+    return results.some(Boolean) ? readProviders() : rows;
+  }
+
+  // Built-in providers that aren't in Supabase are shown from DEFAULT_PROVIDERS, keeping any edits made on this page.
+  function withLocalSeeds(rows: Provider[], prev: Provider[]): Provider[] {
+    const seeded = readSeededNames();
+    const local = DEFAULT_PROVIDERS.filter(
+      (d) =>
+        !rows.some((r) => sameName(r.name, d.name)) &&
+        !seeded.has(d.name.toLowerCase()) &&
+        !archivedSeeds.current.has(d.name.toLowerCase())
+    ).map((d) => prev.find((p) => p.id === seedId(d.name)) ?? normalizeProvider({ ...d, id: seedId(d.name) }));
+    return [...rows, ...local];
+  }
+
+  async function fetchProviders() {
+    let rows: Provider[] = [];
+    try {
+      rows = await readProviders();
+      rows = await seedMissingProviders(rows);
+    } finally {
+      setProviders((prev) => withLocalSeeds(rows, prev));
+    }
   }
 
   async function loadProviders() {
@@ -1015,24 +974,17 @@ export default function ServiceProvidersPage() {
       return;
     }
 
-    // It's a pending/declined request → open the Requests table instead.
-    const req = providers.find(match);
-    if (req) {
-      setShowRequests(true);
-      setHighlightId(req.id);
-      setHighlightColumn(null);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // Scroll the highlighted row into view (re-runs when the requests table finishes loading).
+  // Scroll the highlighted row into view.
   useEffect(() => {
     if (!highlightId) return;
     const t = setTimeout(() => {
       document.getElementById(`row-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 150);
     return () => clearTimeout(t);
-  }, [highlightId, requests]);
+  }, [highlightId]);
 
   function cellHighlight(id: string, column: string) {
     return highlightId === id && highlightColumn === column ? HIGHLIGHT_CELL : "";
@@ -1049,83 +1001,37 @@ export default function ServiceProvidersPage() {
     return { boxShadow: shadows.join(", ") };
   }
 
-  // ---- Department requests: load, approve, decline ----
-  // Requests are rows in public.service_providers with status 'pending' or 'declined'.
-  // Reloaded from Supabase every time the Requests table is opened.
-  async function loadRequests() {
-    setRequestError(null);
-    try {
-      const res = await fetch("/spnc/app/api/service-providers", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || `Couldn't load requests (HTTP ${res.status}).`);
-      const all: Provider[] = Array.isArray(data.providers)
-        ? data.providers.filter((p: Partial<Provider>) => typeof p.id === "string").map(normalizeProvider)
-        : [];
-      setProviders(all);
-      setRequests(
-        all.filter(isRequest).sort((a, b) => {
-          // pending first, then newest first
-          if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
-          return (b.created_at ?? "").localeCompare(a.created_at ?? "");
-        })
-      );
-    } catch (err) {
-      console.error("Fetch requests failed:", err);
-      setRequests([]);
-      setRequestError(err instanceof Error ? err.message : "Couldn't load requests.");
-    }
-  }
-
+  // Auto-hide the green notice after a few seconds
   useEffect(() => {
-    if (showRequests) {
-      setRequests(null);
-      loadRequests();
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 10000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  // Admin: approve or decline an employee's pending edit.
+  async function reviewProvider(id: string, action: "approve" | "decline") {
+    if (!canApprove || reviewingId) return;
+    setReviewingId(id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/spnc/app/api/service-providers/${id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Couldn't process the request.");
+      setNotice(action === "approve" ? "Changes approved and applied." : "Changes declined. The provider was left as it was.");
+      await loadProviders();
+    } catch (err) {
+      console.error("Review failed:", err);
+      setDeleteError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setReviewingId(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showRequests]);
-
-  // Saves the new status on the row in Supabase through the existing update route.
-  // The full row is sent (same shape as the Edit form) with only the status changed.
-  async function setRequestStatus(r: Provider, status: "active" | "declined") {
-    const { id, created_at: _createdAt, ...fields } = r;
-    const res = await fetch(`/spnc/app/api/service-providers/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...fields,
-        contact_person: fields.contact_person ?? "",
-        email: fields.email ?? "",
-        phone: fields.phone ?? "",
-        address: fields.address ?? "",
-        country: fields.country ?? "",
-        contract_ref: fields.contract_ref ?? "",
-        notes: fields.notes ?? "",
-        agency: fields.agency ?? "",
-        department: fields.department ?? "",
-        attachments: fields.attachments ?? [],
-        status,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Couldn't update the request.");
-
-    // Approved rows become "active" and appear in the providers table right away.
-    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-    // Keep the row in the requests list with an Approved / Declined badge until it's reopened.
-    setRequests(
-      (prev) => prev?.map((p) => (p.id === id ? { ...p, status: status === "active" ? "approved" : status } : p)) ?? prev
-    );
   }
 
-  // Approve / Decline / Archive open the confirmation window; the action runs when it's confirmed.
-  function handleApproveRequest(r: Provider) {
-    setConfirmError(null);
-    setConfirmState({ kind: "approve", provider: r });
-  }
-  function handleDeclineRequest(r: Provider) {
-    setConfirmError(null);
-    setConfirmState({ kind: "decline", provider: r });
-  }
+  // Archive opens the confirmation window; the action runs when it's confirmed.
   function closeConfirm() {
     if (confirmBusy) return;
     setConfirmState(null);
@@ -1138,18 +1044,20 @@ export default function ServiceProvidersPage() {
     setConfirmError(null);
     try {
       if (kind === "archive") {
-        setDeletingId(provider.id);
-        setDeleteError(null);
-        const res = await fetch(`/spnc/app/api/service-providers/${provider.id}`, { method: "DELETE" });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.message || "Failed to archive provider.");
+        if (isSeed(provider.id)) {
+          // Built-in provider that isn't in Supabase: remove it from the page only.
+          archivedSeeds.current.add(provider.name.toLowerCase());
+          setProviders((prev) => prev.filter((p) => p.id !== provider.id));
+        } else {
+          setDeletingId(provider.id);
+          setDeleteError(null);
+          const res = await fetch(`/spnc/app/api/service-providers/${provider.id}`, { method: "DELETE" });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || "Failed to archive provider.");
+          }
+          loadProviders();
         }
-        loadProviders();
-      } else {
-        setRequestActionId(provider.id);
-        setRequestError(null);
-        await setRequestStatus(provider, kind === "approve" ? "active" : "declined");
       }
       setConfirmState(null);
     } catch (err) {
@@ -1157,7 +1065,6 @@ export default function ServiceProvidersPage() {
       setConfirmError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setConfirmBusy(false);
-      setRequestActionId(null);
       setDeletingId(null);
     }
   }
@@ -1245,6 +1152,19 @@ export default function ServiceProvidersPage() {
         ? f.service_modes.filter((m) => m !== mode)
         : [...f.service_modes, mode],
     }));
+  }
+
+  function handleAddClick() {
+    if (!canAddProvider) return;
+    setEditingId(null);
+    setSaveError(null);
+    setShowFieldErrors(false);
+    setFormStep(1);
+    setPdfFiles([]);
+    setCustomType("");
+    resetPhone();
+    setForm({ ...createEmptyForm(), department: SPNC_DEPT, country: "Philippines" });
+    setShowForm(true);
   }
 
   function handleEditClick(p: Provider) {
@@ -1347,7 +1267,11 @@ export default function ServiceProvidersPage() {
   }
 
   async function handleSave() {
-    if (!editingId) return; // adding new providers is no longer supported from this page
+    const isAdding = !editingId;
+    if (isAdding && !canAddProvider) {
+      setSaveError("Only admins can add service providers.");
+      return;
+    }
 
     const missingMessage = getStep2MissingFieldsMessage(form);
 
@@ -1368,6 +1292,70 @@ export default function ServiceProvidersPage() {
         })
       );
 
+      // Add (admin only): create the provider through the same route the built-in providers use.
+      if (isAdding) {
+        if (providers.some((p) => sameName(p.name, form.name))) {
+          setSaveError(`A provider named "${form.name.trim()}" already exists.`);
+          return;
+        }
+        const res = await fetch("/spnc/app/api/service-providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, name: form.name.trim(), type: finalType, attachments }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setSaveError(data.message || "Failed to add provider.");
+          return;
+        }
+        closeForm();
+        loadProviders();
+        return;
+      }
+
+      // Built-in provider that isn't in Supabase: update it on this page only (admins only,
+      // because these edits never reach the server and so can't go through approval).
+      if (isSeed(editingId)) {
+        if (!canApprove) {
+          setSaveError("This provider isn't saved to the database yet. Ask an admin to update it.");
+          return;
+        }
+        setProviders((prev) =>
+          prev.map((p) =>
+            p.id === editingId ? normalizeProvider({ ...p, ...form, type: finalType, attachments, id: p.id }) : p
+          )
+        );
+        if (editingId === highlightId) {
+          setHighlightId(null);
+          setHighlightColumn(null);
+        }
+        closeForm();
+        return;
+      }
+
+      // Employees: if nothing changed, say so here instead of getting a 400 from the server.
+      if (!canApprove) {
+        const original = providers.find((p) => p.id === editingId);
+        const sameValue = (a: unknown, b: unknown) =>
+          Array.isArray(a) || Array.isArray(b)
+            ? JSON.stringify(a ?? []) === JSON.stringify(b ?? [])
+            : String(a ?? "").trim() === String(b ?? "").trim();
+        const fields = [
+          "name", "agency", "department", "contact_person", "email", "phone", "address",
+          "country", "service_modes", "status", "rating", "contract_ref", "notes",
+        ] as const;
+        const fileKey = (list?: ProviderAttachment[]) => JSON.stringify((list ?? []).map((a) => [a.name, a.dataUrl ?? ""]));
+        const nothingChanged =
+          !!original &&
+          fileKey(attachments) === fileKey(original.attachments) &&
+          sameValue(finalType, original.type) &&
+          fields.every((f) => sameValue((form as Record<string, unknown>)[f], (original as Record<string, unknown>)[f]));
+        if (nothingChanged) {
+          setSaveError("You haven't changed anything yet. Edit a field, then submit for approval.");
+          return;
+        }
+      }
+
       const res = await fetch(`/spnc/app/api/service-providers/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1377,6 +1365,14 @@ export default function ServiceProvidersPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setSaveError(data.message || "Failed to update provider.");
+        return;
+      }
+
+      // Employee edit: the server saved it as a pending request instead of changing the provider.
+      if (res.status === 202) {
+        setNotice("Your changes were sent to an admin for approval. The provider will update once approved.");
+        closeForm();
+        loadProviders();
         return;
       }
 
@@ -1397,6 +1393,7 @@ export default function ServiceProvidersPage() {
   }
 
   function handleArchive(id: string) {
+    if (!canApprove) return; // admins only (the server enforces this too)
     const provider = providers.find((p) => p.id === id);
     if (!provider) return;
     setDeleteError(null);
@@ -1420,46 +1417,93 @@ export default function ServiceProvidersPage() {
       />
 
       <div className="px-8">
-        {/* Pink Requests button: toggles the department requests table */}
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowRequests((v) => !v)}
-            aria-expanded={showRequests}
-            aria-label={`${showRequests ? "Hide requests" : "Requests"}${pendingRequestCount ? ` (${pendingRequestCount} pending)` : ""}`}
-            className="relative flex items-center gap-2 rounded-md bg-[#F2419B] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#F55CAB]"
-          >
-            <Inbox size={16} />
-            {showRequests ? "Hide Requests" : "Requests"}
-            {/* Red circle with the number of pending requests */}
-            {pendingRequestCount > 0 && (
-              <span
-                className={`absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#E5484D] px-1.5 text-[11px] font-bold leading-none text-white ring-2 ${
-                  isDark ? "ring-[#0B1220]" : "ring-white"
-                }`}
-              >
-                {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
-              </span>
-            )}
-          </button>
-        </div>
+        {/* Add Provider: admins only */}
+        {canAddProvider && (
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={handleAddClick}
+              className="flex items-center gap-2 rounded-md bg-[#F2419B] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#F55CAB]"
+            >
+              <Plus size={16} />
+              Add Provider
+            </button>
+          </div>
+        )}
 
-        {showRequests && (
-          <DepartmentRequestsTable
-            isDark={isDark}
-            requests={requests}
-            existingProviders={officialProviders}
-            busyId={requestActionId}
-            error={requestError}
-            highlightId={highlightId}
-            onApprove={handleApproveRequest}
-            onDecline={handleDeclineRequest}
-          />
+        {notice && (
+          <div
+            role="status"
+            className="mb-4 flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500"
+          >
+            <Check size={16} className="shrink-0" />
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="ml-auto rounded p-0.5 hover:opacity-70">
+              <X size={14} />
+            </button>
+          </div>
         )}
 
         {deleteError && (
           <div className="mb-4 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
             {deleteError}
+          </div>
+        )}
+
+        {/* Pending approvals: admins only */}
+        {canApprove && pendingList.length > 0 && (
+          <div className={`mb-6 rounded-lg border p-4 ${isDark ? "border-[#23303D] bg-[#121B26]" : "border-gray-200 bg-white"}`}>
+            <h2
+              className={`mb-3 flex items-center gap-2 text-base font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              <Clock size={16} className="text-amber-500" />
+              Pending approvals
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">{pendingList.length}</span>
+            </h2>
+            <ul className="space-y-3">
+              {pendingList.map((p) => (
+                <li
+                  key={p.id}
+                  className={`rounded-md border p-3 text-sm ${isDark ? "border-[#2C4356] text-[#C7D1DA]" : "border-gray-200 text-gray-700"}`}
+                >
+                  <div className="font-semibold text-[#F2419B]">{p.name}</div>
+                  <div className={`mb-2 text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
+                    Requested by {p.pending_by_name || "an employee"}
+                    {p.pending_at ? ` · ${new Date(p.pending_at).toLocaleString()}` : ""}
+                  </div>
+                  <ul className="mb-3 space-y-1 text-xs">
+                    {Object.entries(p.pending_changes ?? {}).map(([field, c]) => (
+                      <li key={field}>
+                        <span className="font-semibold">{FIELD_LABELS[field] ?? field}:</span>{" "}
+                        <span className="line-through opacity-60">{formatChangeValue(c.from)}</span>
+                        {" → "}
+                        <span className="font-medium">{formatChangeValue(c.to)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={reviewingId !== null}
+                      onClick={() => reviewProvider(p.id, "approve")}
+                      className="flex items-center gap-1.5 rounded-md bg-[#1FA968] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#23BF76] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {reviewingId === p.id && <Loader2 size={12} className="animate-spin" />}
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewingId !== null}
+                      onClick={() => reviewProvider(p.id, "decline")}
+                      className="rounded-md bg-[#E2685A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D9483A] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -1470,7 +1514,7 @@ export default function ServiceProvidersPage() {
           </div>
         ) : officialProviders.length === 0 ? (
           <p className={`text-sm ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
-            No service providers yet. Approved department requests will appear here.
+            No service providers yet.
           </p>
         ) : pageLoading ? (
           <div className="flex flex-col items-center gap-3 py-16">
@@ -1709,15 +1753,22 @@ export default function ServiceProvidersPage() {
                               >
                                 {statusLabel(p.status)}
                               </span>
+                              {p.pending_changes && Object.keys(p.pending_changes).length > 0 && (
+                                <div className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-amber-500">
+                                  <Clock size={10} />
+                                  Edit pending approval
+                                </div>
+                              )}
                             </td>
                             <td style={cellStyle(p.id, "Actions", "last")} className="px-4 py-4 align-top">
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => router.push(`/spnc/app/service-providers/${p.id}`)}
+                                  disabled={isSeed(p.id)}
                                   aria-label={`View ${p.name}`}
-                                  title="View provider details"
-                                  className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                                  title={isSeed(p.id) ? "Not saved to the database yet" : "View provider details"}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                     isDark
                                       ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]"
                                       : "text-gray-500 hover:bg-gray-200 hover:text-gray-900"
@@ -1728,7 +1779,18 @@ export default function ServiceProvidersPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleEditClick(p)}
-                                  className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                                  disabled={!canApprove && (isSeed(p.id) || !!p.pending_changes)}
+                                  aria-label={`Edit ${p.name}`}
+                                  title={
+                                    !canApprove && isSeed(p.id)
+                                      ? "Not saved to the database yet. Ask an admin to update it."
+                                      : !canApprove && p.pending_changes
+                                      ? "An edit is already waiting for admin approval"
+                                      : canApprove
+                                      ? "Edit provider"
+                                      : "Edit provider (needs admin approval)"
+                                  }
+                                  className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                     isDark
                                       ? "text-[#8FA0AF] hover:bg-[#1A2530] hover:text-[#F2F1EC]"
                                       : "text-gray-500 hover:bg-gray-200 hover:text-gray-900"
@@ -1736,14 +1798,19 @@ export default function ServiceProvidersPage() {
                                 >
                                   <Pencil size={15} />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleArchive(p.id)}
-                                  disabled={deletingId === p.id}
-                                  className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <Archive size={15} />
-                                </button>
+                                {/* Archive: admins only */}
+                                {canApprove && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleArchive(p.id)}
+                                    disabled={deletingId === p.id}
+                                    aria-label={`Archive ${p.name}`}
+                                    title="Archive provider"
+                                    className="flex h-8 w-8 items-center justify-center rounded-md text-[#E2685A] transition hover:bg-[#2A1212] disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <Archive size={15} />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1806,7 +1873,7 @@ export default function ServiceProvidersPage() {
                 className={`text-xl font-semibold ${isDark ? "text-[#F2F1EC]" : "text-gray-900"}`}
                 style={{ fontFamily: "var(--font-display)" }}
               >
-                Edit Service Provider
+                {editingId ? "Edit Service Provider" : "Add Service Provider"}
               </h2>
               <button
                 type="button"
@@ -1817,6 +1884,13 @@ export default function ServiceProvidersPage() {
               </button>
             </div>
 
+            {/* Employees: tell them their edit will need an admin's approval */}
+            {editingId && !canApprove && (
+              <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+                <Clock size={14} className="mt-0.5 shrink-0" />
+                <span>Your changes won&apos;t be applied right away. They will be sent to an admin for approval.</span>
+              </div>
+            )}
 
             <div className="mb-5 flex items-center gap-2">
               {[1, 2, 3].map((step) => (
@@ -2430,7 +2504,17 @@ export default function ServiceProvidersPage() {
                     className="flex flex-1 items-center justify-center gap-2 rounded-md bg-[#F2419B] py-2.5 text-sm font-semibold text-white transition hover:bg-[#F55CAB] disabled:cursor-not-allowed disabled:bg-[#4B5A68]"
                   >
                     {saving && <Loader2 size={16} className="animate-spin" />}
-                    {saving ? "Updating…" : "Update"}
+                    {saving
+                      ? editingId
+                        ? canApprove
+                          ? "Updating…"
+                          : "Submitting…"
+                        : "Saving…"
+                      : editingId
+                      ? canApprove
+                        ? "Update"
+                        : "Submit for approval"
+                      : "Save"}
                   </button>
                 </>
               )}
@@ -2439,7 +2523,7 @@ export default function ServiceProvidersPage() {
         </div>
       )}
 
-      {/* Approve / Decline / Archive confirmation */}
+      {/* Archive confirmation */}
       <ConfirmDialog
         state={confirmState}
         isDark={isDark}

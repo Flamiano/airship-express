@@ -10,6 +10,7 @@ import {
   MapPin,
   Navigation,
   ChevronRight,
+  ChevronLeft,
   Search,
   Loader2,
   RefreshCw,
@@ -19,6 +20,8 @@ import {
   AlertTriangle,
   ChevronsUpDown,
   Map as MapIcon,
+  Clock,
+  X,
 } from "lucide-react";
 import TripTrackingModal from "./TripTrackingModal";
 
@@ -234,6 +237,9 @@ const COLUMN_GROUPS = [
 ] as const;
 
 const TOTAL_COLS = COLUMN_GROUPS.reduce((n, g) => n + g.cols.length, 0);
+const TRIPS_PAGE_SIZE = 10; // trips per page, with Back / Next
+const TRIP_RECENT_SEARCHES_KEY = "triplog_recent_searches";
+const MAX_TRIP_RECENT_SEARCHES = 5;
 
 const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -335,11 +341,61 @@ export default function TripLogTable({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Search: what is typed (searchInput) vs. what is applied (search) — applied on Enter or the Search button
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecent, setShowRecent] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TRIP_RECENT_SEARCHES_KEY) ?? "[]");
+      if (Array.isArray(saved)) setRecentSearches(saved.filter((t) => typeof t === "string").slice(0, MAX_TRIP_RECENT_SEARCHES));
+    } catch {
+      /* storage unavailable — recent searches just stay empty */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showRecent) return;
+    const onDown = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setShowRecent(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showRecent]);
+
+  function persistRecent(list: string[]) {
+    setRecentSearches(list);
+    try {
+      localStorage.setItem(TRIP_RECENT_SEARCHES_KEY, JSON.stringify(list));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function runSearch(term: string = searchInput) {
+    const trimmed = term.trim();
+    setSearchInput(term);
+    setSearch(trimmed);
+    setShowRecent(false);
+    if (trimmed) {
+      persistRecent(
+        [trimmed, ...recentSearches.filter((t) => t.toLowerCase() !== trimmed.toLowerCase())].slice(0, MAX_TRIP_RECENT_SEARCHES)
+      );
+    }
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearch("");
+  }
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [dayOnly, setDayOnly] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [trackingId, setTrackingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   // ---- Anomaly alert highlight ----
   // The dashboard's delivery alerts open /spnc/app/schedules?highlight=<trip id>&highlightName=<trip code · plate>
@@ -426,10 +482,19 @@ export default function TripLogTable({
     );
     if (!trip) return;
     setSearch("");
+    setSearchInput("");
     setStatusFilter("all");
     setDayOnly(false);
     setExpanded((prev) => new Set(prev).add(trip.id));
     setHighlightTrip(trip.id);
+    // open the page that holds the trip (filters were just cleared, so use the full list order)
+    const ordered = [...rows].sort((a, b) => {
+      const da = toDate(a.schedule?.departure_datetime) ?? a.stats.actualDeparture;
+      const db = toDate(b.schedule?.departure_datetime) ?? b.stats.actualDeparture;
+      return (da?.getTime() ?? Infinity) - (db?.getTime() ?? Infinity);
+    });
+    const at = ordered.findIndex((r) => r.trip.id === trip.id);
+    if (at >= 0) window.setTimeout(() => setPage(Math.floor(at / TRIPS_PAGE_SIZE) + 1), 50);
     window.setTimeout(() => {
       document.getElementById(`trip-row-${trip.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 300);
@@ -483,6 +548,14 @@ export default function TripLogTable({
       });
   }, [rows, search, statusFilter, dayOnly, selectedDay]);
 
+  // 10 trips per page; filters and search start again at page 1
+  const pageCount = Math.max(1, Math.ceil(visibleRows.length / TRIPS_PAGE_SIZE));
+  const pageNow = Math.min(page, pageCount);
+  const pagedRows = visibleRows.slice((pageNow - 1) * TRIPS_PAGE_SIZE, pageNow * TRIPS_PAGE_SIZE);
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, dayOnly, selectedDay]);
+
   const summary = useMemo(() => {
     let active = 0;
     let delayed = 0;
@@ -500,7 +573,7 @@ export default function TripLogTable({
     return { active, delayed, delivered, km, kg };
   }, [visibleRows]);
 
-  const allExpanded = visibleRows.length > 0 && visibleRows.every((r) => expanded.has(r.trip.id));
+  const allExpanded = pagedRows.length > 0 && pagedRows.every((r) => expanded.has(r.trip.id));
 
   function toggleRow(id: string) {
     setExpanded((prev) => {
@@ -512,7 +585,7 @@ export default function TripLogTable({
   }
 
   function toggleAll() {
-    setExpanded(allExpanded ? new Set() : new Set(visibleRows.map((r) => r.trip.id)));
+    setExpanded(allExpanded ? new Set() : new Set(pagedRows.map((r) => r.trip.id)));
   }
 
   /* ---------- style tokens ---------- */
@@ -581,19 +654,88 @@ export default function TripLogTable({
 
       {/* Toolbar */}
       <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-2 ${gridBorder}`}>
-        <div className="relative min-w-[220px] flex-1">
-          <Search size={13} className={`pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 ${mutedText}`} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search trip, plate, driver, cargo, location…"
-            className={`w-full rounded-md border py-1.5 pl-8 pr-2 text-xs outline-none focus:border-[#F2419B] ${
-              isDark
-                ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
-                : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
-            }`}
-          />
+        <div ref={searchBoxRef} className="relative flex min-w-[260px] flex-1 items-center gap-1.5">
+          <div className="relative flex-1">
+            <Search size={13} className={`pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 ${mutedText}`} />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value);
+                if (!e.target.value.trim()) setSearch("");
+              }}
+              onFocus={() => setShowRecent(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  runSearch();
+                } else if (e.key === "Escape") {
+                  setShowRecent(false);
+                }
+              }}
+              placeholder="Search trip, plate, driver, cargo, location…"
+              className={`w-full rounded-md border py-1.5 pl-8 pr-7 text-xs outline-none focus:border-[#F2419B] ${
+                isDark
+                  ? "border-[#2C4356] bg-[#0B1220] text-[#F2F1EC] placeholder:text-[#4B5A68]"
+                  : "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400"
+              }`}
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                aria-label="Clear search"
+                className={`absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 ${mutedText} hover:text-[#F2419B]`}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => runSearch()}
+            className="inline-flex items-center gap-1 rounded-md bg-[#F2419B] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#d93587]"
+          >
+            <Search size={12} />
+            Search
+          </button>
+
+          {showRecent && recentSearches.length > 0 && (
+            <div
+              className={`absolute left-0 top-full z-30 mt-1 w-full max-w-md overflow-hidden rounded-md border shadow-lg ${
+                isDark ? "border-[#2C4356] bg-[#121B26]" : "border-gray-200 bg-white"
+              }`}
+            >
+              <div className={`flex items-center justify-between border-b px-3 py-1.5 ${isDark ? "border-[#2C4356]" : "border-gray-100"}`}>
+                <span className={`text-[10px] font-semibold uppercase tracking-wide ${mutedText}`}>Recent searches</span>
+                <button type="button" onClick={() => persistRecent([])} className="text-[10px] font-medium text-[#F2419B] hover:underline">
+                  Clear
+                </button>
+              </div>
+              <ul>
+                {recentSearches.map((term) => (
+                  <li key={term} className={`group flex items-center ${isDark ? "hover:bg-[#1A2633]" : "hover:bg-gray-50"}`}>
+                    <button
+                      type="button"
+                      onClick={() => runSearch(term)}
+                      className={`flex flex-1 items-center gap-2 px-3 py-1.5 text-left text-xs ${primaryText}`}
+                    >
+                      <Clock size={12} className={mutedText} />
+                      <span className="truncate">{term}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => persistRecent(recentSearches.filter((t) => t !== term))}
+                      aria-label={`Remove ${term}`}
+                      className={`mr-2 rounded p-0.5 opacity-0 group-hover:opacity-100 ${mutedText} hover:text-[#F2419B]`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-1">
           {FILTERS.map((f) => (
@@ -703,7 +845,7 @@ export default function TripLogTable({
             </thead>
 
             <tbody>
-              {visibleRows.map(({ trip: t, stats, schedule }) => {
+              {pagedRows.map(({ trip: t, stats, schedule }) => {
                 const isOpen = expanded.has(t.id);
                 const plannedDep = toDate(schedule?.departure_datetime);
                 const plannedArr = toDate(schedule?.arrival_datetime);
@@ -988,6 +1130,34 @@ export default function TripLogTable({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!loading && !error && visibleRows.length > TRIPS_PAGE_SIZE && (
+        <div className={`flex items-center justify-center gap-4 border-t px-3 py-2.5 ${gridBorder}`}>
+          <button
+            type="button"
+            onClick={() => setPage(Math.max(1, pageNow - 1))}
+            disabled={pageNow === 1}
+            className={`flex items-center gap-1 rounded-md border px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <ChevronLeft size={14} /> Back
+          </button>
+          <span className={`text-xs ${mutedText}`}>
+            Page {pageNow} of {pageCount} · {visibleRows.length} trips
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(Math.min(pageCount, pageNow + 1))}
+            disabled={pageNow === pageCount}
+            className={`flex items-center gap-1 rounded-md border px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              isDark ? "border-[#2C4356] text-[#C7D1DA] hover:bg-[#1A2530]" : "border-gray-300 text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            Next <ChevronRight size={14} />
+          </button>
         </div>
       )}
 

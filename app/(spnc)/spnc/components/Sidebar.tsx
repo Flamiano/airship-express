@@ -15,30 +15,85 @@ import {
   Calendar,
   LogOut,
   ShieldCheck,
+  Users,
+  Activity,
+  ChevronDown,
   AlertTriangle,
   X,
 } from "lucide-react";
 import { useShell } from "./ShellContext";
+import { can, type Permission } from "../lib/rbac"; // put rbac.ts next to lib/session.ts and lib/supabase.ts
+import { usePresenceHeartbeat } from "./usePresenceHeartbeat";
 
-const navItems = [
-  { label: "Dashboard", href: "/spnc/app/dashboard", icon: LayoutDashboard },
-  { label: "Service Providers", href: "/spnc/app/service-providers", icon: Building2 },
-  { label: "Network & Routes", href: "/spnc/app/routes", icon: Map },
-  { label: "Rates & Tariffs", href: "/spnc/app/rates", icon: DollarSign },
-  { label: "SOPs", href: "/spnc/app/sops", icon: ClipboardList },
-  { label: "Schedules", href: "/spnc/app/schedules", icon: Calendar },
-  { label: "Audit Logs", href: "/spnc/app/audit-logs", icon: ShieldCheck },
+type NavLink = {
+  label: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  permission: Permission;
+  /** Other pages that should also highlight this link */
+  alsoActive?: string[];
+};
+
+type NavGroup = {
+  label: string;
+  icon: typeof LayoutDashboard;
+  children: NavLink[];
+};
+
+const navItems: (NavLink | NavGroup)[] = [
+  { label: "Dashboard", href: "/spnc/app/dashboard", icon: LayoutDashboard, permission: "dashboard:view" },
+  { label: "Service Providers", href: "/spnc/app/service-providers", icon: Building2, permission: "providers:view" },
+  { label: "Network & Routes", href: "/spnc/app/routes", icon: Map, permission: "routes:view" },
+  { label: "Rates & Tariffs", href: "/spnc/app/rates", icon: DollarSign, permission: "rates:view" },
+  { label: "SOPs", href: "/spnc/app/sops", icon: ClipboardList, permission: "sops:view" },
+  { label: "Schedules", href: "/spnc/app/schedules", icon: Calendar, permission: "schedules:view" },
+  // "Employees" opens like a dropdown with its pages underneath — admins only
+  // (employees don't have employees:view or audit-logs:view, so the whole group is hidden for them)
+  {
+    label: "Employees",
+    icon: Users,
+    children: [
+      {
+        label: "Employee Activity",
+        href: "/spnc/app/employees",
+        icon: Activity,
+        permission: "employees:view", // admins only
+        alsoActive: ["/spnc/app/accounts"], // Create Account is opened from Employee Activity
+      },
+      { label: "Audit Logs", href: "/spnc/app/audit-logs", icon: ShieldCheck, permission: "audit-logs:view" },
+    ],
+  },
 ];
+
+const isGroup = (item: NavLink | NavGroup): item is NavGroup => "children" in item;
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { sidebarOpen, mounted } = useShell();
+  const { sidebarOpen, mounted, role } = useShell();
+
+  // Sidebar is on every app page, so this reports "I'm active" for every logged-in user.
+  usePresenceHeartbeat();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [portalMounted, setPortalMounted] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
+  // Which dropdown groups are open (by label)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const isLinkActive = (link: NavLink) =>
+    mounted && !!pathname && [link.href, ...(link.alsoActive ?? [])].some((p) => pathname.startsWith(p));
+
+  // Open a group automatically when you're on one of its pages
+  useEffect(() => {
+    if (!pathname) return;
+    for (const item of navItems) {
+      if (isGroup(item) && item.children.some((c) => [c.href, ...(c.alsoActive ?? [])].some((p) => pathname.startsWith(p)))) {
+        setOpenGroups((prev) => (prev[item.label] ? prev : { ...prev, [item.label]: true }));
+      }
+    }
+  }, [pathname]);
 
   // document.body only exists client-side; guard for SSR/hydration.
   useEffect(() => {
@@ -121,22 +176,82 @@ export default function Sidebar() {
 
           {/* Nav — the only part that scrolls if it overflows */}
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto whitespace-nowrap">
-            {navItems.map(({ label, href, icon: Icon }) => {
-              const active = mounted && !!pathname && pathname.startsWith(href);
+            {navItems.map((item) => {
+              if (!isGroup(item)) {
+                if (!can(role, item.permission)) return null;
+                const Icon = item.icon;
+                const active = isLinkActive(item);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    suppressHydrationWarning
+                    className={`flex shrink-0 items-center gap-3 rounded-md px-3 py-2.5 text-sm transition ${
+                      active
+                        ? "bg-[#3A1229] text-[#F2419B] font-medium"
+                        : "text-[#C7D1DA] hover:bg-[#121B26] hover:text-[#F2F1EC]"
+                    }`}
+                  >
+                    <Icon size={18} className="shrink-0" />
+                    {item.label}
+                  </Link>
+                );
+              }
+
+              // Dropdown group (e.g. Employees → Employee Activity, Audit Logs)
+              const children = item.children.filter((c) => can(role, c.permission));
+              if (children.length === 0) return null;
+              const GroupIcon = item.icon;
+              const open = !!openGroups[item.label];
+              const groupActive = children.some(isLinkActive);
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  suppressHydrationWarning
-                  className={`flex shrink-0 items-center gap-3 rounded-md px-3 py-2.5 text-sm transition ${
-                    active
-                      ? "bg-[#3A1229] text-[#F2419B] font-medium"
-                      : "text-[#C7D1DA] hover:bg-[#121B26] hover:text-[#F2F1EC]"
-                  }`}
-                >
-                  <Icon size={18} className="shrink-0" />
-                  {label}
-                </Link>
+                <div key={item.label} className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenGroups((prev) => ({ ...prev, [item.label]: !prev[item.label] }))}
+                    aria-expanded={open}
+                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm transition ${
+                      groupActive && !open
+                        ? "bg-[#3A1229] text-[#F2419B] font-medium"
+                        : groupActive
+                        ? "text-[#F2419B] font-medium hover:bg-[#121B26]"
+                        : "text-[#C7D1DA] hover:bg-[#121B26] hover:text-[#F2F1EC]"
+                    }`}
+                  >
+                    <GroupIcon size={18} className="shrink-0" />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <ChevronDown size={16} className={`shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                  </button>
+
+                  <div
+                    className={`grid transition-all duration-200 ease-out ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="ml-5 mt-1 flex flex-col gap-1 border-l border-[#23303D] pl-3">
+                        {children.map((c) => {
+                          const Icon = c.icon;
+                          const active = isLinkActive(c);
+                          return (
+                            <Link
+                              key={c.href}
+                              href={c.href}
+                              tabIndex={open ? 0 : -1}
+                              suppressHydrationWarning
+                              className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition ${
+                                active
+                                  ? "bg-[#3A1229] text-[#F2419B] font-medium"
+                                  : "text-[#8FA0AF] hover:bg-[#121B26] hover:text-[#F2F1EC]"
+                              }`}
+                            >
+                              <Icon size={16} className="shrink-0" />
+                              {c.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </nav>

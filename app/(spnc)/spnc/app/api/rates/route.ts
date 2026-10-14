@@ -1,7 +1,13 @@
 // Save as: app/(spnc)/spnc/app/api/rates/route.ts
+//
+//   GET   → all rates that aren't archived (includes the pending_* columns)
+//   POST  → admin only: create a rate
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditActor, logAuditEvent } from "../../../lib/audit";
 import { getSupabaseClient } from "../../../lib/supabase";
+import { getSessionUserId } from "../../../lib/currentUser";
+import { normalizeSessionRole } from "../../../lib/session";
+import { can } from "../../../lib/rbac";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,9 +56,18 @@ export async function GET() {
   }
 }
 
-// Create a rate
+// Create a rate (admins only: the "Add Rate" button is hidden for employees, and the server enforces it too)
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getSupabaseClient();
+
+    const userId = await getSessionUserId();
+    if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const { data: me } = await supabase.from("users").select("role").eq("id", userId).maybeSingle();
+    if (!can(normalizeSessionRole(me?.role), "rates:create")) {
+      return NextResponse.json({ message: "Only admins can add rates." }, { status: 403 });
+    }
+
     const body = await req.json();
     const { rate_code, description, department, charge_type, currency, base_rate, min_charge, surcharge_pct, valid_from, valid_to, status, notes } = body;
 
@@ -60,7 +75,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Rate code and base rate are required." }, { status: 400 });
     }
 
-    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("rates")
       .insert({

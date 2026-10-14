@@ -100,7 +100,7 @@ export const SUBDOMAIN_PORTALS: SubdomainPortal[] = [
     subdomains: ["spnc"],
     primarySubdomain: "spnc",
     loginPath: "/spncAuth/login",
-    authPaths: ["/spncAuth/login", "/spncAuth"],
+    authPaths: ["/spncAuth/login", "/spncAuth", "/auth/spncAuth/login"],
     routes: [
       "/spnc/app",
       "/spnc/app/dashboard",

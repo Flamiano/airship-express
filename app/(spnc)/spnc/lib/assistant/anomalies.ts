@@ -238,9 +238,17 @@ function guessPage(a: { recordId?: string }) {
   const id = String(a.recordId ?? "");
   if (lastIds.rates.has(id)) return "/spnc/app/rates";
   if (lastIds.sops.has(id)) return "/spnc/app/sops";
+  if (lastIds.routes.has(id)) return "/spnc/app/routes";
+  if (lastIds.schedules.has(id)) return "/spnc/app/schedules";
   return "/spnc/app/service-providers";
 }
-const lastIds = { rates: new Set<string>(), sops: new Set<string>(), trips: new Set<string>() };
+const lastIds = {
+  rates: new Set<string>(),
+  sops: new Set<string>(),
+  trips: new Set<string>(),
+  routes: new Set<string>(),
+  schedules: new Set<string>(),
+};
 
 let lastAiError: string | null = null;
 
@@ -251,6 +259,8 @@ async function aiChecks(mode: "run" | "cached-only"): Promise<Alert[]> {
   lastIds.rates = new Set((input.rates as Row[]).map((r) => String(r.id)));
   lastIds.sops = new Set((input.sops as Row[]).map((r) => String(r.id)));
   lastIds.trips = new Set(((input.trips ?? []) as Row[]).map((r) => String(r.id)));
+  lastIds.routes = new Set(((input.routes ?? []) as Row[]).map((r) => String(r.id)));
+  lastIds.schedules = new Set(((input.schedules ?? []) as Row[]).map((r) => String(r.id)));
 
   const result = await scanAnomalies(input, { cachedOnly: mode === "cached-only" });
   lastAiError = result.error ?? null;
