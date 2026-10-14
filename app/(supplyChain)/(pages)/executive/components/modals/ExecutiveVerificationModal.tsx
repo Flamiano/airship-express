@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Lock, Eye, EyeOff, ShieldAlert, ShieldCheck, Loader2, X } from 'lucide-react';
 import { user } from '../../../../lib/services/Class/user';
 
@@ -17,6 +18,7 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
     reportTitle = 'Confidential Report',
     onSuccess,
 }) => {
+    const [mounted, setMounted] = useState(false);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -24,6 +26,10 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
     const [isLocked, setIsLocked] = useState(false);
     const [remainingSeconds, setRemainingSeconds] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // Focus input on open
     useEffect(() => {
@@ -68,7 +74,7 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, isLoading, onClose]);
 
-    if (!isOpen) return null;
+    if (!isOpen || !mounted) return null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -120,7 +126,7 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
         }
     };
 
-    return (
+    return createPortal(
         <div 
             className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
             role="dialog"
@@ -128,12 +134,9 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
             aria-labelledby="modal-title"
         >
             <div 
-                className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all"
+                className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border-x border-b border-t-0 border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header Accent Bar */}
-                <div className="h-1.5 w-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600" />
-
                 <div className="p-6">
                     {/* Close button */}
                     <button
@@ -223,7 +226,7 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-end gap-3 pt-3">
                             <button
                                 type="button"
                                 onClick={onClose}
@@ -250,6 +253,7 @@ export const ExecutiveVerificationModal: React.FC<ExecutiveVerificationModalProp
                     </form>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

@@ -15,6 +15,7 @@ import {
 import { useConfirm } from '../ui/ConfirmModal';
 import Portal from '../client/Portal';
 import { user } from '../../lib/services/Class/user';
+import AdminPurchaseOrderReviewModal from '../modals/AdminPurchaseOrderReviewModal';
 
 
 interface Notification {
@@ -207,6 +208,7 @@ export function NotificationBell() {
     const [editPRData, setEditPRData] = useState<any>(null);
     const [isSavingEdits, setIsSavingEdits] = useState(false);
     const [linkedPO, setLinkedPO] = useState<any>(null);
+    const [reviewPOId, setReviewPOId] = useState<string | null>(null);
 
     const [userId, setUserId] = useState<string | null>(() => typeof window !== 'undefined' ? user.getUserId() : null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -941,6 +943,29 @@ export function NotificationBell() {
         if (notification.type === 'purchase_request' && notification.po_request_id) {
             await showPurchaseRequestModal(notification);
             return;
+        }
+
+        const isPONotif = 
+            notification.type === 'purchase_order' || 
+            notification.type === 'purchase_order_review' || 
+            notification.type === 'purchase_order_quantity_change' ||
+            notification.type === 'purchase_order_approved' ||
+            notification.type === 'purchase_order_rejected' ||
+            (notification.title && notification.title.toLowerCase().includes('purchase order'));
+
+        if (isPONotif && notification.po_request_id) {
+            setReviewPOId(notification.po_request_id);
+            setIsOpen(false);
+            return;
+        }
+
+        if (!notification.po_request_id && notification.link) {
+            const urlMatch = notification.link.match(/[?&]po_id=([^&]+)/i);
+            if (urlMatch && urlMatch[1]) {
+                setReviewPOId(urlMatch[1]);
+                setIsOpen(false);
+                return;
+            }
         }
 
         if (notification.link) {
@@ -2185,6 +2210,18 @@ export function NotificationBell() {
                         </div>
                     </div>
                 </Portal>
+            )}
+
+            {/* Admin Purchase Order Review Modal */}
+            {reviewPOId && (
+                <AdminPurchaseOrderReviewModal
+                    isOpen={!!reviewPOId}
+                    purchaseOrderId={reviewPOId}
+                    onClose={() => setReviewPOId(null)}
+                    onPOUpdated={() => {
+                        fetchNotifications();
+                    }}
+                />
             )}
         </>
     );

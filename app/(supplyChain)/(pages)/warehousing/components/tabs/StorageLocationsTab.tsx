@@ -17,7 +17,10 @@ import {
     AlertCircle,
     X,
     RefreshCw,
-    Trash2
+    Trash2,
+    Eye,
+    AlertTriangle,
+    Pencil
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../../../lib/services/client/supabase";
@@ -29,6 +32,7 @@ import { Pagination } from "../../../../components/global/pagination";
 import { 
     fetchStorageZonesFromDB, 
     insertStorageZoneToDB, 
+    updateStorageZoneInDB,
     deleteStorageZoneFromDB,
     supabaseWarehouseDb
 } from "../../server/warehouse-db";
@@ -48,6 +52,10 @@ export function StorageLocationsTab({
     const [selectedZone, setSelectedZone] = useState<string>("All");
     const [itemSearchTerm, setItemSearchTerm] = useState("");
     const debouncedSearchTerm = useDebounce(itemSearchTerm, 300);
+
+    // Modal state for Viewing Storage Zone & Bin Details
+    const [viewingZone, setViewingZone] = useState<StorageLocationZone | null>(null);
+    const [viewZoneSearch, setViewZoneSearch] = useState("");
 
     // Pagination state for storage directory
     const [currentPage, setCurrentPage] = useState<number>(1);
@@ -89,6 +97,20 @@ export function StorageLocationsTab({
         });
     };
 
+    // Modal state for Editing an existing Storage Zone / Bin
+    const [editingZone, setEditingZone] = useState<StorageLocationZone | null>(null);
+    const [editZoneForm, setEditZoneForm] = useState({
+        zone_code: "",
+        zone_name: "",
+        building_or_hub: "Binondo Central Hub",
+        type: "Shelving Unit" as StorageLocationZone["type"],
+        total_capacity_units: 100,
+        supervisor: "",
+        aislesInput: "",
+        description: "",
+    });
+    const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Fetch storage zones from database
@@ -115,10 +137,11 @@ export function StorageLocationsTab({
         loadZones();
     }, [loadZones]);
 
-    // Live Realtime Subscription for Storage Zones
+    // Live Realtime Subscription for Storage Zones & Inventory Items (stock in, stock out, relocations)
     useEffect(() => {
+        const channelId = `warehouse_locations_realtime_${Math.random().toString(36).substring(2, 9)}`;
         const channel = supabase
-            .channel("warehouse_storage_zones_realtime")
+            .channel(channelId)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "warehouse_storage_zones" },
@@ -126,12 +149,111 @@ export function StorageLocationsTab({
                     loadZones();
                 }
             )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_items" },
+                () => {
+                    loadZones();
+                    onRefresh();
+                }
+            )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [loadZones]);
+    }, [loadZones, onRefresh]);
+
+    // Keep viewingZone in sync when zones list updates via realtime
+    useEffect(() => {
+        if (viewingZone) {
+            const updated = zones.find((z) => z.id === viewingZone.id);
+            if (updated) {
+                setViewingZone(updated);
+            }
+        }
+    }, [zones]);
+
+    // Helper to find inventory items assigned to a zone (by warehouse_storage_zone_id or storage_location code/name)
+    const getZoneItems = useCallback((zone: StorageLocationZone, items: any[]) => {
+        if (!zone) return [];
+        const zCode = (zone.zone_code || "").toLowerCase().trim();
+        const zName = (zone.zone_name || "").toLowerCase().trim();
+        const normCode = zCode.replace(/[^a-z0-9]/g, "");
+        const normName = zName.replace(/[^a-z0-9]/g, "");
+
+        return items.filter((item) => {
+            if (item.warehouse_storage_zone_id && String(item.warehouse_storage_zone_id) === String(zone.id)) {
+                return true;
+            }
+            const itemLoc = (item.storage_location || "").toLowerCase().trim();
+            if (!itemLoc) return false;
+            const normLoc = itemLoc.replace(/[^a-z0-9]/g, "");
+            return (
+                (zCode && itemLoc.includes(zCode)) ||
+                (zName && itemLoc.includes(zName)) ||
+                (normCode && (normLoc.includes(normCode) || normCode.includes(normLoc))) ||
+                (normName && (normLoc.includes(normName) || normName.includes(normLoc)))
+            );
+        });
+    }, []);
+
+    // Overall capacity utilization across all zones, dynamically calculated from live inventory
+    const { totalCapacityAllZones, totalUtilizedAllZones, overallUtilizationPct } = useMemo(() => {
+        const totalCap = zones.reduce((acc, z) => acc + (Number(z.total_capacity_units) || 0), 0);
+        const totalUtil = zones.reduce((acc, zone) => {
+            const itemsInZone = getZoneItems(zone, inventoryItems);
+            const stockSum = itemsInZone.reduce((sum, item) => sum + Math.max(0, Number(item.current_stock) || 0), 0);
+            return acc + (itemsInZone.length > 0 ? stockSum : Math.max(0, Number(zone.current_utilized_units) || 0));
+        }, 0);
+        const pct = totalCap > 0 ? Math.min(100, Math.round((totalUtil / totalCap) * 100)) : 0;
+        return {
+            totalCapacityAllZones: totalCap,
+            totalUtilizedAllZones: totalUtil,
+            overallUtilizationPct: pct,
+        };
+    }, [zones, inventoryItems, getZoneItems]);
+
+    // Keep database current_utilized_units synchronized with inventory items
+    useEffect(() => {
+        if (zones.length === 0 || inventoryItems.length === 0) return;
+
+        zones.forEach(async (zone) => {
+            const itemsInZone = getZoneItems(zone, inventoryItems);
+            if (itemsInZone.length > 0) {
+                const stockSum = itemsInZone.reduce((sum, item) => sum + Math.max(0, Number(item.current_stock) || 0), 0);
+                if (Number(zone.current_utilized_units) !== stockSum) {
+                    try {
+                        await supabaseWarehouseDb
+                            .from("warehouse_storage_zones")
+                            .update({
+                                current_utilized_units: stockSum,
+                                updated_at: new Date().toISOString(),
+                            })
+                            .eq("id", zone.id);
+                    } catch {
+                        // ignore background sync errors
+                    }
+                }
+            }
+        });
+    }, [zones, inventoryItems, getZoneItems]);
+
+    // Items for current viewingZone modal
+    const viewingZoneItems = useMemo(() => {
+        if (!viewingZone) return [];
+        return getZoneItems(viewingZone, inventoryItems);
+    }, [viewingZone, inventoryItems, getZoneItems]);
+
+    const filteredZoneItems = useMemo(() => {
+        if (!viewZoneSearch.trim()) return viewingZoneItems;
+        const term = viewZoneSearch.toLowerCase().trim();
+        return viewingZoneItems.filter((it) => 
+            (it.item_name || "").toLowerCase().includes(term) ||
+            (it.item_code || "").toLowerCase().includes(term) ||
+            (it.category || "").toLowerCase().includes(term)
+        );
+    }, [viewingZoneItems, viewZoneSearch]);
 
     // Filter items mapped to location
     const filteredItems = useMemo(() => {
@@ -316,6 +438,72 @@ export function StorageLocationsTab({
         }
     };
 
+    // Open edit modal pre-filled with selected zone data
+    const handleOpenEditZone = (zone: StorageLocationZone) => {
+        setEditingZone(zone);
+        setEditZoneForm({
+            zone_code: zone.zone_code || "",
+            zone_name: zone.zone_name || "",
+            building_or_hub: zone.building_or_hub || "Binondo Central Hub",
+            type: zone.type || "Shelving Unit",
+            total_capacity_units: Number(zone.total_capacity_units) || 100,
+            supervisor: zone.supervisor || "",
+            aislesInput: Array.isArray(zone.aisles) ? zone.aisles.join(", ") : "",
+            description: zone.description || "",
+        });
+    };
+
+    // Save edited zone to database
+    const handleSaveEditZone = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingZone) return;
+
+        if (!editZoneForm.zone_code.trim() || !editZoneForm.zone_name.trim()) {
+            toast.error("Please enter a Zone Code and Zone Name.");
+            return;
+        }
+
+        setIsSubmittingEdit(true);
+        try {
+            let parsedAisles: string[] = [];
+            if (editZoneForm.aislesInput.trim()) {
+                parsedAisles = editZoneForm.aislesInput
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+            }
+            if (parsedAisles.length === 0) {
+                parsedAisles = [`${editZoneForm.zone_code.trim().toUpperCase()}-01 (Primary)`];
+            }
+
+            const updated = await updateStorageZoneInDB(editingZone.id, {
+                zone_code: editZoneForm.zone_code.trim().toUpperCase(),
+                zone_name: editZoneForm.zone_name.trim(),
+                building_or_hub: editZoneForm.building_or_hub.trim() || "Main Hub",
+                type: editZoneForm.type,
+                total_capacity_units: Math.max(1, Number(editZoneForm.total_capacity_units) || 0),
+                aisles: parsedAisles,
+                supervisor: editZoneForm.supervisor.trim() || undefined,
+                description: editZoneForm.description.trim(),
+            });
+
+            setZones((prev) => prev.map((z) => (z.id === editingZone.id ? updated : z)));
+            if (viewingZone && viewingZone.id === editingZone.id) {
+                setViewingZone(updated);
+            }
+
+            toast.success(`Storage Zone ${updated.zone_code} updated successfully!`);
+            setEditingZone(null);
+            await loadZones();
+            onRefresh();
+        } catch (err: any) {
+            console.error("Error updating storage zone:", err);
+            toast.error(err.message || "Failed to update storage zone in database.");
+        } finally {
+            setIsSubmittingEdit(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* 1. Header Overview & Metrics - Cards Component */}
@@ -369,16 +557,16 @@ export function StorageLocationsTab({
                 />
 
                 <Cards
-                    frontIcon="fas fa-building mr-1"
-                    header="Storage Facility"
-                    data={zones[0]?.building_or_hub ? zones[0].building_or_hub.slice(0, 16) : "Hub 1"}
-                    arrow="fas fa-location-dot mr-1"
-                    description="Primary Facility"
+                    frontIcon="fas fa-chart-pie mr-1"
+                    header="Capacity Utilization"
+                    data={`${overallUtilizationPct}%`}
+                    arrow="fas fa-boxes-stacked mr-1"
+                    description={`${totalUtilizedAllZones.toLocaleString()} / ${totalCapacityAllZones.toLocaleString()} Units`}
                     backBg="bg-slate-900 dark:bg-slate-900"
-                    backHeader="Warehouse Facility"
-                    backIcon="fas fa-building"
+                    backHeader="Warehouse Capacity"
+                    backIcon="fas fa-chart-pie"
                     headerTextColor="text-muted dark:text-white/80"
-                    backDescription={`Facility: ${zones[0]?.building_or_hub || "Central Warehouse & Logistics Hub"}.`}
+                    backDescription={`Live warehouse capacity utilization across all zones (${totalUtilizedAllZones.toLocaleString()} of ${totalCapacityAllZones.toLocaleString()} units), dynamically updated on stock in and stock out.`}
                     tooltip="Click to flip card"
                     frontTextColor="text-pink-600 dark:text-pink-400"
                     descriptionTextColor="text-slate-500 dark:text-slate-400"
@@ -455,32 +643,24 @@ export function StorageLocationsTab({
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                         {zones.map((zone) => {
-                            const itemsInZone = inventoryItems.filter((i) => {
-                                const itemLoc = (i.storage_location || "").toLowerCase().trim();
-                                const zCode = (zone.zone_code || "").toLowerCase().trim();
-                                const zName = (zone.zone_name || "").toLowerCase().trim();
-                                const normLoc = itemLoc.replace(/[^a-z0-9]/g, "");
-                                const normCode = zCode.replace(/[^a-z0-9]/g, "");
-                                return (
-                                    (zCode && itemLoc.includes(zCode)) ||
-                                    (zName && itemLoc.includes(zName)) ||
-                                    (normLoc && normCode && (normLoc.includes(normCode) || normCode.includes(normLoc)))
-                                );
-                            });
+                            const itemsInZone = getZoneItems(zone, inventoryItems);
 
-                            // Calculate actual units: sum stock of all items mapped to this zone (minimum 1 unit allocation per assigned SKU)
+                            // Calculate actual units: sum live current_stock of all items stored in this zone
                             const stockFromItems = itemsInZone.reduce(
-                                (acc, i) => acc + (Number(i.current_stock) > 0 ? Number(i.current_stock) : 1),
+                                (acc, i) => acc + Math.max(0, Number(i.current_stock) || 0),
                                 0
                             );
 
-                            // Utilize the higher of item-derived stock or database-persisted current_utilized_units
-                            const actualUtilizedUnits = Math.max(Number(zone.current_utilized_units) || 0, stockFromItems);
+                            // Utilized units reflects the live stock in this zone
+                            const actualUtilizedUnits = itemsInZone.length > 0 ? stockFromItems : Math.max(0, Number(zone.current_utilized_units) || 0);
 
                             const totalCap = Number(zone.total_capacity_units) || 0;
                             const utilizationPct = totalCap > 0
                                 ? Math.min(100, Math.round((actualUtilizedUnits / totalCap) * 100))
                                 : 0;
+
+                            const isHighCapacity = utilizationPct >= 90;
+                            const isModerateCapacity = utilizationPct >= 70 && utilizationPct < 90;
 
                             return (
                                 <div
@@ -494,6 +674,27 @@ export function StorageLocationsTab({
                                             </span>
                                             <div className="flex items-center gap-1.5">
                                                 <span className="text-[11px] font-bold text-slate-400">{zone.type}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setViewingZone(zone);
+                                                        setViewZoneSearch("");
+                                                    }}
+                                                    title={`View details and stored items in ${zone.zone_code}`}
+                                                    className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-pink-500 hover:text-white dark:hover:bg-pink-500 dark:hover:text-white text-pink-600 dark:text-pink-400 border border-pink-200/60 dark:border-pink-900/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    <span>View</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEditZone(zone)}
+                                                    title={`Edit ${zone.zone_code} details & capacity`}
+                                                    className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-pink-500 hover:text-white dark:hover:bg-pink-500 dark:hover:text-white text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
+                                                >
+                                                    <Pencil className="w-3.5 h-3.5 text-pink-500" />
+                                                    <span>Edit</span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeleteZone(zone.id, zone.zone_code)}
@@ -529,9 +730,11 @@ export function StorageLocationsTab({
                                         {zone.aisles && zone.aisles.length > 0 && (
                                             <div className="mt-3 text-[11px] text-slate-400 space-y-1">
                                                 <div className="font-semibold text-slate-600 dark:text-slate-300">Aisles &amp; Bins:</div>
-                                                <div className="pl-1">
+                                                <div className="pl-1 flex items-center gap-1.5 flex-wrap">
                                                     {zone.aisles.map((a, idx) => (
-                                                        <div key={idx}>• {a}</div>
+                                                        <span key={idx} className="px-1.5 py-0.5 rounded-md bg-white/70 dark:bg-[#14151c] text-[10px] font-mono font-semibold border border-slate-200/50 dark:border-slate-800">
+                                                            {a}
+                                                        </span>
                                                     ))}
                                                 </div>
                                             </div>
@@ -541,12 +744,20 @@ export function StorageLocationsTab({
                                     <div className="mt-4 pt-3 border-t border-slate-200/50 dark:border-white/[0.06]">
                                         <div className="flex items-center justify-between text-xs mb-1.5 font-bold">
                                             <span className="text-slate-500">Capacity Utilization</span>
-                                            <span className="text-pink-600 dark:text-pink-400">{utilizationPct}%</span>
+                                            <span className={isHighCapacity ? "text-rose-600 dark:text-rose-400" : isModerateCapacity ? "text-amber-600 dark:text-amber-400" : "text-pink-600 dark:text-pink-400"}>
+                                                {utilizationPct}%
+                                            </span>
                                         </div>
 
                                         <div className="w-full h-2 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_1px_1px_2px_rgba(0,0,0,0.1)] overflow-hidden">
                                             <div
-                                                className="h-full bg-pink-500 rounded-full transition-all duration-300"
+                                                className={`h-full rounded-full transition-all duration-300 ${
+                                                    isHighCapacity
+                                                        ? "bg-rose-500"
+                                                        : isModerateCapacity
+                                                        ? "bg-amber-500"
+                                                        : "bg-pink-500"
+                                                }`}
                                                 style={{ width: `${utilizationPct}%` }}
                                             />
                                         </div>
@@ -556,6 +767,20 @@ export function StorageLocationsTab({
                                             <span className="font-bold text-slate-700 dark:text-slate-300">
                                                 {itemsInZone.length} SKUs Assigned
                                             </span>
+                                        </div>
+
+                                        <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-white/[0.04]">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setViewingZone(zone);
+                                                    setViewZoneSearch("");
+                                                }}
+                                                className="w-full py-1.5 px-3 rounded-xl bg-pink-50 dark:bg-pink-950/30 hover:bg-pink-100 dark:hover:bg-pink-950/50 text-pink-600 dark:text-pink-400 font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" />
+                                                <span>View Zone &amp; Bin Stock ({itemsInZone.length} SKUs)</span>
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -1051,6 +1276,478 @@ export function StorageLocationsTab({
                                             <>
                                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                                 <span>Create Zone</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </Portal>
+            )}
+
+            {/* 5. Modal: View Storage Zone Details & Bin Inspection */}
+            {viewingZone && (
+                <Portal>
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+                        <div className="w-full max-w-3xl max-h-[90vh] rounded-3xl bg-[#f0f3f8] dark:bg-[#1a1c29] border border-white/80 dark:border-white/10 shadow-[12px_12px_36px_rgba(166,175,195,0.5),-12px_-12px_36px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85),-8px_-8px_24px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] p-6 overflow-y-auto space-y-5">
+                            {/* Modal Header */}
+                            <div className="flex items-start justify-between border-b border-slate-200/60 dark:border-white/[0.06] pb-4">
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40 font-mono">
+                                            {viewingZone.zone_code}
+                                        </span>
+                                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#ebf0f7] dark:bg-[#14151c] text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-800">
+                                            {viewingZone.type}
+                                        </span>
+                                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-slate-500">
+                                            {viewingZone.building_or_hub || "Main Hub"}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-white mt-2 flex items-center gap-2">
+                                        <Warehouse className="w-5 h-5 text-pink-500" />
+                                        <span>{viewingZone.zone_name}</span>
+                                    </h3>
+                                    {viewingZone.description && (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                            {viewingZone.description}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenEditZone(viewingZone)}
+                                        title={`Edit ${viewingZone.zone_code} details & capacity`}
+                                        className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-pink-500 hover:text-white dark:hover:bg-pink-500 dark:hover:text-white text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5 text-pink-500" />
+                                        <span>Edit Zone</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewingZone(null)}
+                                        className="w-8 h-8 rounded-full bg-[#ebf0f7] dark:bg-white/10 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Capacity & Key Metrics */}
+                            {(() => {
+                                const zoneStock = viewingZoneItems.reduce((acc, it) => acc + Math.max(0, Number(it.current_stock) || 0), 0);
+                                const zoneCap = Number(viewingZone.total_capacity_units) || 0;
+                                const zoneUtilized = viewingZoneItems.length > 0 ? zoneStock : Math.max(0, Number(viewingZone.current_utilized_units) || 0);
+                                const zonePct = zoneCap > 0 ? Math.min(100, Math.round((zoneUtilized / zoneCap) * 100)) : 0;
+                                const zoneAvailable = Math.max(0, zoneCap - zoneUtilized);
+                                const isHigh = zonePct >= 90;
+                                const isMod = zonePct >= 70 && zonePct < 90;
+
+                                return (
+                                    <>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
+                                                <div className="text-[10px] uppercase font-bold text-slate-400">Total Capacity</div>
+                                                <div className="text-base font-black text-slate-900 dark:text-white mt-0.5 font-mono">
+                                                    {zoneCap.toLocaleString()}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">Max Units Allowed</div>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
+                                                <div className="text-[10px] uppercase font-bold text-pink-600 dark:text-pink-400">Stock Utilized</div>
+                                                <div className="text-base font-black text-pink-600 dark:text-pink-400 mt-0.5 font-mono">
+                                                    {zoneUtilized.toLocaleString()}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">Live Units in Storage</div>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
+                                                <div className="text-[10px] uppercase font-bold text-slate-400">Available Space</div>
+                                                <div className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
+                                                    {zoneAvailable.toLocaleString()}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">Remaining Units</div>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
+                                                <div className="text-[10px] uppercase font-bold text-slate-400">Assigned SKUs</div>
+                                                <div className="text-base font-black text-slate-900 dark:text-white mt-0.5 font-mono">
+                                                    {viewingZoneItems.length}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">Distinct Products</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Capacity Utilization Progress Bar */}
+                                        <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 space-y-2">
+                                            <div className="flex items-center justify-between text-xs font-bold">
+                                                <span className="text-slate-600 dark:text-slate-300">Live Capacity Utilization</span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                                    isHigh
+                                                        ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                                                        : isMod
+                                                        ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                                                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                                                }`}>
+                                                    {zonePct}% Utilized ({isHigh ? "Near Full Capacity" : isMod ? "High Storage Utilization" : "Optimal Storage Level"})
+                                                </span>
+                                            </div>
+
+                                            <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden shadow-inner">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-300 ${
+                                                        isHigh
+                                                            ? "bg-rose-500"
+                                                            : isMod
+                                                            ? "bg-amber-500"
+                                                            : "bg-pink-500"
+                                                    }`}
+                                                    style={{ width: `${zonePct}%` }}
+                                                />
+                                            </div>
+
+                                            <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                                <span>{zoneUtilized.toLocaleString()} units stored</span>
+                                                <span>{zoneCap.toLocaleString()} total units capacity</span>
+                                            </div>
+                                        </div>
+                                    </>
+                                );
+                            })()}
+
+                            {/* Zone Lead & Aisles Metadata */}
+                            <div className="flex items-center justify-between gap-4 flex-wrap text-xs text-slate-600 dark:text-slate-300 p-3 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#14151c]/70 border border-slate-200/50 dark:border-slate-800">
+                                <div>
+                                    <span className="font-bold text-slate-500">Zone Supervisor / Lead:</span>{" "}
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">{viewingZone.supervisor || "Central Warehouse Lead"}</span>
+                                </div>
+                                {viewingZone.aisles && viewingZone.aisles.length > 0 && (
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-slate-500">Aisles &amp; Bins:</span>
+                                        {viewingZone.aisles.map((a, idx) => (
+                                            <span key={idx} className="px-2 py-0.5 rounded-lg bg-white dark:bg-[#1d1e28] border border-slate-200 dark:border-slate-800 font-mono text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                                                {a}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Stored Inventory Items in this Zone */}
+                            <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
+                                        <Box className="w-3.5 h-3.5 text-pink-500" />
+                                        <span>Stored Items &amp; Active SKUs ({viewingZoneItems.length})</span>
+                                    </h4>
+
+                                    {viewingZoneItems.length > 0 && (
+                                        <div className="relative min-w-[220px]">
+                                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Filter items in this bin..."
+                                                value={viewZoneSearch}
+                                                onChange={(e) => setViewZoneSearch(e.target.value)}
+                                                className="w-full pl-8 pr-2.5 py-1 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="overflow-x-auto max-h-[280px] rounded-2xl border border-slate-200/60 dark:border-slate-800">
+                                    <table className="w-full text-left text-xs">
+                                        <thead className="sticky top-0 bg-[#f0f3f8] dark:bg-[#1d1e28] border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase font-bold text-slate-400">
+                                            <tr>
+                                                <th className="py-2.5 px-3">Item Name</th>
+                                                <th className="py-2.5 px-3">SKU / Code</th>
+                                                <th className="py-2.5 px-3">Category</th>
+                                                <th className="py-2.5 px-3 text-right">Stock Level</th>
+                                                <th className="py-2.5 px-3 text-right">Status</th>
+                                                <th className="py-2.5 px-3 text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-[#f8fafc]/40 dark:bg-[#141624]/20">
+                                            {filteredZoneItems.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                                                        {viewingZoneItems.length === 0
+                                                            ? `No inventory items are currently stored in ${viewingZone.zone_code}.`
+                                                            : "No items match your filter in this zone."}
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                filteredZoneItems.map((item) => {
+                                                    const stock = Number(item.current_stock) || 0;
+                                                    const minStock = Number(item.minimum_stock) || 10;
+                                                    const isOutOfStock = stock <= 0;
+                                                    const isLowStock = !isOutOfStock && stock < minStock;
+
+                                                    return (
+                                                        <tr key={item.id} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
+                                                            <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                                                {item.item_name}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                                                                {item.item_code}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-slate-500">
+                                                                {item.category || "General"}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right font-black text-slate-900 dark:text-white font-mono">
+                                                                {stock} {item.unit || "units"}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right">
+                                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                                                    isOutOfStock
+                                                                        ? "bg-red-50 text-red-600 dark:bg-red-950/40 border border-red-200 dark:border-red-800/40"
+                                                                        : isLowStock
+                                                                        ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40"
+                                                                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40"
+                                                                }`}>
+                                                                    {isOutOfStock ? "Out of Stock" : isLowStock ? "Low Stock" : "In Stock"}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const inStock = Math.max(0, Number(item.current_stock) || 0);
+                                                                        setRelocateForm({
+                                                                            itemId: String(item.id),
+                                                                            currentLocation: item.storage_location || viewingZone.zone_code,
+                                                                            newLocation: zones.find((z) => z.id !== viewingZone.id)?.zone_code || "",
+                                                                            quantity: inStock > 0 ? inStock : 0,
+                                                                            reason: `Relocated from ${viewingZone.zone_code}`,
+                                                                        });
+                                                                        setIsRelocateModalOpen(true);
+                                                                    }}
+                                                                    className="px-2.5 py-1 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 hover:bg-pink-500 hover:text-white text-[11px] font-bold transition-all cursor-pointer"
+                                                                >
+                                                                    Relocate
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between gap-3 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (inventoryItems.length > 0) {
+                                            const firstItem = inventoryItems[0];
+                                            const inStock = Math.max(0, Number(firstItem.current_stock) || 0);
+                                            setRelocateForm({
+                                                itemId: String(firstItem.id),
+                                                currentLocation: firstItem.storage_location || "",
+                                                newLocation: viewingZone.zone_code,
+                                                quantity: inStock > 0 ? inStock : 0,
+                                                reason: `Move to ${viewingZone.zone_code}`,
+                                            });
+                                        }
+                                        setIsRelocateModalOpen(true);
+                                    }}
+                                    className="px-3.5 py-2 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] text-pink-600 dark:text-pink-400 hover:text-pink-500 border border-pink-200/60 dark:border-pink-900/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                                >
+                                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                                    <span>Relocate an Item to this Zone</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setViewingZone(null)}
+                                    className="px-5 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-black shadow-md shadow-pink-500/20 active:scale-95 transition-all cursor-pointer"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            )}
+
+            {/* 6. Modal: Edit Storage Zone Details & Capacity */}
+            {editingZone && (
+                <Portal>
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+                        <div className="w-full max-w-lg max-h-[90vh] rounded-3xl bg-[#f0f3f8] dark:bg-[#1a1c29] border border-white/80 dark:border-white/10 shadow-[12px_12px_36px_rgba(166,175,195,0.5),-12px_-12px_36px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85),-8px_-8px_24px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] p-6 overflow-hidden flex flex-col">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-white/[0.06] pb-3">
+                                <div>
+                                    <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                        <Pencil className="w-4 h-4 text-pink-500" />
+                                        <span>Edit Storage Zone ({editingZone.zone_code})</span>
+                                    </h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                        Update layout details, capacity limit, or location coordinates.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingZone(null)}
+                                    className="w-8 h-8 rounded-full bg-[#ebf0f7] dark:bg-white/10 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleSaveEditZone} className="mt-4 space-y-4 overflow-y-auto pr-1 flex-1">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                            Zone Code <span className="text-pink-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={editZoneForm.zone_code}
+                                            onChange={(e) => setEditZoneForm({ ...editZoneForm, zone_code: e.target.value })}
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 font-mono font-bold uppercase"
+                                            placeholder="e.g. ZONE-A"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                            Storage Type <span className="text-pink-500">*</span>
+                                        </label>
+                                        <select
+                                            value={editZoneForm.type}
+                                            onChange={(e) => setEditZoneForm({ ...editZoneForm, type: e.target.value as any })}
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
+                                        >
+                                            <option value="Shelving Unit">Shelving Unit</option>
+                                            <option value="Pallet Rack">Pallet Rack</option>
+                                            <option value="Secure Cabinet">Secure Cabinet</option>
+                                            <option value="Cold Room">Cold Room</option>
+                                            <option value="Floor Staging">Floor Staging</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                            Zone Name <span className="text-pink-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={editZoneForm.zone_name}
+                                            onChange={(e) => setEditZoneForm({ ...editZoneForm, zone_name: e.target.value })}
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 font-bold"
+                                            placeholder="e.g. Heavy Spares & Pallet Racks"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                            Warehouse Facility / Hub
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editZoneForm.building_or_hub}
+                                            onChange={(e) => setEditZoneForm({ ...editZoneForm, building_or_hub: e.target.value })}
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
+                                            placeholder="e.g. Binondo Central Hub, Building 2"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                            Total Capacity (Units) <span className="text-pink-500">*</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            required
+                                            value={editZoneForm.total_capacity_units || ""}
+                                            onChange={(e) => setEditZoneForm({ ...editZoneForm, total_capacity_units: parseInt(e.target.value, 10) || 0 })}
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 font-mono"
+                                            placeholder="e.g. 500"
+                                        />
+                                        <span className="text-[10px] text-slate-400 mt-1 block">
+                                            Affects dynamic capacity utilization across the warehouse.
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                            Supervisor / Zone Lead
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editZoneForm.supervisor}
+                                            onChange={(e) => setEditZoneForm({ ...editZoneForm, supervisor: e.target.value })}
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
+                                            placeholder="e.g. Engr. Marco Santos"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                            Aisles &amp; Bins Breakdown
+                                        </label>
+                                        <span className="text-[10px] text-slate-400">Comma-separated</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={editZoneForm.aislesInput}
+                                        onChange={(e) => setEditZoneForm({ ...editZoneForm, aislesInput: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 font-mono"
+                                        placeholder="e.g. A-01, A-02, A-03, Rack B-1"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                        Operational Description &amp; Storage Notes
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        value={editZoneForm.description}
+                                        onChange={(e) => setEditZoneForm({ ...editZoneForm, description: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 resize-none"
+                                        placeholder="Special handling rules, temperature control, security requirements, or location remarks..."
+                                    />
+                                </div>
+
+                                <div className="pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-end gap-2.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingZone(null)}
+                                        className="px-4 py-2 rounded-xl bg-[#f0f3f8] dark:bg-[#1e1f2b] border border-white/80 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:text-slate-900 text-xs font-bold transition-all cursor-pointer shadow-[2px_2px_5px_rgba(166,175,195,0.4),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5),-1px_-1px_4px_rgba(255,255,255,0.03)] active:scale-95"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmittingEdit}
+                                        className="px-5 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-black shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                                    >
+                                        {isSubmittingEdit ? (
+                                            <>
+                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                <span>Saving Changes...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                                <span>Save Changes</span>
                                             </>
                                         )}
                                     </button>

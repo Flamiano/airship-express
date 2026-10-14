@@ -6,14 +6,9 @@ import {
 
 export async function GET(req: NextRequest) {
     try {
-        // 1. Session and role validation
+        // 1. Optional session check (Non-blocking for overview metadata: confidential figures require password verification in /detail)
         const authResult = await validateExecutiveSession(req);
-        if (authResult.errorResponse) {
-            return NextResponse.json(
-                { success: false, error: authResult.errorResponse.error },
-                { status: authResult.errorResponse.status }
-            );
-        }
+        const isAuthenticated = !authResult.errorResponse;
 
         // 2. Parse reporting month and year
         const { searchParams } = new URL(req.url);

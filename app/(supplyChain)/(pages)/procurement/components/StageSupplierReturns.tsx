@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import Cards from "../../../components/global/Cards";
 import { Pagination } from "../../../components/global/pagination";
 import { useDebounce } from "../../../hooks/useDebounce";
+import { supabase } from "../../../lib/services/client/supabase";
 import {
     SupplierReturnRequestRecord,
     fetchSupplierReturnRequestsAction,
@@ -78,7 +79,32 @@ export function StageSupplierReturns({ onRefreshParent }: StageSupplierReturnsPr
 
     useEffect(() => {
         loadData();
-    }, []);
+
+        const channelId = `procurement_stage_returns_realtime_${Math.random().toString(36).substring(2, 9)}`;
+        const channel = supabase
+            .channel(channelId)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "supplier_return_requests" },
+                () => {
+                    loadData(true);
+                    onRefreshParent?.();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "warehouse_damage_incidents" },
+                () => {
+                    loadData(true);
+                    onRefreshParent?.();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [onRefreshParent]);
 
     // Unique suppliers for filter dropdown
     const availableSuppliers = useMemo(() => {

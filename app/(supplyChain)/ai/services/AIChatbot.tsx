@@ -260,6 +260,9 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     const parsed = JSON.parse(saved);
                     return parsed.map((m: any) => ({
                         ...m,
+                        content: m.id === 'welcome' && (m.content?.includes("AI Warehouse Assistant") || m.content?.includes("AI Assistant"))
+                            ? "Hello! I'm AIRY, your AI Supply Chain & Warehouse Assistant. How can I help you?"
+                            : m.content,
                         timestamp: new Date(m.timestamp)
                     }));
                 }
@@ -272,7 +275,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
             {
                 id: 'welcome',
                 type: 'assistant',
-                content: 'Hello! I\'m your AI Warehouse Assistant. How can I help you?',
+                content: "Hello! I'm AIRY, your AI Supply Chain & Warehouse Assistant. How can I help you?",
                 timestamp: new Date(),
                 suggestions: [
                     'Create purchase order',
@@ -2388,7 +2391,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                     id="grabbable-ai-robot"
                     role="button"
                     tabIndex={0}
-                    aria-label="Open AI Warehouse Assistant"
+                    aria-label="Open AIRY AI Assistant"
                     drag
                     dragConstraints={dragBounds}
                     dragMomentum={true}
@@ -2531,8 +2534,9 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                 </div>
 
                                 <div>
-                                    <h2 className="text-slate-800 dark:text-slate-100 font-bold text-sm tracking-tight leading-snug">
-                                        AI Warehouse Assistant
+                                    <h2 className="text-slate-800 dark:text-slate-100 font-bold text-sm tracking-tight leading-snug flex items-center gap-1.5">
+                                        <span>AIRY</span>
+                                        <span className="text-[10px] font-semibold text-pink-600 dark:text-pink-400 bg-pink-100 dark:bg-pink-950/60 border border-pink-300 dark:border-pink-800/60 px-1.5 py-0.5 rounded-full">AI</span>
                                     </h2>
                                     <p className="text-pink-600 dark:text-pink-400 text-[11px] font-semibold tracking-wide flex items-center gap-1.5 mt-0.5">
                                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${isStreaming || isLoading ? 'bg-amber-400' : 'bg-emerald-500'}`}/>
@@ -2558,7 +2562,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     {drawerWidth > 560 ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                                 </button>
 
-                                <button onClick={onClose} className="text-slate-600 hover:text-pink-600 dark:text-slate-300 dark:hover:text-pink-400 p-2.5 rounded-full bg-[#ebf0f7] dark:bg-[#1c1d29] border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.4),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.05)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.4),-1px_-1px_3px_rgba(255,255,255,0.9)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.45)] transition-all duration-150 active:scale-95 cursor-pointer flex items-center justify-center w-8 h-8" title="Minimize chat" aria-label="Minimize assistant drawer">
+                                <button onClick={onClose} className="text-slate-600 hover:text-pink-600 dark:text-slate-300 dark:hover:text-pink-400 p-2.5 rounded-full bg-[#ebf0f7] dark:bg-[#1c1d29] border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.4),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.05)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.4),-1px_-1px_3px_rgba(255,255,255,0.9)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.45)] transition-all duration-150 active:scale-95 cursor-pointer flex items-center justify-center w-8 h-8" title="Minimize chat" aria-label="Minimize AIRY drawer">
                                     <Minus className="w-3.5 h-3.5"/>
                                 </button>
 
@@ -2566,7 +2570,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                         const welcomeMsg: Message = {
                             id: 'welcome',
                             type: 'assistant',
-                            content: 'Hello! I\'m your AI Warehouse Assistant. How can I help you?',
+                            content: "Hello! I'm AIRY, your AI Supply Chain & Warehouse Assistant. How can I help you?",
                             timestamp: new Date(),
                             suggestions: [
                                 'Create purchase order',
@@ -2583,7 +2587,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                         <i className="fas fa-trash-alt text-[11px]"/>
                                     </button>)}
 
-                                <button onClick={onClose} className="text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 p-2.5 rounded-full bg-[#ebf0f7] dark:bg-[#1c1d29] border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.4),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.05)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.4),-1px_-1px_3px_rgba(255,255,255,0.9)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.45)] transition-all duration-150 active:scale-95 cursor-pointer flex items-center justify-center w-8 h-8" title="Close drawer" aria-label="Close assistant drawer">
+                                <button onClick={onClose} className="text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 p-2.5 rounded-full bg-[#ebf0f7] dark:bg-[#1c1d29] border border-white/90 dark:border-white/[0.08] shadow-[3px_3px_6px_rgba(166,175,195,0.4),-3px_-3px_6px_rgba(255,255,255,0.95)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.05)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.4),-1px_-1px_3px_rgba(255,255,255,0.9)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.45)] transition-all duration-150 active:scale-95 cursor-pointer flex items-center justify-center w-8 h-8" title="Close drawer" aria-label="Close AIRY drawer">
                                     <X className="w-3.5 h-3.5"/>
                                 </button>
                             </div>

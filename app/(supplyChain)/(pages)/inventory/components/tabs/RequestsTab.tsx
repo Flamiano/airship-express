@@ -29,7 +29,6 @@ import {
     X,
     FileText,
     ChevronDown,
-    Boxes,
     Sparkles,
     Bell,
     Compass,
@@ -42,6 +41,7 @@ import { RequestedItemStockModal } from '../modals/RequestedItemStockModal';
 import { PurchaseRequestFormModal } from '../modals/PurchaseRequestFormModal';
 import { SupplierMessageModal } from '../../../suppliers/components/modals/SupplierMessageModal';
 import { evaluateItemMatch } from '../../utils/itemMatching';
+import { findBestMatchingPO, getPOStatusIndicator } from '../../../../lib/utils';
 
 interface RequestsTabProps {
     requests: InventoryRequest[];
@@ -106,6 +106,7 @@ export const RequestsTab = memo(function RequestsTab({
     const [selectedRequestForSupplierModal, setSelectedRequestForSupplierModal] = useState<InventoryRequest | null>(null);
     const [selectedSupplierForMessage, setSelectedSupplierForMessage] = useState<any | null>(null);
     const [awardedBids, setAwardedBids] = useState<Set<string>>(new Set());
+    const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
 
     // Clear optimistic states when server requests prop updates
     useEffect(() => {
@@ -190,12 +191,14 @@ export const RequestsTab = memo(function RequestsTab({
                 });
             }
 
-            // Also check purchase_orders table for linked request_ids
+            // Also check purchase_orders table for linked request_ids and active PO status
             const { data: poList } = await supabase
                 .from("purchase_orders")
-                .select("request_id, notes");
+                .select("id, po_number, status, admin_approval, financial_approval, items, request_id, created_at, updated_at, notes")
+                .order("created_at", { ascending: false });
 
             if (poList) {
+                setPurchaseOrders(poList);
                 poList.forEach((po: any) => {
                     if (po.request_id) {
                         const raw = String(po.request_id).trim().toLowerCase();
@@ -882,8 +885,9 @@ export const RequestsTab = memo(function RequestsTab({
 
                                     const isInternal = req.Internal_request === true || req.internal_request === true || req.is_internal === true || Boolean(req.requested_by);
                                     
-                                    // Live item match evaluation
-                                    const matchEval = evaluateItemMatch(req.item_name, requestedQty, inventoryItems);
+                                    // Live item match evaluation (Section 9: prioritize explicit item reference/ID before fallback to name)
+                                    const explicitRef = (req as any).inventory_item_id || (req as any).item_id || (req as any).catalog_item_id || (req as any).item_code || (req.items && ((req.items[0] as any)?.inventory_item_id || (req.items[0] as any)?.catalog_item_id || (req.items[0] as any)?.item_code));
+                                    const matchEval = evaluateItemMatch(req.item_name, requestedQty, inventoryItems, explicitRef ? String(explicitRef) : undefined);
                                     const item = matchEval.matchedItem || (req as any).inventory_item;
                                     const currentStock = matchEval.currentStock;
                                     const availableStock = currentStock;
@@ -920,12 +924,13 @@ export const RequestsTab = memo(function RequestsTab({
                                     const reqCategory = ((req as any).category || (req.items && req.items[0]?.category) || '').trim().toLowerCase();
                                     const isCategoryWithoutActiveSupplier = Boolean(reqCategory && !activeSupplierCategories.has(reqCategory));
 
-                                    // Button visibility:
-                                    // 1. Available or Low Stock with active supplier: hide Find Supplier, show Approve
-                                    // 2. Possible (partial match): show BOTH Find Supplier and Approve
-                                    // 3. New Item, Out of Stock, or Category not in Active Suppliers: show Find Supplier
-                                    const showFindSupplierBtn = isPossible || isNewItem || isOutOfStock || isCategoryWithoutActiveSupplier || isOthersCategory;
-                                    const showApproveBtn = true; // Always show approve button
+                                    // Match against purchase orders using normalized item-name matching
+                                    const matchingPO = findBestMatchingPO({ 
+                                        id: req.id, 
+                                        item_name: req.item_name, 
+                                        source_request: req.request_number 
+                                    }, purchaseOrders);
+                                    const poIndicator = matchingPO ? getPOStatusIndicator(matchingPO) : null;
 
                                     return (
                                         <tr
@@ -1164,31 +1169,52 @@ export const RequestsTab = memo(function RequestsTab({
                                                         {req.rejection_reason}
                                                     </p>
                                                 )}
+
+                                                {/* Matching Purchase Order Status Indicator */}
+                                                {matchingPO && poIndicator && !isRowLoading && (
+                                                    <div className="mt-1.5 flex items-center">
+                                                        <span 
+                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${
+                                                                poIndicator === 'Delivered'
+                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                                                    : poIndicator === 'Waiting for Delivery'
+                                                                    ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+                                                                    : poIndicator === 'Rejected Purchase Order'
+                                                                    ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                                                    : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                                            }`}
+                                                            title={`Matching Purchase Order #${matchingPO.po_number || ''} (${poIndicator})`}
+                                                        >
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                                                poIndicator === 'Delivered'
+                                                                    ? 'bg-emerald-500'
+                                                                    : poIndicator === 'Waiting for Delivery'
+                                                                    ? 'bg-sky-500'
+                                                                    : poIndicator === 'Rejected Purchase Order'
+                                                                    ? 'bg-rose-500'
+                                                                    : 'bg-amber-500'
+                                                            }`} />
+                                                            <span>{poIndicator}</span>
+                                                            {matchingPO.po_number && (
+                                                                <span className="font-mono text-[9px] opacity-75">#{matchingPO.po_number}</span>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </td>
 
                                             {/* 10. Actions */}
                                             <td className="px-4 py-3.5 w-40 min-w-[150px] text-right whitespace-nowrap">
                                                 <div className="flex items-center justify-end gap-1.5">
-                                                    {/* View Request Form / Review */}
+                                                    {/* Unified Review Request & Check Items */}
                                                     <CrudActionButton
                                                         action="custom"
                                                         label="Review Request"
                                                         icon={FileText}
                                                         variant="neutral"
                                                         onClick={() => setSelectedRequestForForm(req)}
-                                                        ariaLabel={`Review request #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
-                                                        title="Open purchase request document and check items"
-                                                    />
-
-                                                    {/* Check Item Stock */}
-                                                    <CrudActionButton
-                                                        action="custom"
-                                                        label="Check Item"
-                                                        icon={Boxes}
-                                                        variant="neutral"
-                                                        onClick={() => setSelectedRequestForStock(req)}
-                                                        ariaLabel={`Check item stock for #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
-                                                        title="Inspect matching warehouse stock for requested items"
+                                                        ariaLabel={`Review request and check items for #${req.request_number || (req.id ? req.id.slice(0, 8) : '')}`}
+                                                        title="Review request document and check warehouse stock"
                                                     />
 
                                                     {isPending && !isRowLoading && (

@@ -23,7 +23,11 @@ import {
     Compass,
     Eye,
     Store,
-    Activity
+    Activity,
+    ShoppingCart,
+    PlusCircle,
+    MessageSquare,
+    CheckCircle2
 } from 'lucide-react';
 
 export interface SourcedSupplierItem {
@@ -49,6 +53,13 @@ interface SupplierSourcingMapProps {
     selectedSupplierId: string | number | null;
     onSelectSupplier: (id: string | number) => void;
     onAddPotentialSupplier?: (supplier: SourcedSupplierItem) => void;
+    onOrderOfficialSupplier?: (supplier: SourcedSupplierItem) => void;
+    onInquireSupplier?: (supplier: SourcedSupplierItem) => void;
+    getSupplierActionState?: (supplier: SourcedSupplierItem) => {
+        isOfficial: boolean;
+        offersItem: boolean;
+        isSaved: boolean;
+    };
     hqCoord?: GeoCoordinate;
     radiusKm?: number;
     isFullScreen?: boolean;
@@ -232,6 +243,13 @@ interface SupplierMarkerProps {
     isSelected: boolean;
     onSelect: (id: string | number) => void;
     onAddPotentialSupplier?: (supplier: SourcedSupplierItem) => void;
+    onOrderOfficialSupplier?: (supplier: SourcedSupplierItem) => void;
+    onInquireSupplier?: (supplier: SourcedSupplierItem) => void;
+    actionState?: {
+        isOfficial: boolean;
+        offersItem: boolean;
+        isSaved: boolean;
+    };
 }
 
 const MemoizedSupplierMarker = React.memo(function MemoizedSupplierMarker({
@@ -239,6 +257,9 @@ const MemoizedSupplierMarker = React.memo(function MemoizedSupplierMarker({
     isSelected,
     onSelect,
     onAddPotentialSupplier,
+    onOrderOfficialSupplier,
+    onInquireSupplier,
+    actionState,
 }: SupplierMarkerProps) {
     const icon = getSupplierIcon(isSelected, supplier.distanceKm);
 
@@ -313,13 +334,47 @@ const MemoizedSupplierMarker = React.memo(function MemoizedSupplierMarker({
                             >
                                 View Details
                             </button>
-                            {onAddPotentialSupplier && (
+                            {actionState?.isOfficial ? (
                                 <button
                                     type="button"
-                                    onClick={() => onAddPotentialSupplier(supplier)}
-                                    className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold bg-pink-600 hover:bg-pink-500 text-white shadow-sm transition-all cursor-pointer"
+                                    onClick={() => onOrderOfficialSupplier ? onOrderOfficialSupplier(supplier) : onSelect(supplier.id)}
+                                    className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                                    title="Create Purchase Order directly with this Official Supplier"
                                 >
-                                    + Add Supplier
+                                    <ShoppingCart className="w-3 h-3" />
+                                    <span>Order(Official supplier)</span>
+                                </button>
+                            ) : actionState?.offersItem ? (
+                                actionState?.isSaved ? (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold bg-emerald-600 text-white shadow-sm flex items-center justify-center gap-1 cursor-default"
+                                    >
+                                        <Check className="w-3 h-3" />
+                                        <span>Saved</span>
+                                    </button>
+                                ) : (
+                                    onAddPotentialSupplier && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onAddPotentialSupplier(supplier)}
+                                            className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-black bg-pink-600 hover:bg-pink-500 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                                        >
+                                            <PlusCircle className="w-3 h-3" />
+                                            <span>+ Add Supplier</span>
+                                        </button>
+                                    )
+                                )
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => onInquireSupplier ? onInquireSupplier(supplier) : onSelect(supplier.id)}
+                                    className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-black bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                                    title="Inquire with supplier about this specific item"
+                                >
+                                    <MessageSquare className="w-3 h-3" />
+                                    <span>Inquire</span>
                                 </button>
                             )}
                         </div>
@@ -340,12 +395,22 @@ function ViewportOptimizedMarkers({
     selectedSupplierId,
     onSelectSupplier,
     onAddPotentialSupplier,
+    onOrderOfficialSupplier,
+    onInquireSupplier,
+    getSupplierActionState,
     onVisibleCountChange,
 }: {
     suppliers: SourcedSupplierItem[];
     selectedSupplierId: string | number | null;
     onSelectSupplier: (id: string | number) => void;
     onAddPotentialSupplier?: (supplier: SourcedSupplierItem) => void;
+    onOrderOfficialSupplier?: (supplier: SourcedSupplierItem) => void;
+    onInquireSupplier?: (supplier: SourcedSupplierItem) => void;
+    getSupplierActionState?: (supplier: SourcedSupplierItem) => {
+        isOfficial: boolean;
+        offersItem: boolean;
+        isSaved: boolean;
+    };
     onVisibleCountChange: (count: number) => void;
 }) {
     const map = useMap();
@@ -407,6 +472,9 @@ function ViewportOptimizedMarkers({
                         isSelected={isSelected}
                         onSelect={onSelectSupplier}
                         onAddPotentialSupplier={onAddPotentialSupplier}
+                        onOrderOfficialSupplier={onOrderOfficialSupplier}
+                        onInquireSupplier={onInquireSupplier}
+                        actionState={getSupplierActionState ? getSupplierActionState(supplier) : undefined}
                     />
                 );
             })}
@@ -419,6 +487,9 @@ export default function SupplierSourcingMap({
     selectedSupplierId,
     onSelectSupplier,
     onAddPotentialSupplier,
+    onOrderOfficialSupplier,
+    onInquireSupplier,
+    getSupplierActionState,
     hqCoord = AIRSHIP_HQ,
     radiusKm = 10,
     isFullScreen = false,
@@ -650,6 +721,9 @@ export default function SupplierSourcingMap({
                         selectedSupplierId={selectedSupplierId}
                         onSelectSupplier={onSelectSupplier}
                         onAddPotentialSupplier={onAddPotentialSupplier}
+                        onOrderOfficialSupplier={onOrderOfficialSupplier}
+                        onInquireSupplier={onInquireSupplier}
+                        getSupplierActionState={getSupplierActionState}
                         onVisibleCountChange={handleVisibleCountUpdate}
                     />
                 </MapContainer>

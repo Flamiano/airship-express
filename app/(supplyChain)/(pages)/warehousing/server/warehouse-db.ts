@@ -473,6 +473,38 @@ export async function insertStorageZoneToDB(
     return formatZoneRow(data);
 }
 
+export async function updateStorageZoneInDB(
+    id: string,
+    updates: Partial<Omit<StorageLocationZone, "id">>
+): Promise<StorageLocationZone> {
+    const payload: any = {
+        updated_at: new Date().toISOString(),
+    };
+
+    if (updates.zone_code !== undefined) payload.zone_code = updates.zone_code.toUpperCase().trim();
+    if (updates.zone_name !== undefined) payload.zone_name = updates.zone_name.trim();
+    if (updates.building_or_hub !== undefined) payload.building_or_hub = updates.building_or_hub.trim();
+    if (updates.type !== undefined) payload.type = updates.type;
+    if (updates.total_capacity_units !== undefined) payload.total_capacity_units = Number(updates.total_capacity_units) || 0;
+    if (updates.current_utilized_units !== undefined) payload.current_utilized_units = Number(updates.current_utilized_units) || 0;
+    if (updates.aisles !== undefined) payload.aisles = updates.aisles;
+    if (updates.description !== undefined) payload.description = updates.description.trim();
+    if (updates.supervisor !== undefined) payload.supervisor = updates.supervisor ? updates.supervisor.trim() : null;
+
+    const { data, error } = await supabaseWarehouseDb
+        .from("warehouse_storage_zones")
+        .update(payload)
+        .eq("id", id)
+        .select()
+        .single();
+
+    if (error) {
+        throw new Error(error.message || "Failed to update storage zone in database.");
+    }
+
+    return formatZoneRow(data);
+}
+
 export async function deleteStorageZoneFromDB(id: string): Promise<void> {
     const { error } = await supabaseWarehouseDb
         .from("warehouse_storage_zones")
@@ -483,3 +515,4 @@ export async function deleteStorageZoneFromDB(id: string): Promise<void> {
         throw new Error(error.message || "Failed to delete storage zone from database.");
     }
 }
+

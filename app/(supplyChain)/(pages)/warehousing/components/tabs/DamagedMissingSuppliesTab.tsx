@@ -127,10 +127,11 @@ export function DamagedMissingSuppliesTab({
         loadZones();
     }, [loadIncidents, loadZones]);
 
-    // Supabase Live Realtime Subscription for damage incidents
+    // Supabase Live Realtime Subscription for damage incidents, storage zones & inventory
     useEffect(() => {
+        const channelId = `warehouse_damage_incidents_realtime_${Math.random().toString(36).substring(2, 9)}`;
         const channel = supabase
-            .channel("warehouse_damage_incidents_realtime")
+            .channel(channelId)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "warehouse_damage_incidents" },
@@ -138,12 +139,26 @@ export function DamagedMissingSuppliesTab({
                     loadIncidents();
                 }
             )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "warehouse_storage_zones" },
+                () => {
+                    loadZones();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_items" },
+                () => {
+                    onRefresh();
+                }
+            )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [loadIncidents]);
+    }, [loadIncidents, loadZones, onRefresh]);
 
     // Filter incidents
     const filteredIncidents = useMemo(() => {

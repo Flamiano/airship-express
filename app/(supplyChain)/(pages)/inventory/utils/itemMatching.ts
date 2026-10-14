@@ -91,10 +91,31 @@ export function evaluateItemMatch(
     }
 
     if (!exactMatch) {
-        exactMatch = catalog.find(
+        // Section 3: If multiple inventory records represent the same actual item, prioritize:
+        // 1. Records with an official supplier assigned (official_supplier_id)
+        // 2. Records with positive usable stock (current_stock > 0)
+        // 3. Highest ID / most recent
+        const exactMatches = catalog.filter(
             i => i.item_name.toLowerCase().trim() === nameLower ||
                  (i.item_code && i.item_code.toLowerCase() === nameLower)
-        ) || null;
+        );
+
+        if (exactMatches.length > 0) {
+            exactMatches.sort((a, b) => {
+                const aHasOfficial = Boolean((a as any).official_supplier_id);
+                const bHasOfficial = Boolean((b as any).official_supplier_id);
+                if (aHasOfficial && !bHasOfficial) return -1;
+                if (bHasOfficial && !aHasOfficial) return 1;
+
+                const aStock = Number(a.current_stock || 0);
+                const bStock = Number(b.current_stock || 0);
+                if (aStock > 0 && bStock === 0) return -1;
+                if (bStock > 0 && aStock === 0) return 1;
+
+                return Number(b.id || 0) - Number(a.id || 0);
+            });
+            exactMatch = exactMatches[0];
+        }
     }
 
     if (exactMatch) {

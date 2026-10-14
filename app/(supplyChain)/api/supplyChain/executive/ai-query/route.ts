@@ -455,30 +455,11 @@ INSTRUCTIONS:
      Focus 100% on purchase requests (${dbSnapshot.purchaseRequests.length} records) and purchase orders (${dbSnapshot.purchaseOrders.length} orders).
      Report EXACT counts: ${dbSnapshot.purchaseRequests.length} purchase requests with exact statuses and amounts, and ₱${totalPOSpend.toLocaleString()} PO spend.
      In tableData rows, list the real purchase requests with columns: ["Request #", "Department", "Supplier / Vendor", "Amount (₱)", "Status", "Date"].
-   - If the executive is querying about "parcels", "shipments", "packages", "delivery", "tracking":
-     Focus 100% of your metrics, chart, summary, and tableData STRICTLY on the parcels table!
-     ${dateFilter.hasDateFilter && dateFilter.monthName !== undefined ? `
-     * CRITICAL (SPECIFIC MONTH FILTER "${dateFilter.monthName} ${dateFilter.year || 2026}"):
-       You MUST focus 100% of your metrics, chart, summary, and tableData STRICTLY on the ${targetParcels.length} parcels created in ${dateFilter.monthName} ${dateFilter.year || 2026}!
-       DO NOT report all ${dbSnapshot.parcels.length} all-time parcels as the headline total! Report EXACTLY ${targetParcels.length} parcels for ${dateFilter.monthName}.
-       In title: "Airship Express - ${dateFilter.monthName} ${dateFilter.year || 2026} Parcels Logistics Volume"
-       In summary: Explain that in ${dateFilter.monthName} ${dateFilter.year || 2026}, exactly ${targetParcels.length} parcels were recorded in the database, with status distribution: ${Object.entries(targetParcelStatusCounts).map(([st, cnt]) => `${st}: ${cnt}`).join(', ')}.
-       In metrics: Card 1: "Total ${dateFilter.monthName} Parcels": "${targetParcels.length} Parcels", Card 2: "Picked Up": "${targetParcelStatusCounts['picked_up'] || targetParcelStatusCounts['picked up'] || 0}", Card 3: "In Transit": "${targetParcelStatusCounts['in_transit'] || targetParcelStatusCounts['in transit'] || 0}", Card 4: "Delivered": "${targetParcelStatusCounts['delivered'] || 0}".
-       In chart: Plot the exact status counts of ${dateFilter.monthName} (${JSON.stringify(targetParcelStatusCounts)}) with type 'doughnut' or 'bar'.
-       In tableData: Include real parcels from ${dateFilter.monthName} from the sample above with columns: ["Tracking Number", "Barcode", "Destination", "Status", "Created At"].
-     ` : dateFilter.isMonthlyTrend ? `
-     * CRITICAL (MONTHLY TREND / BREAKDOWN REQUESTED):
-       In chart: Plot monthly volume across all recorded months: labels: ${JSON.stringify(Object.keys(parcelMonthlyBreakdown))}, data: ${JSON.stringify(Object.values(parcelMonthlyBreakdown).map(b => b.total))} with type 'bar' or 'line'.
-       In metrics: Total Parcels (${dbSnapshot.parcels.length} Parcels), Peak Month (${Object.entries(parcelMonthlyBreakdown).sort((a,b)=>b[1].total - a[1].total)[0]?.[0] || 'May 2026'}), Monthly Average (~121 Parcels/mo).
-       In tableData: Month-by-month table with columns: ["Month", "Total Volume", "Delivered", "In Transit", "Picked Up"].
-     ` : `
-     * ALL-TIME PARCELS QUERY (NO SPECIFIC MONTH REQUESTED):
-       Report the EXACT count: ${dbSnapshot.parcels.length} active parcels in public.parcels table with exact status counts: ${JSON.stringify(parcelStatusCounts)}.
-       DO NOT report 300, 500, or any truncated number! There are EXACTLY ${dbSnapshot.parcels.length} records.
-       In metrics: Provide Total Active Parcels (${dbSnapshot.parcels.length} Parcels), and individual cards for each status: ${Object.entries(parcelStatusCounts).map(([st, cnt]) => `${st}: ${cnt}`).join(', ')}.
-       In chart: Plot the exact status counts (${JSON.stringify(parcelStatusCounts)}) with type 'doughnut' or 'bar'.
-       In tableData: Include real parcel records from the database snapshot with columns: ["Tracking Number", "Barcode", "Destination", "Status", "Created At"].
-     }`}
+   - If the executive is querying about "low stock", "out of stock", or items nearing replenishment or safety reorder thresholds:
+     Focus 100% of your metrics, chart, summary, and tableData STRICTLY on filtering inventory items where current_stock <= minimum_stock (or current_stock === 0)!
+     In tableData: List the EXACT deficit items from the database snapshot with columns: ["Item Name", "SKU / Code", "Category", "Current Stock", "Min Threshold", "Status"].
+     In chart: Plot each low-stock or out-of-stock item's current stock vs minimum safety threshold.
+     In metrics: Provide cards for "Out of Stock Items", "Low Stock SKUs", and "Healthy Inventory SKUs".
    - If the executive is querying about "user activity" or "security logs": Focus 100% on user activity (${dbSnapshot.userActivity.length} logs).
    - If the executive is querying about "trash" or "archives": Focus 100% on the trash repositories (${dbSnapshot.trash.totalArchived} archived records).
    - ONLY synthesize multiple domains if the prompt specifically asks for a multi-table or cross-table comparison (e.g. "cross-table", "all tables", "different tables in 1 chart").
@@ -662,9 +643,9 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         // Exact table names from tables.sql
         'appeals', 'appeal',
         'blocked_devices',
-        'documents', 'document', 'compliance', 'contracts', 'contract', 'sop', 'sops', 'certification', 'license', 'files',
+        'documents', 'document', 'compliance', 'contracts', 'contract', 'sop', 'sops', 'certification', 'license', 'files', 'file',
         'documents_archive',
-        'inventory_items', 'inventory', 'stock', 'item', 'items', 'sku', 'skus', 'warehouse', 'storage',
+        'inventory_items', 'inventory', 'stock', 'stocks', 'item', 'items', 'sku', 'skus', 'warehouse', 'storage', 'low_stock',
         'stock_movements', 'stock_movement', 'movements', 'stock_in', 'stock_out', 'adjustment', 'adjustments',
         'stock_in_logs',
         'warehouse_damage_incidents', 'damage_incidents', 'damage', 'damages', 'defects', 'defect', 'incident', 'incidents',
@@ -675,8 +656,6 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         'suppliers_account',
         'notifications', 'notification', 'alerts', 'alert',
         'otp_codes', 'otp',
-        'parcels', 'parcel', 'shipments', 'shipment', 'packages', 'package', 'tracking', 'dispatch',
-        'parcels_archive',
         'purchase_order_items', 'poi',
         'purchase_orders', 'purchase_order', 'po', 'pos', 'orders', 'order',
         'purchase_orders_archive',
@@ -716,7 +695,40 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         return { isOutOfScope: false, reason: "" };
     }
 
-    // 3. Known external / unknown database tables & entities
+    // 3. PRIORITY DOMAIN CHECK: If query clearly refers to core supply chain entities, it is IN SCOPE!
+    const validDomainKeywords = [
+        'inventory', 'stock', 'stocks', 'sku', 'warehouse', 'item', 'items', 'storage', 'bin', 'reorder', 'packaging', 'box', 'material', 'unit', 'threshold', 'reserve',
+        'low stock', 'out of stock', 'out of stocks', 'low-stock', 'out-of-stock', 'deficit',
+        'procurement', 'purchase', 'po', 'supplier', 'suppliers', 'vendor', 'vendors', 'spend', 'budget', 'cost', 'approval', 'commitment', 'price', 'financial',
+        'request', 'requests', 'pr',
+        'user', 'activity', 'log', 'logs', 'audit', 'event', 'security', 'login', 'action', 'session', 'role',
+        'document', 'documents', 'compliance', 'contract', 'agreement', 'file', 'files', 'certification', 'license', 'legal', 'sop',
+        'trash', 'archive', 'deleted', 'restore', 'purge',
+        'damage', 'damages', 'defective', 'defect', 'incident', 'return', 'returns', 'rma', 'quotation', 'meeting',
+        'kpi', 'rate', 'performance', 'sla', 'overview', 'metric', 'summary', 'executive', 'trend', 'analytics'
+    ];
+
+    if (validDomainKeywords.some(k => q.includes(k))) {
+        return { isOutOfScope: false, reason: "" };
+    }
+
+    // 4. Check if query matches specific valid database entities (supplier names, item names)
+    if (db.suppliers?.some((s: any) => s.name && q.includes(s.name.toLowerCase()))) {
+        return { isOutOfScope: false, reason: "" };
+    }
+    if (db.inventory?.some((i: any) => i.item_name && q.includes(i.item_name.toLowerCase()))) {
+        return { isOutOfScope: false, reason: "" };
+    }
+
+    // 5. Check if query explicitly matches known table aliases
+    for (const alias of KNOWN_TABLE_ALIASES) {
+        const aliasRegex = new RegExp(`\\b${alias}\\b`, 'i');
+        if (aliasRegex.test(q)) {
+            return { isOutOfScope: false, reason: "" };
+        }
+    }
+
+    // 6. Known external / unknown database tables & entities
     const UNKNOWN_OR_UNMODELED_TABLES = [
         'employee', 'employees', 'staff', 'hr', 'salaries', 'salary', 'payroll', 'compensation', 'benefits',
         'patient', 'patients', 'hospital', 'hospitals', 'doctor', 'doctors', 'nurse', 'nurses', 'prescriptions', 'clinical', 'medical',
@@ -733,7 +745,6 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
     const isDocumentQuery = q.includes('document') || q.includes('documents') || q.includes('receipt') || q.includes('receipts') || q.includes('file') || q.includes('files') || q.includes('compliance') || q.includes('photo') || q.includes('photos') || q.includes('contract') || q.includes('contracts');
 
     for (const ext of UNKNOWN_OR_UNMODELED_TABLES) {
-        // Skip document-related false positives like fleet vehicle photos or staff uploaders
         if (isDocumentQuery && ['vehicle', 'vehicles', 'fleet', 'truck', 'trucks', 'staff', 'employee', 'employees', 'car', 'cars'].includes(ext)) {
             continue;
         }
@@ -747,7 +758,7 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         }
     }
 
-    // 4. Regex detection for any table references (e.g. "table <name>", "<name> table", "from <name>")
+    // 7. Regex detection for any table references (e.g. "table <name>", "<name> table", "from <name>")
     const stopWords = new Set([
         'the', 'this', 'our', 'a', 'an', 'each', 'all', 'any', 'my', 'every', 'data', 'database', 'databse', 'system',
         'active', 'recent', 'current', 'populated', 'existing', 'main', 'summary', 'breakdown', 'pivot',
@@ -756,10 +767,14 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         'combine', 'combined', 'comparison', 'compare', 'cross', 'versus', 'vs', 'one', '1', 'and', 'or', 'with',
         'in', 'on', 'at', 'to', 'for', 'of', 'from', 'about', 'into', 'by', 'as', 'than',
         'can', 'you', 'give', 'me', 'show', 'list', 'tell', 'what', 'are', 'is', 'get', 'please',
+        'that', 'which', 'where', 'whose', 'who', 'whom', 'when', 'why', 'how', 'whatever',
+        'was', 'were', 'has', 'have', 'had', 'does', 'do', 'did', 'having', 'without', 'containing',
+        'holding', 'named', 'called', 'like', 'such', 'above', 'below', 'under', 'over', 'out',
+        'low', 'zero', 'high', 'critical', 'it', 'its', 'they', 'them', 'their',
         'examination', 'cross-examination', 'overview', 'details', 'information', 'info'
     ]);
 
-    // 4a. Check "table <name>" or "table: <name>" or "from table <name>"
+    // 7a. Check "table <name>" or "table: <name>" or "from table <name>"
     const tablePostMatches = q.match(/(?:from\s+table\s+|table\s+|table:\s*|from\s+)([a-z0-9_\-]+)/g);
     if (tablePostMatches) {
         for (const match of tablePostMatches) {
@@ -775,8 +790,8 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         }
     }
 
-    // 4b. Check "<name> table" (e.g., "products table", "orders_db table")
-    const tablePreMatches = q.match(/([a-z0-9_\-]+)\s+table\b/g);
+    // 7b. Check "<name> table" (e.g., "products table", "orders_db table")
+    const tablePreMatches = q.match(/([a-z0-9_\-]+)\s+table/g);
     if (tablePreMatches) {
         for (const match of tablePreMatches) {
             const candidate = match.replace(/\s+table\b/, '').trim();
@@ -791,39 +806,12 @@ function isOutOfScopeQuery(prompt: string, db: any): { isOutOfScope: boolean; re
         }
     }
 
-    // 5. Check if query matches specific valid database entities (supplier names, item names)
-    if (db.suppliers?.some((s: any) => s.name && q.includes(s.name.toLowerCase()))) {
-        return { isOutOfScope: false, reason: "" };
-    }
-    if (db.inventory?.some((i: any) => i.item_name && q.includes(i.item_name.toLowerCase()))) {
-        return { isOutOfScope: false, reason: "" };
-    }
-
-    // 6. Check for valid supply chain domain keywords (excluding generic words like 'table' or 'database')
-    const validDomainKeywords = [
-        'parcel', 'package', 'tracking', 'carrier', 'delivery', 'dispatch', 'transit', 'route', 'destination', 'cargo', 'shipping', 'consignee', 'sender', 'barcode',
-        'inventory', 'stock', 'sku', 'warehouse', 'item', 'storage', 'bin', 'reorder', 'packaging', 'box', 'material', 'unit', 'threshold', 'reserve',
-        'procurement', 'purchase', 'po', 'supplier', 'vendor', 'spend', 'budget', 'cost', 'approval', 'commitment', 'price', 'financial',
-        'user', 'activity', 'log', 'audit', 'event', 'security', 'login', 'action', 'session', 'role',
-        'document', 'compliance', 'contract', 'agreement', 'file', 'certification', 'license', 'legal', 'sop',
-        'trash', 'archive', 'deleted', 'restore', 'purge',
-        'different table', 'different tables', 'multiple table', 'multiple tables', 'all table', 'all tables', 'all the table', 'all the tables', 'across table', 'across tables', 'cross table', 'cross-table', 'compare table', 'compare tables', 'table comparison', 'tables comparison', 'schema', 'databse', 'database', 'tables in', 'cross examination', 'cross-examination', 'list tables', 'show tables',
-        'kpi', 'rate', 'performance', 'sla', 'overview', 'metric', 'summary', 'executive', 'trend', 'analytics'
-    ];
-
-    if (validDomainKeywords.some(k => q.includes(k))) {
-        return { isOutOfScope: false, reason: "" };
-    }
-
     return {
         isOutOfScope: true,
         reason: `The query "${prompt}" does not reference any known table or operational record in the Airship Express database.`
     };
 }
 
-/**
- * Robust, deterministic fallback analytical engine using exact populated database data
- */
 function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text' | 'both', db: any): AIChartResult {
     const q = prompt.toLowerCase();
 
@@ -1396,6 +1384,85 @@ function generateHeuristicAnalysis(prompt: string, displayMode: 'chart' | 'text'
             suggestedFollowUps: [
                 "Show active inventory items in stock",
                 "Audit recent user activity logs"
+            ]
+        };
+    }
+
+    // 4. LOW-STOCK & OUT-OF-STOCK INVENTORY FOCUS
+    const isLowOrOutOfStockQuery =
+        q.includes('low stock') ||
+        q.includes('out of stock') ||
+        q.includes('out of stocks') ||
+        q.includes('low-stock') ||
+        q.includes('out-of-stock') ||
+        q.includes('deficit') ||
+        q.includes('reorder') ||
+        (q.includes('stock') && (q.includes('low') || q.includes('zero') || q.includes('empty') || q.includes('critical') || q.includes('depleted')));
+
+    if (isLowOrOutOfStockQuery) {
+        const inventory: any[] = db.inventory || [];
+        const deficitItems = inventory.filter((i: any) => {
+            const stock = Number(i.current_stock) || 0;
+            const min = Number(i.minimum_stock) || 10;
+            return stock <= min;
+        });
+
+        const outOfStockItems = deficitItems.filter((i: any) => (Number(i.current_stock) || 0) === 0);
+        const lowStockItems = deficitItems.filter((i: any) => (Number(i.current_stock) || 0) > 0);
+
+        const displayDeficit = deficitItems.length > 0 ? deficitItems : inventory.slice(0, 6);
+        const labels = displayDeficit.map((i: any) => i.item_name || i.sku || 'Item');
+        const currentVals = displayDeficit.map((i: any) => Number(i.current_stock) || 0);
+        const minVals = displayDeficit.map((i: any) => Number(i.minimum_stock) || 10);
+
+        const tableRows = deficitItems.map((i: any) => {
+            const stock = Number(i.current_stock) || 0;
+            const min = Number(i.minimum_stock) || 10;
+            const status = stock === 0 ? 'OUT OF STOCK' : 'LOW STOCK';
+            return [
+                i.item_name || 'N/A',
+                i.item_code || i.sku || 'N/A',
+                i.category || 'Packaging Materials',
+                stock,
+                min,
+                status
+            ];
+        });
+
+        return {
+            id: `ai-query-${Date.now()}`,
+            prompt,
+            displayMode,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            title: "Inventory Stock Health: Low-Stock & Out-of-Stock SKUs",
+            summary: `Audit of the inventory database identified ${deficitItems.length} SKUs requiring replenishment attention (${outOfStockItems.length} completely out-of-stock, ${lowStockItems.length} nearing safety reorder thresholds). Immediate purchase orders are recommended to replenish safety stock and sustain warehouse fulfillment levels.`,
+            insights: [
+                `Total Deficit SKUs: ${deficitItems.length} items at or below safety reorder thresholds.`,
+                `Critically Depleted: ${outOfStockItems.length} items with 0 usable stock balance.`,
+                "Recommendation: Trigger immediate Purchase Orders for high-turnover packaging items."
+            ],
+            metrics: [
+                { label: "Out of Stock", value: `${outOfStockItems.length} SKUs`, change: "Critical", changeType: "down" },
+                { label: "Low Stock Alert", value: `${lowStockItems.length} SKUs`, change: "Reorder", changeType: "down" },
+                { label: "Healthy Inventory", value: `${inventory.length - deficitItems.length} SKUs`, change: "Optimal", changeType: "up" },
+                { label: "Total Catalog", value: `${inventory.length} SKUs`, change: "Tracked", changeType: "neutral" },
+            ],
+            chart: {
+                type: 'bar',
+                labels: labels.length > 0 ? labels : ['No Deficit Items'],
+                datasets: [
+                    { label: 'Current Usable Stock', data: currentVals.length > 0 ? currentVals : [0], backgroundColor: '#EC4899' },
+                    { label: 'Minimum Safety Stock', data: minVals.length > 0 ? minVals : [10], backgroundColor: '#6366F1' },
+                ]
+            },
+            tableData: {
+                headers: ["Item Name", "SKU / Code", "Category", "Current Stock", "Min Threshold", "Status"],
+                rows: tableRows.length > 0 ? tableRows : [["All Items Healthy", "N/A", "General", 100, 10, "OPTIMAL"]]
+            },
+            suggestedFollowUps: [
+                "Show all inventory items by stock category",
+                "Create purchase requests for low stock items",
+                "Audit recent inventory stock-in logs"
             ]
         };
     }

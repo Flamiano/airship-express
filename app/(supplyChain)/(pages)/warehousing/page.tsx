@@ -1,7 +1,7 @@
 // app/(supplyChain)/(pages)/warehousing/page.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { 
     Warehouse, 
@@ -27,7 +27,7 @@ import { supabaseWarehouseDb } from "./server/warehouse-db";
 import { fetchInventoryRequests } from "../inventory/server/query";
 import { checkRequestHasAvailableStock } from "./server/warehouse-stock-utils";
 
-export default function WarehousingPage() {
+function WarehousingContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -144,11 +144,11 @@ export default function WarehousingPage() {
                     const hasReleasedItems = rawItems.some((it: any) => it.is_released || it.is_issued || it.status === "Released" || it.status === "Delivered");
                     const hasApprovedItems = rawItems.some((it: any) => it.is_approved || it.is_approve || it.status === "Approved" || Number(it.approved_quantity) > 0 || Number(it.available_quantity) > 0);
                     const isCompleted = st === "completed" || st === "delivered" || st === "received" || Boolean(req.completed_at) || hasReleasedItems;
-                    const isApproved = (st === "approved" || st.includes("approved") || hasApprovedItems) && st !== "pending" && st !== "rejected";
+                    const isApproved = (st === "approved" || st.includes("approved") || st === "partially approved" || st === "partially released" || hasApprovedItems) && st !== "rejected";
 
                     const hasAvailableStock = checkRequestHasAvailableStock(req, liveInv);
 
-                    // Only put Approved requisitions that have available stocks to issue, or Completed records
+                    // Requisitions with approved items (or partially approved) and available stock, or completed records
                     if (isCompleted || (isApproved && hasAvailableStock)) {
                         mergedReqs.push(req);
                     }
@@ -167,8 +167,9 @@ export default function WarehousingPage() {
     useEffect(() => {
         loadWarehouseData();
 
+        const channelId = `warehousing_master_realtime_${Math.random().toString(36).substring(2, 9)}`;
         const channel = supabase
-            .channel("warehousing_realtime_channel")
+            .channel(channelId)
             .on("postgres_changes", { event: "*", schema: "public", table: "inventory_items" }, () => {
                 loadWarehouseData(true);
             })
@@ -187,10 +188,16 @@ export default function WarehousingPage() {
             .on("postgres_changes", { event: "*", schema: "public", table: "warehouse_storage_zones" }, () => {
                 loadWarehouseData(true);
             })
+            .on("postgres_changes", { event: "*", schema: "public", table: "supplier_return_requests" }, () => {
+                loadWarehouseData(true);
+            })
+            .on("postgres_changes", { event: "*", schema: "public", table: "stock_movements" }, () => {
+                loadWarehouseData(true);
+            })
             .subscribe();
 
         return () => {
-            channel.unsubscribe();
+            supabase.removeChannel(channel);
         };
     }, [loadWarehouseData]);
 
@@ -356,3 +363,17 @@ export default function WarehousingPage() {
         </SessionGuard>
     );
 }
+
+export default function WarehousingPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="py-12 space-y-4 max-w-7xl mx-auto px-4">
+                    <CardsSkeleton count={4} />
+                </div>
+            }
+        >
+            <WarehousingContent />
+        </Suspense>
+    );
+}

@@ -13,6 +13,7 @@ import Link from "next/link";
 import ForecastExportModal from "./components/ForecastExportModal";
 import ItemForecastModal from "./components/ItemForecastModal";
 import ItemHistoryModal from "./components/ItemHistoryModal";
+import ForecastChartDetailsModal, { type ForecastChartDomain } from "./components/ForecastChartDetailsModal";
 import ItemMovementSection, { type ItemMovementAnalyticsData } from "./components/ItemMovementSection";
 import ForecastAiSummaryPanel from "./components/ForecastAiSummaryPanel";
 
@@ -174,6 +175,7 @@ export default function ForecastPage() {
     const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
     const [detailModalItem, setDetailModalItem] = useState<ForecastItem | null>(null);
     const [historyModalItem, setHistoryModalItem] = useState<ForecastItem | null>(null);
+    const [chartModalDomain, setChartModalDomain] = useState<ForecastChartDomain | null>(null);
     const [sessionHistory, setSessionHistory] = useState<SessionForecastRun[]>([]);
 
     // 4. Chart References
@@ -862,6 +864,7 @@ export default function ForecastPage() {
                         forecastData={forecastData}
                         activeTab={activeTab}
                         onSelectTab={(tab) => setActiveTab(tab)}
+                        onOpenChartModal={(domain) => setChartModalDomain(domain as ForecastChartDomain)}
                     />
                 )}
 
@@ -1020,7 +1023,17 @@ export default function ForecastPage() {
                         )}
 
                         {/* Debossed Inset Chart Canvas Well */}
-                        <div className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#12131b]/80 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                        <div
+                            onClick={() => setChartModalDomain("dashboard")}
+                            className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#12131b]/80 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] cursor-pointer group relative"
+                        >
+                            {/* Hover Inspector Hint */}
+                            <div className="absolute top-3 right-3 z-10 opacity-70 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-white/80 dark:bg-black/60 backdrop-blur-xs border border-pink-500/30 shadow-xs flex items-center gap-1.5">
+                                    <i className="fas fa-expand text-[9px]" />
+                                    <span>Inspect Model &amp; Realtime Data</span>
+                                </span>
+                            </div>
                             {loading ? (
                                 <div className="h-72 sm:h-80 w-full flex flex-col items-center justify-center gap-3">
                                     <div className="w-10 h-10 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 animate-spin">
@@ -1195,25 +1208,28 @@ export default function ForecastPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setDetailModalItem(item)}
-                                                                className="px-2.5 py-1 rounded-full bg-pink-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-pink-400 active:scale-95 transition-all cursor-pointer"
+                                                                className="px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-pink-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-pink-400 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
                                                                 title="View Forecast"
                                                             >
-                                                                Forecast
+                                                                <i className="fas fa-chart-line text-[9px]" />
+                                                                <span className="inline sm:hidden">Forecast</span>
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setHistoryModalItem(item)}
-                                                                className="px-2.5 py-1 rounded-full bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/80 dark:border-[#2a2b38] text-[10px] font-bold shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] hover:bg-slate-200 dark:hover:bg-[#252633] active:scale-95 transition-all cursor-pointer"
+                                                                className="px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/80 dark:border-[#2a2b38] text-[10px] font-bold shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] hover:bg-slate-200 dark:hover:bg-[#252633] active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
                                                                 title="View History"
                                                             >
-                                                                History
+                                                                <i className="fas fa-clock-rotate-left text-[9px]" />
+                                                                <span className="inline sm:hidden">History</span>
                                                             </button>
                                                             <Link
                                                                 href={`/procurement?search=${encodeURIComponent(item.item_code)}`}
-                                                                className="px-2.5 py-1 rounded-full bg-sky-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(14,165,233,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-sky-400 active:scale-95 transition-all"
+                                                                className="px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-sky-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(14,165,233,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-sky-400 active:scale-95 transition-all inline-flex items-center gap-1"
                                                                 title="Review in Procurement"
                                                             >
-                                                                Procure
+                                                                <i className="fas fa-cart-shopping text-[9px]" />
+                                                                <span className="inline sm:hidden">Procure</span>
                                                             </Link>
                                                         </div>
                                                     </td>
@@ -1282,7 +1298,17 @@ export default function ForecastPage() {
                             </div>
 
                             {/* Debossed Inset Chart Canvas Well */}
-                            <div className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#12131b]/80 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                            <div
+                                onClick={() => setChartModalDomain("consumption")}
+                                className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#12131b]/80 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] cursor-pointer group relative"
+                            >
+                                {/* Hover Inspector Hint */}
+                                <div className="absolute top-3 right-3 z-10 opacity-70 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white/80 dark:bg-black/60 backdrop-blur-xs border border-indigo-500/30 shadow-xs flex items-center gap-1.5">
+                                        <i className="fas fa-expand text-[9px]" />
+                                        <span>Inspect Consumption &amp; Realtime Data</span>
+                                    </span>
+                                </div>
                                 {loading ? (
                                     <div className="h-64 sm:h-72 w-full flex flex-col items-center justify-center gap-3">
                                         <div className="w-10 h-10 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-indigo-500 animate-spin">
@@ -1388,6 +1414,7 @@ export default function ForecastPage() {
                         currentStartDate={customDateRange?.from || forecastData?.item_movement_analytics?.start_date}
                         currentEndDate={customDateRange?.to || forecastData?.item_movement_analytics?.end_date}
                         isLoading={loading || isRefreshing}
+                        onOpenChartModal={(domain) => setChartModalDomain(domain as ForecastChartDomain)}
                     />
                 )}
 
@@ -1485,6 +1512,16 @@ export default function ForecastPage() {
                     onClose={() => setHistoryModalItem(null)}
                     item={historyModalItem}
                     historicalPeriodDays={periodDays}
+                />
+
+                <ForecastChartDetailsModal
+                    isOpen={Boolean(chartModalDomain)}
+                    onClose={() => setChartModalDomain(null)}
+                    initialDomain={chartModalDomain || "dashboard"}
+                    forecastData={forecastData}
+                    periodDays={periodDays}
+                    horizonDays={horizonDays}
+                    onRefreshData={() => fetchForecast(true)}
                 />
             </div>
         </SessionGuard>

@@ -44,6 +44,7 @@ import {
     Info,
     MailCheck,
     RotateCcw,
+    RotateCw,
     Video
 } from "lucide-react";
 import { AIRSHIP_HQ, calculateDistanceKm, resolveDestinationCoords } from "../../../inventory/utils/geo-locations";
@@ -57,6 +58,8 @@ import { VendorQuotationViewModal } from "../modals/VendorQuotationViewModal";
 import { SetSupplierMeetingModal } from "../../../procurement/components/SetSupplierMeetingModal";
 import { fetchSupplierMeetingsAction, removeSupplierMeetingAction } from "../../../procurement/server/meeting-actions";
 import Cards from "../../../../components/global/Cards";
+import { createNotification } from "../../../../lib/services/notifications";
+import { normalizeItemName } from "../../../../lib/utils";
 
 // Dynamic map with SSR disabled
 const SupplierSourcingMap = dynamic(
@@ -76,6 +79,7 @@ const SupplierSourcingMap = dynamic(
 
 export interface SupplierQuotationItem {
     id: number;
+    purchase_order_id?: string | null;
     supplier_id?: number;
     supplier_name: string;
     contact_person?: string;
@@ -159,14 +163,18 @@ export interface RequestSupplierGroup {
 
 interface PotentialSuppliersTabProps {
     registeredSuppliers?: any[];
+    shortages?: any[];
     onSupplierPromoted?: () => void;
     onViewPurchaseOrder?: (order: any) => void;
+    onReorder?: (itemData: any, supplier: any, quote?: any) => void;
 }
 
 export function PotentialSuppliersTab({
     registeredSuppliers = [],
+    shortages = [],
     onSupplierPromoted,
     onViewPurchaseOrder,
+    onReorder,
 }: PotentialSuppliersTabProps) {
     const [requestGroups, setRequestGroups] = useState<RequestSupplierGroup[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -231,6 +239,52 @@ export function PotentialSuppliersTab({
     // Manually Add Potential Supplier Modal State
     const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState<boolean>(false);
     const [addModalInitialReqId, setAddModalInitialReqId] = useState<string>("");
+
+    // Helper to check if a supplier is the previous supplier that won the bid with the same item name
+    const isPreviousBidWinner = useCallback((itemName: string, supplierName?: string | null, supplierId?: string | number | null, quote?: any | null): boolean => {
+        if (!itemName || (!supplierName && !supplierId)) return false;
+
+        const normItem = normalizeItemName(itemName);
+        const sName = (supplierName || "").toLowerCase().trim();
+        const sId = supplierId ? String(supplierId) : null;
+
+        // 1. Direct quote status check: if this specific quote was awarded/won/accepted for this item
+        if (quote) {
+            const qStatus = (quote.status || "").toLowerCase();
+            const qItem = normalizeItemName(quote.item_name || "");
+            const isAwardedStatus = qStatus === "awarded" || qStatus === "accepted" || qStatus === "selected" || quote.is_awarded === true;
+            if (isAwardedStatus && (!quote.item_name || qItem === normItem)) {
+                return true;
+            }
+        }
+
+        // 2. Cross-reference against shortages records for the same item name
+        const matchedShortage = shortages.find((s: any) => normalizeItemName(s.item_name || "") === normItem);
+        if (matchedShortage) {
+            // Check awarded_supplier_name
+            if (matchedShortage.awarded_supplier_name && matchedShortage.awarded_supplier_name.toLowerCase().trim() === sName) {
+                return true;
+            }
+            // Check previous_supplier or previous_supplier_id
+            if (matchedShortage.previous_supplier && matchedShortage.previous_supplier.toLowerCase().trim() === sName) {
+                return true;
+            }
+            if (sId && matchedShortage.previous_supplier_id && String(matchedShortage.previous_supplier_id) === sId) {
+                return true;
+            }
+            // Check covering purchase orders
+            if (Array.isArray(matchedShortage.covering_purchase_orders)) {
+                const hasCoveringPO = matchedShortage.covering_purchase_orders.some((po: any) => {
+                    const poSupName = (po.supplier_name || "").toLowerCase().trim();
+                    const poSupId = po.supplier_id ? String(po.supplier_id) : null;
+                    return (poSupName && poSupName === sName) || (sId && poSupId && poSupId === sId);
+                });
+                if (hasCoveringPO) return true;
+            }
+        }
+
+        return false;
+    }, [shortages]);
 
     // Fetch real potential suppliers and live purchase requests from Supabase
     const loadPotentialSuppliersData = useCallback(async (silent: boolean = false) => {
@@ -306,23 +360,52 @@ export function PotentialSuppliersTab({
                 console.warn("Could not fetch supplier_quotations:", qErr);
             }
 
-            // 3c. Fetch active draft purchase orders to get updated requisition quantities from Sourcing
+            // 3c. Fetch purchase orders to manage quotation lifecycle visibility and updated requisition quantities
             let draftPOs: any[] = [];
+            let allPosList: any[] = [];
+            const deliveredOrRejectedQuoteIds = new Set<number>();
+            const activeOrderQuoteIds = new Set<number>();
+
             try {
                 const { data: posData, error: poErr } = await supabase
                     .from("purchase_orders")
-                    .select("id, request_id, po_number, status, items, notes, updated_at, created_at")
-                    .neq("status", "cancelled")
+                    .select("id, request_id, po_number, status, items, notes, suppliers_qoutation_bid, updated_at, created_at")
                     .order("created_at", { ascending: false });
+
                 if (!poErr && posData && Array.isArray(posData)) {
-                    draftPOs = posData.filter((po: any) => {
+                    allPosList = posData;
+                    posData.forEach((po: any) => {
                         const st = String(po.status || "").toLowerCase().trim();
-                        return st === "draft";
+                        if (st === "draft") {
+                            draftPOs.push(po);
+                        }
+                        const qBid = po.suppliers_qoutation_bid ? Number(po.suppliers_qoutation_bid) : null;
+                        if (qBid) {
+                            if (st === "delivered" || st === "completed" || st === "rejected" || st === "cancelled") {
+                                deliveredOrRejectedQuoteIds.add(qBid);
+                            } else {
+                                activeOrderQuoteIds.add(qBid);
+                            }
+                        }
                     });
                 }
             } catch (poErr) {
-                console.warn("Could not fetch draft purchase_orders:", poErr);
+                console.warn("Could not fetch purchase_orders:", poErr);
             }
+
+            // Quotation Lifecycle Visibility: Concluded quotes (delivered or rejected) that are not part of an active order
+            // are removed from active actionable sourcing work so completed/rejected orders don't clutter the sourcing pipeline.
+            quotationsList = quotationsList.filter((quote) => {
+                const st = (quote.status || "").toLowerCase().trim();
+                if (st === "rejected" || st === "declined" || st === "cancelled") {
+                    return false;
+                }
+                const qId = Number(quote.id);
+                if (deliveredOrRejectedQuoteIds.has(qId) && !activeOrderQuoteIds.has(qId)) {
+                    return false;
+                }
+                return true;
+            });
 
             // 3b. Fetch real scheduled or pending supplier meetings using server action (bypasses RLS) + client fallback
             let fetchedMeetings: any[] = [];
@@ -801,7 +884,36 @@ export function PotentialSuppliersTab({
                 }
             });
 
-            const assembled = Array.from(groupsMap.values());
+            const rawAssembled = Array.from(groupsMap.values());
+            // Filter out completed / delivered / rejected sourcing work where no active sourcing demand remains
+            const assembled = rawAssembled.filter((group) => {
+                const gSt = (group.status || "").toLowerCase().trim();
+                if (gSt === "delivered" || gSt === "completed" || gSt === "cancelled" || gSt === "rejected" || gSt === "fulfilled") {
+                    return false;
+                }
+                const activeQuotes = (group.quotations || []).filter(q => !deliveredOrRejectedQuoteIds.has(Number(q.id)));
+                const hasPendingLeads = (group.potentialSuppliers || []).length > 0;
+
+                const hasDeliveredPo = allPosList.some((po: any) => {
+                    const poSt = String(po.status || "").toLowerCase().trim();
+                    if (poSt !== "delivered" && po.fully_received !== true) return false;
+                    const poReqId = String(po.request_id || "").toLowerCase().trim();
+                    const gId = group.requestId.toLowerCase().trim();
+                    const gNum = group.requestNumber.toLowerCase().trim();
+                    return poReqId && (poReqId === gId || poReqId === gNum);
+                });
+
+                if (hasDeliveredPo && activeQuotes.length === 0) {
+                    return false;
+                }
+
+                if (!hasPendingLeads && (group.quotations || []).length === 0) {
+                    return false;
+                }
+
+                return true;
+            });
+
             setRequestGroups(assembled);
             setExpandedGroupKeys((prev) => {
                 if (prev.size === 0) {
@@ -862,6 +974,20 @@ export function PotentialSuppliersTab({
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "supplier_meetings" },
+                () => {
+                    loadPotentialSuppliersData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_requests" },
+                () => {
+                    loadPotentialSuppliersData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_items" },
                 () => {
                     loadPotentialSuppliersData(true);
                 }
@@ -1010,7 +1136,25 @@ export function PotentialSuppliersTab({
             const totalAmt = Number(quote.total_amount) || (calculatedTotal > 0 ? calculatedTotal : (qty * unitPrice));
             const category = (quote as any).category || targetGroup?.category || supplier.category || "General Supplies";
 
-            // 1. Create Purchase Order in Supabase purchase_orders with complete schema fields
+            // 1. Clean up any unawarded, unapproved temporary sourcing draft for this request/item so it doesn't linger
+            try {
+                if (targetPrId) {
+                    await supabase
+                        .from("purchase_orders")
+                        .delete()
+                        .eq("request_id", targetPrId)
+                        .ilike("status", "draft")
+                        .is("suppliers_qoutation_bid", null)
+                        .is("admin_approved_at", null);
+                }
+            } catch (cleanupErr) {
+                console.warn("Notice: could not clean up temporary draft PO:", cleanupErr);
+            }
+
+            let finalPoId: string = "";
+            let finalPoNumber: string = poNumber;
+
+            // 2. ALWAYS insert a separate, brand new Purchase Order record for this awarded bid
             const poData: Record<string, any> = {
                 po_number: poNumber,
                 request_id: targetPrId,
@@ -1058,41 +1202,71 @@ export function PotentialSuppliersTab({
                 force_updated_by: null,
                 force_updated_at: null,
                 force_reason: null,
-                admin_approval: "Approved",
-                admin_approved_at: new Date().toISOString(),
-                admin_approved_by: currentAdminId,
+                admin_approval: "Pending", // Awaiting admin approval
+                admin_approved_at: null,
+                admin_approved_by: null,
                 financial_approval: "Pending",
                 financial_approved_at: null,
                 financial_approved_by: null,
             };
 
-            const { error: poInsertErr } = await supabase
+            const { data: insertedPO, error: poInsertErr } = await supabase
                 .from("purchase_orders")
-                .insert([poData]);
+                .insert([poData])
+                .select("id, po_number")
+                .single();
 
             if (poInsertErr) {
-                console.warn("Initial PO insert failed (likely status or column constraint). Retrying with safe parameters:", poInsertErr);
-                // Fallback 1: Try with status "Draft" if DB constraint requires Draft
+                console.warn("Initial PO insert failed. Retrying with safe parameters:", poInsertErr);
                 const fallbackData1 = { ...poData, status: "Draft" };
-                const { error: retryErr1 } = await supabase.from("purchase_orders").insert([fallbackData1]);
+                const { data: fbPO1, error: retryErr1 } = await supabase
+                    .from("purchase_orders")
+                    .insert([fallbackData1])
+                    .select("id, po_number")
+                    .single();
                 
                 if (retryErr1) {
                     console.warn("Retry 1 failed. Trying without foreign key IDs:", retryErr1);
-                    // Fallback 2: Remove foreign keys
                     const fallbackData2 = { ...poData, status: "Draft", supplier_id: null, request_id: null, suppliers_qoutation_bid: null };
-                    const { error: retryErr2 } = await supabase.from("purchase_orders").insert([fallbackData2]);
+                    const { data: fbPO2, error: retryErr2 } = await supabase
+                        .from("purchase_orders")
+                        .insert([fallbackData2])
+                        .select("id, po_number")
+                        .single();
                     if (retryErr2) {
                         console.error("Critical: Failed to insert PO:", retryErr2);
                         toast.error(`Could not create Purchase Order: ${retryErr2.message}`);
-                    } else {
-                        console.info("PO created successfully with safe fallback.");
+                    } else if (fbPO2) {
+                        finalPoId = String(fbPO2.id);
+                        finalPoNumber = fbPO2.po_number || poNumber;
                     }
-                } else {
-                    console.info("PO created successfully as Draft.");
+                } else if (fbPO1) {
+                    finalPoId = String(fbPO1.id);
+                    finalPoNumber = fbPO1.po_number || poNumber;
                 }
-            } else {
-                console.info("PO created successfully:", poNumber);
+            } else if (insertedPO) {
+                finalPoId = String(insertedPO.id);
+                finalPoNumber = insertedPO.po_number || poNumber;
             }
+
+            // Create notification for Admin to review and approve the purchase order
+            if (finalPoId) {
+                try {
+                    await createNotification({
+                        creatorName: "Procurement System",
+                        creatorEmail: "procurement@airship.com",
+                        title: "Purchase Order Awaiting Admin Review",
+                        message: `Purchase Order ${finalPoNumber} for ${supplier.name} (${itemName}) has been awarded and is awaiting review and admin approval.`,
+                        type: "purchase_order",
+                        role: ["Admin", "Super Admin", "Executive"],
+                        poRequestId: finalPoId,
+                        link: `/procurement?stage=3&po_id=${finalPoId}`,
+                    });
+                } catch (notifErr) {
+                    console.warn("Could not dispatch admin PO review notification:", notifErr);
+                }
+            }
+
 
             // Update associated purchase request if applicable
             if (targetPrId) {
@@ -1118,16 +1292,29 @@ export function PotentialSuppliersTab({
                 }
             }
 
-            // 2. Update winning quotation status in supplier_quotations table
+            // 2. Update winning quotation status and link purchase_order_id in supplier_quotations table
+            const winningQuotePayload: Record<string, any> = {
+                status: "accepted",
+            };
+            if (finalPoId) {
+                winningQuotePayload.purchase_order_id = finalPoId;
+            }
             const { error: quoteErr } = await supabase
                 .from("supplier_quotations")
-                .update({
-                    status: "accepted",
-                })
+                .update(winningQuotePayload)
                 .eq("id", quote.id);
 
             if (quoteErr) {
-                console.error("Error updating quote status:", quoteErr);
+                // If purchase_order_id column does not exist yet in DB schema, fallback to status only gracefully
+                if (winningQuotePayload.purchase_order_id) {
+                    console.warn("Retrying quotation update without purchase_order_id (column not yet in schema cache):", quoteErr.message);
+                    await supabase
+                        .from("supplier_quotations")
+                        .update({ status: "accepted" })
+                        .eq("id", quote.id);
+                } else {
+                    console.error("Error updating quote status:", quoteErr);
+                }
             }
 
             // 3. Keep winning supplier in suppliers table as non-active (do NOT set is_active: true)
@@ -1153,7 +1340,7 @@ export function PotentialSuppliersTab({
                 const targetId = supplier.dbSupplierId || supplier.id;
                 const updatePayload: Record<string, any> = {
                     is_active: false,
-                    notes: `Selected Bid Winner for Requisition #${quote.request_number || targetGroup?.requestNumber || ''} (${itemName}) - PO #${poNumber} Issued on ${new Date().toLocaleDateString()}`,
+                    notes: `Selected Bid Winner for Requisition #${quote.request_number || targetGroup?.requestNumber || ''} (${itemName}) - PO #${finalPoNumber} Issued on ${new Date().toLocaleDateString()}`,
                 };
                 if (winnerEmail) updatePayload.email = winnerEmail;
                 if (winnerContact) updatePayload.contact_person = winnerContact;
@@ -1247,28 +1434,51 @@ export function PotentialSuppliersTab({
                 }
             }
 
-            // 6. Remove unselected potential suppliers from Database and reject competing quotes
+            // 6. Delete unselected potential suppliers (remove unselected temporary leads for this requisition)
             for (const other of otherSuppliers) {
                 if (other.dbSupplierId || (other.id && !isNaN(Number(other.id)))) {
-                    const supIdToDelete = other.dbSupplierId || Number(other.id);
+                    const supIdToRemove = other.dbSupplierId || Number(other.id);
                     try {
+                        // Delete unselected temporary leads (inactive suppliers) so they don't linger in potential suppliers
                         await supabase
                             .from("suppliers")
                             .delete()
-                            .eq("id", supIdToDelete);
+                            .eq("id", supIdToRemove)
+                            .eq("is_active", false);
                     } catch (delErr) {
-                        console.warn("Notice deleting unselected potential supplier:", delErr);
+                        console.warn("Notice removing unselected potential supplier:", delErr);
                     }
                 }
             }
 
-            // Update other quotations for this requisition to rejected status
+            // Delete competing/rejected quotations for this requisition from supplier_quotations table
             if (quote.request_number) {
-                await supabase
-                    .from("supplier_quotations")
-                    .update({ status: "rejected" })
-                    .neq("id", quote.id)
-                    .eq("request_number", quote.request_number);
+                try {
+                    await supabase
+                        .from("supplier_quotations")
+                        .delete()
+                        .neq("id", quote.id)
+                        .eq("request_number", quote.request_number);
+                } catch (delQuoteErr) {
+                    console.warn("Notice deleting rejected quotations by request_number:", delQuoteErr);
+                }
+            }
+
+            // Also delete any other competing quotations tracked in targetGroup
+            if (targetGroup?.quotations && Array.isArray(targetGroup.quotations)) {
+                const otherQuoteIds = targetGroup.quotations
+                    .map((q) => q.id)
+                    .filter((id) => id && id !== quote.id);
+                if (otherQuoteIds.length > 0) {
+                    try {
+                        await supabase
+                            .from("supplier_quotations")
+                            .delete()
+                            .in("id", otherQuoteIds);
+                    } catch (delOtherErr) {
+                        console.warn("Notice deleting other quotations by id:", delOtherErr);
+                    }
+                }
             }
 
             // 7. Auto-provision Supplier Portal account and email login credentials to winning vendor
@@ -1304,7 +1514,13 @@ export function PotentialSuppliersTab({
                 }
             }
 
-            // 8. Update local state immediately: keep only the selected supplier in this group
+            // 8. Update local state immediately: keep only the selected supplier in this group and only the winning quotation
+            const winningQuoteObj: SupplierQuotationItem = {
+                ...quote,
+                status: "accepted",
+                purchase_order_id: finalPoId,
+            };
+
             setRequestGroups((prevGroups) =>
                 prevGroups.map((g) => {
                     const isTargetGroup =
@@ -1321,26 +1537,25 @@ export function PotentialSuppliersTab({
                         )
                         .map((s) => ({
                             ...s,
-                            notes: `Selected Bid Winner for Requisition #${quote.request_number || g.requestNumber} (${itemName}) - PO #${poNumber} Issued on ${new Date().toLocaleDateString()}`,
-                            submittedQuote: s.submittedQuote
-                                ? { ...s.submittedQuote, status: "accepted" as const }
-                                : quote,
+                            notes: `Selected Bid Winner for Requisition #${quote.request_number || g.requestNumber} (${itemName}) - PO #${finalPoNumber} Issued on ${new Date().toLocaleDateString()}`,
+                            submittedQuote: winningQuoteObj,
                         }));
 
                     return {
                         ...g,
                         potentialSuppliers: updatedPotentialSuppliers,
+                        quotations: [winningQuoteObj],
                     };
                 })
             );
 
             if (accountCreated) {
                 toast.success(
-                    `Purchase Order #${poNumber} created & Bid awarded to "${supplier.name}"! Supplier Portal account created${accountEmailSent ? ` (credentials emailed to ${winnerEmail})` : ""}.`,
+                    `Purchase Order #${finalPoNumber} updated & submitted for Admin Review! Bid awarded to "${supplier.name}". Supplier Portal account created${accountEmailSent ? ` (credentials emailed to ${winnerEmail})` : ""}.`,
                     { duration: 6000 }
                 );
             } else {
-                toast.success(`Purchase Order #${poNumber} created! Bid awarded to "${supplier.name}". Other suppliers were notified and removed.`);
+                toast.success(`Purchase Order #${finalPoNumber} updated & submitted for Admin Review! Bid awarded to "${supplier.name}". Other suppliers were notified and removed.`);
             }
             setAwardConfirmation(null);
             onSupplierPromoted?.();
@@ -2038,6 +2253,14 @@ export function PotentialSuppliersTab({
                                                 quotations={group.quotations}
                                                 onAwardBid={handleAwardBid}
                                                 awardingQuoteId={awardingQuoteId}
+                                                isPreviousWinner={(quote, sup) => 
+                                                    isPreviousBidWinner(group.itemName, sup?.name || quote.supplier_name, sup?.dbSupplierId || sup?.id || quote.supplier_id, quote)
+                                                }
+                                                onReorder={(grp, quote, sup) => {
+                                                    if (onReorder) {
+                                                        onReorder(grp, sup, quote);
+                                                    }
+                                                }}
                                             />
                                         )}
 
@@ -2363,6 +2586,19 @@ export function PotentialSuppliersTab({
                                                                         <Eye className="w-3.5 h-3.5" />
                                                                         <span>Review Vendor Quotation &amp; Files</span>
                                                                     </button>
+
+                                                                    {/* Reorder Button - ONLY shown to previous supplier that won the bid with the same item name */}
+                                                                    {onReorder && supplier.submittedQuote && isPreviousBidWinner(group.itemName, supplier.name, supplier.dbSupplierId || supplier.id, supplier.submittedQuote) && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => onReorder(group, supplier, supplier.submittedQuote)}
+                                                                            className="w-full mt-1.5 py-2 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[-2px_-2px_6px_rgba(255,255,255,0.4),_2px_2px_8px_rgba(37,99,235,0.35)] active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.2)]"
+                                                                            title="Reorder remaining deficit directly from the previous winning supplier"
+                                                                        >
+                                                                            <RotateCw className="w-3.5 h-3.5" />
+                                                                            <span>Reorder Remaining Deficit</span>
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             ) : (
                                                                 /* Structured Non-Stretching Outreach & RFQ Panel for Sourced Leads Awaiting Quote */

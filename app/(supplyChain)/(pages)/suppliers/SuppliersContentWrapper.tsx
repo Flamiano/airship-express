@@ -20,14 +20,17 @@ import { SupplierAccountModal } from "./components/modals/SupplierAccountModal";
 import { SupplierMessageModal } from "./components/modals/SupplierMessageModal";
 import { ITEMS_PER_PAGE, PO_ITEMS_PER_PAGE, Supplier } from "./types";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { Info, Video } from "lucide-react";
+import { Info, Video, ShieldAlert } from "lucide-react";
+import { InactiveUnofficialSuppliersTab } from "./components/tables/InactiveUnofficialSuppliersTab";
 
 export default function SuppliersContentWrapper() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
 
-    const parseTabParam = (tabStr: string | null): "registered" | "documents" | "meetings" => {
+    type SupplierTabType = "registered" | "documents" | "meetings" | "inactive-unofficial";
+
+    const parseTabParam = (tabStr: string | null): SupplierTabType => {
         if (!tabStr) return "registered";
         const normalized = tabStr.toLowerCase().trim();
         if (
@@ -47,11 +50,19 @@ export default function SuppliersContentWrapper() {
         ) {
             return "meetings";
         }
+        if (
+            normalized === "inactive" ||
+            normalized === "inactive-unofficial" ||
+            normalized === "unofficial" ||
+            normalized === "unverified"
+        ) {
+            return "inactive-unofficial";
+        }
         return "registered";
     };
 
     const urlTab = searchParams.get("tab");
-    const [activeTab, setActiveTab] = React.useState<"registered" | "documents" | "meetings">(() => parseTabParam(urlTab));
+    const [activeTab, setActiveTab] = React.useState<SupplierTabType>(() => parseTabParam(urlTab));
     const [isTabSwitching, setIsTabSwitching] = React.useState(false);
     const [activeMeetingsCount, setActiveMeetingsCount] = React.useState<number>(0);
 
@@ -137,7 +148,7 @@ export default function SuppliersContentWrapper() {
     const [messageSupplier, setMessageSupplier] = React.useState<Supplier | null>(null);
 
     // Smooth tab switching handler that updates the ?tab= URL param
-    const handleTabChange = (tab: "registered" | "documents" | "meetings") => {
+    const handleTabChange = (tab: SupplierTabType) => {
         if (tab === activeTab) return;
         setActiveTab(tab);
 
@@ -244,6 +255,30 @@ export default function SuppliersContentWrapper() {
                             </span>
                         )}
                     </button>
+
+                    <button
+                        type="button"
+                        onClick={() => handleTabChange("inactive-unofficial")}
+                        className={`px-4 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-2 relative cursor-pointer active:scale-95 ${
+                            activeTab === "inactive-unofficial"
+                                ? "bg-pink-600 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.4)]"
+                                : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)]"
+                        }`}
+                    >
+                        <ShieldAlert className="w-3.5 h-3.5 text-inherit" />
+                        <span>Inactive &amp; Unofficial Suppliers</span>
+                        {potentialCount > 0 && (
+                            <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                                    activeTab === "inactive-unofficial"
+                                        ? "bg-white text-pink-600 shadow-sm"
+                                        : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300"
+                                }`}
+                            >
+                                {potentialCount}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
                 {/* Tab 1: Registered Suppliers View */}
@@ -342,6 +377,16 @@ export default function SuppliersContentWrapper() {
                         <SupplierMeetingsTab
                             suppliers={suppliers}
                             onMeetingCountChange={setActiveMeetingsCount}
+                        />
+                    </div>
+                )}
+
+                {/* Tab 4: Inactive & Unofficial Suppliers */}
+                {activeTab === "inactive-unofficial" && (
+                    <div className="animate-in fade-in duration-150">
+                        <InactiveUnofficialSuppliersTab
+                            onRefreshParent={fetchSuppliers}
+                            onViewPurchaseOrder={handleViewPurchaseOrder}
                         />
                     </div>
                 )}

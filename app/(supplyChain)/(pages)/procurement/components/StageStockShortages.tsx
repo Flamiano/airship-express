@@ -23,13 +23,18 @@ import {
     Calendar,
     Phone,
     Mail,
-    User
+    User,
+    ChevronDown,
+    ChevronRight,
+    Layers,
+    RotateCw
 } from "lucide-react";
 import { StockShortageItem } from "../types/index";
 import Cards from "../../../components/global/Cards";
 import { Pagination } from "../../../components/global/pagination";
 import Portal from "../../../components/client/Portal";
 import { AppButton } from "../../../components/ui/AppButton";
+import { CrudActionButton } from "../../../components/ui/CrudActionButton";
 
 interface StageStockShortagesProps {
     shortages: StockShortageItem[];
@@ -38,6 +43,7 @@ interface StageStockShortagesProps {
     onRefresh: () => void;
     onMessageSupplier?: (supplier: any, shortageItem?: StockShortageItem) => void;
     onCreatePO?: (shortageItem: StockShortageItem, supplier?: any) => void;
+    onOrderAgainFromSameSupplier?: (shortageItem: StockShortageItem, supplierName: string) => void;
 }
 
 const formatCurrency = (amount: number) => `₱${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -49,6 +55,7 @@ export function StageStockShortages({
     onRefresh,
     onMessageSupplier,
     onCreatePO,
+    onOrderAgainFromSameSupplier,
 }: StageStockShortagesProps) {
     // 1. Search Debouncing State
     const [searchInput, setSearchInput] = useState("");
@@ -63,6 +70,21 @@ export function StageStockShortages({
     // 3. View Details Modal State
     const [viewItem, setViewItem] = useState<StockShortageItem | null>(null);
 
+    // 4. Expandable Detail Rows for Grouped Items State
+    const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(new Set());
+
+    const toggleRowExpansion = (key: string) => {
+        setExpandedRowKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    };
+
     // Debounce search input by 300ms
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -75,9 +97,27 @@ export function StageStockShortages({
 
     // Metrics calculations
     const metrics = useMemo(() => {
-        const outOfStockCount = shortages.filter((s) => s.current_stock === 0 || s.status === "out-of-stock").length;
-        const lowStockCount = shortages.filter((s) => s.current_stock > 0 && (s.current_stock <= s.minimum_stock || s.status === "low-stock")).length;
-        const totalShortageCost = shortages.reduce((sum, s) => sum + (Number(s.estimated_reorder_cost) || 0), 0);
+        const outOfStockCount = shortages.filter((s) => {
+            const stock = s.usable_stock !== undefined ? s.usable_stock : s.current_stock;
+            return stock === 0 || s.status === "out-of-stock";
+        }).length;
+        const lowStockCount = shortages.filter((s) => {
+            const stock = s.usable_stock !== undefined ? s.usable_stock : s.current_stock;
+            return stock > 0 && (stock <= s.minimum_stock || s.status === "low-stock");
+        }).length;
+        const totalShortageCost = shortages.reduce((sum, s) => {
+            const hasAnySupplier = Boolean(
+                s.has_official_active_supplier ||
+                s.matched_active_supplier?.name ||
+                s.supplier ||
+                s.previous_supplier
+            );
+            if (!hasAnySupplier) return sum;
+            const remDeficit = s.remaining_deficit !== undefined ? s.remaining_deficit : s.deficit;
+            const unitPrice = Number(s.purchase_price || s.previous_unit_price || 0);
+            const cost = unitPrice > 0 ? (remDeficit * unitPrice) : (Number(s.estimated_reorder_cost) || 0);
+            return sum + cost;
+        }, 0);
 
         return {
             totalShortages: shortages.length,
@@ -109,13 +149,23 @@ export function StageStockShortages({
                 (item.source_department || "").toLowerCase().includes(q) ||
                 (item.supplier || "").toLowerCase().includes(q) ||
                 (item.previous_supplier || "").toLowerCase().includes(q) ||
-                (item.storage_location || "").toLowerCase().includes(q);
+                (item.storage_location || "").toLowerCase().includes(q) ||
+                (item.related_requests && item.related_requests.some((r) =>
+                    (r.request_number || "").toLowerCase().includes(q) ||
+                    (r.item_name || "").toLowerCase().includes(q) ||
+                    (r.department || "").toLowerCase().includes(q)
+                )) ||
+                (item.covering_purchase_orders && item.covering_purchase_orders.some((po) =>
+                    (po.po_number || "").toLowerCase().includes(q) ||
+                    (po.supplier_name || "").toLowerCase().includes(q)
+                ));
 
             const matchesCategory =
                 categoryFilter === "all" ||
                 (item.category || "").toLowerCase() === categoryFilter.toLowerCase();
 
-            const isZero = item.current_stock === 0 || item.status === "out-of-stock";
+            const stock = item.usable_stock !== undefined ? item.usable_stock : item.current_stock;
+            const isZero = stock === 0 || item.status === "out-of-stock";
             const matchesStatus =
                 statusFilter === "all" ||
                 (statusFilter === "out-of-stock" && isZero) ||
@@ -282,22 +332,25 @@ export function StageStockShortages({
 
                 {/* Structured Multi-Column Table */}
                 <div className="overflow-x-auto rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)]">
-                    <table className="min-w-[1100px] w-full text-left border-collapse text-xs table-fixed">
+                    <table className="min-w-[1380px] w-full text-left border-collapse text-xs table-fixed">
                         <thead>
                             <tr className="bg-[#e2e8f0]/80 dark:bg-[#10121d] text-slate-500 dark:text-slate-400 font-extrabold uppercase tracking-wider text-[10px] border-b border-slate-200/70 dark:border-white/[0.06]">
-                                <th className="py-3 px-4 w-[240px]">Item Code &amp; Name</th>
-                                <th className="py-3 px-4 w-[160px]">Source Request / Dept</th>
-                                <th className="py-3 px-4 w-[200px]">Supplier &amp; Sourcing</th>
-                                <th className="py-3 px-4 w-[150px]">Category &amp; Location</th>
-                                <th className="py-3 px-4 w-[170px]">Stock Level &amp; Deficit</th>
-                                <th className="py-3 px-4 w-[130px]">Est. Cost</th>
-                                <th className="py-3 px-4 text-right w-[170px]">Action</th>
+                                <th className="py-3 px-4 w-[230px]">Item Code &amp; Name</th>
+                                <th className="py-3 px-3 w-[150px]">Source Request / Dept</th>
+                                <th className="py-3 px-3 w-[180px]">Supplier &amp; Sourcing</th>
+                                <th className="py-3 px-3 w-[130px]">Category</th>
+                                <th className="py-3 px-3 w-[120px]">Location</th>
+                                <th className="py-3 px-3 w-[130px]">Stock Level</th>
+                                <th className="py-3 px-3 w-[120px]">Approved Demand</th>
+                                <th className="py-3 px-3 w-[130px]">Deficit</th>
+                                <th className="py-3 px-3 w-[120px]">Est. Cost</th>
+                                <th className="py-3 px-4 text-right w-[160px]">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
                             {paginatedShortages.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                                    <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
                                         <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-pink-500 opacity-80" />
                                         <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No Shortages Found</p>
                                         <p className="text-[11px] mt-0.5">All warehouse parts and supplies match your filter or are within safe inventory levels.</p>
@@ -305,224 +358,551 @@ export function StageStockShortages({
                                 </tr>
                             ) : (
                                 paginatedShortages.map((item, index) => {
-                                    const isZero = item.current_stock === 0 || item.status === "out-of-stock";
-                                    const stockPercent = item.minimum_stock > 0
-                                        ? Math.min(100, Math.round((item.current_stock / item.minimum_stock) * 100))
-                                        : 0;
+                                    const rowKey = String(item.id || item.item_name || index);
+                                    const isExpanded = expandedRowKeys.has(rowKey);
 
+                                    const approvedDemand = item.total_approved_demand ?? item.requested_demand ?? item.deficit;
+                                    const usableStock = item.usable_stock !== undefined ? item.usable_stock : item.current_stock;
+                                    const isPoDelivered =
+                                        item.po_status_indicator === 'Delivered' ||
+                                        (item.covering_purchase_orders && item.covering_purchase_orders.length > 0 && item.covering_purchase_orders.every(po => {
+                                            const s = (po.status || "").toLowerCase();
+                                            return s === "delivered" || s === "completed" || s === "received" || s === "fulfilled";
+                                        }));
+                                    const poCoverage = isPoDelivered ? 0 : (item.active_po_coverage ?? item.covered_quantity ?? 0);
+                                    const remDeficit = item.remaining_deficit !== undefined ? item.remaining_deficit : item.deficit;
+
+                                    const isZero = usableStock === 0 || item.status === "out-of-stock";
                                     const supplierName = item.matched_active_supplier?.name || item.supplier || item.previous_supplier || "";
+                                    const hasExpandableContent = (item.related_requests && item.related_requests.length > 0) || (item.covering_purchase_orders && item.covering_purchase_orders.length > 0);
 
                                     return (
-                                        <tr
-                                            key={`${item.id}-${item.item_code}-${index}`}
-                                            className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors"
-                                        >
-                                            {/* Column 1: Item Code & Name (Truncated with Ellipsis) */}
-                                            <td className="py-3.5 px-4 w-[240px]">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setViewItem(item)}
-                                                    className="text-left font-bold text-slate-900 dark:text-white hover:text-pink-600 dark:hover:text-pink-400 transition-colors block cursor-pointer group"
-                                                    title={`Click to view full details for ${item.item_name}`}
-                                                >
-                                                    <span className="truncate block max-w-[210px] text-xs group-hover:underline">
-                                                        {item.item_name}
-                                                    </span>
-                                                </button>
+                                        <React.Fragment key={rowKey}>
+                                            <tr className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors border-b border-slate-200/60 dark:divide-white/[0.05]">
+                                                {/* Column 1: Item Code & Name (With Expandable Toggle) */}
+                                                <td className="py-3.5 px-4 w-[230px]">
+                                                    <div className="flex items-start gap-2">
+                                                        {hasExpandableContent ? (
+                                                             <button
+                                                                type="button"
+                                                                onClick={() => toggleRowExpansion(rowKey)}
+                                                                className={`mt-0.5 p-1 rounded-md transition-all cursor-pointer ${
+                                                                    isExpanded
+                                                                        ? "bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 rotate-90"
+                                                                        : "hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500"
+                                                                }`}
+                                                                title={isExpanded ? "Collapse grouped item breakdown" : "Expand grouped requests and purchase orders"}
+                                                                aria-label="Toggle details"
+                                                            >
+                                                                <ChevronRight className="w-3.5 h-3.5 transition-transform" />
+                                                            </button>
+                                                        ) : (
+                                                            <div className="w-5 shrink-0" />
+                                                        )}
 
-                                                <div className="flex items-center gap-1.5 mt-1">
-                                                    <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                                                        {item.item_code}
-                                                    </span>
-
-                                                    {item.is_new_item && (
-                                                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-extrabold uppercase tracking-wide">
-                                                            New
-                                                        </span>
-                                                    )}
-
-                                                    {item.is_bid_awarded && (
-                                                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-0.5">
-                                                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
-                                                            Awarded
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Column 2: Source Request / Department */}
-                                            <td className="py-3.5 px-4 w-[160px]">
-                                                {item.source_request ? (
-                                                    <div>
-                                                        <span className="inline-block px-2 py-0.5 rounded-lg bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-mono font-bold text-[10px] border border-pink-200/50 dark:border-pink-900/40">
-                                                            {item.source_request.startsWith("#") ? item.source_request : `#${item.source_request}`}
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block max-w-[130px] mt-0.5" title={item.source_department || "Staff Request"}>
-                                                            {item.source_department || "Department Staff"}
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-slate-400 dark:text-slate-500 text-[11px] font-medium">
-                                                        <span>Warehouse Buffer</span>
-                                                        <span className="text-[10px] block text-slate-400">Direct Reorder</span>
-                                                    </div>
-                                                )}
-                                            </td>
-
-                                            {/* Column 3: Supplier & Sourcing */}
-                                            <td className="py-3.5 px-4 w-[200px]">
-                                                {item.has_official_active_supplier ? (
-                                                    <div>
-                                                        <span 
-                                                            className="font-bold text-slate-800 dark:text-slate-200 truncate block max-w-[180px] text-[11px]" 
-                                                            title={supplierName}
-                                                        >
-                                                            {supplierName}
-                                                        </span>
-                                                        <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700 dark:text-emerald-400 font-bold mt-0.5">
-                                                            <Store className="w-2.5 h-2.5 text-emerald-500" />
-                                                            Official Supplier
-                                                        </span>
-                                                    </div>
-                                                ) : item.previous_supplier ? (
-                                                    <div>
-                                                        <span 
-                                                            className="font-bold text-blue-800 dark:text-blue-300 truncate block max-w-[180px] text-[11px]" 
-                                                            title={item.previous_supplier}
-                                                        >
-                                                            {item.previous_supplier}
-                                                        </span>
-                                                        <span className="inline-flex items-center gap-1 text-[9px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">
-                                                            <Store className="w-2.5 h-2.5 text-blue-500" />
-                                                            Prev Winner (Inactive)
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <div>
-                                                        <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px] flex items-center gap-1">
-                                                            <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
-                                                            No Supplier
-                                                        </span>
-                                                        <span className="text-[9px] text-slate-400 block mt-0.5">
-                                                            Sourcing required
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </td>
-
-                                            {/* Column 4: Category & Location */}
-                                            <td className="py-3.5 px-4 w-[150px]">
-                                                <span 
-                                                    className="font-semibold text-slate-700 dark:text-slate-300 truncate block max-w-[130px] text-xs" 
-                                                    title={item.category || "General"}
-                                                >
-                                                    {item.category || "General"}
-                                                </span>
-                                                <span 
-                                                    className="text-slate-400 dark:text-slate-500 text-[10px] truncate block max-w-[130px] mt-0.5" 
-                                                    title={item.storage_location || "Central Warehouse"}
-                                                >
-                                                    {item.storage_location || "Central Warehouse"}
-                                                </span>
-                                            </td>
-
-                                            {/* Column 5: Stock Level & Deficit */}
-                                            <td className="py-3.5 px-4 w-[170px]">
-                                                <div className="flex items-center justify-between text-[11px] font-bold mb-1">
-                                                    <span className={isZero ? "text-pink-600 dark:text-pink-400 font-black" : "text-slate-700 dark:text-slate-300 font-extrabold"}>
-                                                        {item.current_stock} {item.unit}
-                                                    </span>
-                                                    <span className="text-slate-400 font-normal">
-                                                        / {item.minimum_stock} {item.unit}
-                                                    </span>
-                                                </div>
-                                                <div className="w-28 h-1.5 rounded-full bg-[#d8e2ee] dark:bg-[#10121d] overflow-hidden mb-1">
-                                                    <div
-                                                        className={`h-full rounded-full ${isZero ? "bg-pink-600" : "bg-pink-500"}`}
-                                                        style={{ width: `${stockPercent}%` }}
-                                                    />
-                                                </div>
-                                                <div className="flex items-center justify-between text-[10px]">
-                                                    <span className="font-black text-pink-600 dark:text-pink-400">
-                                                        -{item.deficit} {item.unit}
-                                                    </span>
-                                                    <span
-                                                        className={`px-1.5 py-0.2 rounded-md font-bold uppercase text-[9px] ${
-                                                            isZero
-                                                                ? "text-rose-600 dark:text-rose-400"
-                                                                : "text-amber-600 dark:text-amber-400"
-                                                        }`}
-                                                    >
-                                                        {isZero ? "Depleted" : "Low"}
-                                                    </span>
-                                                </div>
-                                            </td>
-
-                                            {/* Column 6: Est. Cost */}
-                                            <td className="py-3.5 px-4 w-[130px]">
-                                                <span className="font-bold text-slate-900 dark:text-white block text-xs">
-                                                    {formatCurrency(item.estimated_reorder_cost)}
-                                                </span>
-                                                {(item.purchase_price || item.previous_unit_price) ? (
-                                                    <span className="text-[10px] text-slate-400 block mt-0.5">
-                                                        @ ₱{Number(item.purchase_price || item.previous_unit_price).toLocaleString()}/{item.unit}
-                                                    </span>
-                                                ) : null}
-                                            </td>
-
-                                            {/* Column 7: Actions */}
-                                            <td className="py-3.5 px-4 text-right w-[170px]">
-                                                <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                                                    {/* View Modal Trigger */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setViewItem(item)}
-                                                        className="p-1.5 rounded-md bg-[#ebf0f7] dark:bg-[#1b1c2b] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/[0.08] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),_2px_2px_4px_rgba(163,177,198,0.25)] transition-all cursor-pointer"
-                                                        title="View Complete Item Details"
-                                                    >
-                                                        <Eye className="w-3.5 h-3.5" />
-                                                    </button>
-
-                                                    {/* Contextual Action */}
-                                                    {item.is_bid_awarded ? (
-                                                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                                                            Awarded
-                                                        </span>
-                                                    ) : item.has_official_active_supplier ? (
-                                                        <>
+                                                        <div className="min-w-0 flex-1">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => onCreatePO?.(item, item.matched_active_supplier)}
-                                                                className="px-2.5 py-1.5 rounded-md bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
-                                                                title="Create PO with official supplier"
+                                                                onClick={() => setViewItem(item)}
+                                                                className="text-left font-bold text-slate-900 dark:text-white hover:text-pink-600 dark:hover:text-pink-400 transition-colors block cursor-pointer group"
+                                                                title={`Click to view full details for ${item.item_name}`}
                                                             >
-                                                                <ShoppingCart className="w-3 h-3" />
-                                                                <span>PO</span>
+                                                                <span className="truncate block max-w-[170px] text-xs group-hover:underline">
+                                                                    {item.item_name}
+                                                                </span>
                                                             </button>
 
+                                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                                <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                                                                    {item.item_code}
+                                                                </span>
+
+                                                                {item.related_requests_count && item.related_requests_count > 1 ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => toggleRowExpansion(rowKey)}
+                                                                        className="text-[9px] px-1.5 py-0.5 rounded-md bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-extrabold flex items-center gap-1 cursor-pointer hover:bg-pink-200 transition-colors"
+                                                                        title="Multiple approved requests grouped. Click to view breakdown."
+                                                                    >
+                                                                        <Layers className="w-2.5 h-2.5" />
+                                                                        <span>{item.related_requests_count} Reqs</span>
+                                                                    </button>
+                                                                ) : null}
+
+                                                                {item.is_new_item && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-extrabold uppercase tracking-wide">
+                                                                        New
+                                                                    </span>
+                                                                )}
+
+                                                                {item.po_status_indicator ? (
+                                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1 border ${
+                                                                        item.po_status_indicator === 'Delivered'
+                                                                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                                                            : item.po_status_indicator === 'Waiting for Delivery'
+                                                                            ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+                                                                            : item.po_status_indicator === 'Rejected Purchase Order'
+                                                                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                                                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                                                    }`} title={`Purchase Order #${item.matching_po_number || ''}${item.po_status_indicator === 'Approval Pending' ? ' (Awaiting Admin Approval)' : ''}`}>
+                                                                        <span className={`w-1.5 h-1.5 rounded-full ${
+                                                                            item.po_status_indicator === 'Delivered'
+                                                                                ? 'bg-emerald-500'
+                                                                                : item.po_status_indicator === 'Waiting for Delivery'
+                                                                                ? 'bg-sky-500'
+                                                                                : item.po_status_indicator === 'Rejected Purchase Order'
+                                                                                ? 'bg-rose-500'
+                                                                                : 'bg-amber-500'
+                                                                        }`} />
+                                                                        <span>{item.po_status_indicator}</span>
+                                                                        {item.matching_po_number && (
+                                                                            <span className="font-mono text-[8px] opacity-75">#{item.matching_po_number}</span>
+                                                                        )}
+                                                                    </span>
+                                                                ) : item.is_bid_awarded ? (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-0.5">
+                                                                        <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                                                                        Awarded
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Column 2: Source Request / Department */}
+                                                <td className="py-3.5 px-3 w-[150px]">
+                                                    {item.related_requests_count && item.related_requests_count > 1 ? (
+                                                        <div>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => onMessageSupplier?.(item.matched_active_supplier, item)}
-                                                                className="p-1.5 rounded-md bg-[#ebf0f7] dark:bg-[#1b1c2b] text-slate-700 dark:text-slate-300 hover:text-pink-600 border border-white/80 dark:border-white/[0.08] text-[10px] font-bold cursor-pointer"
-                                                                title="Message active supplier"
+                                                                onClick={() => toggleRowExpansion(rowKey)}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-mono font-bold text-[10px] border border-pink-200/50 dark:border-pink-900/40 cursor-pointer hover:bg-pink-200 transition-colors"
+                                                                title="Click to view all grouped requests"
                                                             >
-                                                                <MessageSquare className="w-3.5 h-3.5 text-pink-500" />
+                                                                <Layers className="w-2.5 h-2.5" />
+                                                                <span>{item.related_requests_count} Grouped Reqs</span>
                                                             </button>
-                                                        </>
+                                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block max-w-[130px] mt-0.5" title={item.source_department || "Multiple Departments"}>
+                                                                {item.source_department || "Multiple Departments"}
+                                                            </span>
+                                                        </div>
+                                                    ) : item.source_request ? (
+                                                        <div>
+                                                            <span className="inline-block px-2 py-0.5 rounded-lg bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-mono font-bold text-[10px] border border-pink-200/50 dark:border-pink-900/40">
+                                                                {item.source_request.startsWith("#") ? item.source_request : `#${item.source_request}`}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block max-w-[130px] mt-0.5" title={item.source_department || "Staff Request"}>
+                                                                {item.source_department || "Department Staff"}
+                                                            </span>
+                                                        </div>
                                                     ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => onFindSuppliersForItem(item)}
-                                                            className="px-2.5 py-1.5 rounded-md bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
-                                                            title="Find potential suppliers"
-                                                        >
-                                                            <Store className="w-3 h-3" />
-                                                            <span>Find</span>
-                                                        </button>
+                                                        <div className="text-slate-400 dark:text-slate-500 text-[11px] font-medium">
+                                                            <span className="font-semibold text-slate-600 dark:text-slate-300">Warehouse Buffer</span>
+                                                            <span className="text-[10px] block text-slate-400">Direct Reorder</span>
+                                                        </div>
                                                     )}
-                                                </div>
-                                            </td>
-                                        </tr>
+                                                </td>
+
+                                                {/* Column 3: Supplier & Sourcing */}
+                                                <td className="py-3.5 px-3 w-[180px]">
+                                                    {item.has_official_active_supplier ? (
+                                                        <div>
+                                                            <span 
+                                                                className="font-bold text-slate-800 dark:text-slate-200 truncate block max-w-[160px] text-[11px]" 
+                                                                title={supplierName}
+                                                            >
+                                                                {supplierName}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700 dark:text-emerald-400 font-bold mt-0.5">
+                                                                <Store className="w-2.5 h-2.5 text-emerald-500" />
+                                                                Official Supplier
+                                                            </span>
+                                                        </div>
+                                                    ) : item.previous_supplier ? (
+                                                        <div>
+                                                            <span 
+                                                                className="font-bold text-blue-800 dark:text-blue-300 truncate block max-w-[160px] text-[11px]" 
+                                                                title={item.previous_supplier}
+                                                            >
+                                                                {item.previous_supplier}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1 text-[9px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">
+                                                                <Store className="w-2.5 h-2.5 text-blue-500" />
+                                                                Prev Winner (Inactive)
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px] flex items-center gap-1">
+                                                                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                                                                No Supplier
+                                                            </span>
+                                                            <span className="text-[9px] text-slate-400 block mt-0.5">
+                                                                Sourcing required
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                {/* Column 4: Category (Dedicated Column) */}
+                                                <td className="py-3.5 px-3 w-[130px]">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Tag className="w-3 h-3 text-slate-400 shrink-0" />
+                                                        <span 
+                                                            className="font-semibold text-slate-700 dark:text-slate-300 truncate block max-w-[110px] text-xs" 
+                                                            title={item.category || "General"}
+                                                        >
+                                                            {item.category || "General"}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Column 5: Location (Dedicated Column) */}
+                                                <td className="py-3.5 px-3 w-[120px]">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <MapPin className="w-3 h-3 text-pink-500 shrink-0" />
+                                                        <span 
+                                                            className="text-slate-600 dark:text-slate-300 text-xs truncate block max-w-[100px] font-medium" 
+                                                            title={item.storage_location || "Central Warehouse"}
+                                                        >
+                                                            {item.storage_location || "Central Warehouse"}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Column 6: Stock Level & Severity (Dedicated Column) */}
+                                                <td className="py-3.5 px-3 w-[130px]">
+                                                    <div>
+                                                        <div className="text-xs font-black text-slate-800 dark:text-slate-200">
+                                                            {usableStock} <span className="font-normal text-[11px] text-slate-500">{item.unit}</span>
+                                                        </div>
+                                                        <div className="mt-1">
+                                                            {isZero ? (
+                                                                <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-extrabold border border-rose-300/50 dark:border-rose-900/40">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                                                                    <span>Out of Stock</span>
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-extrabold border border-amber-300/50 dark:border-amber-900/40">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                    <span>Low Stock</span>
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Column 7: Approved Demand (Dedicated Column) */}
+                                                <td className="py-3.5 px-3 w-[120px]">
+                                                    <div>
+                                                        <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                            {approvedDemand} <span className="font-normal text-[11px] text-slate-500">{item.unit}</span>
+                                                        </div>
+                                                        {poCoverage > 0 && (
+                                                            <div className="inline-flex items-center gap-1 text-[9px] font-bold text-sky-700 dark:text-sky-300 mt-1 bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 rounded border border-sky-200/50 dark:border-sky-900/30">
+                                                                <span>PO: +{poCoverage}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Column 8: Deficit & Coverage Status (Dedicated Column) */}
+                                                <td className="py-3.5 px-3 w-[130px]">
+                                                    <div>
+                                                        {remDeficit > 0 ? (
+                                                            <>
+                                                                <div className="text-xs font-black text-pink-600 dark:text-pink-400">
+                                                                    -{remDeficit} <span className="font-medium text-[11px] text-pink-500/80">{item.unit}</span>
+                                                                </div>
+                                                                <div className="mt-1">
+                                                                    <span className="px-1.5 py-0.5 rounded-md font-bold uppercase text-[9px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/30">
+                                                                        Uncovered
+                                                                    </span>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <div className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                                                                    0 <span className="font-medium text-[11px] text-emerald-500/80">{item.unit}</span>
+                                                                </div>
+                                                                <div className="mt-1">
+                                                                    <span className="px-1.5 py-0.5 rounded-md font-bold uppercase text-[9px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-900/30">
+                                                                        Covered
+                                                                    </span>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Column 9: Est. Cost */}
+                                                <td className="py-3.5 px-3 w-[120px]">
+                                                    {(() => {
+                                                        const hasAnySupplier = Boolean(
+                                                            item.has_official_active_supplier ||
+                                                            item.matched_active_supplier?.name ||
+                                                            item.supplier ||
+                                                            item.previous_supplier
+                                                        );
+                                                        const unitPrice = hasAnySupplier
+                                                            ? Number(item.purchase_price || item.previous_unit_price || 0)
+                                                            : 0;
+                                                        const cost = hasAnySupplier
+                                                            ? (unitPrice > 0 ? remDeficit * unitPrice : Number(item.estimated_reorder_cost || 0))
+                                                            : 0;
+
+                                                        return (
+                                                            <div>
+                                                                <span className="font-bold text-slate-900 dark:text-white block text-xs">
+                                                                    {formatCurrency(cost)}
+                                                                </span>
+                                                                {hasAnySupplier && unitPrice > 0 ? (
+                                                                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                                                                        @ ₱{Number(unitPrice).toLocaleString()}/{item.unit}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-0.5">
+                                                                        No pricing
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </td>
+
+                                                {/* Column 10: Actions (CrudActionButton) */}
+                                                <td className="py-3.5 px-4 text-right w-[160px]">
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {/* Standard View Action */}
+                                                        <CrudActionButton
+                                                            action="view"
+                                                            onClick={() => setViewItem(item)}
+                                                            ariaLabel="View Complete Item Details"
+                                                            title="View Details"
+                                                        />
+
+                                                        {/* Contextual Procurement Action: Reorder / Covered / Sourcing */}
+                                                        {remDeficit <= 0 ? (
+                                                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                                <span>Covered</span>
+                                                            </span>
+                                                        ) : (() => {
+                                                            const availableSupName = item.matched_active_supplier?.name || item.previous_supplier || (item.covering_purchase_orders && item.covering_purchase_orders[0]?.supplier_name) || null;
+                                                            return (
+                                                                <>
+                                                                    {availableSupName ? (
+                                                                        <CrudActionButton
+                                                                            action="custom"
+                                                                            icon={RotateCw}
+                                                                            label="Reorder"
+                                                                            variant="pink"
+                                                                            onClick={() => {
+                                                                                if (onCreatePO) {
+                                                                                    onCreatePO(item, item.matched_active_supplier);
+                                                                                } else if (onOrderAgainFromSameSupplier && availableSupName) {
+                                                                                    onOrderAgainFromSameSupplier(item, availableSupName);
+                                                                                } else {
+                                                                                    onFindSuppliersForItem(item);
+                                                                                }
+                                                                            }}
+                                                                            ariaLabel={`Reorder remaining deficit of ${remDeficit} ${item.unit} from ${availableSupName}`}
+                                                                            title={`Reorder ${remDeficit} ${item.unit} via Create Purchase Order`}
+                                                                        />
+                                                                    ) : null}
+
+                                                                    {item.matched_active_supplier && (
+                                                                        <CrudActionButton
+                                                                            action="message"
+                                                                            icon={MessageSquare}
+                                                                            label="Message"
+                                                                            onClick={() => onMessageSupplier?.(item.matched_active_supplier, item)}
+                                                                            ariaLabel="Message active supplier"
+                                                                            title="Message active supplier"
+                                                                        />
+                                                                    )}
+
+                                                                    <CrudActionButton
+                                                                        action="open"
+                                                                        icon={Store}
+                                                                        label="Find"
+                                                                        variant={availableSupName ? "neutral" : "pink"}
+                                                                        onClick={() => onFindSuppliersForItem(item)}
+                                                                        ariaLabel={`Find potential suppliers for remaining deficit of ${remDeficit} ${item.unit}`}
+                                                                        title={`Find potential suppliers for ${remDeficit} ${item.unit}`}
+                                                                    />
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            {/* Expandable Detail View Drawer */}
+                                            {isExpanded && (
+                                                <tr key={`${rowKey}-expanded`} className="bg-slate-50/90 dark:bg-[#0f111c] border-b border-slate-200/80 dark:border-white/[0.08]">
+                                                    <td colSpan={10} className="p-4 sm:p-5">
+                                                        <div className="space-y-4">
+                                                            {/* 1. Mathematical Breakdown Banner */}
+                                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#151726] border border-white/80 dark:border-white/[0.06] shadow-sm flex items-center justify-between gap-3 flex-wrap">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Info className="w-4 h-4 text-pink-500 shrink-0" />
+                                                                    <span className="text-xs font-black text-slate-900 dark:text-white">
+                                                                        Procurement Deficit Formula:
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 font-mono text-[11px] font-bold flex-wrap">
+                                                                    <span className="text-slate-600 dark:text-slate-300">
+                                                                        Approved Demand: <strong className="text-slate-900 dark:text-white">{approvedDemand}</strong>
+                                                                    </span>
+                                                                    <span className="text-slate-400">−</span>
+                                                                    <span className="text-slate-600 dark:text-slate-300">
+                                                                        Usable Stock: <strong className="text-emerald-600 dark:text-emerald-400">{usableStock}</strong>
+                                                                    </span>
+                                                                    {poCoverage > 0 && (
+                                                                        <>
+                                                                            <span className="text-slate-400">−</span>
+                                                                            <span className="text-slate-600 dark:text-slate-300">
+                                                                                Active PO Coverage: <strong className="text-sky-600 dark:text-sky-400">{poCoverage}</strong>
+                                                                            </span>
+                                                                        </>
+                                                                    )}
+                                                                    <span className="text-slate-400">=</span>
+                                                                    <span className={`px-2.5 py-0.5 rounded-lg font-black ${
+                                                                        remDeficit > 0 
+                                                                            ? "bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-300/50" 
+                                                                            : "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/50"
+                                                                    }`}>
+                                                                        Remaining Deficit: {remDeficit} {item.unit}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 2. Side-by-side: Related Requests & Covering Purchase Orders */}
+                                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                                {/* Panel A: Related Approved Requisitions */}
+                                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] space-y-3 shadow-inner">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                                                                            <FileText className="w-3.5 h-3.5 text-pink-500" />
+                                                                            <span>Related Approved Requests ({item.related_requests?.length || 1})</span>
+                                                                        </h4>
+                                                                        <span className="text-[10px] font-bold text-slate-400">
+                                                                            Total: {approvedDemand} {item.unit}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    {item.related_requests && item.related_requests.length > 0 ? (
+                                                                        <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#11121d]">
+                                                                            <table className="w-full text-left text-[11px]">
+                                                                                <thead>
+                                                                                    <tr className="bg-slate-100/80 dark:bg-[#161826] text-slate-500 dark:text-slate-400 font-extrabold uppercase text-[9px] border-b border-slate-200/60 dark:border-white/[0.05]">
+                                                                                        <th className="py-2 px-3">Req Number</th>
+                                                                                        <th className="py-2 px-3">Original Item Name</th>
+                                                                                        <th className="py-2 px-3">Department</th>
+                                                                                        <th className="py-2 px-3 text-right">Qty</th>
+                                                                                        <th className="py-2 px-3 text-right">Status</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04]">
+                                                                                    {item.related_requests.map((req, rIdx) => (
+                                                                                        <tr key={`${req.id || req.request_number}-${rIdx}`} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                                                                                            <td className="py-2 px-3 font-mono font-bold text-pink-600 dark:text-pink-400">
+                                                                                                #{req.request_number || req.id}
+                                                                                            </td>
+                                                                                            <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200" title="Original user input casing preserved">
+                                                                                                {req.item_name}
+                                                                                            </td>
+                                                                                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400">
+                                                                                                {req.department || "Staff Requisition"}
+                                                                                            </td>
+                                                                                            <td className="py-2 px-3 text-right font-black text-slate-900 dark:text-white">
+                                                                                                {req.quantity} {item.unit}
+                                                                                            </td>
+                                                                                            <td className="py-2 px-3 text-right">
+                                                                                                <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[9px]">
+                                                                                                    {req.status}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-xs text-slate-500 dark:text-slate-400 py-3 text-center">
+                                                                            Direct warehouse buffer shortage (no explicit requisitions linked).
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Panel B: Covering Purchase Orders */}
+                                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] space-y-3 shadow-inner">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                                                                            <ShoppingCart className="w-3.5 h-3.5 text-sky-500" />
+                                                                            <span>Covering Purchase Orders ({item.covering_purchase_orders?.length || 0})</span>
+                                                                        </h4>
+                                                                        <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
+                                                                            Covered: {poCoverage} {item.unit}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    {item.covering_purchase_orders && item.covering_purchase_orders.length > 0 ? (
+                                                                        <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#11121d]">
+                                                                            <table className="w-full text-left text-[11px]">
+                                                                                <thead>
+                                                                                    <tr className="bg-slate-100/80 dark:bg-[#161826] text-slate-500 dark:text-slate-400 font-extrabold uppercase text-[9px] border-b border-slate-200/60 dark:border-white/[0.05]">
+                                                                                        <th className="py-2 px-3">PO Number</th>
+                                                                                        <th className="py-2 px-3">Supplier</th>
+                                                                                        <th className="py-2 px-3 text-right">Qty Covered</th>
+                                                                                        <th className="py-2 px-3 text-right">Lifecycle Status</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04]">
+                                                                                    {item.covering_purchase_orders.map((po, pIdx) => {
+                                                                                        const isDelivered = String(po.status || "").toLowerCase() === "delivered" || String(po.status || "").toLowerCase() === "completed";
+                                                                                        return (
+                                                                                            <tr key={`${po.id || po.po_number}-${pIdx}`} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                                                                                                <td className="py-2 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
+                                                                                                    #{po.po_number || po.id}
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                                                                                                    {po.supplier_name || "Supplier"}
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-right font-black text-sky-600 dark:text-sky-400">
+                                                                                                    {po.covered_quantity || po.quantity} {item.unit}
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-right">
+                                                                                                    <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] ${
+                                                                                                        isDelivered
+                                                                                                            ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
+                                                                                                            : String(po.status || "").toLowerCase() === "issued"
+                                                                                                            ? "bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300"
+                                                                                                            : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300"
+                                                                                                    }`}>
+                                                                                                        {po.status}
+                                                                                                    </span>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="p-4 rounded-xl bg-slate-100/50 dark:bg-[#11121d] text-center text-slate-400 text-xs">
+                                                                            <span>No purchase orders currently allocated to this item.</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
                                     );
                                 })
                             )}
@@ -591,6 +971,46 @@ export function StageStockShortages({
                                             <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                                                 {viewItem.item_code}
                                             </span>
+                                            {(() => {
+                                                const vStock = viewItem.usable_stock !== undefined ? viewItem.usable_stock : viewItem.current_stock;
+                                                const vIsZero = vStock === 0 || viewItem.status === "out-of-stock";
+                                                return vIsZero ? (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-extrabold flex items-center gap-1 border border-rose-300/50 dark:border-rose-900/40">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                        <span>Out of Stock</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-extrabold flex items-center gap-1 border border-amber-300/50 dark:border-amber-900/40">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                        <span>Low Stock</span>
+                                                    </span>
+                                                );
+                                            })()}
+                                            {viewItem.po_status_indicator && (
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border ${
+                                                    viewItem.po_status_indicator === 'Delivered'
+                                                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                                        : viewItem.po_status_indicator === 'Waiting for Delivery'
+                                                        ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+                                                        : viewItem.po_status_indicator === 'Rejected Purchase Order'
+                                                        ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                                }`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                                        viewItem.po_status_indicator === 'Delivered'
+                                                            ? 'bg-emerald-500'
+                                                            : viewItem.po_status_indicator === 'Waiting for Delivery'
+                                                            ? 'bg-sky-500'
+                                                            : viewItem.po_status_indicator === 'Rejected Purchase Order'
+                                                            ? 'bg-rose-500'
+                                                            : 'bg-amber-500'
+                                                    }`} />
+                                                    <span>{viewItem.po_status_indicator}</span>
+                                                    {viewItem.matching_po_number && (
+                                                        <span className="font-mono text-[9px] opacity-75">#{viewItem.matching_po_number}</span>
+                                                    )}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                             Inventory Stock Deficit &amp; Sourcing Specifications
@@ -609,136 +1029,261 @@ export function StageStockShortages({
 
                             {/* Modal Scrollable Body */}
                             <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
-                                {/* Stock & Metrics Strip */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                    <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
-                                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Current Stock</span>
-                                        <span className={`text-base font-black ${viewItem.current_stock === 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-100"}`}>
-                                            {viewItem.current_stock} <span className="text-xs font-normal text-slate-500">{viewItem.unit}</span>
-                                        </span>
-                                    </div>
+                                {(() => {
+                                    const modalDemand = viewItem.total_approved_demand ?? viewItem.requested_demand ?? viewItem.deficit;
+                                    const modalStock = viewItem.usable_stock !== undefined ? viewItem.usable_stock : viewItem.current_stock;
+                                    const isModalPoDelivered =
+                                        viewItem.po_status_indicator === 'Delivered' ||
+                                        (viewItem.covering_purchase_orders && viewItem.covering_purchase_orders.length > 0 && viewItem.covering_purchase_orders.every(po => {
+                                            const s = (po.status || "").toLowerCase();
+                                            return s === "delivered" || s === "completed" || s === "received" || s === "fulfilled";
+                                        }));
+                                    const modalPoCoverage = isModalPoDelivered ? 0 : (viewItem.active_po_coverage ?? viewItem.covered_quantity ?? 0);
+                                    const modalDeficit = viewItem.remaining_deficit !== undefined ? viewItem.remaining_deficit : viewItem.deficit;
+                                    const modalIsZero = modalStock === 0 || viewItem.status === "out-of-stock";
 
-                                    <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
-                                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Min Safety Level</span>
-                                        <span className="text-base font-black text-slate-800 dark:text-slate-100">
-                                            {viewItem.minimum_stock} <span className="text-xs font-normal text-slate-500">{viewItem.unit}</span>
-                                        </span>
-                                    </div>
-
-                                    <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
-                                        <span className="text-[10px] font-bold text-rose-500 block uppercase">Deficit Required</span>
-                                        <span className="text-base font-black text-rose-600 dark:text-rose-400">
-                                            -{viewItem.deficit} <span className="text-xs font-normal text-rose-500">{viewItem.unit}</span>
-                                        </span>
-                                    </div>
-
-                                    <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
-                                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Est. Reorder Cost</span>
-                                        <span className="text-base font-black text-slate-800 dark:text-slate-100">
-                                            {formatCurrency(viewItem.estimated_reorder_cost)}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Requisition & Department Details */}
-                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Building2 className="w-4 h-4 text-pink-500" />
-                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                                            Source Requisition &amp; Location
-                                        </h4>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] block">Source Requisition:</span>
-                                            <span className="font-bold text-slate-800 dark:text-slate-200">
-                                                {viewItem.source_request ? `#${viewItem.source_request}` : "Warehouse Direct Inventory"}
-                                            </span>
-                                        </div>
-
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] block">Requesting Department:</span>
-                                            <span className="font-bold text-slate-800 dark:text-slate-200">
-                                                {viewItem.source_department || "Supply Chain Inventory"}
-                                            </span>
-                                        </div>
-
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] block">Storage Bin Location:</span>
-                                            <span className="font-bold text-slate-800 dark:text-slate-200">
-                                                {viewItem.storage_location || "Binondo Central Hub"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Supplier Sourcing Information */}
-                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Store className="w-4 h-4 text-pink-500" />
-                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                                            Supplier Contract &amp; Sourcing Status
-                                        </h4>
-                                    </div>
-
-                                    {viewItem.has_official_active_supplier ? (
-                                        <div className="space-y-1.5 text-xs pt-1">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-slate-400">Official Active Supplier:</span>
-                                                <strong className="text-emerald-600 dark:text-emerald-400 font-bold">
-                                                    {viewItem.matched_active_supplier?.name || viewItem.supplier}
-                                                </strong>
-                                            </div>
-                                            {viewItem.matched_active_supplier?.contact_person && (
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-slate-400">Contact Person:</span>
-                                                    <span className="text-slate-700 dark:text-slate-300 font-semibold">{viewItem.matched_active_supplier.contact_person}</span>
-                                                </div>
-                                            )}
-                                            {viewItem.matched_active_supplier?.email && (
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-slate-400">Email:</span>
-                                                    <span className="text-slate-700 dark:text-slate-300 font-mono text-[11px]">{viewItem.matched_active_supplier.email}</span>
-                                                </div>
-                                            )}
-                                            {(viewItem.purchase_price || viewItem.previous_unit_price) && (
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-slate-400">Contract Unit Price:</span>
-                                                    <span className="text-slate-900 dark:text-slate-100 font-mono font-bold">
-                                                        ₱{Number(viewItem.purchase_price || viewItem.previous_unit_price).toLocaleString()} / {viewItem.unit}
+                                    return (
+                                        <>
+                                            {/* Stock & Grouped Metrics Strip */}
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
+                                                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Approved Demand</span>
+                                                    <span className="text-base font-black text-slate-800 dark:text-slate-100">
+                                                        {modalDemand} <span className="text-xs font-normal text-slate-500">{viewItem.unit}</span>
                                                     </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ) : viewItem.previous_supplier ? (
-                                        <div className="space-y-1.5 text-xs pt-1">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-slate-400">Previous Winning Bidder:</span>
-                                                <strong className="text-blue-600 dark:text-blue-400 font-bold">
-                                                    {viewItem.previous_supplier}
-                                                </strong>
-                                            </div>
-                                            <p className="text-[11px] text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 p-2 rounded-xl border border-blue-200/50 dark:border-blue-900/40">
-                                                This supplier previously supplied this part, but does not have an active standing order contract. You can send an inquiry or source other quotes in Stage 2.
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300">
-                                            No active supplier or previous contract found for this inventory item. Proceed to <strong>Stage 2 (Find Potential Suppliers)</strong> to source matching logistics vendors.
-                                        </div>
-                                    )}
-                                </div>
 
-                                {/* Full Description / Specs */}
-                                {viewItem.description && (
-                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-1">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Specifications / Notes</span>
-                                        <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
-                                            {viewItem.description}
-                                        </p>
-                                    </div>
-                                )}
+                                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
+                                                    <div className="flex items-center justify-between mb-0.5">
+                                                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Usable Stock</span>
+                                                        <span className={`text-[8.5px] font-black px-1.5 py-0.2 rounded uppercase ${
+                                                            modalIsZero
+                                                                ? "bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300"
+                                                                : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300"
+                                                        }`}>
+                                                            {modalIsZero ? "Out of Stock" : "Low Stock"}
+                                                        </span>
+                                                    </div>
+                                                    <span className={`text-base font-black ${modalStock === 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                                        {modalStock} <span className="text-xs font-normal text-slate-500">{viewItem.unit}</span>
+                                                    </span>
+                                                </div>
+
+                                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
+                                                    <span className="text-[10px] font-bold text-sky-500 block uppercase">PO Coverage</span>
+                                                    <span className="text-base font-black text-sky-600 dark:text-sky-400">
+                                                        {modalPoCoverage > 0 ? `+${modalPoCoverage}` : "0"} <span className="text-xs font-normal text-sky-500">{viewItem.unit}</span>
+                                                    </span>
+                                                    {isModalPoDelivered && (
+                                                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-extrabold block mt-0.5">
+                                                            PO Delivered
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
+                                                    <span className="text-[10px] font-bold text-rose-500 block uppercase">Remaining Deficit</span>
+                                                    <span className={`text-base font-black ${modalDeficit > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                                        {modalDeficit > 0 ? `-${modalDeficit}` : "0"} <span className="text-xs font-normal text-slate-500">{viewItem.unit}</span>
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Formula Calculation Callout */}
+                                            <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.04] text-xs flex items-center justify-between gap-2 flex-wrap">
+                                                <div className="flex items-center gap-2">
+                                                    <Info className="w-4 h-4 text-pink-500 shrink-0" />
+                                                    <span className="font-extrabold text-slate-700 dark:text-slate-200">
+                                                        Formula: Demand ({modalDemand}) − Usable Stock ({modalStock}){modalPoCoverage > 0 ? ` − PO Coverage (${modalPoCoverage})` : ""}
+                                                    </span>
+                                                </div>
+                                                <span className={`font-black px-2 py-0.5 rounded-lg text-[11px] ${
+                                                    modalDeficit > 0
+                                                        ? "bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300"
+                                                        : "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
+                                                }`}>
+                                                    {modalDeficit > 0 ? `${modalDeficit} ${viewItem.unit} Uncovered` : "Fully Covered"}
+                                                </span>
+                                            </div>
+
+                                            {/* Related Requests List */}
+                                            {viewItem.related_requests && viewItem.related_requests.length > 0 && (
+                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                                                            <FileText className="w-4 h-4 text-pink-500" />
+                                                            <span>Grouped Requisitions ({viewItem.related_requests.length})</span>
+                                                        </h4>
+                                                        <span className="text-[10px] font-bold text-slate-400">
+                                                            Total Demand: {modalDemand} {viewItem.unit}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="space-y-1.5 pt-1">
+                                                        {viewItem.related_requests.map((req, rIdx) => (
+                                                            <div key={rIdx} className="flex items-center justify-between p-2 rounded-xl bg-white/60 dark:bg-[#161826] border border-slate-200/60 dark:border-white/[0.04] text-xs">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono font-bold text-pink-600 dark:text-pink-400">
+                                                                            #{req.request_number || req.id}
+                                                                        </span>
+                                                                        <span className="font-semibold text-slate-800 dark:text-slate-100">
+                                                                            {req.item_name}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                                                                        Dept: {req.department || "Staff Request"} • {req.status}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="font-black text-slate-900 dark:text-white">
+                                                                    {req.quantity} {viewItem.unit}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Covering Purchase Orders List */}
+                                            {viewItem.covering_purchase_orders && viewItem.covering_purchase_orders.length > 0 && (
+                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                                                            <ShoppingCart className="w-4 h-4 text-sky-500" />
+                                                            <span>Covering Purchase Orders ({viewItem.covering_purchase_orders.length})</span>
+                                                        </h4>
+                                                        <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
+                                                            Covered: {modalPoCoverage} {viewItem.unit}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="space-y-1.5 pt-1">
+                                                        {viewItem.covering_purchase_orders.map((po, pIdx) => (
+                                                            <div key={pIdx} className="flex items-center justify-between p-2 rounded-xl bg-white/60 dark:bg-[#161826] border border-slate-200/60 dark:border-white/[0.04] text-xs">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
+                                                                            #{po.po_number || po.id}
+                                                                        </span>
+                                                                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                                                                            {po.supplier_name || "Supplier"}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                                                                        Status: {po.status}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="font-black text-sky-600 dark:text-sky-400">
+                                                                    +{po.covered_quantity || po.quantity} {viewItem.unit}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Requisition & Department Details */}
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Building2 className="w-4 h-4 text-pink-500" />
+                                                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                                                        Source Requisition &amp; Location
+                                                    </h4>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
+                                                    <div>
+                                                        <span className="text-slate-400 text-[10px] block">Source Requisition:</span>
+                                                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                            {viewItem.source_request ? `#${viewItem.source_request}` : "Warehouse Direct Inventory"}
+                                                        </span>
+                                                    </div>
+
+                                                    <div>
+                                                        <span className="text-slate-400 text-[10px] block">Requesting Department:</span>
+                                                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                            {viewItem.source_department || "Supply Chain Inventory"}
+                                                        </span>
+                                                    </div>
+
+                                                    <div>
+                                                        <span className="text-slate-400 text-[10px] block">Storage Bin Location:</span>
+                                                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                            {viewItem.storage_location || "Binondo Central Hub"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Supplier Sourcing Information */}
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Store className="w-4 h-4 text-pink-500" />
+                                                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                                                        Supplier Contract &amp; Sourcing Status
+                                                    </h4>
+                                                </div>
+
+                                                {viewItem.has_official_active_supplier ? (
+                                                    <div className="space-y-1.5 text-xs pt-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-slate-400">Official Active Supplier:</span>
+                                                            <strong className="text-emerald-600 dark:text-emerald-400 font-bold">
+                                                                {viewItem.matched_active_supplier?.name || viewItem.supplier}
+                                                            </strong>
+                                                        </div>
+                                                        {viewItem.matched_active_supplier?.contact_person && (
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-slate-400">Contact Person:</span>
+                                                                <span className="text-slate-700 dark:text-slate-300 font-semibold">{viewItem.matched_active_supplier.contact_person}</span>
+                                                            </div>
+                                                        )}
+                                                        {viewItem.matched_active_supplier?.email && (
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-slate-400">Email:</span>
+                                                                <span className="text-slate-700 dark:text-slate-300 font-mono text-[11px]">{viewItem.matched_active_supplier.email}</span>
+                                                            </div>
+                                                        )}
+                                                        {(viewItem.purchase_price || viewItem.previous_unit_price) && (
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-slate-400">Contract Unit Price:</span>
+                                                                <span className="text-slate-900 dark:text-slate-100 font-mono font-bold">
+                                                                    ₱{Number(viewItem.purchase_price || viewItem.previous_unit_price).toLocaleString()} / {viewItem.unit}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : viewItem.previous_supplier ? (
+                                                    <div className="space-y-1.5 text-xs pt-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-slate-400">Previous Winning Bidder:</span>
+                                                            <strong className="text-blue-600 dark:text-blue-400 font-bold">
+                                                                {viewItem.previous_supplier}
+                                                            </strong>
+                                                        </div>
+                                                        <p className="text-[11px] text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 p-2 rounded-xl border border-blue-200/50 dark:border-blue-900/40">
+                                                            This supplier previously supplied this part, but does not have an active standing order contract. You can send an inquiry or source other quotes in Stage 2.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300">
+                                                        No active supplier or previous contract found for this inventory item. Proceed to <strong>Stage 2 (Find Potential Suppliers)</strong> to source matching logistics vendors.
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Full Description / Specs */}
+                                            {viewItem.description && (
+                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-1">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Specifications / Notes</span>
+                                                    <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                                        {viewItem.description}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
                             </div>
 
                             {/* Modal Footer Actions */}
@@ -755,57 +1300,95 @@ export function StageStockShortages({
                                 </AppButton>
 
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    {viewItem.has_official_active_supplier ? (
-                                        <>
-                                            <AppButton
-                                                type="button"
-                                                variant="pink"
-                                                size="md"
-                                                pill={false}
-                                                className="!rounded-lg"
-                                                onClick={() => {
-                                                    const item = viewItem;
-                                                    setViewItem(null);
-                                                    onCreatePO?.(item, item.matched_active_supplier);
-                                                }}
-                                            >
-                                                <ShoppingCart className="w-4 h-4 mr-1.5" />
-                                                <span>Create Purchase Order</span>
-                                            </AppButton>
+                                    {(() => {
+                                        const modalDeficit = viewItem.remaining_deficit !== undefined ? viewItem.remaining_deficit : viewItem.deficit;
+                                        if (modalDeficit <= 0) {
+                                            return (
+                                                <div className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center gap-1.5">
+                                                    <CheckCircle2 className="w-4 h-4" />
+                                                    <span>Demand is Fully Covered</span>
+                                                </div>
+                                            );
+                                        }
 
-                                            <AppButton
-                                                type="button"
-                                                variant="neutral"
-                                                size="md"
-                                                pill={false}
-                                                className="!rounded-lg"
-                                                onClick={() => {
-                                                    const item = viewItem;
-                                                    setViewItem(null);
-                                                    onMessageSupplier?.(item.matched_active_supplier, item);
-                                                }}
-                                            >
-                                                <MessageSquare className="w-4 h-4 mr-1.5 text-pink-500" />
-                                                <span>Message Supplier</span>
-                                            </AppButton>
-                                        </>
-                                    ) : (
-                                        <AppButton
-                                            type="button"
-                                            variant="pink"
-                                            size="md"
-                                            pill={false}
-                                            className="!rounded-lg"
-                                            onClick={() => {
-                                                const item = viewItem;
-                                                setViewItem(null);
-                                                onFindSuppliersForItem(item);
-                                            }}
-                                        >
-                                            <Store className="w-4 h-4 mr-1.5" />
-                                            <span>Find Potential Suppliers</span>
-                                        </AppButton>
-                                    )}
+                                        return viewItem.has_official_active_supplier ? (
+                                            <>
+                                                <AppButton
+                                                    type="button"
+                                                    variant="pink"
+                                                    size="md"
+                                                    pill={false}
+                                                    className="!rounded-lg"
+                                                    onClick={() => {
+                                                        const item = viewItem;
+                                                        setViewItem(null);
+                                                        onCreatePO?.(item, item.matched_active_supplier);
+                                                    }}
+                                                >
+                                                    <ShoppingCart className="w-4 h-4 mr-1.5" />
+                                                    <span>Create Purchase Order ({modalDeficit})</span>
+                                                </AppButton>
+
+                                                <AppButton
+                                                    type="button"
+                                                    variant="neutral"
+                                                    size="md"
+                                                    pill={false}
+                                                    className="!rounded-lg"
+                                                    onClick={() => {
+                                                        const item = viewItem;
+                                                        setViewItem(null);
+                                                        onMessageSupplier?.(item.matched_active_supplier, item);
+                                                    }}
+                                                >
+                                                    <MessageSquare className="w-4 h-4 mr-1.5 text-pink-500" />
+                                                    <span>Message Supplier</span>
+                                                </AppButton>
+                                            </>
+                                        ) : (
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {(() => {
+                                                    const prevSup = viewItem.previous_supplier || (viewItem.covering_purchase_orders && viewItem.covering_purchase_orders[0]?.supplier_name) || null;
+                                                    return prevSup ? (
+                                                        <AppButton
+                                                            type="button"
+                                                            variant="neutral"
+                                                            size="md"
+                                                            pill={false}
+                                                            className="!rounded-lg text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                                            onClick={() => {
+                                                                const item = viewItem;
+                                                                setViewItem(null);
+                                                                if (onOrderAgainFromSameSupplier) {
+                                                                    onOrderAgainFromSameSupplier(item, prevSup);
+                                                                } else {
+                                                                    onFindSuppliersForItem(item);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <RotateCw className="w-4 h-4 mr-1.5 text-blue-500" />
+                                                            <span>Order Again from {prevSup} ({modalDeficit})</span>
+                                                        </AppButton>
+                                                    ) : null;
+                                                })()}
+                                                <AppButton
+                                                    type="button"
+                                                    variant="pink"
+                                                    size="md"
+                                                    pill={false}
+                                                    className="!rounded-lg"
+                                                    onClick={() => {
+                                                        const item = viewItem;
+                                                        setViewItem(null);
+                                                        onFindSuppliersForItem(item);
+                                                    }}
+                                                >
+                                                    <Store className="w-4 h-4 mr-1.5" />
+                                                    <span>Find Potential Suppliers ({modalDeficit})</span>
+                                                </AppButton>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         </div>

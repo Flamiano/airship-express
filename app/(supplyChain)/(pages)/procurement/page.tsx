@@ -1,7 +1,7 @@
 // app/(supplyChain)/(pages)/procurement/page.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { 
@@ -47,11 +47,14 @@ import {
     fetchProcurementData, 
 } from "./utils/procurementApi";
 import { fetchApprovedRequisitionsForProcurement } from "../inventory/server/query";
+import { findBestMatchingPO, getPOStatusIndicator, normalizeItemName } from "../../lib/utils";
+import { calculateGroupedStockShortages } from "./utils/groupedDeficitCalculations";
+import { ReorderDeficitModal } from "./components/ReorderDeficitModal";
 
 // Re-export modals for external imports
 export { PurchaseOrderModal, ChartDetailModal, DigitalReceiptModal };
 
-export default function ProcurementPage() {
+function ProcurementContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -91,6 +94,9 @@ export default function ProcurementPage() {
         requestNumber?: string;
         category?: string;
         previousSupplier?: string | null;
+        deficit?: number;
+        shortageItem?: StockShortageItem;
+        orderAgainSupplier?: string | null;
     } | null>(null);
 
     const [selectedRequestNumberForQuotes, setSelectedRequestNumberForQuotes] = useState<string | null>(null);
@@ -112,6 +118,13 @@ export default function ProcurementPage() {
 
     const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
     const [selectedSupplierForMessage, setSelectedSupplierForMessage] = useState<any | null>(null);
+
+    // Reorder Deficit Modal State
+    const [isReorderDeficitModalOpen, setIsReorderDeficitModalOpen] = useState(false);
+    const [reorderShortageItem, setReorderShortageItem] = useState<StockShortageItem | null>(null);
+    const [reorderSupplierName, setReorderSupplierName] = useState<string | null>(null);
+    const [reorderSupplierId, setReorderSupplierId] = useState<number | string | null>(null);
+    const [reorderQuotation, setReorderQuotation] = useState<any | null>(null);
 
     // Synchronize role changes
     useEffect(() => {
@@ -398,62 +411,6 @@ export default function ProcurementPage() {
                 }
             });
 
-            // Process Inventory Shortages & Approved Requisition Deficits (Stage 1)
-            const shortageMap = new Map<string, StockShortageItem>();
-
-            if (inventoryRes.status === "fulfilled" && inventoryRes.value.data) {
-                const invItems = inventoryRes.value.data;
-                invItems
-                    .filter((item: any) => {
-                        const cur = Number(item.current_stock) || 0;
-                        const min = Number(item.minimum_stock) || 0;
-                        const status = (item.status || "").toLowerCase();
-                        return cur <= min || status === "low-stock" || status === "out-of-stock";
-                    })
-                    .forEach((item: any) => {
-                        const cur = Number(item.current_stock) || 0;
-                        const min = Number(item.minimum_stock) || 0;
-                        const deficit = Math.max(0, min - cur);
-                        const price = Number(item.purchase_price) || 0;
-                        const itemKey = (item.item_name || "").trim().toLowerCase();
-
-                        // If item was delivered via a PO and restocked, skip only if stock is restored
-                        if (deliveredGlobalItemNames.has(itemKey) && cur >= min) {
-                            return;
-                        }
-
-                        const matchAward = awardedBidMap.get(itemKey);
-                        const prevSup = previousSupplierMap.get(itemKey) || (item.item_code ? previousSupplierMap.get(item.item_code.toLowerCase()) : null);
-
-                        shortageMap.set(itemKey, {
-                            id: item.id,
-                            item_code: item.item_code || `ITM-${item.id}`,
-                            item_name: item.item_name || "Warehouse Item",
-                            category: item.category || "General",
-                            current_stock: cur,
-                            unit: item.unit || "units",
-                            minimum_stock: min,
-                            storage_location: item.storage_location || "Binondo Central Hub",
-                            status: cur === 0 ? "out-of-stock" : "low-stock",
-                            updated_at: item.updated_at,
-                            description: item.description,
-                            supplier: item.supplier,
-                            purchase_price: price,
-                            deficit: deficit > 0 ? deficit : 1,
-                            estimated_reorder_cost: (deficit > 0 ? deficit : 1) * (price || 150),
-                            is_bid_awarded: Boolean(matchAward),
-                            awarded_supplier_name: matchAward?.supplierName,
-                            awarded_po_number: matchAward?.poNumber,
-                            previous_supplier: prevSup?.supplierName || item.supplier || null,
-                            previous_supplier_id: prevSup?.supplierId || null,
-                            previous_supplier_email: prevSup?.email || null,
-                            previous_supplier_phone: prevSup?.phone || null,
-                            previous_purchase_date: prevSup?.lastPurchaseDate || null,
-                            previous_unit_price: prevSup?.unitPrice || null,
-                        });
-                    });
-            }
-
             // Extract approved requests to check for lacking quantities & missing active supplier categories
             // Exclude cancelled, rejected, delivered, completed, or fulfilled requests
             const isReqDead = (r: any) => {
@@ -485,228 +442,51 @@ export default function ProcurementPage() {
                 }
             }
 
-            approvedReqList.forEach((req: any) => {
-                const reqStatus = (req.status || "").toLowerCase();
-                let itemsList: any[] = [];
-                if (Array.isArray(req.items) && req.items.length > 0) itemsList = req.items;
-                else if (typeof req.items === "string") {
-                    try {
-                        const parsed = JSON.parse(req.items);
-                        if (Array.isArray(parsed) && parsed.length > 0) itemsList = parsed;
-                    } catch {}
-                }
-
-                // If items array is missing or empty, build from root requisition fields
-                if (itemsList.length === 0 && (req.item_name || req.name || req.description)) {
-                    const reqQty = Number(req.quantity_requested || req.quantity || 1);
-                    const appQty = req.quantity_approved !== undefined ? Number(req.quantity_approved) : 0;
-                    const remQty = req.quantity_remaining !== undefined ? Number(req.quantity_remaining) : reqQty;
-                    itemsList = [{
-                        name: req.item_name || req.name || req.description,
-                        item_name: req.item_name || req.name || req.description,
-                        quantity: reqQty,
-                        quantity_requested: reqQty,
-                        unit: req.unit || "units",
-                        available_quantity: appQty,
-                        deficit_quantity: remQty,
-                        is_new_item: req.is_new_item ?? true,
-                        category: req.category || req.department || "General",
-                        status: req.status || "Pending",
-                        is_approved: reqStatus.includes("approved"),
-                    }];
-                }
-
-                const refNum = req.request_number || `REQ-${String(req.id).slice(0, 8)}`;
-                const rawReqId = String(req.id || "");
-                const matchedUuid = rawReqId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0];
-
-                itemsList.forEach((item: any, idx: number) => {
-                    const itemName = String(item.name || item.item_name || "").trim();
-                    if (!itemName) return;
-
-                    // Check if this specific item is approved
-                    const isItemApproved = item.is_approved === true || item.is_approve === true || item.status === "Approved" || (reqStatus.includes("approved") && item.status !== "Rejected");
-                    if (!isItemApproved) {
-                        return; // Do not push unapproved items into procurement
-                    }
-
-                    const itemKey = itemName.toLowerCase();
-                    const totalReq = Number(item.quantity || item.quantity_requested || 1);
-                    const avail = Number(item.available_quantity ?? item.approved_quantity ?? 0);
-                    const issued = Number(item.issued_quantity || 0);
-                    const deficit = Number(item.deficit_quantity ?? item.remaining_quantity ?? Math.max(0, totalReq - avail - issued));
-
-                    // Check if this specific item in this request has already been released or delivered
-                    const isItemFinished =
-                        item.status === "Delivered" ||
-                        item.status === "Released" ||
-                        item.is_delivered === true ||
-                        item.is_released === true ||
-                        item.is_issued === true ||
-                        reqStatus === "completed" ||
-                        reqStatus === "delivered" ||
-                        reqStatus === "fulfilled" ||
-                        (issued >= totalReq && totalReq > 0) ||
-                        (matchedUuid && deliveredReqItemsSet.has(`${matchedUuid.toLowerCase()}__${itemKey}`)) ||
-                        (refNum && deliveredReqItemsSet.has(`${refNum.toLowerCase()}__${itemKey}`)) ||
-                        (refNum && deliveredReqItemsSet.has(`${refNum.toLowerCase().replace(/[^a-z0-9]/g, "")}__${itemKey}`));
-
-                    // Skip fully released / delivered items with 0 remaining deficit
-                    if (isItemFinished && deficit === 0) {
-                        return;
-                    }
-
-                    const isNewItem = Boolean(item.is_new_item || (!item.catalog_item_id && avail === 0));
-
-                    // Category check against active suppliers
-                    const itemCat = String(item.category || req.category || req.department || "General").trim();
-                    const catKey = itemCat.toLowerCase();
-                    const matchingActiveSuppliers = uniqueSuppliers.filter((s: any) => {
-                        const sCat = String(s.category || "").toLowerCase();
-                        return (s.is_active === undefined || s.is_active === true || s.is_active === "true") &&
-                               (s.status || "").toLowerCase() !== "inactive" &&
-                               (sCat.includes(catKey) || catKey.includes(sCat) || sCat === "all" || sCat === "general");
-                    });
-                    const activeSupplierCount = matchingActiveSuppliers.length;
-                    const activeSupplierNames = matchingActiveSuppliers.map((s: any) => s.name || s.company_name).filter(Boolean);
-                    const hasActiveSupplier = activeSupplierCount > 0 || activeSupplierCategories.has(catKey);
-
-                    // User Rule:
-                    // Only add to Stage 1 if there is a real remaining deficit (> 0), or it's a new item needing sourcing
-                    const shouldAddToStage1 = deficit > 0 || isNewItem || (!hasActiveSupplier && !isItemFinished);
-
-                    if (shouldAddToStage1) {
-                        const effectiveDeficit = deficit > 0 ? deficit : (isItemFinished ? 0 : totalReq);
-                        if (effectiveDeficit <= 0) return; // Ignore zero deficits
-
-                        const itemPrice = Number(item.price || item.unit_price || item.purchase_price || 150);
-                        const itemCleanKey = itemKey.replace(/[^a-z0-9]/g, "_");
-                        const shortageId = matchedUuid 
-                            ? `${matchedUuid}_item_${idx}_${itemCleanKey}` 
-                            : `req-shortage-${String(req.id || "gen")}-${idx}_${itemCleanKey}`;
-
-                        const existing = shortageMap.get(itemKey);
-                        const prevSup = previousSupplierMap.get(itemKey) || (item.item_code ? previousSupplierMap.get(item.item_code.toLowerCase()) : null);
-
-                        // Check if bid is awarded strictly for this item
-                        const refKey = refNum.toLowerCase();
-                        const matchAward = awardedBidMap.get(`${refKey}__${itemKey}`) ||
-                                           (matchedUuid ? awardedBidMap.get(`${matchedUuid.toLowerCase()}__${itemKey}`) : null) ||
-                                           awardedBidMap.get(itemKey);
-                        const isBidAwarded = Boolean(matchAward);
-
-                        if (existing) {
-                            // If existing shortage was only from the baseline warehouse buffer and not from a requisition, overwrite with true requisition deficit
-                            if (!existing.is_from_request) {
-                                existing.deficit = effectiveDeficit;
-                                existing.is_from_request = true;
-                            } else {
-                                existing.deficit = (existing.deficit || 0) + effectiveDeficit;
-                            }
-                            existing.estimated_reorder_cost = existing.deficit * (existing.purchase_price || itemPrice);
-                            
-                            // Combine source request references (e.g. #PR-2026-905106)
-                            if (!existing.source_request) {
-                                existing.source_request = refNum;
-                            } else if (!existing.source_request.includes(refNum)) {
-                                existing.source_request = `${existing.source_request}, ${refNum}`;
-                            }
-
-                            if (!existing.source_department) {
-                                existing.source_department = req.department || "Warehouse";
-                            }
-                            existing.is_new_item = isNewItem || existing.is_new_item;
-                            existing.has_no_active_supplier = !hasActiveSupplier || existing.has_no_active_supplier;
-                            existing.active_supplier_count = activeSupplierCount;
-                            existing.active_supplier_names = activeSupplierNames;
-                            existing.available_ratio = `${avail}/${totalReq}`;
-                            existing.previous_supplier = existing.previous_supplier || prevSup?.supplierName || item.supplier || null;
-                            existing.previous_supplier_id = existing.previous_supplier_id || prevSup?.supplierId || null;
-                            existing.previous_purchase_date = existing.previous_purchase_date || prevSup?.lastPurchaseDate || null;
-                            existing.previous_unit_price = existing.previous_unit_price || prevSup?.unitPrice || null;
-                            
-                            if (matchedUuid && !existing.request_id) {
-                                existing.request_id = matchedUuid;
-                            }
-                            if (isBidAwarded) {
-                                existing.is_bid_awarded = true;
-                                existing.awarded_supplier_name = matchAward?.supplierName || existing.awarded_supplier_name;
-                                existing.awarded_po_number = matchAward?.poNumber || existing.awarded_po_number;
-                            }
-                        } else {
-                            shortageMap.set(itemKey, {
-                                id: shortageId,
-                                request_id: matchedUuid || String(req.id || ""),
-                                item_code: item.catalog_item_code || item.item_code || `REQ-${refNum}-${idx + 1}`,
-                                item_name: itemName,
-                                category: itemCat,
-                                current_stock: avail,
-                                unit: item.unit || "units",
-                                minimum_stock: totalReq,
-                                storage_location: item.storage_location || "Central Warehouse (Procurement Shortage Queue)",
-                                status: avail === 0 ? "out-of-stock" : "low-stock",
-                                deficit: effectiveDeficit,
-                                estimated_reorder_cost: effectiveDeficit * itemPrice,
-                                source_request: refNum,
-                                source_department: req.department || "Warehouse",
-                                is_from_request: true,
-                                is_new_item: isNewItem,
-                                has_no_active_supplier: !hasActiveSupplier,
-                                active_supplier_count: activeSupplierCount,
-                                active_supplier_names: activeSupplierNames,
-                                available_ratio: `${avail}/${totalReq}`,
-                                is_bid_awarded: isBidAwarded,
-                                awarded_supplier_name: matchAward?.supplierName,
-                                awarded_po_number: matchAward?.poNumber,
-                                previous_supplier: prevSup?.supplierName || item.supplier || null,
-                                previous_supplier_id: prevSup?.supplierId || null,
-                                previous_purchase_date: prevSup?.lastPurchaseDate || null,
-                                previous_unit_price: prevSup?.unitPrice || null,
-                            });
-                        }
-                    }
-                });
+            // Calculate Grouped Item Deficits and Remaining Procurement Quantities (Only active actionable deficits)
+            const groupedShortages = calculateGroupedStockShortages({
+                inventoryItems: inventoryRes.status === "fulfilled" && inventoryRes.value?.data ? inventoryRes.value.data : [],
+                requests: approvedReqList,
+                purchaseOrders: rawOrdersList,
+                quotations: rawQuotesList,
+                suppliers: uniqueSuppliers,
+                onlyActionable: true,
             });
 
-            // Final enrichment of shortage items with verified active supplier status and contact records
-            const enrichedShortages: StockShortageItem[] = Array.from(shortageMap.values()).map((sItem) => {
-                const rawSupName = (sItem.supplier || sItem.previous_supplier || "").trim();
-                const rawCat = (sItem.category || "").trim().toLowerCase();
+            // Final enrichment of shortage items with verified previous supplier contact records
+            const enrichedShortages: StockShortageItem[] = groupedShortages.map((sItem) => {
+                const itemKey = (sItem.item_name || "").trim().toLowerCase();
+                const prevSup = previousSupplierMap.get(itemKey) || (sItem.item_code ? previousSupplierMap.get(sItem.item_code.toLowerCase()) : null);
 
-                // 1. Direct name lookup in uniqueSuppliers
-                let matchedSup: any = null;
-                if (rawSupName) {
-                    matchedSup = uniqueSuppliers.find((s: any) => 
-                        s && s.name && s.name.trim().toLowerCase() === rawSupName.toLowerCase()
-                    ) || null;
-                }
+                const prevSupplierName = sItem.previous_supplier || prevSup?.supplierName || null;
+                const prevSupplierId = sItem.previous_supplier_id || prevSup?.supplierId || null;
+                const prevEmail = sItem.previous_supplier_email || prevSup?.email || null;
+                const prevPhone = sItem.previous_supplier_phone || prevSup?.phone || null;
+                const prevPurchaseDate = sItem.previous_purchase_date || prevSup?.lastPurchaseDate || null;
+                const prevUnitPrice = sItem.previous_unit_price ?? prevSup?.unitPrice ?? null;
 
-                // 2. Category lookup for active suppliers
-                let categoryActiveSup: any = null;
-                if (rawCat) {
-                    categoryActiveSup = uniqueSuppliers.find((s: any) => {
-                        if (!s || !s.category) return false;
-                        const isActive = s.is_active === undefined || s.is_active === true || s.is_active === "true";
-                        const isNotInactive = (s.status || "").toLowerCase() !== "inactive";
-                        return isActive && isNotInactive && s.category.trim().toLowerCase() === rawCat;
-                    }) || null;
-                }
+                const hasOfficialSupplier = Boolean(sItem.has_official_active_supplier || sItem.matched_active_supplier);
+                const hasPreviousSupplier = Boolean(prevSupplierName);
+                const hasDirectSupplier = Boolean(sItem.supplier);
+                const hasAnySupplier = hasOfficialSupplier || hasPreviousSupplier || hasDirectSupplier;
 
-                const isDirectSupActive = matchedSup 
-                    ? (matchedSup.is_active === undefined || matchedSup.is_active === true || matchedSup.is_active === "true") && ((matchedSup.status || "").toLowerCase() !== "inactive")
-                    : false;
-
-                const hasOfficialActiveSupplier = isDirectSupActive || Boolean(categoryActiveSup);
-                const matchedActiveSupplier = isDirectSupActive ? matchedSup : categoryActiveSup;
+                const remDeficit = sItem.remaining_deficit !== undefined ? sItem.remaining_deficit : sItem.deficit;
+                const effectiveUnitPrice = hasAnySupplier
+                    ? Number(sItem.purchase_price || prevUnitPrice || 0)
+                    : 0;
+                const estimatedCost = hasAnySupplier
+                    ? (remDeficit * effectiveUnitPrice)
+                    : 0;
 
                 return {
                     ...sItem,
-                    has_official_active_supplier: hasOfficialActiveSupplier,
-                    is_supplier_active: isDirectSupActive,
-                    matched_active_supplier: matchedActiveSupplier,
-                    previous_supplier_obj: matchedSup || null,
-                    previous_supplier_email: matchedSup?.email || sItem.previous_supplier_email || null,
-                    previous_supplier_phone: matchedSup?.phone || sItem.previous_supplier_phone || null,
+                    purchase_price: effectiveUnitPrice,
+                    estimated_reorder_cost: estimatedCost,
+                    previous_supplier: prevSupplierName,
+                    previous_supplier_id: prevSupplierId,
+                    previous_supplier_email: prevEmail,
+                    previous_supplier_phone: prevPhone,
+                    previous_purchase_date: prevPurchaseDate,
+                    previous_unit_price: prevUnitPrice,
                 };
             });
 
@@ -729,9 +509,9 @@ export default function ProcurementPage() {
         loadAllProcurementData();
     }, [loadAllProcurementData]);
 
-    // Realtime Supabase Subscription for Procurement Hub
+    // Realtime Supabase Subscription for All Procurement Stages & Tabs
     useEffect(() => {
-        const channelName = `procurement_realtime_${Date.now()}`;
+        const channelName = `procurement_master_realtime_${Math.random().toString(36).substring(2, 9)}`;
         const channel = supabase
             .channel(channelName)
             .on(
@@ -755,6 +535,13 @@ export default function ProcurementPage() {
             )
             .on(
                 "postgres_changes",
+                { event: "*", schema: "public", table: "stock_movements" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
                 { event: "*", schema: "public", table: "suppliers" },
                 () => {
                     loadAllProcurementData(true);
@@ -763,7 +550,12 @@ export default function ProcurementPage() {
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "supplier_quotations" },
-                () => {
+                (payload) => {
+                    if (payload.eventType === "INSERT") {
+                        const newQuote = payload.new as any;
+                        const supName = newQuote?.supplier_name || "A vendor";
+                        toast.info(`Procurement Alert: New quotation received from ${supName}`, { duration: 3500 });
+                    }
                     loadAllProcurementData(true);
                 }
             )
@@ -777,6 +569,30 @@ export default function ProcurementPage() {
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "inventory_requests" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "supplier_return_requests" },
+                (payload) => {
+                    if (payload.eventType === "INSERT") {
+                        toast.info(`Procurement Alert: New supplier return request logged`, { duration: 3500 });
+                    }
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "warehouse_damage_incidents" },
+                () => {
+                    loadAllProcurementData(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "supplier_meetings" },
                 () => {
                     loadAllProcurementData(true);
                 }
@@ -803,22 +619,44 @@ export default function ProcurementPage() {
     // --- WORKFLOW ACTIONS ---
     // 1. Find Suppliers for Shortage (Stage 1 -> Stage 2 bridge)
     const handleFindSuppliersForItem = (shortageItem: StockShortageItem) => {
-        if (shortageItem.is_bid_awarded) {
-            toast.info(`Bid has already been awarded for "${shortageItem.item_name}"${shortageItem.awarded_supplier_name ? ` to ${shortageItem.awarded_supplier_name}` : ""}.`);
+        const remainingDeficit = shortageItem.remaining_deficit !== undefined
+            ? Number(shortageItem.remaining_deficit)
+            : Number(shortageItem.deficit) || 0;
+
+        if (remainingDeficit <= 0) {
+            toast.info(`Demand for "${shortageItem.item_name}" is already fully covered by usable stock and active purchase orders.`);
             return;
         }
+
         setActiveSourcingFocus({
             itemName: shortageItem.item_name,
             requestNumber: shortageItem.source_request,
             category: shortageItem.category,
             previousSupplier: shortageItem.previous_supplier || null,
+            deficit: remainingDeficit,
+            shortageItem: shortageItem,
         });
         handleStageChange(2);
         if (shortageItem.previous_supplier) {
-            toast.info(`Switched to Stage 2: Sourcing for "${shortageItem.item_name}". Previous supplier: ${shortageItem.previous_supplier}`);
+            toast.info(`Switched to Stage 2: Sourcing ${remainingDeficit} units for "${shortageItem.item_name}". Previous supplier: ${shortageItem.previous_supplier}`);
         } else {
-            toast.info(`Switched to Stage 2: Locating suppliers for shortage item "${shortageItem.item_name}".`);
+            toast.info(`Switched to Stage 2: Locating suppliers for remaining deficit of ${remainingDeficit} units ("${shortageItem.item_name}").`);
         }
+    };
+
+    // 2. Order Again from Same Supplier Shortcut (Stage 1 / Stage 2) - Uses Create Purchase Order modal
+    const handleOrderAgainFromSameSupplier = (shortageItem: StockShortageItem, supplierName: string) => {
+        const remainingDeficit = shortageItem.remaining_deficit !== undefined
+            ? Number(shortageItem.remaining_deficit)
+            : Number(shortageItem.deficit) || 0;
+
+        if (remainingDeficit <= 0) {
+            toast.info(`Demand for "${shortageItem.item_name}" is already fully covered.`);
+            return;
+        }
+
+        const matchedSup = suppliers.find((s) => s.name?.toLowerCase() === supplierName.toLowerCase());
+        handleCreatePOFromShortage(shortageItem, matchedSup);
     };
 
     // 6. View Quotes for Supplier (Stage 2 -> Stage 3 bridge)
@@ -844,7 +682,7 @@ export default function ProcurementPage() {
                     .eq("request_number", quote.request_number);
             }
 
-            // Also sync suppliers_qoutation_bid on any existing purchase order linked to this request or quotation
+            // Only sync suppliers_qoutation_bid on an open unawarded draft PO for this request (never touch approved/delivered/in-flight POs)
             try {
                 if (quote.request_id) {
                     await supabase
@@ -854,19 +692,12 @@ export default function ProcurementPage() {
                             supplier_name: quote.supplier_name,
                             supplier_id: quote.supplier_id ? Number(quote.supplier_id) : undefined,
                         })
-                        .eq("request_id", String(quote.request_id));
-                } else if (quote.request_number) {
-                    await supabase
-                        .from("purchase_orders")
-                        .update({
-                            suppliers_qoutation_bid: Number(quote.id),
-                            supplier_name: quote.supplier_name,
-                            supplier_id: quote.supplier_id ? Number(quote.supplier_id) : undefined,
-                        })
-                        .ilike("notes", `%${quote.request_number}%`);
+                        .eq("request_id", String(quote.request_id))
+                        .ilike("status", "draft")
+                        .is("admin_approved_at", null);
                 }
             } catch (poErr) {
-                console.warn("Could not sync suppliers_qoutation_bid on PO:", poErr);
+                console.warn("Could not sync suppliers_qoutation_bid on draft PO:", poErr);
             }
 
             setQuotations((prev) =>
@@ -948,21 +779,25 @@ export default function ProcurementPage() {
         }
     }, [suppliers]);
 
-    // 14. Direct PO Creation from Shortage (Stage 1)
+    // 14. Direct PO Creation from Shortage (Stage 1) - Opens Create Purchase Order modal
     const handleCreatePOFromShortage = useCallback((shortageItem: StockShortageItem, supplier?: any) => {
         const targetSup = supplier || shortageItem.matched_active_supplier 
             || suppliers.find(s => s.name?.toLowerCase() === (shortageItem.supplier || shortageItem.previous_supplier)?.toLowerCase()) 
             || null;
 
-        const deficitQty = Math.max(1, Number(shortageItem.deficit) || 1);
+        const supName = targetSup?.name || shortageItem.supplier || shortageItem.previous_supplier || '';
+        const supId = targetSup?.id || shortageItem.previous_supplier_id || '';
+
+        const deficitQty = Math.max(1, Number(shortageItem.remaining_deficit ?? shortageItem.deficit) || 1);
         const unitPrice = Number(shortageItem.purchase_price || shortageItem.previous_unit_price || 0);
 
         setPoModalPrefillRequest({
             id: `shortage_${shortageItem.id}_${Date.now()}`,
-            supplier_id: targetSup?.id || shortageItem.previous_supplier_id || '',
-            supplier_name: targetSup?.name || shortageItem.supplier || shortageItem.previous_supplier || '',
+            request_number: shortageItem.source_request || undefined,
+            supplier_id: supId ? String(supId) : '',
+            supplier_name: supName,
             description: `Replenishment order for ${shortageItem.item_name}`,
-            department: shortageItem.category,
+            department: shortageItem.category || "General",
             amount: deficitQty * unitPrice,
             allowEditItems: true,
             items: [
@@ -979,6 +814,45 @@ export default function ProcurementPage() {
         setSelectedPOForModal(null);
         setIsPOModalOpen(true);
     }, [suppliers]);
+
+    // 15. Reorder directly from Stage 3 (Quotation & Outreach Pipeline)
+    const handleReorderFromStage3 = useCallback((itemData: any, supplier: any, quote?: any) => {
+        const itemName = itemData?.itemName || itemData?.name || quote?.item_name || "";
+        const matchedShortage = shortages.find(s => 
+            s.item_name?.toLowerCase() === itemName.toLowerCase() ||
+            normalizeItemName(s.item_name || "") === normalizeItemName(itemName)
+        );
+
+        const qty = Number(itemData?.quantityRequested || quote?.quantity || 1);
+        const shortageToUse: StockShortageItem = matchedShortage || {
+            id: `stage3_reorder_${Date.now()}`,
+            item_code: `ITEM-${Date.now().toString().slice(-4)}`,
+            item_name: itemName,
+            category: itemData?.category || itemData?.department || "General",
+            current_stock: 0,
+            unit: itemData?.unit || quote?.unit || "units",
+            minimum_stock: 0,
+            storage_location: "Main Warehouse",
+            status: 'out-of-stock',
+            total_approved_demand: qty,
+            usable_stock: 0,
+            active_po_coverage: 0,
+            remaining_deficit: qty,
+            deficit: qty,
+            estimated_reorder_cost: Number(quote?.total_amount || 0),
+            previous_supplier: supplier?.name || quote?.supplier_name,
+            previous_supplier_id: supplier?.id || quote?.supplier_id,
+            previous_unit_price: quote?.unit_price,
+            covering_purchase_orders: [],
+        };
+
+        const supName = supplier?.name || quote?.supplier_name || null;
+        setReorderShortageItem(shortageToUse);
+        setReorderSupplierName(supName);
+        setReorderSupplierId(supplier?.id || quote?.supplier_id || null);
+        setReorderQuotation(quote || null);
+        setIsReorderDeficitModalOpen(true);
+    }, [shortages]);
 
     // Compute navigation badge counts
     const navCounts = useMemo(() => {
@@ -1067,6 +941,7 @@ export default function ProcurementPage() {
                                 onRefresh={() => loadAllProcurementData(true)}
                                 onMessageSupplier={handleMessageSupplier}
                                 onCreatePO={handleCreatePOFromShortage}
+                                onOrderAgainFromSameSupplier={handleOrderAgainFromSameSupplier}
                             />
                         )}
 
@@ -1079,8 +954,7 @@ export default function ProcurementPage() {
                                 onClearSourcingFocus={() => setActiveSourcingFocus(null)}
                                 onRefresh={() => loadAllProcurementData(true)}
                                 onOpenPOModal={(item, sup) => {
-                                    setSelectedPOForModal(null);
-                                    setIsPOModalOpen(true);
+                                    handleCreatePOFromShortage(item, sup);
                                 }}
                             />
                         )}
@@ -1089,7 +963,9 @@ export default function ProcurementPage() {
                         {currentStage === 3 && (
                             <PotentialSuppliersTab
                                 registeredSuppliers={suppliers}
+                                shortages={shortages}
                                 onSupplierPromoted={() => loadAllProcurementData(true)}
+                                onReorder={handleReorderFromStage3}
                                 onViewPurchaseOrder={(po) => {
                                     if (po) {
                                         setReceiptModalPO(po);
@@ -1188,7 +1064,49 @@ export default function ProcurementPage() {
                         }}
                     />
                 )}
+
+                {/* F. Reorder Deficit Modal */}
+                {isReorderDeficitModalOpen && reorderShortageItem && (
+                    <ReorderDeficitModal
+                        isOpen={isReorderDeficitModalOpen}
+                        onClose={() => {
+                            setIsReorderDeficitModalOpen(false);
+                            setReorderShortageItem(null);
+                            setReorderSupplierName(null);
+                            setReorderSupplierId(null);
+                            setReorderQuotation(null);
+                        }}
+                        item={reorderShortageItem}
+                        supplierName={reorderSupplierName}
+                        supplierId={reorderSupplierId}
+                        quotation={reorderQuotation}
+                        registeredSuppliers={suppliers}
+                        onOrderCreated={() => {
+                            setIsReorderDeficitModalOpen(false);
+                            setReorderShortageItem(null);
+                            setReorderSupplierName(null);
+                            setReorderSupplierId(null);
+                            setReorderQuotation(null);
+                            loadAllProcurementData(true);
+                        }}
+                    />
+                )}
             </div>
         </SessionGuard>
     );
 }
+
+export default function ProcurementPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="py-12 space-y-4 max-w-7xl mx-auto px-4">
+                    <CardsSkeleton count={4} />
+                </div>
+            }
+        >
+            <ProcurementContent />
+        </Suspense>
+    );
+}
+

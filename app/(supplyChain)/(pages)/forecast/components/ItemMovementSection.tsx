@@ -49,6 +49,7 @@ interface ItemMovementSectionProps {
     currentStartDate?: string;
     currentEndDate?: string;
     isLoading?: boolean;
+    onOpenChartModal?: (domain: string) => void;
 }
 
 export default function ItemMovementSection({
@@ -58,7 +59,8 @@ export default function ItemMovementSection({
     onCustomRangeApply,
     currentStartDate,
     currentEndDate,
-    isLoading = false
+    isLoading = false,
+    onOpenChartModal
 }: ItemMovementSectionProps) {
     // Chart Controls & Metrics
     const [chartMetric, setChartMetric] = useState<"issued_qty" | "daily_rate" | "usable_stock" | "transactions">("issued_qty");
@@ -679,7 +681,17 @@ export default function ItemMovementSection({
                     </div>
 
                     {/* Chart Canvas in Neumorphic Debossed Well */}
-                    <div className="relative h-72 sm:h-80 w-full p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                    <div
+                        onClick={() => onOpenChartModal?.("movement")}
+                        className="relative h-72 sm:h-80 w-full p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] cursor-pointer group"
+                    >
+                        {/* Hover Inspector Hint */}
+                        <div className="absolute top-3 right-3 z-10 opacity-70 group-hover:opacity-100 transition-opacity">
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-white/80 dark:bg-black/60 backdrop-blur-xs border border-pink-500/30 shadow-xs flex items-center gap-1.5">
+                                <i className="fas fa-expand text-[9px]" />
+                                <span>Inspect Velocity Methodology &amp; Data</span>
+                            </span>
+                        </div>
                         <canvas ref={chartCanvasRef} />
                     </div>
 

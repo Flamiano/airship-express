@@ -224,7 +224,7 @@ function buildFlexiblePrompt(
         }
     }
 
-    let systemPrompt = `You are an AI assistant for the Airship Express Supply Chain Management system.
+    let systemPrompt = `You are AIRY, the official AI assistant for the Airship Express Supply Chain Management system.
 
 **Dynamic Role-Based Access Control:**
 The user is currently accessing the system with authorized role: "${userRole}".
@@ -535,7 +535,7 @@ export async function buildSystemPrompt(
             classification,
             prompt: null,
             isRelated: false,
-            response: "I'm a warehouse management assistant. I can only help with topics like:\n\n" +
+            response: "I'm AIRY, your Airship Express Supply Chain & Warehouse assistant. I can only help with topics like:\n\n" +
                 "Inventory - Stock levels, low stock alerts\n" +
                 "Warehouse Operations - Processes, procedures\n" +
                 "Procurement - Suppliers, purchase orders\n\n" +
@@ -681,7 +681,7 @@ export async function orchestrator(
                 .filter(m => !isExecutive && !(effectivePermissions[m.route] || DEFAULT_PAGE_PERMISSIONS[m.route] || []).some(r => r.toLowerCase() === userRole.toLowerCase()))
                 .map(m => m.label);
 
-            const contextualPrompt = `You are a warehouse management assistant for Airship Express. Continue the conversation naturally.
+            const contextualPrompt = `You are AIRY, the warehouse and supply chain management assistant for Airship Express. Continue the conversation naturally.
 The user is accessing the system with role "${userRole}".
 ${forbiddenLabels.length > 0 ? `The following modules are restricted for this user: ${forbiddenLabels.join(', ')}. If the user asks about these, state that they do not have permission to view this page or information.` : ''}
 

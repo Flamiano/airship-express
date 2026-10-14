@@ -259,10 +259,25 @@ export function useExecutiveData() {
         const isManual = typeof options === 'boolean' ? options : !!options?.isManualRefresh;
         const isSilent = typeof options === 'object' && !!options?.isSilent;
         // use explicitly passed range, or fall back to the ref (last applied)
-        const range: DateRange | null =
+        const rawRange =
             typeof options === 'object' && options?.dateRange !== undefined
                 ? options.dateRange
                 : activeDateRangeRef.current;
+
+        const range: DateRange | null = (() => {
+            if (!rawRange || (!rawRange.from && !rawRange.to)) return null;
+            let from = (rawRange.from || rawRange.to || '').trim();
+            let to = (rawRange.to || rawRange.from || '').trim();
+            if (!from && !to) return null;
+            if (!from) from = to;
+            if (!to) to = from;
+            if (from > to) {
+                const tmp = from;
+                from = to;
+                to = tmp;
+            }
+            return { from, to };
+        })();
 
         if (isManual) {
             setIsRefreshing(true);
@@ -282,23 +297,33 @@ export function useExecutiveData() {
                 supplierReturnsRes
             ] = await Promise.all([
                 Promise.resolve({ data: [] as any[], error: null }),
-                supabase
-                    .from('inventory_items')
-                    .select('id, item_code, item_name, category, current_stock, minimum_stock, status, purchase_price, supplier'),
+                (() => {
+                    let q = supabase
+                        .from('inventory_items')
+                        .select('id, item_code, item_name, category, current_stock, minimum_stock, status, purchase_price, supplier, created_at');
+                    if (range?.from) q = q.gte('created_at', range.from);
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
+                    return q;
+                })(),
                 (() => {
                     let q = supabase
                         .from('purchase_requests')
-                        .select('id, request_number, type, description, requested_by, department, supplier_name, amount, priority, status, date, created_at')
+                        .select('id, request_number, request_type, type, description, purpose, requested_by, department, items, priority, needed_by_date, status, created_at')
                         .order('created_at', { ascending: false });
                     if (range?.from) q = q.gte('created_at', range.from);
-                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59');
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
                     return q;
                 })(),
-                supabase
-                    .from('supplier_documents')
-                    .select('id, title, file_type, category, document_type, supplier, created_at')
-                    .order('created_at', { ascending: false })
-                    .limit(200),
+                (() => {
+                    let q = supabase
+                        .from('supplier_documents')
+                        .select('id, title, file_type, category, document_type, supplier, created_at')
+                        .order('created_at', { ascending: false })
+                        .limit(200);
+                    if (range?.from) q = q.gte('created_at', range.from);
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
+                    return q;
+                })(),
                 (() => {
                     let q = supabase
                         .from('purchase_orders')
@@ -306,20 +331,25 @@ export function useExecutiveData() {
                         .order('created_at', { ascending: false })
                         .limit(500);
                     if (range?.from) q = q.gte('created_at', range.from);
-                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59');
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
                     return q;
                 })(),
-                supabase
-                    .from('suppliers')
-                    .select('id, name, category, location, is_active')
-                    .order('name', { ascending: true }),
+                (() => {
+                    let q = supabase
+                        .from('suppliers')
+                        .select('id, name, category, location, is_active, created_at')
+                        .order('name', { ascending: true });
+                    if (range?.from) q = q.gte('created_at', range.from);
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
+                    return q;
+                })(),
                 (() => {
                     let q = supabase
                         .from('warehouse_damage_incidents')
                         .select('id, incident_number, item_id, item_code, item_name, quantity, quantity_received, unit, discrepancy_type, defect_type, severity, status, purchase_order_id, po_number, supplier_id, supplier_name, reported_at, created_at, action_taken, detected_at_location')
                         .order('created_at', { ascending: false });
                     if (range?.from) q = q.gte('created_at', range.from);
-                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59');
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
                     return q;
                 })(),
                 (() => {
@@ -328,7 +358,7 @@ export function useExecutiveData() {
                         .select('id, return_request_number, incident_id, purchase_order_id, po_number, supplier_id, supplier_name, defective_quantity, requested_resolution, proposed_resolution, status, resolution_details, inspection_date, created_at, updated_at')
                         .order('created_at', { ascending: false });
                     if (range?.from) q = q.gte('created_at', range.from);
-                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59');
+                    if (range?.to)   q = q.lte('created_at', range.to + 'T23:59:59.999Z');
                     return q;
                 })()
             ]);
@@ -475,6 +505,7 @@ export function useExecutiveData() {
 
             // procurement summary
             const openPOs = purchaseOrders.filter(po => po.status !== 'Cancelled' && po.status !== 'Delivered').length;
+            const periodPOs = range?.from ? purchaseOrders.length : openPOs;
             const pendingApprovals = procurement.filter(pr => pr.status === 'Pending').length;
             const currentMonthStr = now.toISOString().slice(0, 7); // YYYY-MM
             const mtdSpend = range?.from
@@ -493,7 +524,7 @@ export function useExecutiveData() {
                 totalStockUnitsFormatted: `${totalStockUnits.toLocaleString()} Units`,
                 inventorySkus: inventory.length,
                 lowStockAlerts: anomaliesCount,
-                openPOs,
+                openPOs: periodPOs,
                 mtdSpend,
                 mtdSpendFormatted: `₱${mtdSpend.toLocaleString()}`,
                 activeSuppliers: activeSuppliersCount,
@@ -1013,10 +1044,12 @@ export function useExecutiveData() {
             setIsLoadedFromCache(false);
 
             try {
-                sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-                    timestamp: Date.now(),
-                    payload,
-                }));
+                if (!range?.from) {
+                    sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+                        timestamp: Date.now(),
+                        payload,
+                    }));
+                }
             } catch (err) {
                 console.warn("Could not save executive data to sessionStorage:", err);
             }

@@ -26,6 +26,7 @@ interface ForecastAiSummaryPanelProps {
     forecastData: any;
     activeTab?: string;
     onSelectTab?: (tabKey: "dashboard" | "table" | "consumption" | "movement" | "history") => void;
+    onOpenChartModal?: (domain: string) => void;
 }
 
 const TAB_OPTIONS = [
@@ -40,7 +41,8 @@ const TAB_OPTIONS = [
 export default function ForecastAiSummaryPanel({
     forecastData,
     activeTab = "dashboard",
-    onSelectTab
+    onSelectTab,
+    onOpenChartModal
 }: ForecastAiSummaryPanelProps) {
     const [analyzing, setAnalyzing] = useState(false);
     const [hasGenerated, setHasGenerated] = useState(false);
@@ -427,8 +429,15 @@ export default function ForecastAiSummaryPanel({
                                             <td className="py-3.5 px-4 text-right">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleJumpToTab(row.tabKey)}
+                                                    onClick={() => {
+                                                        if (onOpenChartModal) {
+                                                            onOpenChartModal(row.tabKey);
+                                                        } else {
+                                                            handleJumpToTab(row.tabKey);
+                                                        }
+                                                    }}
                                                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_4px_rgba(166,175,195,0.25)] hover:text-pink-700 transition-colors cursor-pointer"
+                                                    title="Open chart modal and view methodology"
                                                 >
                                                     <span>Open</span>
                                                     <i className="fas fa-chevron-right text-[9px]" />

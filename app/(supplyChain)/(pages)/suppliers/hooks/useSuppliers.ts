@@ -187,9 +187,9 @@ export function useSuppliers() {
                 .order("name");
             if (error) throw error;
             const allSuppliers = data || [];
-            const activeOnly = allSuppliers.filter((s) => s.is_active !== false);
+            const activeOnly = allSuppliers.filter((s) => s.is_active !== false && (s.status || "").toLowerCase() !== "inactive");
             const potentialOnly = allSuppliers.filter(
-                (s) => s.is_active === false || (s.notes && s.notes.toLowerCase().includes("potential"))
+                (s) => s.is_active === false || (s.notes && (s.notes.toLowerCase().includes("[manual potential supplier lead]") || s.notes.toLowerCase().includes("[potential supplier lead]")))
             );
             setSuppliers(activeOnly);
             setPotentialCount(potentialOnly.length);
@@ -383,12 +383,12 @@ export function useSuppliers() {
         }
     };
 
-    // handle deleting a single supplier
+    // handle deactivating a single supplier (soft deactivation preserves contracts, documents, and history)
     const handleDeleteSupplier = async (supplierId: number, supplierName: string) => {
         const confirmed = await confirm({
-            title: "Delete Supplier",
-            message: `Are you sure you want to delete "${supplierName}"? This action cannot be undone.`,
-            confirmText: "Delete",
+            title: "Deactivate Supplier",
+            message: `Are you sure you want to deactivate "${supplierName}"? This will hide the supplier from active directories while preserving all contracts, documents, quotations, and transaction history.`,
+            confirmText: "Deactivate",
             cancelText: "Cancel",
             confirmVariant: "danger",
         });
@@ -396,28 +396,28 @@ export function useSuppliers() {
         try {
             const { error } = await supabase
                 .from("suppliers")
-                .delete()
+                .update({ is_active: false, status: "inactive" })
                 .eq("id", supplierId);
             if (error) throw error;
-            toast.success(`Supplier "${supplierName}" deleted successfully!`);
+            toast.success(`Supplier "${supplierName}" deactivated successfully (documents and history preserved)!`);
             fetchSuppliers();
             setShowModal(false);
         } catch (error: any) {
-            console.error("Error deleting supplier:", error);
-            toast.error(error.message || "Failed to delete supplier");
+            console.error("Error deactivating supplier:", error);
+            toast.error(error.message || "Failed to deactivate supplier");
         }
     };
 
-    // handle bulk deleting selected suppliers
+    // handle bulk deactivating selected suppliers
     const handleBulkDelete = async () => {
         if (selectedSuppliers.size === 0) {
             toast.warning("Please select at least one supplier");
             return;
         }
         const confirmed = await confirm({
-            title: "Delete Selected Suppliers",
-            message: `Are you sure you want to delete ${selectedSuppliers.size} selected supplier(s)? This action cannot be undone.`,
-            confirmText: "Delete All",
+            title: "Deactivate Selected Suppliers",
+            message: `Are you sure you want to deactivate ${selectedSuppliers.size} selected supplier(s)? This preserves all related documents, quotations, and historical records.`,
+            confirmText: "Deactivate All",
             cancelText: "Cancel",
             confirmVariant: "danger",
         });
@@ -425,15 +425,15 @@ export function useSuppliers() {
         try {
             const { error } = await supabase
                 .from("suppliers")
-                .delete()
+                .update({ is_active: false, status: "inactive" })
                 .in("id", Array.from(selectedSuppliers));
             if (error) throw error;
-            toast.success(`${selectedSuppliers.size} supplier(s) deleted successfully!`);
+            toast.success(`${selectedSuppliers.size} supplier(s) deactivated successfully!`);
             setSelectedSuppliers(new Set());
             fetchSuppliers();
         } catch (error: any) {
-            console.error("Error bulk deleting suppliers:", error);
-            toast.error(error.message || "Failed to delete suppliers");
+            console.error("Error bulk deactivating suppliers:", error);
+            toast.error(error.message || "Failed to deactivate suppliers");
         }
     };
 

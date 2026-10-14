@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
         const {
             items,
             role = "",
-            user_name = "AI Assistant",
+            user_name = "AIRY",
             user_email = "",
             department = "Warehouse",
             pagePermissions
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
                 date: today,
                 status: "Pending",
                 items: [lineItem],
-                reason: item.reason || `AI automated replenishment for ${item.item_name} (${item.stock_type === 'out_of_stock' ? 'Out of Stock' : 'Low Stock'})`,
+                reason: item.reason || `AIRY automated replenishment for ${item.item_name} (${item.stock_type === 'out_of_stock' ? 'Out of Stock' : 'Low Stock'})`,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             };
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
 
             // Send notification targeted for Admin & Executive roles
             notificationRecords.push({
-                creator_name: user_name || "AI Assistant",
+                creator_name: user_name || "AIRY",
                 creator_email: user_email || "system@airshipexpress.ph",
                 title: notifTitle,
                 message: notifMsg,

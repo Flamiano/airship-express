@@ -36,6 +36,8 @@ interface StageFindPotentialSuppliersProps {
         category?: string;
         requestNumber?: string;
         previousSupplier?: string | null;
+        deficit?: number;
+        shortageItem?: StockShortageItem;
     } | null;
     onClearSourcingFocus: () => void;
     onRefresh: () => void;
@@ -60,6 +62,16 @@ export function StageFindPotentialSuppliers({
     const [isCreatingDraftPO, setIsCreatingDraftPO] = useState(false);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const itemsPerPage = 6;
+
+    // Synchronize active sourcing focus
+    useEffect(() => {
+        if (activeSourcingFocus?.itemName) {
+            setSearchQuery(activeSourcingFocus.itemName);
+            if (activeSourcingFocus.shortageItem) {
+                setSelectedShortageItem(activeSourcingFocus.shortageItem);
+            }
+        }
+    }, [activeSourcingFocus]);
 
     // Dynamic filtering for shortage items based on search query
     const filteredShortages = useMemo(() => {
@@ -105,9 +117,17 @@ export function StageFindPotentialSuppliers({
         const effectiveId = matchedUuid || (selectedShortageItem ? String(selectedShortageItem.id) : `query-${Date.now()}`);
 
         const itemKey = selectedShortageItem ? String(selectedShortageItem.id || selectedShortageItem.item_code) : "";
+        const defaultDeficit = selectedShortageItem?.remaining_deficit !== undefined
+            ? Number(selectedShortageItem.remaining_deficit)
+            : selectedShortageItem?.deficit !== undefined
+            ? Number(selectedShortageItem.deficit)
+            : activeSourcingFocus?.deficit !== undefined
+            ? Number(activeSourcingFocus.deficit)
+            : 1;
+
         const effectiveQty = itemKey && editedQuantities[itemKey] !== undefined 
             ? editedQuantities[itemKey] 
-            : (selectedShortageItem?.deficit || 1);
+            : Math.max(1, defaultDeficit);
 
         return {
             id: effectiveId,
@@ -130,128 +150,17 @@ export function StageFindPotentialSuppliers({
         };
     }, [searchQuery, selectedShortageItem, activeSourcingFocus, editedQuantities]);
 
-    // Search Nearby Suppliers handler: creates a row in purchase_orders table with status of DRAFT (DO NOT notify admin or show toast)
-    const handleSearchNearbySuppliers = async (targetShortage?: StockShortageItem) => {
+    // Search Nearby Suppliers handler: selects item and opens sourcing modal without creating premature draft purchase orders
+    const handleSearchNearbySuppliers = (targetShortage?: StockShortageItem) => {
         const itemToSource = targetShortage || selectedShortageItem || (filteredShortages.length > 0 ? filteredShortages[0] : null);
         const queryTerm = itemToSource?.item_name || searchQuery.trim() || activeSourcingFocus?.itemName || "Warehouse Supplies";
-        const itemKey = itemToSource ? String(itemToSource.id || itemToSource.item_code) : "";
-        const chosenQty = itemKey && editedQuantities[itemKey] !== undefined
-            ? editedQuantities[itemKey]
-            : (itemToSource?.deficit || 1);
-        const unit = itemToSource?.unit || "units";
-        const category = itemToSource?.category || activeSourcingFocus?.category || "Fleet Maintenance";
-        const supplierName = itemToSource?.previous_supplier || (itemToSource as any)?.supplier || "Pending Supplier Sourcing";
 
         if (itemToSource) {
             setSelectedShortageItem(itemToSource);
             setSearchQuery(itemToSource.item_name);
         }
 
-        setIsCreatingDraftPO(true);
-        try {
-            // Add pure request_id if available as UUID
-            const rawId = String(itemToSource?.request_id || itemToSource?.id || "");
-            const matchedUuid = rawId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0];
-
-            // Check if there is ALREADY an active purchase order for this requisition or item
-            let poAlreadyExists = false;
-
-            if (matchedUuid) {
-                const { data: poByReq } = await supabase
-                    .from("purchase_orders")
-                    .select("id, status")
-                    .eq("request_id", matchedUuid)
-                    .neq("status", "cancelled")
-                    .limit(1);
-
-                if (poByReq && poByReq.length > 0) {
-                    poAlreadyExists = true;
-                }
-            }
-
-            if (!poAlreadyExists) {
-                const queryItemLower = queryTerm.toLowerCase().trim();
-                const sourceReq = (itemToSource?.source_request || "").trim().toLowerCase();
-
-                const { data: recentPOs } = await supabase
-                    .from("purchase_orders")
-                    .select("id, status, items, notes, request_id")
-                    .neq("status", "cancelled")
-                    .order("created_at", { ascending: false })
-                    .limit(100);
-
-                if (recentPOs && recentPOs.length > 0) {
-                    for (const po of recentPOs) {
-                        const poNotes = (po.notes || "").toLowerCase();
-                        if (sourceReq && poNotes.includes(sourceReq)) {
-                            poAlreadyExists = true;
-                            break;
-                        }
-                        if (Array.isArray(po.items)) {
-                            const hasItem = po.items.some((it: any) => {
-                                const name = String(it.name || it.item_name || "").toLowerCase().trim();
-                                return name && name === queryItemLower;
-                            });
-                            if (hasItem) {
-                                poAlreadyExists = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Only insert a draft PO if none exists already in the purchase_orders table
-            if (!poAlreadyExists) {
-                const poNumber = `PO-DRAFT-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-                const itemObj = {
-                    item_name: queryTerm,
-                    name: queryTerm,
-                    description: `Sourced shortage item: ${queryTerm}${itemToSource?.item_code ? ` (${itemToSource.item_code})` : ""}`,
-                    category: category,
-                    quantity: chosenQty,
-                    quantity_ordered: chosenQty,
-                    quantity_received: 0,
-                    unit: unit,
-                    unit_price: 0,
-                    subtotal: 0,
-                    total: 0,
-                };
-
-                const poData: Record<string, any> = {
-                    po_number: poNumber,
-                    status: "Draft",
-                    supplier_name: supplierName,
-                    category: category,
-                    subtotal: 0,
-                    discount: 0,
-                    shipping_fee: 0,
-                    tax_rate: 0,
-                    tax_amount: 0,
-                    total_amount: 0,
-                    notes: `Draft PO created from Procurement Sourcing for ${queryTerm} (${chosenQty} ${unit})`,
-                    items: [itemObj],
-                    delivery_location: "Airship HQ - Binondo, Manila",
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                };
-
-                if (matchedUuid) {
-                    poData.request_id = matchedUuid;
-                }
-
-                const { error: poErr } = await supabase.from("purchase_orders").insert([poData]);
-                if (poErr) {
-                    console.warn("Draft PO insert notice:", poErr);
-                }
-            }
-            // Silent - do not show toast when opening or creating draft
-        } catch (err: any) {
-            console.warn("Error creating draft PO:", err);
-        } finally {
-            setIsCreatingDraftPO(false);
-            setIsFindModalOpen(true);
-        }
+        setIsFindModalOpen(true);
     };
 
     return (
@@ -504,9 +413,14 @@ export function StageFindPotentialSuppliers({
                             <div className="space-y-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {paginatedShortages.map((item, index) => {
-                                        const isAwarded = Boolean(item.is_bid_awarded);
+                                        const remDeficit = item.remaining_deficit !== undefined
+                                            ? Number(item.remaining_deficit)
+                                            : item.deficit !== undefined
+                                            ? Number(item.deficit)
+                                            : 0;
+                                        const isAwarded = Boolean(item.is_bid_awarded) && remDeficit <= 0;
                                         const itemKey = String(item.id || item.item_code || index);
-                                        const currentQty = editedQuantities[itemKey] !== undefined ? editedQuantities[itemKey] : (item.deficit || 1);
+                                        const currentQty = editedQuantities[itemKey] !== undefined ? editedQuantities[itemKey] : Math.max(1, remDeficit || 1);
 
                                         return (
                                             <div
@@ -555,7 +469,7 @@ export function StageFindPotentialSuppliers({
                                                         ) : (
                                                             <span className="text-[10px] px-2.5 py-1 rounded-xl font-black font-mono text-rose-600 dark:text-rose-400 bg-[#ebf0f7] dark:bg-[#181a28] border border-rose-500/20 shadow-[-2px_-2px_5px_rgba(255,255,255,0.9),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)] flex items-center gap-1 shrink-0">
                                                                 <AlertTriangle className="w-3 h-3" />
-                                                                <span>Deficit: {item.deficit} {item.unit}</span>
+                                                                <span>Deficit: {remDeficit} {item.unit}</span>
                                                             </span>
                                                         )}
                                                     </div>
@@ -632,7 +546,7 @@ export function StageFindPotentialSuppliers({
 
                                                     <button
                                                         type="button"
-                                                        disabled={isAwarded || isCreatingDraftPO}
+                                                        disabled={isAwarded}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             if (!isAwarded) handleSearchNearbySuppliers(item);
@@ -642,10 +556,10 @@ export function StageFindPotentialSuppliers({
                                                                 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 cursor-default"
                                                                 : "bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.4)]"
                                                         }`}
-                                                        title="Search nearby suppliers &amp; draft PO"
+                                                        title={`Search nearby suppliers for ${item.item_name} (${remDeficit} ${item.unit})`}
                                                     >
                                                         <Compass className="w-3.5 h-3.5" />
-                                                        <span>Find</span>
+                                                        <span>Find ({remDeficit})</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -718,7 +632,10 @@ export function StageFindPotentialSuppliers({
                     onClose={() => setIsFindModalOpen(false)}
                     request={requestForModal as any}
                     suppliers={suppliers}
-                    onOpenPOModal={onOpenPOModal}
+                    onOpenPOModal={(item, selectedSupplier) => {
+                        setIsFindModalOpen(false);
+                        onOpenPOModal?.(item, selectedSupplier);
+                    }}
                 />
             )}
         </div>

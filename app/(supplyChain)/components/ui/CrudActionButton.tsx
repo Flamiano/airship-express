@@ -151,7 +151,7 @@ export const CrudActionButton = React.forwardRef<
 
     return (
       <div
-        className={`relative inline-flex items-center justify-end shrink-0 z-10 hover:z-50 focus-within:z-50 ${slotDimensions} ${className}`}
+        className={`relative inline-flex items-center justify-end shrink-0 z-10 hover:z-50 focus-within:z-50 ${slotDimensions} max-sm:w-auto max-sm:h-auto ${className}`}
       >
         <button
           ref={ref}
@@ -161,12 +161,12 @@ export const CrudActionButton = React.forwardRef<
           aria-busy={isBusy}
           aria-label={accessibleLabel}
           title={title || label}
-          className={`group/crud-btn absolute right-0 top-0 inline-flex items-center justify-center font-medium rounded-full border
+          className={`group/crud-btn absolute right-0 top-0 max-sm:relative max-sm:right-auto max-sm:top-auto inline-flex items-center justify-center font-medium rounded-full border
             cursor-pointer select-none z-10 hover:z-50 focus-visible:z-50
             transition-all duration-200 ease-in-out
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900
             active:scale-96 disabled:opacity-50 disabled:pointer-events-none
-            ${buttonSizeClasses}
+            ${buttonSizeClasses} max-sm:w-auto max-sm:px-2.5 max-sm:py-1 max-sm:gap-1.5
             ${VARIANT_STYLES[resolvedVariant]}`}
           {...restProps}
         >
@@ -174,7 +174,7 @@ export const CrudActionButton = React.forwardRef<
           <span
             className={`inline-flex items-center justify-center shrink-0 pointer-events-none overflow-hidden
               max-w-[18px] opacity-100 translate-x-0
-              ${!isBusy ? 'group-hover/crud-btn:max-w-0 group-hover/crud-btn:opacity-0 group-hover/crud-btn:-translate-x-1 group-focus-visible/crud-btn:max-w-0 group-focus-visible/crud-btn:opacity-0 group-focus-visible/crud-btn:-translate-x-1' : ''}
+              ${!isBusy ? 'sm:group-hover/crud-btn:max-w-0 sm:group-hover/crud-btn:opacity-0 sm:group-hover/crud-btn:-translate-x-1 sm:group-focus-visible/crud-btn:max-w-0 sm:group-focus-visible/crud-btn:opacity-0 sm:group-focus-visible/crud-btn:-translate-x-1' : ''}
               transition-all duration-200 ease-in-out`}
             aria-hidden="true"
           >
@@ -185,14 +185,15 @@ export const CrudActionButton = React.forwardRef<
             )}
           </span>
 
-          {/* Action Text: soft slide & reveal on hover (hidden during busy state to maintain compact spinner) */}
+          {/* Action Text: soft slide & reveal on hover on desktop, always visible on mobile/lower screens where hover does not exist */}
           {!isBusy && (
             <span
               className="inline-flex items-center font-semibold leading-none whitespace-nowrap overflow-hidden pointer-events-none
-                max-w-0 opacity-0 translate-x-1
-                group-hover/crud-btn:max-w-[75px] group-hover/crud-btn:opacity-100 group-hover/crud-btn:translate-x-0 group-hover/crud-btn:px-1
-                group-focus-visible/crud-btn:max-w-[75px] group-focus-visible/crud-btn:opacity-100 group-focus-visible/crud-btn:translate-x-0 group-focus-visible/crud-btn:px-1
-                transition-all duration-200 ease-in-out"
+                max-sm:max-w-[100px] max-sm:opacity-100 max-sm:translate-x-0 max-sm:px-0.5
+                sm:max-w-0 sm:opacity-0 sm:translate-x-1
+                sm:group-hover/crud-btn:max-w-[75px] sm:group-hover/crud-btn:opacity-100 sm:group-hover/crud-btn:translate-x-0 sm:group-hover/crud-btn:px-1
+                sm:group-focus-visible/crud-btn:max-w-[75px] sm:group-focus-visible/crud-btn:opacity-100 sm:group-focus-visible/crud-btn:translate-x-0 sm:group-focus-visible/crud-btn:px-1
+                transition-all duration-200 ease-in-out text-[11px]"
             >
               {label}
             </span>

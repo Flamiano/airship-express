@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         const genAI = new GoogleGenAI({ apiKey });
 
         const promptText = isSearchDocMode ? `
-You are the Google Lens Vision & Logistics Intelligence Engine for Airship Express.
+You are AIRY, the Google Lens Vision & Logistics Intelligence Engine for Airship Express.
 The user uploaded an image/file named: "${fileName}" to perform GOOGLE LENS DOCUMENT SEARCH across all system document records.
 User message/prompt: "${userPrompt || "Search and identify matching supply chain records for this document/picture like Google Lens."}".
 
@@ -133,7 +133,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
   "search_keywords": ["LBC", "Caloocan", "TRK20260522000014", "Parcel Tracking"]
 }
 ` : `
-You are an expert AI Supply Chain, Media Gallery & Logistics Assistant for Airship Express.
+You are AIRY, the expert AI Supply Chain, Media Gallery & Logistics Assistant for Airship Express.
 The user uploaded an image/file named: "${fileName}" in normal chat.
 User prompt / question: "${userPrompt || "Describe what is shown in this picture/document and provide key details."}".
 
@@ -357,7 +357,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                 success: true,
                 isOutOfScope: true,
                 analysis: parsedAnalysis,
-                response: `⚠️ **Out of Scope Request**\n\n${parsedAnalysis.out_of_scope_reason || "The uploaded image or file is a personal or non-operational photo outside the scope of Airship Express Supply Chain operations."}\n\n**Airship Express AI specializes in:**\n• Warehouse inventory tracking and stock identification\n• Analyzing photos of parcels, gallery media, and freight\n• Verifying and OCR parsing supplier invoices and receipts\n• Checking purchase requests and purchase orders\n• Auditing delivery batches and fleet photos`,
+                response: `⚠️ **Out of Scope Request**\n\n${parsedAnalysis.out_of_scope_reason || "The uploaded image or file is a personal or non-operational photo outside the scope of Airship Express Supply Chain operations."}\n\n**AIRY specializes in:**\n• Warehouse inventory tracking and stock identification\n• Analyzing photos of parcels, gallery media, and freight\n• Verifying and OCR parsing supplier invoices and receipts\n• Checking purchase requests and purchase orders\n• Auditing delivery batches and fleet photos`,
                 matchedDocument: null,
                 matchedDocuments: [],
             });
@@ -716,7 +716,7 @@ Return ONLY a valid JSON object without markdown formatting, backticks, or fence
                 success: true,
                 isOutOfScope: true,
                 analysis: parsedAnalysis,
-                response: `⚠️ **Out of Scope Request**\n\n${parsedAnalysis.out_of_scope_reason || "The uploaded image or file is outside the scope of Airship Express Supply Chain operations."}\n\n**Airship Express AI specializes in:**\n• Warehouse inventory tracking and stock identification\n• Analyzing photos of parcels, gallery media, and freight\n• Verifying and OCR parsing supplier invoices and receipts\n• Checking purchase requests and purchase orders\n• Auditing delivery batches and fleet photos`,
+                response: `⚠️ **Out of Scope Request**\n\n${parsedAnalysis.out_of_scope_reason || "The uploaded image or file is outside the scope of Airship Express Supply Chain operations."}\n\n**AIRY specializes in:**\n• Warehouse inventory tracking and stock identification\n• Analyzing photos of parcels, gallery media, and freight\n• Verifying and OCR parsing supplier invoices and receipts\n• Checking purchase requests and purchase orders\n• Auditing delivery batches and fleet photos`,
                 matchedDocument: null,
                 matchedDocuments: [],
             });

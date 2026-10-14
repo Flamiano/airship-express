@@ -23,6 +23,121 @@ import { ExecutiveVerificationModal } from '../modals/ExecutiveVerificationModal
 import { ReportDetailView } from '../reports/ReportDetailView';
 import { user } from '../../../../lib/services/Class/user';
 
+const DEFAULT_REPORT_CATEGORIES = [
+    {
+        id: 'inventory',
+        title: 'Inventory Report',
+        description: 'Usable stock balances, valuation, and stock health thresholds.',
+        badge: 'Operational',
+        indicators: [
+            'Tracked Inventory Items',
+            'Usable Stock Balance',
+            'Inventory Valuation',
+            'Low-Stock Threshold Alerts',
+            'Out-of-Stock SKUs',
+            'Quarantined Defective Stock',
+        ],
+        periodNote: 'Live Catalog Cutoff',
+    },
+    {
+        id: 'stock-movements',
+        title: 'Stock Movement Report',
+        description: 'Inbound receipts, outbound issuance, adjustments, and supplier returns.',
+        badge: 'Logistics',
+        indicators: [
+            'Total Movement Transactions',
+            'Stock Received Units',
+            'Stock Issued Units',
+            'Cycle Count Adjustments',
+            'Recorded Supplier Returns',
+        ],
+        periodNote: 'Monthly Ledger',
+    },
+    {
+        id: 'defectives-replacements',
+        title: 'Defective Items and Replacements Report',
+        description: 'Damaged shipments, supplier replacement claims, and fulfillment status.',
+        badge: 'Quality Assurance',
+        indicators: [
+            'Warehouse Damage Incidents',
+            'Affected Defective Units',
+            'Replacements Received & Restocked',
+            'Outstanding Replacement Claims',
+            'Unresolved Defect Investigations',
+        ],
+        periodNote: 'Monthly Quality Audit',
+    },
+    {
+        id: 'procurement',
+        title: 'Procurement Report',
+        description: 'Purchase requests, departmental requisitions, and sourcing status.',
+        badge: 'Procurement',
+        indicators: [
+            'Total Purchase Requests',
+            'Estimated Requisition Budget',
+            'Approved Requisitions',
+            'Pending Executive Approvals',
+            'Vendor Sourcing & RFQ Status',
+        ],
+        periodNote: 'Requisition Ledger',
+    },
+    {
+        id: 'suppliers',
+        title: 'Supplier Performance Report',
+        description: 'Active vendor engagement, procurement spend, and defect incidence.',
+        badge: 'Vendor Management',
+        indicators: [
+            'Registered Supplier Directory',
+            'Suppliers with Active Monthly Orders',
+            'Suppliers with Defect / Quality Claims',
+            'Vendor Reliability Indicators',
+        ],
+        periodNote: 'Monthly Partner Review',
+    },
+    {
+        id: 'purchase-orders',
+        title: 'Purchase Order Report',
+        description: 'Issued purchase orders and delivery fulfillment stages.',
+        badge: 'Purchasing',
+        indicators: [
+            'Total Issued Purchase Orders',
+            'Orders Awaiting Delivery',
+            'Partially Received Orders',
+            'Fully Received / Fulfilled POs',
+            'Cancelled / Voided Orders',
+        ],
+        periodNote: 'Purchase Order Log',
+    },
+    {
+        id: 'po-financial',
+        title: 'Purchase Order Financial Report',
+        description: 'Gross commitments, disbursements, tax, discounts, and accounts payable.',
+        badge: 'Financial Audit',
+        indicators: [
+            'Total Issued Commitments',
+            'Approved Capital Commitments',
+            'Recorded Disbursed Payments',
+            'Outstanding Accounts Payable',
+            'Negotiated Discounts Savings',
+            'Applicable VAT & Freight Charges',
+        ],
+        periodNote: 'Fiscal Disbursement Audit',
+    },
+    {
+        id: 'confidential-sc',
+        title: 'Supply Chain Confidential Report',
+        description: 'Operational variances, unusual adjustments, disputes, and access audit anomalies.',
+        badge: 'Confidential Internal Audit',
+        indicators: [
+            'Warehouse Stock Variances',
+            'Unusual / Forced Inventory Adjustments',
+            'Active Vendor RMA Disputes',
+            'Security & Access Governance Alerts',
+        ],
+        periodNote: 'Confidential Internal Review',
+    },
+];
+
 interface ReportsTabProps {
     data: ExecutiveDataPayload;
     onOpenModal?: (reportType: string) => void;
@@ -40,6 +155,15 @@ export default function ReportsTab({ data }: ReportsTabProps) {
     const [overviewError, setOverviewError] = useState<string | null>(null);
     const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
     const [searchQuery, setSearchQuery] = useState<string>('');
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>('');
+
+    // Debounce search query by 300ms
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearchQuery(searchQuery);
+        }, 300);
+        return () => clearTimeout(handler);
+    }, [searchQuery]);
 
     // Verification state
     const [verificationToken, setVerificationToken] = useState<string | null>(null);
@@ -190,24 +314,29 @@ export default function ReportsTab({ data }: ReportsTabProps) {
             case 'purchase-orders':
                 return <FileSpreadsheet className="w-5 h-5 text-indigo-500" />;
             case 'po-financial':
-                return <DollarSign className="w-5 h-5 text-pink-500" />;
+                return <span className="w-5 h-5 flex items-center justify-center font-black text-pink-500 text-lg leading-none select-none">₱</span>;
             case 'confidential-sc':
             default:
                 return <ShieldAlert className="w-5 h-5 text-rose-600" />;
         }
     };
 
-    // Filter categories for display
-    const displayedCategories = (overviewData?.categories || []).filter((cat: any) => {
+    // Filter categories for display (using live overview or robust fallback categories)
+    const rawCategories = (overviewData?.categories && overviewData.categories.length > 0)
+        ? overviewData.categories
+        : DEFAULT_REPORT_CATEGORIES;
+
+    const displayedCategories = rawCategories.filter((cat: any) => {
         if (categoryFilter !== 'ALL' && cat.badge !== categoryFilter) {
             return false;
         }
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase().trim();
+        if (debouncedSearchQuery.trim()) {
+            const query = debouncedSearchQuery.toLowerCase().trim();
             const matchesTitle = cat.title.toLowerCase().includes(query);
             const matchesDesc = cat.description.toLowerCase().includes(query);
             const matchesBadge = cat.badge.toLowerCase().includes(query);
-            return matchesTitle || matchesDesc || matchesBadge;
+            const matchesIndicators = cat.indicators?.some((ind: string) => ind.toLowerCase().includes(query));
+            return matchesTitle || matchesDesc || matchesBadge || matchesIndicators;
         }
         return true;
     });
@@ -377,23 +506,14 @@ export default function ReportsTab({ data }: ReportsTabProps) {
                 </div>
             </div>
 
-            {/* 3. Loading or Error Banner */}
-            {isOverviewLoading && !overviewData && (
-                <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
-                    <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
-                    <p className="text-xs font-semibold">Loading confidential report center...</p>
-                </div>
-            )}
-
             {overviewError && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-700 dark:text-rose-300">
-                    <p className="font-bold">Error loading report overview</p>
-                    <p className="mt-0.5">{overviewError}</p>
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                    <p><span className="font-bold">Offline Notice:</span> Showing standard category scope. {overviewError}</p>
                 </div>
             )}
 
             {/* 4. Category Cards Grid (Metadata & Scope Only — No Raw Data Revealed) */}
-            {overviewData && (
+            {displayedCategories.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                     {displayedCategories.map((card: any) => (
                         <div
@@ -470,6 +590,18 @@ export default function ReportsTab({ data }: ReportsTabProps) {
                             </div>
                         </div>
                     ))}
+                </div>
+            ) : (
+                <div className="py-16 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-2">
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No report categories match &ldquo;{debouncedSearchQuery}&rdquo;</p>
+                    <p className="text-xs text-slate-400">Try searching for keywords like inventory, procurement, defectives, or suppliers.</p>
+                    <button
+                        type="button"
+                        onClick={() => { setSearchQuery(''); setCategoryFilter('ALL'); }}
+                        className="mt-2 px-3 py-1 text-xs font-semibold text-pink-600 dark:text-pink-400 underline cursor-pointer"
+                    >
+                        Clear search & filters
+                    </button>
                 </div>
             )}
 

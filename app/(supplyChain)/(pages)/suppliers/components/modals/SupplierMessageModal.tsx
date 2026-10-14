@@ -36,6 +36,7 @@ interface SupplierMessageModalProps {
     isOpen: boolean;
     onClose: () => void;
     supplier: Supplier | null;
+    initialMessage?: string;
     onMessagesRead?: (supplierId: number) => void;
 }
 
@@ -51,10 +52,11 @@ export function SupplierMessageModal({
     isOpen,
     onClose,
     supplier,
+    initialMessage,
     onMessagesRead,
 }: SupplierMessageModalProps) {
     const [messages, setMessages] = useState<any[]>([]);
-    const [inputText, setInputText] = useState("");
+    const [inputText, setInputText] = useState(initialMessage || "");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -97,9 +99,9 @@ export function SupplierMessageModal({
     useEffect(() => {
         setVisibleMessageLimit(25);
         setSelectedPo("");
-        setInputText("");
+        setInputText(initialMessage || "");
         setShowSupplierDetails(false);
-    }, [activeSupplier?.id, supplier?.id, isOpen]);
+    }, [activeSupplier?.id, supplier?.id, isOpen, initialMessage]);
 
     const hasMoreMessages = messages.length > visibleMessageLimit;
     const hiddenCount = Math.max(0, messages.length - visibleMessageLimit);
@@ -323,7 +325,7 @@ export function SupplierMessageModal({
             id: tempId,
             supplier_id: currentSupp.id,
             supplier_name: currentSupp.name,
-            purchase_order_id: selectedPo || null,
+            purchase_order_id: (typeof selectedPo !== "undefined" && selectedPo && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(selectedPo).trim())) ? selectedPo : null,
             sender_type: "internal",
             sender_id: currentUserId || null,
             sender_name: currentUserName || "Supply Chain Staff",

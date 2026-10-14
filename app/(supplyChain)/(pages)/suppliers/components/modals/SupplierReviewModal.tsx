@@ -874,6 +874,11 @@ export function SupplierReviewModal({
 
         setIsSubmitting(true);
         try {
+            let candidateItemName: string | undefined;
+            if (supplier?.products) {
+                candidateItemName = supplier.products.replace(/^\d+\s*[a-zA-Z]*\s+of\s+/i, '').trim();
+            }
+
             const payload = {
                 supplierId: supplier.dbSupplierId || supplier.id,
                 supplierData: {
@@ -889,6 +894,7 @@ export function SupplierReviewModal({
                     extracted_data: d.extractedData || null,
                 })),
                 userId: currentUserId || null,
+                officialForInventoryItemName: candidateItemName || undefined,
             };
 
             const res = await fetch("/api/suppliers/activate", {

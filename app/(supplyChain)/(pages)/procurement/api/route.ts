@@ -351,7 +351,6 @@ export async function POST(request: NextRequest) {
                 description: description || sanitizedItems.map((i: any) => `${i.name} (${i.quantity} @ ₱${(i.unit_price || 0).toLocaleString()})`).join(', '),
                 requested_by: sanitizedRequestedBy,
                 department: department || 'Fleet',
-                supplier_id,
                 supplier_name: supplier.name,
                 amount: finalAmount,
                 priority: priority || 'Normal',
@@ -509,7 +508,6 @@ export async function PUT(request: NextRequest) {
                 );
             }
 
-            sanitizedUpdate.supplier_id = updateData.supplier_id;
             sanitizedUpdate.supplier_name = supplier.name;
         }
         if (updateData.amount !== undefined) sanitizedUpdate.amount = updateData.amount;

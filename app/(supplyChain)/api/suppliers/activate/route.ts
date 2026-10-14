@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
             supplierData,
             documents = [],
             userId = null,
+            officialForInventoryItemId = null,
+            officialForInventoryItemName = null,
         } = body;
 
         if (!supplierData || !supplierData.name?.trim()) {
@@ -33,6 +35,13 @@ export async function POST(request: NextRequest) {
         const trimmedName = supplierData.name.trim();
 
         let cleanNotes = (supplierData.notes || "").trim();
+
+        // Strip legacy lead marker tags from notes so activated suppliers do not get classified as leads
+        cleanNotes = cleanNotes
+            .replace(/\[\s*Manual\s+Potential\s+Supplier\s+Lead\s*\]/gi, "")
+            .replace(/\[\s*Potential\s+Supplier\s+Lead\s*\]/gi, "")
+            .replace(/\[\s*RFQ\s+Sent(?::\s*[^\]|]+)?\s*\]/gi, "")
+            .trim();
 
         // Strip any existing Terms & Conditions block if present in incoming notes
         if (cleanNotes.includes("--- Terms & Conditions ---")) {
@@ -306,6 +315,39 @@ export async function POST(request: NextRequest) {
                 } else if (docRecord) {
                     uploadedDocs.push(docRecord);
                 }
+            }
+        }
+
+        // 3. Official Supplier Assignment (Section 5)
+        // If confirmed as official supplier for an inventory item, update inventory_items.official_supplier_id
+        // and set default minimum_stock to 10 if not already configured with a positive value.
+        if (officialForInventoryItemId || officialForInventoryItemName) {
+            try {
+                let invQuery = supabaseAdmin.from("inventory_items").select("id, minimum_stock, item_name");
+                if (officialForInventoryItemId && !isNaN(Number(officialForInventoryItemId))) {
+                    invQuery = invQuery.eq("id", Number(officialForInventoryItemId));
+                } else if (officialForInventoryItemName) {
+                    invQuery = invQuery.ilike("item_name", String(officialForInventoryItemName).trim());
+                }
+
+                const { data: matchedInvItems, error: invFetchErr } = await invQuery;
+                if (!invFetchErr && matchedInvItems && matchedInvItems.length > 0) {
+                    for (const itm of matchedInvItems) {
+                        const currentMinStock = Number(itm.minimum_stock || 0);
+                        // Default to 10 if unconfigured / 0, preserving existing deliberately configured nonzero threshold
+                        const updatedMinStock = currentMinStock > 0 ? currentMinStock : 10;
+                        await supabaseAdmin
+                            .from("inventory_items")
+                            .update({
+                                official_supplier_id: activeSupplierId,
+                                supplier: trimmedName,
+                                minimum_stock: updatedMinStock,
+                            })
+                            .eq("id", itm.id);
+                    }
+                }
+            } catch (invErr) {
+                console.warn("Notice updating official_supplier_id on inventory_items:", invErr);
             }
         }
 

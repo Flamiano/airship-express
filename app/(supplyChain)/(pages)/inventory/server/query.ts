@@ -2041,6 +2041,7 @@ export async function fetchPurchaseRequestsForSourcing() {
         const { data, error } = await client
             .from('purchase_requests')
             .select('*')
+            .not('status', 'in', '("Rejected","Cancelled","Delivered","Completed","Fulfilled")')
             .order('created_at', { ascending: false });
 
         if (error) {
@@ -2050,6 +2051,79 @@ export async function fetchPurchaseRequestsForSourcing() {
         return data || [];
     } catch (err: any) {
         console.error('Exception in fetchPurchaseRequestsForSourcing:', err);
+        return [];
+    }
+}
+
+/**
+ * Fetch all department requisitions and purchase requests for matching item review (bypasses RLS)
+ */
+export async function fetchAllRequisitionsForMatching() {
+    try {
+        const client = dbClient || supabase;
+        const [prRes, invRes] = await Promise.allSettled([
+            client.from('purchase_requests').select('*').order('created_at', { ascending: false }).limit(200),
+            client.from('inventory_requests').select('*').order('created_at', { ascending: false }).limit(200),
+        ]);
+
+        const prs = prRes.status === 'fulfilled' && Array.isArray(prRes.value.data) ? prRes.value.data : [];
+        const invs = invRes.status === 'fulfilled' && Array.isArray(invRes.value.data) ? invRes.value.data : [];
+
+        const combined: any[] = [];
+        const seen = new Set<string>();
+
+        prs.forEach((pr: any) => {
+            const key = String(pr.id || pr.request_number || '').toLowerCase().trim();
+            if (key && !seen.has(key)) {
+                seen.add(key);
+                let items = pr.items;
+                if (typeof items === 'string') {
+                    try { items = JSON.parse(items); } catch { items = []; }
+                }
+                const firstItem = Array.isArray(items) && items.length > 0 ? items[0] : null;
+                const itemName = pr.item_name || firstItem?.name || firstItem?.item_name || '';
+                combined.push({
+                    ...pr,
+                    item_name: itemName || pr.item_name,
+                    items: Array.isArray(items) ? items : (itemName ? [{ name: itemName, item_name: itemName, quantity: pr.quantity || 1, unit: pr.unit || 'units' }] : [])
+                });
+            }
+        });
+
+        invs.forEach((inv: any) => {
+            const key = String(inv.id || inv.request_number || '').toLowerCase().trim();
+            if (key && !seen.has(key)) {
+                seen.add(key);
+                let items = inv.items;
+                if (typeof items === 'string') {
+                    try { items = JSON.parse(items); } catch { items = []; }
+                }
+                const firstItem = Array.isArray(items) && items.length > 0 ? items[0] : null;
+                const itemName = inv.item_name || firstItem?.name || firstItem?.item_name || 'Department Requisition Item';
+                const qty = inv.quantity || firstItem?.quantity || firstItem?.quantity_requested || 1;
+                const unit = inv.unit || firstItem?.unit || 'units';
+
+                combined.push({
+                    id: inv.id,
+                    request_number: inv.request_number || `REQ-${String(inv.id).slice(0, 8).toUpperCase()}`,
+                    item_name: itemName,
+                    description: inv.message || inv.purpose || inv.description || "Department Requisition",
+                    purpose: inv.purpose || inv.message || "Department Requisition",
+                    requested_by: inv.requested_by || inv.requester_name || "Department Staff",
+                    department: inv.department || "Warehouse",
+                    priority: inv.priority || "Normal",
+                    status: inv.status || "Pending",
+                    quantity: qty,
+                    unit: unit,
+                    items: Array.isArray(items) && items.length > 0 ? items : (itemName ? [{ name: itemName, item_name: itemName, quantity: qty, unit: unit, category: inv.category }] : []),
+                    created_at: inv.created_at,
+                });
+            }
+        });
+
+        return combined;
+    } catch (err: any) {
+        console.error('Error in fetchAllRequisitionsForMatching:', err);
         return [];
     }
 }
@@ -2166,17 +2240,24 @@ export async function issueRequisitionSupplies(payload: {
         const itemsList = Array.isArray(payload.items) ? payload.items : [];
 
         // Decrement stock for issued quantities
+        const hasIssuedItemsMap = Boolean(payload.issuedItems && typeof payload.issuedItems === 'object');
         for (let i = 0; i < itemsList.length; i++) {
             const reqItem = itemsList[i];
             const key = reqItem.id || `item-${i}`;
             
             // Resolve quantity to issue
-            let qtyToIssue = Number(payload.issuedItems?.[key]);
-            if (isNaN(qtyToIssue) || qtyToIssue === undefined) {
-                qtyToIssue = Number(payload.issuedItems?.[`item-${i}`]) || Number(payload.issuedItems?.[String(reqItem.id)]) || 0;
-            }
-            if (qtyToIssue <= 0) {
+            let qtyToIssue = 0;
+            if (hasIssuedItemsMap) {
+                const mapVal = payload.issuedItems[key] ?? payload.issuedItems[`item-${i}`] ?? payload.issuedItems[String(reqItem.id)];
+                qtyToIssue = mapVal !== undefined ? Number(mapVal) || 0 : 0;
+            } else {
                 qtyToIssue = Number(reqItem.issued_quantity) || Number(reqItem.available_quantity) || Number(reqItem.approved_quantity) || Number(reqItem.quantity || reqItem.quantity_requested) || 0;
+            }
+
+            // Skip unapproved items or zero quantities
+            const isItemApproved = (reqItem.status === 'Approved' || String(reqItem.status || '').toLowerCase() === 'approved' || Number(reqItem.approved_quantity) > 0) && reqItem.status !== 'Pending' && reqItem.status !== 'Rejected';
+            if (hasIssuedItemsMap && !isItemApproved) {
+                qtyToIssue = 0;
             }
 
             if (qtyToIssue > 0) {
@@ -2257,39 +2338,46 @@ export async function issueRequisitionSupplies(payload: {
             const prevIssued = Number(it.issued_quantity) || 0;
             
             // Resolve newly issued quantity from payload
-            let newlyIssued = Number(payload.issuedItems?.[key]);
-            if (isNaN(newlyIssued) || newlyIssued === undefined) {
-                newlyIssued = Number(payload.issuedItems?.[`item-${idx}`]) || Number(payload.issuedItems?.[String(it.id)]) || 0;
-            }
-            if (newlyIssued <= 0 && prevIssued === 0) {
+            let newlyIssued = 0;
+            if (hasIssuedItemsMap) {
+                const mapVal = payload.issuedItems[key] ?? payload.issuedItems[`item-${idx}`] ?? payload.issuedItems[String(it.id)];
+                newlyIssued = mapVal !== undefined ? Number(mapVal) || 0 : 0;
+            } else {
                 newlyIssued = Number(it.available_quantity) || Number(it.approved_quantity) || reqQty;
             }
 
             const totalIssued = Math.min(reqQty, prevIssued + Math.max(0, newlyIssued));
             const deficitQty = Math.max(0, reqQty - totalIssued);
             const isItemFullyIssued = totalIssued >= reqQty && reqQty > 0;
+            const prevItemStatus = it.status || (it.is_approved ? 'Approved' : 'Pending');
+            const itemFinalStatus = isItemFullyIssued 
+                ? 'Released' 
+                : totalIssued > 0 
+                ? 'Partially Released' 
+                : prevItemStatus;
 
             return {
                 ...it,
                 is_released: totalIssued > 0,
                 is_issued: totalIssued > 0,
-                status: isItemFullyIssued ? 'Released' : 'Partially Released',
+                status: itemFinalStatus,
                 issued_quantity: totalIssued,
                 deficit_quantity: deficitQty,
                 remaining_quantity: deficitQty,
-                approved_quantity: totalIssued,
+                approved_quantity: it.approved_quantity !== undefined ? it.approved_quantity : totalIssued,
                 exported_quantity: totalIssued,
-                released_by: payload.releasingOfficer,
-                released_at: releaseTimestamp,
-                recipient_name: payload.recipientName,
-                recipient_employee_id: payload.recipientEmployeeId,
-                handover_notes: payload.handoverNotes || it.handover_notes || null,
+                released_by: totalIssued > 0 ? payload.releasingOfficer : it.released_by || null,
+                released_at: totalIssued > 0 ? releaseTimestamp : it.released_at || null,
+                recipient_name: totalIssued > 0 ? payload.recipientName : it.recipient_name || null,
+                recipient_employee_id: totalIssued > 0 ? payload.recipientEmployeeId : it.recipient_employee_id || null,
+                handover_notes: totalIssued > 0 ? (payload.handoverNotes || it.handover_notes || null) : it.handover_notes || null,
             };
         });
 
+        const anyItemIssued = updatedItems.some((it: any) => (Number(it.issued_quantity) || 0) > 0);
         const totalDeficitRemaining = updatedItems.reduce((acc: number, it: any) => acc + (Number(it.deficit_quantity) || 0), 0);
-        const isFullyFulfilled = totalDeficitRemaining === 0;
-        const finalStatus = isFullyFulfilled ? 'Completed' : 'Partially Released';
+        const isFullyFulfilled = totalDeficitRemaining === 0 && anyItemIssued;
+        const finalStatus = isFullyFulfilled ? 'Completed' : anyItemIssued ? 'Partially Released' : 'Approved';
 
         // 1. Update purchase_requests
         const { error: prErr } = await client

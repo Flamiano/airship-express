@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { 
     Send, 
@@ -91,9 +91,9 @@ function formatWeekRange(start: Date, end: Date) {
     return `${startStr} - ${endStr}`;
 }
 
-export default function SupplierMessagesPage() {
+function SupplierMessagesContent() {
     const searchParams = useSearchParams();
-    const defaultPoNumber = searchParams.get("po") || "";
+    const defaultPoNumber = searchParams ? searchParams.get("po") || "" : "";
 
     const [messages, setMessages] = useState<SupplierMessage[]>([]);
     const [inputText, setInputText] = useState("");
@@ -409,11 +409,29 @@ export default function SupplierMessagesPage() {
             recipient_role: currentStaff.role,
         } : null;
 
+        const isUuid = (val?: string | null) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val).trim()));
+
+        // Resolve PO UUID if currentPo is a PO Number (like "PO-71815615")
+        const matchedPo = currentPo ? purchaseOrders.find((p) => p.po_number === currentPo || p.id === currentPo) : null;
+        const resolvedPoUuid = matchedPo?.id && isUuid(matchedPo.id)
+            ? matchedPo.id
+            : (currentPo && isUuid(currentPo) ? currentPo : null);
+        const poDisplayNumber = matchedPo?.po_number || currentPo;
+
+        const initialAttachments: any[] = recipientMetadata ? [recipientMetadata] : [];
+        if (poDisplayNumber) {
+            initialAttachments.push({
+                type: "po_reference",
+                po_number: poDisplayNumber,
+                po_id: resolvedPoUuid || null,
+            });
+        }
+
         const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const newMsg: SupplierMessage = {
             id: tempId,
             supplier_id: activeSupplierId,
-            purchase_order_id: currentPo,
+            purchase_order_id: resolvedPoUuid || null,
             sender_type: "supplier",
             sender_id: currentUserId || null,
             sender_name: currentUserName || "Supplier Representative",
@@ -421,7 +439,7 @@ export default function SupplierMessagesPage() {
             sender_role: "Supplier",
             role: "Supplier",
             message: text,
-            attachments: recipientMetadata ? [recipientMetadata] : [],
+            attachments: initialAttachments,
             is_read: false,
             created_at: new Date().toISOString(),
             send_status: "sending"
@@ -496,9 +514,17 @@ export default function SupplierMessagesPage() {
             prev.map((m) => (m.id === msg.id ? { ...m, send_status: "sending" } : m))
         );
 
+        const isUuid = (val?: string | null) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val).trim()));
+        const retryPoMatch = msg.purchase_order_id 
+            ? purchaseOrders.find((p) => p.po_number === msg.purchase_order_id || p.id === msg.purchase_order_id)
+            : null;
+        const resolvedRetryPoUuid = retryPoMatch?.id && isUuid(retryPoMatch.id)
+            ? retryPoMatch.id
+            : (msg.purchase_order_id && isUuid(msg.purchase_order_id) ? msg.purchase_order_id : null);
+
         const retryPayload = {
             supplier_id: Number(msg.supplier_id),
-            purchase_order_id: msg.purchase_order_id || null,
+            purchase_order_id: resolvedRetryPoUuid || null,
             sender_type: msg.sender_type || "supplier",
             sender_id: msg.sender_id || null,
             sender_name: msg.sender_name,
@@ -732,11 +758,13 @@ export default function SupplierMessagesPage() {
     // Final filtered message stream for chat viewport
     const filteredMessages = useMemo(() => {
         return threadMessages.filter((msg) => {
+            const poRef = msg.attachments?.find((a: any) => a?.type === "po_reference")?.po_number;
             const matchesSearch =
                 !searchQuery ||
                 msg.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 msg.sender_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (msg.sender_role && msg.sender_role.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                (poRef && poRef.toLowerCase().includes(searchQuery.toLowerCase())) ||
                 (msg.purchase_order_id && msg.purchase_order_id.toLowerCase().includes(searchQuery.toLowerCase()));
 
             if (!matchesSearch) return false;
@@ -1133,18 +1161,23 @@ export default function SupplierMessagesPage() {
                                                             }`}
                                                         >
                                                             {/* Tagged PO */}
-                                                            {msg.purchase_order_id && (
-                                                                <div
-                                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold mb-0.5 ${
-                                                                        isMe
-                                                                            ? "bg-white/20 text-white"
-                                                                            : "bg-pink-500/10 text-pink-600 dark:text-pink-400"
-                                                                    }`}
-                                                                >
-                                                                    <FileText className="w-3 h-3" />
-                                                                    <span>Ref: {msg.purchase_order_id}</span>
-                                                                </div>
-                                                            )}
+                                                            {(() => {
+                                                                const poRef = msg.attachments?.find((a: any) => a?.type === "po_reference")?.po_number;
+                                                                const poDisplay = poRef || (msg.purchase_order_id ? (purchaseOrders.find(p => p.id === msg.purchase_order_id)?.po_number || msg.purchase_order_id) : null);
+                                                                if (!poDisplay) return null;
+                                                                return (
+                                                                    <div
+                                                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold mb-0.5 ${
+                                                                            isMe
+                                                                                ? "bg-white/20 text-white"
+                                                                                : "bg-pink-500/10 text-pink-600 dark:text-pink-400"
+                                                                        }`}
+                                                                    >
+                                                                        <FileText className="w-3 h-3" />
+                                                                        <span>Ref: {poDisplay}</span>
+                                                                    </div>
+                                                                );
+                                                            })()}
 
                                                             <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
 
@@ -1293,5 +1326,19 @@ export default function SupplierMessagesPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function SupplierMessagesPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
+                    <CardsSkeleton count={4} />
+                </div>
+            }
+        >
+            <SupplierMessagesContent />
+        </Suspense>
     );
 }

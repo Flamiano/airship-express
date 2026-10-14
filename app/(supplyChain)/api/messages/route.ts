@@ -129,9 +129,41 @@ export async function POST(request: Request) {
             }
         }
 
+        let resolvedPoUuid: string | null = null;
+        const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        const finalAttachments = Array.isArray(attachments) ? [...attachments] : [];
+
+        if (purchase_order_id) {
+            const trimmedPo = String(purchase_order_id).trim();
+            if (isUuid(trimmedPo)) {
+                resolvedPoUuid = trimmedPo;
+            } else {
+                // If purchase_order_id is passed as a PO number (e.g. "PO-71815615"), lookup in purchase_orders table
+                const { data: poMatch } = await supabaseAdmin
+                    .from("purchase_orders")
+                    .select("id, po_number")
+                    .eq("po_number", trimmedPo)
+                    .limit(1)
+                    .maybeSingle();
+
+                if (poMatch?.id && isUuid(poMatch.id)) {
+                    resolvedPoUuid = poMatch.id;
+                }
+
+                // Preserve PO reference in attachments
+                if (!finalAttachments.some((a: any) => a?.type === "po_reference")) {
+                    finalAttachments.push({
+                        type: "po_reference",
+                        po_number: poMatch?.po_number || trimmedPo,
+                        po_id: resolvedPoUuid || null,
+                    });
+                }
+            }
+        }
+
         const messagePayload = {
             supplier_id: resolvedSupplierId || Number(supplier_id),
-            purchase_order_id: purchase_order_id || null,
+            purchase_order_id: resolvedPoUuid || null,
             sender_type: sender_type || "internal",
             sender_id: sender_id || null,
             sender_name: sender_name || "Staff",
@@ -139,7 +171,7 @@ export async function POST(request: Request) {
             sender_role: sender_role || role || "Staff",
             role: role || sender_role || "Staff",
             message: message.trim(),
-            attachments: attachments || [],
+            attachments: finalAttachments,
             is_read: is_read ?? false,
             created_at: created_at || new Date().toISOString(),
         };

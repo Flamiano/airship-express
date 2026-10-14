@@ -75,6 +75,9 @@ export interface StockShortageItem {
     is_bid_awarded?: boolean;
     awarded_supplier_name?: string;
     awarded_po_number?: string;
+    po_status_indicator?: 'Pending Purchase Order' | 'Waiting for Delivery' | 'Rejected Purchase Order' | 'Delivered' | 'Approval Pending' | null;
+    matching_po_number?: string | null;
+    matching_po_id?: string | null;
     previous_supplier?: string | null;
     previous_supplier_id?: string | number | null;
     previous_supplier_email?: string | null;
@@ -87,6 +90,39 @@ export interface StockShortageItem {
     has_official_active_supplier?: boolean;
     is_supplier_active?: boolean;
     matched_active_supplier?: any;
+
+    // Grouped demand and deficit tracking
+    normalized_item_key?: string;
+    total_approved_demand?: number;
+    requested_demand?: number;
+    usable_stock?: number;
+    active_po_coverage?: number;
+    covered_quantity?: number;
+    remaining_deficit?: number;
+    immediate_shortage?: number;
+    replenishment_buffer?: number;
+    official_supplier_id?: number | string | null;
+    related_requests_count?: number;
+    related_requests?: Array<{
+        id: string;
+        request_number: string;
+        department?: string;
+        requested_by?: string;
+        quantity: number;
+        status: string;
+        item_name: string;
+        created_at?: string;
+    }>;
+    covering_purchase_orders?: Array<{
+        id: string;
+        po_number: string;
+        supplier_name?: string;
+        quantity: number;
+        covered_quantity?: number;
+        status: string;
+        admin_approval?: string;
+        created_at?: string;
+    }>;
 }
 
 export interface SupplierQuotationItem {
@@ -116,6 +152,7 @@ export interface SupplierQuotationItem {
     other_products_offer?: any[];
     notes?: string;
     status: string;
+    purchase_order_id?: string | null;
     created_at?: string;
 }
 

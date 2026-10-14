@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SessionGuard } from '../../components/server/SessionGuard';
 import { DocumentsTab } from './components/DocumentsTab';
@@ -14,7 +14,7 @@ type ArchiveTab = 'documents' | 'purchase_orders';
 const DEFAULT_TAB: ArchiveTab = 'documents';
 const VALID_TABS: ArchiveTab[] = ['documents', 'purchase_orders'];
 
-export default function ArchivePage() {
+function ArchiveContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { role: userRole, isPrivileged, isLoaded } = useUserRole();
@@ -219,3 +219,17 @@ export default function ArchivePage() {
         </SessionGuard>
     );
 }
+
+export default function ArchivePage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="py-12 space-y-4 max-w-7xl mx-auto px-4">
+                    <div className="animate-pulse h-12 bg-slate-200 dark:bg-slate-800 rounded-xl" />
+                </div>
+            }
+        >
+            <ArchiveContent />
+        </Suspense>
+    );
+}

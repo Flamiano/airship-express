@@ -8,7 +8,7 @@ import { sendSupplyChainEmail } from "../../../lib/email/mailer";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { request_ids, action = "create_draft", send_email = false, role = "User", user_name = "AI Assistant", pagePermissions } = body;
+        const { request_ids, action = "create_draft", send_email = false, role = "User", user_name = "AIRY", pagePermissions } = body;
 
         // Authorization check: Dynamic permissions for /purchase-orders or /procurement or Executive/Admin/Manager
         const normalizedRole = (role || "").toLowerCase().trim();

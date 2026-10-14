@@ -162,7 +162,7 @@ export function ReceiveSuppliesTab({
         loadStorageZones();
 
         const channel = supabase
-            .channel(`warehouse_receive_zones_realtime_${Date.now()}`)
+            .channel(`warehouse_receive_zones_realtime_${Math.random().toString(36).substring(2, 9)}`)
             .on(
                 "postgres_changes",
                 {
@@ -180,6 +180,42 @@ export function ReceiveSuppliesTab({
             supabase.removeChannel(channel);
         };
     }, [loadStorageZones]);
+
+    // Live Realtime Subscription for Purchase Orders & Inventory Items
+    useEffect(() => {
+        const channelId = `warehouse_receive_po_realtime_${Math.random().toString(36).substring(2, 9)}`;
+        const channel = supabase
+            .channel(channelId)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "purchase_orders" },
+                () => {
+                    onRefresh();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_items" },
+                () => {
+                    onRefresh();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [onRefresh]);
+
+    // Keep viewingPO in sync when live purchase order data updates
+    useEffect(() => {
+        if (viewingPO) {
+            const updated = purchaseOrders.find((p) => String(p.id) === String(viewingPO.id));
+            if (updated) {
+                setViewingPO(updated);
+            }
+        }
+    }, [purchaseOrders]);
 
     // Filter purchase orders strictly: ONLY get those with status Issued (or Delivered/received) AND approved by financial AND approved by admin
     const eligibleOrders = useMemo(() => {
@@ -499,12 +535,22 @@ export function ReceiveSuppliesTab({
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
+                        disabled={eligibleOrders.length === 0}
                         onClick={() => {
+                            if (eligibleOrders.length === 0) return;
                             setDefectModalTargetPO(null);
                             setIsDefectModalOpen(true);
                         }}
-                        className="px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-[0_4px_14px_rgba(245,158,11,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2)] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-                        title="Report damaged, nonconforming, or defective items during receiving or inspection"
+                        className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            eligibleOrders.length === 0
+                                ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60 shadow-none pointer-events-none"
+                                : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-[0_4px_14px_rgba(245,158,11,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2)] cursor-pointer active:scale-95"
+                        }`}
+                        title={
+                            eligibleOrders.length === 0
+                                ? "No receiving shipments available to report defective items"
+                                : "Report damaged, nonconforming, or defective items during receiving or inspection"
+                        }
                     >
                         <ShieldCheck className="w-3.5 h-3.5" />
                         <span>Report Defective Items</span>

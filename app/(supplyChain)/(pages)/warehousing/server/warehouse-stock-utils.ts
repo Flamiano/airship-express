@@ -112,12 +112,75 @@ export function checkRequestHasAvailableStock(req: any, inventoryItems: any[]): 
         return avail > 0;
     }
 
-    // Check if at least one active/approved item has stock available to issue
+    // Check if at least one approved item has stock available to issue
     return rawItems.some((item: any) => {
-        // Skip explicitly rejected items
+        // Skip explicitly rejected or unapproved items
         if (item.status === "Rejected" || item.is_rejected === true) return false;
+
+        const isItemApproved =
+            item.is_approved === true ||
+            item.is_approve === true ||
+            String(item.status || "").toLowerCase() === "approved" ||
+            Number(item.approved_quantity) > 0 ||
+            (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Pending");
+
+        if (!isItemApproved) return false;
 
         const { availableToIssue } = getItemAvailableStock(item, inventoryItems);
         return availableToIssue > 0;
     });
+}
+
+/**
+ * Resolves approval date and approver identity for a requisition.
+ */
+export function getRequestApprovalInfo(req: any): { approvalDate: number; approverName: string } {
+    if (!req) return { approvalDate: 0, approverName: '' };
+
+    const rawItems = Array.isArray(req.items)
+        ? req.items
+        : typeof req.items === 'string'
+        ? JSON.parse(req.items || '[]')
+        : [];
+
+    // 1. Approval timestamp
+    let approvalDate = 0;
+    if (req.reviewed_at) {
+        approvalDate = new Date(req.reviewed_at).getTime();
+    } else {
+        const itemWithDate = rawItems.find((it: any) => it.approved_at);
+        if (itemWithDate?.approved_at) {
+            approvalDate = new Date(itemWithDate.approved_at).getTime();
+        } else if (req.updated_at) {
+            approvalDate = new Date(req.updated_at).getTime();
+        } else if (req.created_at) {
+            approvalDate = new Date(req.created_at).getTime();
+        }
+    }
+
+    // 2. Approver name resolution
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let approverName = req.reviewer_name || req.reviewed_by_name || req.approved_by || '';
+    if (!approverName && req.reviewed_by) {
+        const knownUsers: Record<string, string> = {
+            'b8e8c683-b534-4a5d-ba35-5e51002cbeb0': 'Store Supervisor',
+            'aac00828-a8ad-4629-9e8f-87ddc673984c': 'Store Supervisor',
+            'eb8bf319-20a0-4fc1-9f0e-372797884799': 'Warehouse Manager',
+            '8266ecb6-de96-4a7d-bde2-54e9b8a86147': 'Supply Chain Admin',
+        };
+        approverName = knownUsers[req.reviewed_by] || (uuidRegex.test(req.reviewed_by) ? 'Store Supervisor' : req.reviewed_by);
+    }
+
+    if (!approverName && req.admin_notes) {
+        const m = req.admin_notes.match(/Approved by ([^|:\n]+)/i) || req.admin_notes.match(/Released by ([^|:\n]+)/i);
+        if (m && m[1]) {
+            approverName = m[1].trim();
+        }
+    }
+
+    if (!approverName && req.requested_by === 'Store Supervisor') {
+        approverName = 'Store Supervisor';
+    }
+
+    return { approvalDate, approverName: approverName || 'Warehouse Admin' };
 }

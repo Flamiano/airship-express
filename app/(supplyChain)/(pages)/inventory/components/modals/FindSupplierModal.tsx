@@ -22,6 +22,8 @@ import {
     OSMStoreDetails 
 } from '../../utils/realStores';
 import { addPotentialSupplier } from '../../server/query';
+import { SupplierMessageModal } from '../../../suppliers/components/modals/SupplierMessageModal';
+import { PurchaseOrderModal } from '../../../../components/modals/PurchaseOrderModal';
 import {
     MapPin,
     Search,
@@ -59,7 +61,8 @@ import {
     Grid,
     SlidersHorizontal,
     ArrowUpDown,
-    CheckCheck
+    CheckCheck,
+    MessageSquare
 } from 'lucide-react';
 
 // Dynamic import with SSR disabled for Leaflet map component
@@ -108,17 +111,155 @@ export interface RequestedProductItem {
     quantity: number;
     unit: string;
     category?: string;
+    item_name?: string;
 }
 
 const COMMON_UNITS = ['units', 'reams', 'boxes', 'pcs', 'packs', 'sets', 'lot', 'kg', 'rolls', 'liters', 'pairs', 'bottles', 'bundles', 'cartons'];
+
+// Helper: Check if business/supplier is an active verified official supplier
+export function findOfficialSupplierMatch(
+    business: any,
+    dbSuppliersList: any[] = []
+): any | null {
+    if (!business) return null;
+
+    const bName = (business.name || '').toLowerCase().trim();
+    const rawId = String(business.id || '').replace(/^db-supplier-/, '').trim();
+
+    return dbSuppliersList.find((s: any) => {
+        // Must be active and not inactive
+        if (s.is_active === false || (s.status || '').toLowerCase() === 'inactive') {
+            return false;
+        }
+
+        // Must not be an unverified potential lead
+        const notesLower = (s.notes || '').toLowerCase();
+        const isLead =
+            notesLower.includes('[manual potential supplier lead]') ||
+            notesLower.includes('[potential supplier lead]') ||
+            notesLower.includes('pending evaluation') ||
+            notesLower.includes('openstreetmap') ||
+            s.verification_status === 'unverified' ||
+            s.verification_status === 'lead' ||
+            /(?<!\b(?:lead\s*time|leadtime))\b(potential lead|unofficial lead|sales lead|raw lead)\b/i.test(notesLower);
+
+        if (isLead) return false;
+
+        // Match by numeric/uuid id
+        if (rawId && String(s.id).trim() === rawId) return true;
+
+        // Match by name
+        const sName = (s.name || '').toLowerCase().trim();
+        if (bName && sName) {
+            if (bName === sName) return true;
+            const cleanB = bName.replace(/\b(inc|corp|corporation|ltd|co|company|trading|enterprises|philippines)\b/gi, '').trim();
+            const cleanS = sName.replace(/\b(inc|corp|corporation|ltd|co|company|trading|enterprises|philippines)\b/gi, '').trim();
+            if (cleanB.length >= 3 && cleanS.length >= 3 && (cleanB === cleanS || cleanB.includes(cleanS) || cleanS.includes(cleanB))) {
+                return true;
+            }
+        }
+
+        return false;
+    }) || null;
+}
+
+// Helper: Check if the business offers the specific requested item or category
+export function checkSupplierOffersItem(
+    business: any,
+    targetItemName: string,
+    targetItemCategory?: string,
+    matchedDbSupplier?: any
+): boolean {
+    if (!business || !targetItemName) return false;
+
+    const target = targetItemName.toLowerCase().trim();
+    if (!target) return false;
+
+    // 1. Direct match level from Overpass search
+    if (business.matchLevel === 'exact') return true;
+
+    // 2. Gather all offered product strings
+    const offeredStrings: string[] = [];
+
+    if (business.products) {
+        offeredStrings.push(...String(business.products).split(/[,;\n\r•\/\&]+/));
+    }
+    if (matchedDbSupplier?.products) {
+        offeredStrings.push(...String(matchedDbSupplier.products).split(/[,;\n\r•\/\&]+/));
+    }
+
+    const otherOffers = business.other_products_offer || matchedDbSupplier?.other_products_offer;
+    if (otherOffers) {
+        const parsed = Array.isArray(otherOffers)
+            ? otherOffers
+            : (typeof otherOffers === 'string'
+                ? (() => { try { return JSON.parse(otherOffers); } catch { return []; } })()
+                : []);
+        if (Array.isArray(parsed)) {
+            parsed.forEach((it: any) => {
+                if (typeof it === 'string') offeredStrings.push(it);
+                else if (it && (it.item_name || it.name || it.product_name)) {
+                    offeredStrings.push(String(it.item_name || it.name || it.product_name));
+                }
+            });
+        }
+    }
+
+    const cleanOffers = offeredStrings.map((s) => s.toLowerCase().trim()).filter(Boolean);
+
+    const stopWords = new Set(['a', 'an', 'the', 'and', 'or', 'for', 'of', 'in', 'with', 'to', 'pcs', 'unit', 'units', 'box', 'boxes', 'pack', 'packs', 'set', 'sets', 'roll', 'rolls', 'reams']);
+    const targetTokens = target
+        .replace(/[^a-z0-9\s]/gi, ' ')
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 3 && !stopWords.has(t));
+
+    // Check direct match or token match against offered products
+    for (const offer of cleanOffers) {
+        if (offer === target || offer.includes(target) || target.includes(offer)) {
+            return true;
+        }
+        for (const token of targetTokens) {
+            if (offer.includes(token)) {
+                return true;
+            }
+        }
+    }
+
+    // Also check tags
+    if (business.tags) {
+        const tagsValues = Object.values(business.tags).map((v) => String(v).toLowerCase());
+        for (const tagVal of tagsValues) {
+            if (tagVal.includes(target) || target.includes(tagVal)) return true;
+            for (const token of targetTokens) {
+                if (tagVal.includes(token)) return true;
+            }
+        }
+    }
+
+    // If no products listed, check category overlap
+    const bCat = (business.category || matchedDbSupplier?.category || '').toLowerCase();
+    const tCat = (targetItemCategory || '').toLowerCase();
+    if (cleanOffers.length === 0 || cleanOffers.some((o) => o.includes('discovered goods') || o.includes('fulfillment'))) {
+        if (tCat && bCat && (bCat.includes(tCat) || tCat.includes(bCat))) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 interface BusinessCardItemProps {
     b: OSMStoreDetails;
     isSelected: boolean;
     isSaved: boolean;
     isSaving: boolean;
+    isOfficial: boolean;
+    offersItem: boolean;
     onSelect: (b: OSMStoreDetails) => void;
     onAdd: (b: OSMStoreDetails) => void;
+    onOrderOfficial: (b: OSMStoreDetails) => void;
+    onInquire: (b: OSMStoreDetails) => void;
 }
 
 const BusinessCardItem = React.memo(function BusinessCardItem({
@@ -126,8 +267,12 @@ const BusinessCardItem = React.memo(function BusinessCardItem({
     isSelected,
     isSaved,
     isSaving,
+    isOfficial,
+    offersItem,
     onSelect,
     onAdd,
+    onOrderOfficial,
+    onInquire,
 }: BusinessCardItemProps) {
     return (
         <div
@@ -212,36 +357,64 @@ const BusinessCardItem = React.memo(function BusinessCardItem({
                     <ArrowRight className="w-3 h-3" />
                 </button>
 
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onAdd(b);
-                    }}
-                    disabled={isSaving}
-                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer ${
-                        isSaved
-                            ? 'bg-emerald-600 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(16,185,129,0.3)]'
-                            : 'bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(244,63,94,0.4)]'
-                    }`}
-                >
-                    {isSaving ? (
-                        <>
-                            <i className="fas fa-spinner fa-spin mr-1" />
-                            <span>Saving...</span>
-                        </>
-                    ) : isSaved ? (
-                        <>
-                            <Check className="w-3 h-3" />
-                            <span>Saved Potential</span>
-                        </>
-                    ) : (
-                        <>
-                            <PlusCircle className="w-3 h-3" />
-                            <span>Add as Potential Supplier</span>
-                        </>
-                    )}
-                </button>
+                {isOfficial ? (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onOrderOfficial(b);
+                        }}
+                        className="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(37,99,235,0.4)]"
+                        title="Official supplier: Create Purchase Order directly"
+                    >
+                        <ShoppingCart className="w-3 h-3" />
+                        <span>Order(Official supplier)</span>
+                    </button>
+                ) : offersItem ? (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onAdd(b);
+                        }}
+                        disabled={isSaving}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer ${
+                            isSaved
+                                ? 'bg-emerald-600 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(16,185,129,0.3)]'
+                                : 'bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(244,63,94,0.4)]'
+                        }`}
+                    >
+                        {isSaving ? (
+                            <>
+                                <i className="fas fa-spinner fa-spin mr-1" />
+                                <span>Saving...</span>
+                            </>
+                        ) : isSaved ? (
+                            <>
+                                <Check className="w-3 h-3" />
+                                <span>Saved Potential</span>
+                            </>
+                        ) : (
+                            <>
+                                <PlusCircle className="w-3 h-3" />
+                                <span>Add as Potential Supplier</span>
+                            </>
+                        )}
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onInquire(b);
+                        }}
+                        className="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(245,158,11,0.4)]"
+                        title={`Item not part of standard offer. Click to message ${b.name}`}
+                    >
+                        <MessageSquare className="w-3 h-3" />
+                        <span>Inquire</span>
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -295,6 +468,13 @@ export function FindSupplierModal({
     const [addedSupplierIds, setAddedSupplierIds] = useState<Set<string>>(new Set());
     const [isBidAwarded, setIsBidAwarded] = useState<boolean>(false);
     const [awardedSupplierName, setAwardedSupplierName] = useState<string | null>(null);
+
+    // Sourcing Inquire & Official PO Modal States
+    const [messageModalSupplier, setMessageModalSupplier] = useState<any | null>(null);
+    const [messageModalInitialText, setMessageModalInitialText] = useState<string>('');
+    const [isMessageModalOpen, setIsMessageModalOpen] = useState<boolean>(false);
+    const [internalPORequest, setInternalPORequest] = useState<any | null>(null);
+    const [isInternalPOModalOpen, setIsInternalPOModalOpen] = useState<boolean>(false);
 
     // Initialize search terms and requested products when request changes
     useEffect(() => {
@@ -455,25 +635,6 @@ export function FindSupplierModal({
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', existingDraftPO.id);
-            } else {
-                const poNumber = `PO-DRAFT-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-                const poData: Record<string, any> = {
-                    po_number: poNumber,
-                    status: 'Draft',
-                    supplier_name: 'Pending Supplier Sourcing',
-                    category: prod.category || (request as any)?.category || 'General Supplies',
-                    subtotal: 0,
-                    total_amount: 0,
-                    notes: `Draft PO created from Sourcing Modal quantity update for ${prod.name} (${prod.quantity} ${prod.unit})`,
-                    items: [itemObj],
-                    delivery_location: 'Airship HQ - Binondo, Manila',
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                };
-                if (matchedUuid) {
-                    poData.request_id = matchedUuid;
-                }
-                await supabase.from('purchase_orders').insert([poData]);
             }
             toast.success(`Updated quantity for "${prod.name}" to ${prod.quantity} ${prod.unit}.`);
         } catch (err: any) {
@@ -559,25 +720,6 @@ export function FindSupplierModal({
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', existingDraftPO.id);
-            } else {
-                const poNumber = `PO-DRAFT-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-                const poData: Record<string, any> = {
-                    po_number: poNumber,
-                    status: 'Draft',
-                    supplier_name: 'Pending Supplier Sourcing',
-                    category: newProd.category,
-                    subtotal: 0,
-                    total_amount: 0,
-                    notes: `Draft PO created from Added Product: ${newProd.name}`,
-                    items: [itemObj],
-                    delivery_location: 'Airship HQ - Binondo, Manila',
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                };
-                if (matchedUuid) {
-                    poData.request_id = matchedUuid;
-                }
-                await supabase.from('purchase_orders').insert([poData]);
             }
         } catch (e) {
             console.warn('Error checking/saving draft PO for added product:', e);
@@ -875,6 +1017,125 @@ export function FindSupplierModal({
             setSelectedBusiness(found);
             setActiveDetailView(true);
         }
+    };
+
+    // Active current item name and category
+    const currentActiveItem = requestedProducts[activeProductIndex] || {
+        id: (request as any)?.item_id || request?.id || '',
+        name: searchItemName || request.item_name || 'Requested Item',
+        item_name: searchItemName || request.item_name || 'Requested Item',
+        quantity: request.quantity_requested || 1,
+        unit: request.unit || 'units',
+        category: (request as any)?.category || 'General',
+    };
+    const currentItemNameForOffer = currentActiveItem.name || searchItemName || request.item_name || '';
+    const currentItemCatForOffer = currentActiveItem.category || (request as any)?.category || '';
+
+    // Handle Official Supplier Direct Order -> Create Purchase Order Modal
+    const handleOrderFromOfficialSupplier = (business: OSMStoreDetails, matchedOfficial?: any) => {
+        const officialSup = matchedOfficial || findOfficialSupplierMatch(business, dbSuppliers);
+        const targetSup = officialSup || {
+            id: String(business.id).replace(/^db-supplier-/, ''),
+            name: business.name,
+            category: business.category,
+            contact_person: business.contact_person,
+            phone: business.phone,
+            email: business.email,
+        };
+
+        const activeItem = currentActiveItem;
+        const itemName = activeItem.name || activeItem.item_name || 'Supplies';
+
+        if (onOpenPOModal) {
+            onClose();
+            onOpenPOModal(activeItem, targetSup);
+        } else {
+            setInternalPORequest({
+                id: `official_po_${Date.now()}`,
+                request_number: request?.request_number || undefined,
+                supplier_id: String(targetSup.id),
+                supplier_name: targetSup.name,
+                description: `Replenishment purchase order for ${itemName}`,
+                department: activeItem.category || 'General Supplies',
+                amount: 0,
+                allowEditItems: true,
+                items: [
+                    {
+                        name: itemName,
+                        item_name: itemName,
+                        quantity: activeItem.quantity || 1,
+                        unit: activeItem.unit || 'units',
+                        unit_price: Number(targetSup.price || 0),
+                        total: 0,
+                    }
+                ]
+            });
+            setIsInternalPOModalOpen(true);
+        }
+    };
+
+    // Handle Inquire when item is not part of supplier's offer
+    const handleInquireSupplier = async (business: OSMStoreDetails) => {
+        if (!business || !request) return;
+
+        const itemName = currentActiveItem.name || searchItemName || request.item_name || 'Requested Item';
+        const qty = currentActiveItem.quantity || request.quantity_requested || 1;
+        const unit = currentActiveItem.unit || request.unit || 'units';
+
+        const inquiryText = `Hi ${business.name}, we would like to inquire about sourcing "${itemName}" (${qty} ${unit}). Could you let us know if your company can supply this item and provide quotation/pricing details? Thank you!`;
+
+        // Check if supplier is already in DB
+        let targetSupplier = findOfficialSupplierMatch(business, dbSuppliers) || dbSuppliers.find(s => {
+            const rawId = String(business.id || '').replace(/^db-supplier-/, '').trim();
+            if (rawId && String(s.id) === rawId) return true;
+            const bName = (business.name || '').toLowerCase().trim();
+            const sName = (s.name || '').toLowerCase().trim();
+            return bName && sName && (bName === sName || sName.includes(bName) || bName.includes(sName));
+        });
+
+        // If not in DB, create a lead record in suppliers table so messages can be sent
+        if (!targetSupplier || !targetSupplier.id) {
+            try {
+                const { data: newSupp, error: insertErr } = await supabase
+                    .from('suppliers')
+                    .insert({
+                        name: business.name.trim(),
+                        category: business.category || 'Potential Supplier',
+                        contact_person: business.contact_person || 'Sales Desk',
+                        phone: business.phone || '+63 2 8000 0000',
+                        email: business.email || null,
+                        location: business.location || 'Metro Manila, Philippines',
+                        products: business.products || `${business.category || 'General'} Goods`,
+                        notes: `Source: OpenStreetMap | Lead for Inquiry: ${itemName}`,
+                        is_active: false,
+                    })
+                    .select()
+                    .single();
+
+                if (!insertErr && newSupp) {
+                    targetSupplier = newSupp;
+                    setDbSuppliers(prev => [...prev, newSupp]);
+                }
+            } catch (err) {
+                console.error('Error creating supplier lead for inquiry:', err);
+            }
+        }
+
+        const supplierForModal = targetSupplier || {
+            id: String(business.id).replace(/^db-supplier-/, '') || `sup-${Date.now()}`,
+            name: business.name,
+            contact_person: business.contact_person || 'Sales Desk',
+            phone: business.phone || '',
+            email: business.email || '',
+            location: business.location || '',
+            category: business.category || 'Potential Supplier',
+            products: business.products || '',
+            is_active: false,
+        };
+
+        setMessageModalSupplier(supplierForModal);
+        setMessageModalInitialText(inquiryText);
+        setIsMessageModalOpen(true);
     };
 
     // Handle "Add as Potential Supplier"
@@ -1624,35 +1885,72 @@ export function FindSupplierModal({
                                             </div>
                                         </div>
 
-                                        {/* Action Button: Add as Potential Supplier */}
+                                        {/* Action Button: Dynamic based on Official / Offers Item / Inquire */}
                                         <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.04]">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
-                                                disabled={savingSupplierId === String(selectedBusiness.id)}
-                                                className={`w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                                    isBusinessAlreadySaved(selectedBusiness)
-                                                        ? 'bg-emerald-600 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_8px_rgba(16,185,129,0.4)]'
-                                                        : 'bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(219,39,119,0.45)]'
-                                                }`}
-                                            >
-                                                {savingSupplierId === String(selectedBusiness.id) ? (
-                                                    <>
-                                                        <i className="fas fa-spinner fa-spin mr-1"></i>
-                                                        <span>Saving to Potential Suppliers...</span>
-                                                    </>
-                                                ) : isBusinessAlreadySaved(selectedBusiness) ? (
-                                                    <>
-                                                        <CheckCircle2 className="w-4 h-4" />
-                                                        <span>Added to Potential Suppliers (Pending Evaluation)</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <PlusCircle className="w-4 h-4" />
-                                                        <span>Add as Potential Supplier</span>
-                                                    </>
-                                                )}
-                                            </button>
+                                            {(() => {
+                                                const officialSup = findOfficialSupplierMatch(selectedBusiness, dbSuppliers);
+                                                const isOfficial = Boolean(officialSup);
+                                                const offersItem = checkSupplierOffersItem(selectedBusiness, currentItemNameForOffer, currentItemCatForOffer, officialSup);
+                                                const isAlreadySaved = isBusinessAlreadySaved(selectedBusiness);
+
+                                                if (isOfficial) {
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, officialSup)}
+                                                            className="w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)]"
+                                                            title="Official supplier: Create Purchase Order directly"
+                                                        >
+                                                            <ShoppingCart className="w-4 h-4" />
+                                                            <span>Order (Official supplier)</span>
+                                                        </button>
+                                                    );
+                                                }
+
+                                                if (!offersItem) {
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleInquireSupplier(selectedBusiness)}
+                                                            className="w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.4)]"
+                                                            title={`Item not part of standard offer. Click to message ${selectedBusiness.name} about ${currentItemNameForOffer}`}
+                                                        >
+                                                            <MessageSquare className="w-4 h-4" />
+                                                            <span>Inquire</span>
+                                                        </button>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
+                                                        disabled={savingSupplierId === String(selectedBusiness.id)}
+                                                        className={`w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                            isAlreadySaved
+                                                                ? 'bg-emerald-600 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_8px_rgba(16,185,129,0.4)]'
+                                                                : 'bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(219,39,119,0.45)]'
+                                                        }`}
+                                                    >
+                                                        {savingSupplierId === String(selectedBusiness.id) ? (
+                                                            <>
+                                                                <i className="fas fa-spinner fa-spin mr-1"></i>
+                                                                <span>Saving to Potential Suppliers...</span>
+                                                            </>
+                                                        ) : isAlreadySaved ? (
+                                                            <>
+                                                                <CheckCircle2 className="w-4 h-4" />
+                                                                <span>Added to Potential Suppliers (Pending Evaluation)</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <PlusCircle className="w-4 h-4" />
+                                                                <span>Add as Potential Supplier</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -1794,17 +2092,26 @@ export function FindSupplierModal({
                                             </div>
                                         ) : (
                                             <>
-                                                {filteredBusinesses.slice(0, visibleCardsLimit).map((b, idx) => (
-                                                    <BusinessCardItem
-                                                        key={`${b.id}-${idx}`}
-                                                        b={b}
-                                                        isSelected={String(b.id) === String(selectedBusiness?.id)}
-                                                        isSaved={isBusinessAlreadySaved(b)}
-                                                        isSaving={savingSupplierId === String(b.id)}
-                                                        onSelect={handleSelectBusiness}
-                                                        onAdd={handleAddAsPotentialSupplier}
-                                                    />
-                                                ))}
+                                                {filteredBusinesses.slice(0, visibleCardsLimit).map((b, idx) => {
+                                                    const offSup = findOfficialSupplierMatch(b, dbSuppliers);
+                                                    const isOff = Boolean(offSup);
+                                                    const offers = checkSupplierOffersItem(b, currentItemNameForOffer, currentItemCatForOffer, offSup);
+                                                    return (
+                                                        <BusinessCardItem
+                                                            key={`${b.id}-${idx}`}
+                                                            b={b}
+                                                            isSelected={String(b.id) === String(selectedBusiness?.id)}
+                                                            isSaved={isBusinessAlreadySaved(b)}
+                                                            isSaving={savingSupplierId === String(b.id)}
+                                                            isOfficial={isOff}
+                                                            offersItem={offers}
+                                                            onSelect={handleSelectBusiness}
+                                                            onAdd={handleAddAsPotentialSupplier}
+                                                            onOrderOfficial={(targetB) => handleOrderFromOfficialSupplier(targetB, offSup)}
+                                                            onInquire={handleInquireSupplier}
+                                                        />
+                                                    );
+                                                })}
 
                                                 {filteredBusinesses.length > visibleCardsLimit && (
                                                     <div className="pt-2 pb-4 text-center">
@@ -1835,6 +2142,25 @@ export function FindSupplierModal({
                                     const orig = allBusinesses.find((b) => String(b.id) === String(sup.id)) || (sup as any);
                                     handleAddAsPotentialSupplier(orig);
                                 }}
+                                onOrderOfficialSupplier={(sup) => {
+                                    const orig = allBusinesses.find((b) => String(b.id) === String(sup.id)) || (sup as any);
+                                    handleOrderFromOfficialSupplier(orig);
+                                }}
+                                onInquireSupplier={(sup) => {
+                                    const orig = allBusinesses.find((b) => String(b.id) === String(sup.id)) || (sup as any);
+                                    handleInquireSupplier(orig);
+                                }}
+                                getSupplierActionState={(sup) => {
+                                    const orig = allBusinesses.find((b) => String(b.id) === String(sup.id)) || (sup as any);
+                                    const off = findOfficialSupplierMatch(orig, dbSuppliers);
+                                    const offers = checkSupplierOffersItem(orig, currentItemNameForOffer, currentItemCatForOffer, off);
+                                    const saved = isBusinessAlreadySaved(orig);
+                                    return {
+                                        isOfficial: Boolean(off),
+                                        offersItem: offers,
+                                        isSaved: saved,
+                                    };
+                                }}
                                 hqCoord={activeCenterCoords}
                                 radiusKm={selectedRadiusKm}
                                 isFullScreen={isFullMap}
@@ -1855,28 +2181,63 @@ export function FindSupplierModal({
                                                 {selectedBusiness.distanceKm} km away • {selectedBusiness.category || 'Store'}
                                             </span>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
-                                            disabled={savingSupplierId === String(selectedBusiness.id)}
-                                            className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ml-1 ${
-                                                isBusinessAlreadySaved(selectedBusiness)
-                                                    ? 'bg-emerald-600 text-white'
-                                                    : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-lg shadow-pink-500/30'
-                                            }`}
-                                        >
-                                            {isBusinessAlreadySaved(selectedBusiness) ? (
-                                                <>
-                                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                                    <span>Added</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <PlusCircle className="w-3.5 h-3.5" />
-                                                    <span>Add as Potential</span>
-                                                </>
-                                            )}
-                                        </button>
+                                        {(() => {
+                                            const off = findOfficialSupplierMatch(selectedBusiness, dbSuppliers);
+                                            const isOff = Boolean(off);
+                                            const offers = checkSupplierOffersItem(selectedBusiness, currentItemNameForOffer, currentItemCatForOffer, off);
+                                            const isSaved = isBusinessAlreadySaved(selectedBusiness);
+
+                                            if (isOff) {
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
+                                                        className="px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ml-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30"
+                                                    >
+                                                        <ShoppingCart className="w-3.5 h-3.5" />
+                                                        <span>Order(Official supplier)</span>
+                                                    </button>
+                                                );
+                                            }
+
+                                            if (!offers) {
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleInquireSupplier(selectedBusiness)}
+                                                        className="px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ml-1 bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30"
+                                                    >
+                                                        <MessageSquare className="w-3.5 h-3.5" />
+                                                        <span>Inquire</span>
+                                                    </button>
+                                                );
+                                            }
+
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
+                                                    disabled={savingSupplierId === String(selectedBusiness.id)}
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ml-1 ${
+                                                        isSaved
+                                                            ? 'bg-emerald-600 text-white'
+                                                            : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-lg shadow-pink-500/30'
+                                                    }`}
+                                                >
+                                                    {isSaved ? (
+                                                        <>
+                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                            <span>Added</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <PlusCircle className="w-3.5 h-3.5" />
+                                                            <span>Add as Potential</span>
+                                                        </>
+                                                    )}
+                                                </button>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             )}
@@ -1902,30 +2263,63 @@ export function FindSupplierModal({
                                     Close
                                 </button>
 
-                                {selectedBusiness && (
-                                    <button
-                                        type="button"
-                                        onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
-                                        disabled={savingSupplierId === String(selectedBusiness.id)}
-                                        className={`px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(244,63,94,0.45)] transition-all flex items-center gap-1.5 cursor-pointer ${
-                                            isBusinessAlreadySaved(selectedBusiness)
-                                                ? 'bg-emerald-600 text-white'
-                                                : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white'
-                                        }`}
-                                    >
-                                        {isBusinessAlreadySaved(selectedBusiness) ? (
-                                            <>
-                                                <CheckCircle2 className="w-4 h-4" />
-                                                <span>Saved as Potential Supplier</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <PlusCircle className="w-4 h-4" />
-                                                <span>Add "{selectedBusiness.name}" as Potential Supplier</span>
-                                            </>
-                                        )}
-                                    </button>
-                                )}
+                                {selectedBusiness && (() => {
+                                    const off = findOfficialSupplierMatch(selectedBusiness, dbSuppliers);
+                                    const isOff = Boolean(off);
+                                    const offers = checkSupplierOffersItem(selectedBusiness, currentItemNameForOffer, currentItemCatForOffer, off);
+                                    const isSaved = isBusinessAlreadySaved(selectedBusiness);
+
+                                    if (isOff) {
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
+                                                className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white"
+                                            >
+                                                <ShoppingCart className="w-4 h-4" />
+                                                <span>Order (Official supplier)</span>
+                                            </button>
+                                        );
+                                    }
+
+                                    if (!offers) {
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleInquireSupplier(selectedBusiness)}
+                                                className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950"
+                                            >
+                                                <MessageSquare className="w-4 h-4" />
+                                                <span>Inquire</span>
+                                            </button>
+                                        );
+                                    }
+
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
+                                            disabled={savingSupplierId === String(selectedBusiness.id)}
+                                            className={`px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(244,63,94,0.45)] transition-all flex items-center gap-1.5 cursor-pointer ${
+                                                isSaved
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white'
+                                            }`}
+                                        >
+                                            {isSaved ? (
+                                                <>
+                                                    <CheckCircle2 className="w-4 h-4" />
+                                                    <span>Saved as Potential Supplier</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <PlusCircle className="w-4 h-4" />
+                                                    <span>Add "{selectedBusiness.name}" as Potential Supplier</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    );
+                                })()}
                             </div>
                         </div>
                     )}
@@ -2166,33 +2560,73 @@ export function FindSupplierModal({
                                                         <span>Pin on Map</span>
                                                     </button>
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleAddAsPotentialSupplier(b)}
-                                                        disabled={savingSupplierId === String(b.id)}
-                                                        className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                                                            isSaved
-                                                                ? 'bg-emerald-600 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(16,185,129,0.3)]'
-                                                                : 'bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(244,63,94,0.4)]'
-                                                        }`}
-                                                    >
-                                                        {savingSupplierId === String(b.id) ? (
-                                                            <>
-                                                                <i className="fas fa-spinner fa-spin mr-1" />
-                                                                <span>Saving...</span>
-                                                            </>
-                                                        ) : isSaved ? (
-                                                            <>
-                                                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                                                <span>Saved Potential</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <PlusCircle className="w-3.5 h-3.5" />
-                                                                <span>Add as Potential</span>
-                                                            </>
-                                                        )}
-                                                    </button>
+                                                    {(() => {
+                                                        const off = findOfficialSupplierMatch(b, dbSuppliers);
+                                                        const isOff = Boolean(off);
+                                                        const offers = checkSupplierOffersItem(b, currentItemNameForOffer, currentItemCatForOffer, off);
+
+                                                        if (isOff) {
+                                                            return (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setIsViewAllOpen(false);
+                                                                        handleOrderFromOfficialSupplier(b, off);
+                                                                    }}
+                                                                    className="px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(37,99,235,0.3)]"
+                                                                >
+                                                                    <ShoppingCart className="w-3.5 h-3.5" />
+                                                                    <span>Order(Official supplier)</span>
+                                                                </button>
+                                                            );
+                                                        }
+
+                                                        if (!offers) {
+                                                            return (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setIsViewAllOpen(false);
+                                                                        handleInquireSupplier(b);
+                                                                    }}
+                                                                    className="px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(245,158,11,0.3)]"
+                                                                >
+                                                                    <MessageSquare className="w-3.5 h-3.5" />
+                                                                    <span>Inquire</span>
+                                                                </button>
+                                                            );
+                                                        }
+
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleAddAsPotentialSupplier(b)}
+                                                                disabled={savingSupplierId === String(b.id)}
+                                                                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                                                    isSaved
+                                                                        ? 'bg-emerald-600 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(16,185,129,0.3)]'
+                                                                        : 'bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(244,63,94,0.4)]'
+                                                                }`}
+                                                            >
+                                                                {savingSupplierId === String(b.id) ? (
+                                                                    <>
+                                                                        <i className="fas fa-spinner fa-spin mr-1" />
+                                                                        <span>Saving...</span>
+                                                                    </>
+                                                                ) : isSaved ? (
+                                                                    <>
+                                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                        <span>Saved Potential</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <PlusCircle className="w-3.5 h-3.5" />
+                                                                        <span>Add as Potential</span>
+                                                                    </>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         );
@@ -2216,6 +2650,32 @@ export function FindSupplierModal({
                         </div>
                     </div>
                 </div>
+            )}
+            {/* Modal for Inquiring Directly with Supplier for specific item */}
+            {isMessageModalOpen && (
+                <SupplierMessageModal
+                    isOpen={isMessageModalOpen}
+                    onClose={() => {
+                        setIsMessageModalOpen(false);
+                        setMessageModalSupplier(null);
+                        setMessageModalInitialText('');
+                    }}
+                    supplier={messageModalSupplier}
+                    initialMessage={messageModalInitialText}
+                />
+            )}
+
+            {/* Modal for Creating Purchase Order with Official Supplier */}
+            {isInternalPOModalOpen && (
+                <PurchaseOrderModal
+                    isOpen={isInternalPOModalOpen}
+                    onClose={() => {
+                        setIsInternalPOModalOpen(false);
+                        setInternalPORequest(null);
+                    }}
+                    request={internalPORequest}
+                    suppliers={dbSuppliers}
+                />
             )}
         </Portal>
     );

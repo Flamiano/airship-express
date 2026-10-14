@@ -1023,22 +1023,6 @@ export function PurchaseRequestFormModal({
                         </AppButton>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                            {onOpenSupplierModal && showFindSupplierBtn && (
-                                <AppButton
-                                    type="button"
-                                    variant="neutral"
-                                    size="md"
-                                    onClick={() => {
-                                        onClose();
-                                        onOpenSupplierModal(request);
-                                    }}
-                                    title="Open Supplier Sourcing for unfulfilled items"
-                                >
-                                    <Store className="w-4 h-4 mr-1.5 text-pink-500" />
-                                    <span>Find Suppliers</span>
-                                </AppButton>
-                            )}
-
                             {isReleased && (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs border border-emerald-500/20 shadow-xs">
                                     <CheckCircle2 className="w-4 h-4 text-emerald-500" />

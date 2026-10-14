@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
     Send, 
     CheckCircle2, 
@@ -20,7 +20,8 @@ import {
     ChevronDown,
     ChevronUp,
     RefreshCw,
-    Eye
+    Eye,
+    ArrowUpDown
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../../../lib/services/client/supabase";
@@ -32,7 +33,7 @@ import { user } from "../../../../lib/services/Class/user";
 import { PurchaseRequestFormModal } from "../../../inventory/components/modals/PurchaseRequestFormModal";
 import { issueRequisitionSupplies } from "../../../inventory/server/query";
 import { Pagination } from "../../../../components/global/pagination";
-import { checkRequestHasAvailableStock, getItemAvailableStock } from "../../server/warehouse-stock-utils";
+import { checkRequestHasAvailableStock, getItemAvailableStock, getRequestApprovalInfo } from "../../server/warehouse-stock-utils";
 
 interface IssueRequestsTabProps {
     requests: any[];
@@ -49,6 +50,7 @@ export function IssueRequestsTab({
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [departmentFilter, setDepartmentFilter] = useState("All");
     const [statusFilter, setStatusFilter] = useState<"All" | "Approved" | "Completed">("All");
+    const [sortBy, setSortBy] = useState<"approved_date" | "approver" | "department" | "priority" | "created_at">("approved_date");
     const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
 
     // Pagination state
@@ -98,6 +100,59 @@ export function IssueRequestsTab({
 
     // View Request Details Modal
     const [selectedRequestForView, setSelectedRequestForView] = useState<any | null>(null);
+
+    // Live Realtime Subscription for Requests, Inventory Items & Stock Movements
+    useEffect(() => {
+        const channelId = `warehouse_issue_requests_realtime_${Math.random().toString(36).substring(2, 9)}`;
+        const channel = supabase
+            .channel(channelId)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "purchase_requests" },
+                () => {
+                    onRefresh();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_requests" },
+                () => {
+                    onRefresh();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "inventory_items" },
+                () => {
+                    onRefresh();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "stock_movements" },
+                () => {
+                    onRefresh();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [onRefresh]);
+
+    // Keep selectedRequestForView in sync when requests update in realtime
+    useEffect(() => {
+        if (selectedRequestForView) {
+            const updated = requests.find((r) => 
+                (r.id && selectedRequestForView.id && String(r.id) === String(selectedRequestForView.id)) ||
+                (r.request_number && selectedRequestForView.request_number && r.request_number === selectedRequestForView.request_number)
+            );
+            if (updated) {
+                setSelectedRequestForView(updated);
+            }
+        }
+    }, [requests]);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -151,7 +206,7 @@ export function IssueRequestsTab({
 
     // Filter requests
     const filteredRequests = useMemo(() => {
-        return requests.filter((r) => {
+        const filtered = requests.filter((r) => {
             const rawItems = Array.isArray(r.items) ? r.items : (typeof r.items === "string" ? JSON.parse(r.items || "[]") : []);
             const matchesSearch =
                 (r.request_number || "").toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
@@ -163,8 +218,6 @@ export function IssueRequestsTab({
             const isCompleted = checkIsCompleted(r);
             const isPartial = checkIsPartiallyReleased(r);
             const isRejected = st === "rejected" || st === "cancelled";
-            const isPending = st === "pending" && !isCompleted && !isPartial;
-            if (isRejected || isPending) return false;
 
             const hasApprovedItems = rawItems.some((i: any) => 
                 i.is_approved === true || 
@@ -178,13 +231,18 @@ export function IssueRequestsTab({
                 Number(i.available_quantity) > 0 ||
                 Number(i.exported_quantity) > 0
             );
+
+            // A request is only considered purely pending if NO item in it has been approved or released
+            const isPending = (st === "pending" || st === "review pending") && !isCompleted && !isPartial && !hasApprovedItems;
+            if (isRejected || isPending) return false;
+
             const isApproved = (
                 st === "approved" || 
                 st.includes("approved") || 
                 st === "partially approved" || 
                 st === "partially released" ||
                 hasApprovedItems
-            ) && !isRejected && !isPending;
+            ) && !isRejected;
 
             // Strict requirement: Approved requisitions must have available warehouse stocks to be displayed for issuing
             const hasAvailableStock = checkRequestHasAvailableStock(r, inventoryItems);
@@ -203,12 +261,56 @@ export function IssueRequestsTab({
 
             return matchesSearch && matchesStatus && matchesDept;
         });
-    }, [requests, inventoryItems, debouncedSearchTerm, statusFilter, departmentFilter, issuedRequestIds]);
+
+        // Sort requests: defaults to who approved / approval timestamp (newest first)
+        return [...filtered].sort((a, b) => {
+            const infoA = getRequestApprovalInfo(a);
+            const infoB = getRequestApprovalInfo(b);
+
+            if (sortBy === "approver") {
+                const comp = (infoA.approverName || "Z").localeCompare(infoB.approverName || "Z");
+                if (comp !== 0) return comp;
+                return infoB.approvalDate - infoA.approvalDate;
+            }
+
+            if (sortBy === "priority") {
+                const getPriorityRank = (p?: string) => {
+                    const low = (p || "").toLowerCase().trim();
+                    if (low === "critical") return 1;
+                    if (low === "urgent" || low === "high") return 2;
+                    return 3;
+                };
+                const rankDiff = getPriorityRank(a.priority) - getPriorityRank(b.priority);
+                if (rankDiff !== 0) return rankDiff;
+                return infoB.approvalDate - infoA.approvalDate;
+            }
+
+            if (sortBy === "department") {
+                const deptComp = (a.department || "").localeCompare(b.department || "");
+                if (deptComp !== 0) return deptComp;
+                return infoB.approvalDate - infoA.approvalDate;
+            }
+
+            if (sortBy === "created_at") {
+                const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return dateB - dateA;
+            }
+
+            // Default: "approved_date" - Sort by who approved / when approved (newest approvals first)
+            if (infoA.approvalDate !== infoB.approvalDate) {
+                return infoB.approvalDate - infoA.approvalDate;
+            }
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [requests, inventoryItems, debouncedSearchTerm, statusFilter, departmentFilter, sortBy, issuedRequestIds]);
 
     // Reset pagination on filter or search term change
     React.useEffect(() => {
         setCurrentPage(1);
-    }, [debouncedSearchTerm, statusFilter, departmentFilter]);
+    }, [debouncedSearchTerm, statusFilter, departmentFilter, sortBy]);
 
     // Paginated slice
     const totalPages = Math.ceil(filteredRequests.length / pageSize) || 1;
@@ -224,7 +326,15 @@ export function IssueRequestsTab({
             if (isCompleted) return false;
             const st = String(r.status || "").trim().toLowerCase();
             const isRejected = st === "rejected" || st === "cancelled";
-            const isPending = st === "pending";
+            const rawItems = Array.isArray(r.items) ? r.items : (typeof r.items === "string" ? JSON.parse(r.items || "[]") : []);
+            const hasApprovedItems = rawItems.some((i: any) => 
+                i.is_approved === true || 
+                i.is_approve === true || 
+                String(i.status || "").toLowerCase() === "approved" ||
+                Number(i.approved_quantity) > 0 ||
+                Number(i.available_quantity) > 0
+            );
+            const isPending = (st === "pending" || st === "review pending") && !hasApprovedItems;
             if (isRejected || isPending) return false;
             return checkRequestHasAvailableStock(r, inventoryItems);
         }).length;
@@ -251,12 +361,12 @@ export function IssueRequestsTab({
             itemsList.forEach((item: any, idx: number) => {
                 const key = item.id || `item-${idx}`;
                 const stockInfo = getItemAvailableStock(item, inventoryItems);
-                const isApproved = item.is_approved === true || item.is_approve === true || String(item.status || "").toLowerCase() === "approved" || Number(item.available_quantity) > 0 || Number(item.approved_quantity) > 0 || (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Rejected");
+                const isApproved = item.is_approved === true || item.is_approve === true || String(item.status || "").toLowerCase() === "approved" || Number(item.available_quantity) > 0 || Number(item.approved_quantity) > 0 || (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Rejected" && item.status !== "Pending");
                 
                 const availQty = stockInfo.availableToIssue;
 
-                // Default to available units to dispense if approved, or 0 if unapproved/rejected
-                initialMap[key] = (isApproved || availQty > 0) ? availQty : 0;
+                // Default to available units to dispense if approved, or 0 if unapproved/pending/rejected
+                initialMap[key] = (isApproved && availQty > 0) ? availQty : 0;
             });
         }
         const activeCustodian = user.getName() || (typeof window !== "undefined" ? localStorage.getItem("user_name") || localStorage.getItem("logged_in_name") : "") || "Warehouse Custodian";
@@ -447,6 +557,22 @@ export function IssueRequestsTab({
                         ))}
                     </select>
 
+                    {/* Sort by dropdown */}
+                    <div className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] border border-slate-200/60 dark:border-slate-800 text-slate-700 dark:text-slate-200">
+                        <ArrowUpDown className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                            className="bg-transparent text-xs text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+                        >
+                            <option value="approved_date">Sort: Approved Date (Newest)</option>
+                            <option value="approver">Sort: Who Approved (A-Z)</option>
+                            <option value="department">Sort: Department</option>
+                            <option value="priority">Sort: Priority</option>
+                            <option value="created_at">Sort: Request Date</option>
+                        </select>
+                    </div>
+
                     {/* Status filter */}
                     <div className="flex items-center rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] p-0.5 border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3),inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)] shrink-0">
                         {(["All", "Approved", "Completed"] as const).map((filter) => (
@@ -495,18 +621,43 @@ export function IssueRequestsTab({
                         const isExpanded = expandedRequestId === req.id;
                         const itemsList = Array.isArray(req.items) ? req.items : (typeof req.items === "string" ? JSON.parse(req.items || "[]") : []);
 
-                        // Check overall stock feasibility across all requested items
+                        // Approver info for the card
+                        const { approvalDate, approverName } = getRequestApprovalInfo(req);
+                        const formattedApprovalDate = approvalDate > 0 
+                            ? new Date(approvalDate).toLocaleDateString() 
+                            : (req.created_at ? new Date(req.created_at).toLocaleDateString() : "Recently");
+
+                        // Identify approved items vs items pending / routed to procurement
+                        const approvedItems = itemsList.filter((item: any) => {
+                            return (
+                                item.is_approved === true ||
+                                item.is_approve === true ||
+                                item.status === "Approved" ||
+                                String(item.status || "").toLowerCase() === "approved" ||
+                                Number(item.approved_quantity) > 0 ||
+                                (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Pending" && item.status !== "Rejected")
+                            ) && item.status !== "Pending" && item.status !== "Rejected";
+                        });
+
+                        const approvedItemsCount = approvedItems.length;
+
+                        // Target items for warehouse issuing stock assessment:
+                        // If specific items are approved, assess readiness on those approved items.
+                        // Otherwise assess all non-rejected items.
+                        const targetList = approvedItems.length > 0 
+                            ? approvedItems 
+                            : itemsList.filter((it: any) => it.status !== "Rejected");
+                        const activeList = targetList.length > 0 ? targetList : itemsList;
+
+                        // Check stock feasibility across items
                         let totalReqQty = 0;
                         let totalIssuedQty = 0;
                         let totalDeficitQty = 0;
                         let totalAvailQty = 0;
                         let totalAvailForDeficit = 0;
-                        let approvedItemsCount = 0;
+                        let releasedItemsCount = 0;
 
                         itemsList.forEach((item: any) => {
-                            const isApproved = item.is_approved === true || item.is_approve === true || String(item.status || "").toLowerCase() === "approved" || (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Rejected");
-                            if (isApproved) approvedItemsCount++;
-
                             const stockInfo = getItemAvailableStock(item, inventoryItems);
                             const inStock = stockInfo.inStock;
                             const reqQty = Number(item.quantity || item.quantity_requested) || 1;
@@ -520,14 +671,42 @@ export function IssueRequestsTab({
                             const availQty = stockInfo.availableToIssue;
                             totalAvailQty += availQty;
 
+                            if (item.is_released || item.status === "Released" || item.status === "Delivered" || (itemIssued >= reqQty && reqQty > 0)) {
+                                releasedItemsCount++;
+                            }
+
                             if (itemDeficit > 0) {
                                 totalAvailForDeficit += Math.min(inStock, itemDeficit);
                             }
                         });
 
-                        const isAllAvailable = totalAvailQty >= totalReqQty && totalReqQty > 0;
-                        const isPartialAvailable = totalAvailQty > 0 && totalAvailQty < totalReqQty;
+                        // Calculate stock readiness specifically for targetList (approved items ready to issue)
+                        let targetFullCount = 0;
+                        let targetPartialCount = 0;
+                        let targetNoStockCount = 0;
+                        let targetTotalAvail = 0;
+                        let targetTotalReq = 0;
+
+                        activeList.forEach((item: any) => {
+                            const stockInfo = getItemAvailableStock(item, inventoryItems);
+                            const reqQty = Number(item.quantity || item.quantity_requested) || 1;
+                            const avail = stockInfo.availableToIssue;
+                            targetTotalAvail += avail;
+                            targetTotalReq += reqQty;
+
+                            if (avail >= reqQty && reqQty > 0) {
+                                targetFullCount++;
+                            } else if (avail > 0) {
+                                targetPartialCount++;
+                            } else {
+                                targetNoStockCount++;
+                            }
+                        });
+
+                        const isAllAvailable = activeList.length > 0 && targetFullCount === activeList.length;
+                        const isPartialAvailable = targetFullCount > 0 || targetPartialCount > 0;
                         const hasStockForRemaining = totalAvailForDeficit > 0;
+                        const isSingleItem = activeList.length <= 1;
 
                         return (
                             <div
@@ -573,12 +752,16 @@ export function IssueRequestsTab({
                                                         ? "Released & Fulfilled"
                                                         : isPartial
                                                         ? hasStockForRemaining
-                                                            ? `Partially Released (${totalIssuedQty}/${totalReqQty} Given) • Restocked (${totalAvailForDeficit} Ready)`
-                                                            : `Partially Released (${totalIssuedQty}/${totalReqQty} Given) • Awaiting Stock (${totalDeficitQty} Deficit)`
+                                                            ? isSingleItem
+                                                                ? `Partially Released (${totalIssuedQty}/${totalReqQty} Given) • Restocked (${totalAvailForDeficit} Ready)`
+                                                                : `Partially Released (${releasedItemsCount}/${itemsList.length} Items Given) • Restocked Ready`
+                                                            : isSingleItem
+                                                                ? `Partially Released (${totalIssuedQty}/${totalReqQty} Given) • Awaiting Stock (${totalDeficitQty} Deficit)`
+                                                                : `Partially Released (${releasedItemsCount}/${itemsList.length} Items Given) • Awaiting Stock`
                                                         : approvedItemsCount === itemsList.length && itemsList.length > 0
                                                         ? "Approved • Ready to Issue"
                                                         : approvedItemsCount > 0
-                                                        ? `Partially Approved (${approvedItemsCount}/${itemsList.length}) • Ready to Issue`
+                                                        ? `Partially Approved (${approvedItemsCount}/${itemsList.length} Items) • Ready to Issue`
                                                         : "Approved • Routed to Warehousing"}
                                                 </span>
 
@@ -592,26 +775,36 @@ export function IssueRequestsTab({
                                                                 : "bg-red-50 dark:bg-red-950/40 text-red-600 border border-red-200 dark:border-red-800/40"
                                                         }`}
                                                     >
-                                                        {isAllAvailable
-                                                            ? `Full Stock Available (${totalAvailQty}/${totalReqQty})`
-                                                            : isPartialAvailable
-                                                            ? `Partial Stock: ${totalAvailQty}/${totalReqQty} Available • ${totalReqQty - totalAvailQty} in Procurement`
-                                                            : `0/${totalReqQty} in Stock • Sent to Procurement`}
+                                                        {isAllAvailable ? (
+                                                            `Full Stock Available (${targetFullCount}/${activeList.length})`
+                                                        ) : isPartialAvailable ? (
+                                                            isSingleItem
+                                                                ? `Partial Stock: ${targetTotalAvail}/${targetTotalReq} Available • ${Math.max(0, targetTotalReq - targetTotalAvail)} in Procurement`
+                                                                : `Partial Stock (${targetFullCount}/${activeList.length} Items Available • ${targetPartialCount + targetNoStockCount} in Procurement)`
+                                                        ) : (
+                                                            `0/${activeList.length} in Stock • Sent to Procurement`
+                                                        )}
                                                     </span>
                                                 )}
                                             </div>
 
-                                            <div className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-1 flex items-center gap-2">
-                                                <Building2 className="w-3.5 h-3.5 text-pink-500" />
+                                            <div className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-1 flex items-center gap-2 flex-wrap">
+                                                <Building2 className="w-3.5 h-3.5 text-pink-500 shrink-0" />
                                                 <span>Department: {req.department || "General Operations"}</span>
                                                 <span className="text-slate-300 dark:text-slate-700">•</span>
-                                                <User className="w-3.5 h-3.5 text-slate-400" />
-                                                <span className="text-slate-500 font-normal">{req.requested_by || "Requester"}</span>
+                                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                <span className="text-slate-500 font-normal">Requested by: {req.requested_by || "Requester"}</span>
+                                                <span className="text-slate-300 dark:text-slate-700">•</span>
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 text-[11px] font-bold">
+                                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                                                    Approved by: {approverName}
+                                                </span>
                                             </div>
 
-                                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3">
-                                                <span>Needed By: {new Date(req.needed_by_date || req.created_at || Date.now()).toLocaleDateString()}</span>
-                                                <span>• {itemsList.length} items requested</span>
+                                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3 flex-wrap">
+                                                <span>Approved: {formattedApprovalDate}</span>
+                                                <span>• Needed By: {new Date(req.needed_by_date || req.created_at || Date.now()).toLocaleDateString()}</span>
+                                                <span>• {activeList.length} {activeList.length === 1 ? "item" : "items"} ready to issue{approvedItemsCount > 0 && approvedItemsCount < itemsList.length ? ` (${itemsList.length} requested)` : ""}</span>
                                                 {req.priority && (
                                                     <span className="font-bold text-pink-600 dark:text-pink-400">
                                                         Priority: {req.priority}
@@ -979,9 +1172,10 @@ export function IssueRequestsTab({
                                             const remainingDeficit = item.deficit_quantity !== undefined 
                                                 ? Number(item.deficit_quantity) 
                                                 : Math.max(0, reqQty - prevIssued);
+                                            const targetDeficit = remainingDeficit > 0 ? remainingDeficit : reqQty;
                                             const isPartialHandover = prevIssued > 0;
-                                            const targetDeficit = remainingDeficit > 0 ? remainingDeficit : (prevIssued >= reqQty ? 0 : reqQty);
-                                            const maxAllowedToDispense = Math.min(inStock, targetDeficit);
+                                            const isItemApproved = (item.status === "Approved" || String(item.status || "").toLowerCase() === "approved" || Number(item.approved_quantity) > 0 || (String(selectedRequest.status || "").toLowerCase().includes("approved") && item.status !== "Rejected")) && item.status !== "Pending" && item.status !== "Rejected";
+                                            const maxAllowedToDispense = isItemApproved ? Math.min(inStock, targetDeficit) : 0;
                                             const curVal = issueForm.issuedItems[key] ?? maxAllowedToDispense;
 
                                             return (
@@ -999,6 +1193,11 @@ export function IssueRequestsTab({
                                                             )}
                                                             {item.is_new_item && (
                                                                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold uppercase">New Item</span>
+                                                            )}
+                                                            {!isItemApproved && (
+                                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold uppercase">
+                                                                    Pending Review • Cannot Dispense
+                                                                </span>
                                                             )}
                                                         </div>
                                                         <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap mt-0.5">

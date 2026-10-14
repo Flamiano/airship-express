@@ -28,7 +28,7 @@ const QUICK_SUGGESTIONS = [
 export default function AiChartGeneratorTab({ data: executiveData }: AiChartGeneratorTabProps) {
     const [prompt, setPrompt] = useState("");
     const [displayMode, setDisplayMode] = useState<'chart' | 'text' | 'both'>('both');
-    const [domainFilter, setDomainFilter] = useState<'all' | 'parcels' | 'inventory' | 'procurement' | 'suppliers' | 'documents' | 'user-activity' | 'trash'>('all');
+    const [domainFilter, setDomainFilter] = useState<'all' | 'inventory' | 'procurement' | 'suppliers' | 'documents' | 'user-activity' | 'trash'>('all');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingStep, setLoadingStep] = useState<string>("");
     const [isBriefModalOpen, setIsBriefModalOpen] = useState(false);
@@ -670,7 +670,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                     {/* Domain Filter Chips */}
                     <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                         <span className="text-[11px] text-slate-400 mr-1 font-medium">Domain:</span>
-                        {(['all', 'inventory', 'user-activity', 'documents', 'suppliers', 'parcels', 'procurement', 'trash'] as const).map(d => (
+                        {(['all', 'inventory', 'procurement', 'suppliers', 'documents', 'user-activity', 'trash'] as const).map(d => (
                             <button
                                 key={d}
                                 type="button"
@@ -1039,7 +1039,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                                             }
                                         }}
                                         className="flex-1 px-3 py-2 text-xs rounded-xl bg-white dark:bg-[#20212b] border border-slate-200/80 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-pink-500 shadow-[inset_1px_1px_3px_rgba(0,0,0,0.05)]"
-                                        placeholder="Enter a prompt referencing valid database tables (e.g. inventory, parcels, suppliers)..."
+                                        placeholder="Enter a prompt referencing valid database tables (e.g. inventory, suppliers, purchase orders)..."
                                         autoFocus
                                     />
                                     <div className="flex items-center gap-1.5 shrink-0">

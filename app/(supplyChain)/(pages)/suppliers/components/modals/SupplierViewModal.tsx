@@ -30,7 +30,9 @@ import {
     Edit3,
     Trash2,
     X,
-    ShoppingBag
+    ShoppingBag,
+    Video,
+    AlertTriangle
 } from "lucide-react";
 
 interface SupplierViewModalProps {
@@ -40,6 +42,7 @@ interface SupplierViewModalProps {
     onClose: () => void;
     onEdit: (supplier: Supplier) => void;
     onDelete: (id: number, name: string) => void;
+    onScheduleMeeting?: (supplier: Supplier) => void;
 }
 
 const DEFAULT_TERMS_AND_CONDITIONS = `1. Supplier shall deliver the items according to the quantity and specifications stated in the Purchase Order.
@@ -132,11 +135,18 @@ export function SupplierViewModal({
     onClose,
     onEdit,
     onDelete,
+    onScheduleMeeting,
 }: SupplierViewModalProps) {
     const [documents, setDocuments] = useState<any[]>([]);
     const [isLoadingDocs, setIsLoadingDocs] = useState(false);
     const [activeTab, setActiveTab] = useState<"general" | "terms" | "products" | "docs" | "orders">("general");
     const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string; type: string } | null>(null);
+
+    // Enhanced Transaction History State
+    const [supplierFullOrders, setSupplierFullOrders] = useState<any[]>([]);
+    const [supplierQuotations, setSupplierQuotations] = useState<any[]>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [historySubTab, setHistorySubTab] = useState<"all" | "active" | "completed" | "rejected" | "quotes">("all");
 
     const rawOtherProducts: any[] = useMemo(() => {
         if (!supplier) return [];
@@ -178,11 +188,41 @@ export function SupplierViewModal({
                     setDocuments([]);
                 });
             setActiveTab("general");
+
+            // Fetch comprehensive transaction history (orders and quotations)
+            setIsLoadingHistory(true);
+            const supName = (supplier.name || "").trim();
+            const supId = supplier.id ? Number(supplier.id) : null;
+
+            Promise.all([
+                supabase
+                    .from("purchase_orders")
+                    .select("*")
+                    .or(supId ? `supplier_id.eq.${supId},supplier_name.ilike.%${supName}%` : `supplier_name.ilike.%${supName}%`)
+                    .order("created_at", { ascending: false }),
+                supabase
+                    .from("supplier_quotations")
+                    .select("*")
+                    .or(supId ? `supplier_id.eq.${supId},supplier_name.ilike.%${supName}%` : `supplier_name.ilike.%${supName}%`)
+                    .order("created_at", { ascending: false }),
+            ])
+            .then(([posRes, quotesRes]) => {
+                setSupplierFullOrders(posRes.data || []);
+                setSupplierQuotations(quotesRes.data || []);
+            })
+            .catch((err) => {
+                console.warn("Failed to load supplier transaction history:", err);
+            })
+            .finally(() => {
+                setIsLoadingHistory(false);
+            });
         } else {
             setDocuments([]);
             setPreviewDoc(null);
+            setSupplierFullOrders([]);
+            setSupplierQuotations([]);
         }
-    }, [isOpen, supplier?.id]);
+    }, [isOpen, supplier?.id, supplier?.name]);
 
     if (!isOpen || !supplier) return null;
 
@@ -310,7 +350,7 @@ export function SupplierViewModal({
                                 }`}
                             >
                                 <ShoppingBag className="w-3.5 h-3.5" />
-                                <span>5. Purchase Orders ({supplierOrders.length})</span>
+                                <span>5. Transactions &amp; Orders ({supplierFullOrders.length + supplierQuotations.length})</span>
                             </button>
                         </div>
                     </div>
@@ -762,55 +802,216 @@ export function SupplierViewModal({
                             </div>
                         )}
 
-                        {/* TAB 4: Purchase Orders */}
-                        {activeTab === "orders" && (
-                            <div className="space-y-5 animate-in fade-in duration-200">
-                                <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">
-                                    <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-2.5">
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                                            <ShoppingBag className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                            <span>Purchase Orders & Transaction History ({supplierOrders.length})</span>
-                                        </h4>
-                                    </div>
+                        {/* TAB 4: Transactions History (POs, Quotations, Separated Lifecycles) */}
+                        {activeTab === "orders" && (() => {
+                            const activeOrders = supplierFullOrders.filter((po) => {
+                                const st = (po.status || "").toLowerCase().trim();
+                                return ["pending", "draft", "issued", "sent", "confirmed", "in progress"].includes(st);
+                            });
 
-                                    {supplierOrders.length === 0 ? (
-                                        <div className="p-6 rounded-none bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 text-center text-slate-400 dark:text-slate-500 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)]">
-                                            <p className="text-xs italic">No purchase orders created for this supplier yet.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                                            {supplierOrders.map((po) => (
-                                                <div
-                                                    key={po.id}
-                                                    className="flex items-center justify-between bg-[#e8ecf4] dark:bg-[#10121b] px-4 py-3 rounded-none border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)]"
+                            const completedOrders = supplierFullOrders.filter((po) => {
+                                const st = (po.status || "").toLowerCase().trim();
+                                return ["delivered", "completed", "fulfilled"].includes(st);
+                            });
+
+                            const rejectedOrders = supplierFullOrders.filter((po) => {
+                                const st = (po.status || "").toLowerCase().trim();
+                                return ["rejected", "cancelled"].includes(st);
+                            });
+
+                            return (
+                                <div className="space-y-4 animate-in fade-in duration-200">
+                                    <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">
+                                        <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-3 flex-wrap gap-2">
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                <ShoppingBag className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                                                <span>Actual Database Transaction History ({supplierFullOrders.length + supplierQuotations.length})</span>
+                                            </h4>
+
+                                            {/* Subtab Switcher */}
+                                            <div className="flex items-center gap-1 bg-[#e8ecf4] dark:bg-[#10121b] p-1 rounded-2xl border border-slate-300/70 dark:border-white/10 text-[11px] font-bold">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistorySubTab("all")}
+                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                        historySubTab === "all" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
+                                                    }`}
                                                 >
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
-                                                            {po.po_number}
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400">
-                                                            • {new Date(po.created_at).toLocaleDateString()}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-3.5">
-                                                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono">
-                                                            ₱{po.total_amount?.toLocaleString() || "0"}
-                                                        </span>
-                                                        <div>{getStatusBadge(po.status)}</div>
-                                                        <div>{getPaidBadge(po.paid || false)}</div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                    All ({supplierFullOrders.length + supplierQuotations.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistorySubTab("active")}
+                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                        historySubTab === "active" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
+                                                    }`}
+                                                >
+                                                    Active ({activeOrders.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistorySubTab("completed")}
+                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                        historySubTab === "completed" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
+                                                    }`}
+                                                >
+                                                    Completed ({completedOrders.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistorySubTab("rejected")}
+                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                        historySubTab === "rejected" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
+                                                    }`}
+                                                >
+                                                    Rejected ({rejectedOrders.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistorySubTab("quotes")}
+                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                        historySubTab === "quotes" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
+                                                    }`}
+                                                >
+                                                    Quotations ({supplierQuotations.length})
+                                                </button>
+                                            </div>
                                         </div>
-                                    )}
+
+                                        {isLoadingHistory ? (
+                                            <div className="p-8 text-center text-xs text-slate-400">
+                                                Loading transaction history...
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                                                {/* Quotations Subtab */}
+                                                {historySubTab === "quotes" && (
+                                                    supplierQuotations.length === 0 ? (
+                                                        <p className="text-xs italic text-slate-400 p-4 text-center">No quotations recorded for this supplier.</p>
+                                                    ) : (
+                                                        supplierQuotations.map((q) => (
+                                                            <div
+                                                                key={`quote-${q.id}`}
+                                                                className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 flex items-center justify-between gap-3 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35)]"
+                                                            >
+                                                                <div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-bold text-xs text-slate-900 dark:text-white">
+                                                                            {q.item_name || "Quoted Supplies"}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-pink-600 font-mono">
+                                                                            ({q.request_number || "Direct Submission"})
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                                                        Lead time: {q.lead_time_days || "3-5"} days • {q.availability || "In Stock"} • {new Date(q.created_at).toLocaleDateString()}
+                                                                    </p>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="font-mono text-xs font-bold text-pink-600 dark:text-pink-400">
+                                                                        ₱{Number(q.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                    </span>
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                                                        (q.status || "").toLowerCase() === "accepted"
+                                                                            ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                                                                            : (q.status || "").toLowerCase() === "rejected"
+                                                                            ? "bg-rose-500/15 text-rose-600 border border-rose-500/30"
+                                                                            : "bg-amber-500/15 text-amber-600 border border-amber-500/30"
+                                                                    }`}>
+                                                                        {q.status || "Pending"}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )
+                                                )}
+
+                                                {/* Purchase Orders Subtabs */}
+                                                {historySubTab !== "quotes" && (() => {
+                                                    const displayOrders = 
+                                                        historySubTab === "active" ? activeOrders :
+                                                        historySubTab === "completed" ? completedOrders :
+                                                        historySubTab === "rejected" ? rejectedOrders :
+                                                        supplierFullOrders;
+
+                                                    if (displayOrders.length === 0) {
+                                                        return (
+                                                            <p className="text-xs italic text-slate-400 p-4 text-center">
+                                                                No {historySubTab !== "all" ? historySubTab : ""} purchase order transactions found.
+                                                            </p>
+                                                        );
+                                                    }
+
+                                                    return displayOrders.map((po) => {
+                                                        let poItems: any[] = [];
+                                                        if (Array.isArray(po.items)) poItems = po.items;
+                                                        else if (typeof po.items === "string") {
+                                                            try {
+                                                                const parsed = JSON.parse(po.items);
+                                                                if (Array.isArray(parsed)) poItems = parsed;
+                                                            } catch {}
+                                                        }
+
+                                                        const isReorder = (po.notes || "").toLowerCase().includes("reorder");
+
+                                                        return (
+                                                            <div
+                                                                key={po.id}
+                                                                className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 space-y-2 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35)]"
+                                                            >
+                                                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
+                                                                            {po.po_number}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-slate-400">
+                                                                            • {new Date(po.created_at).toLocaleDateString()}
+                                                                        </span>
+                                                                        {isReorder && (
+                                                                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-blue-500/15 text-blue-600 border border-blue-500/30">
+                                                                                Deficit Reorder
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2.5">
+                                                                        <span className="text-xs font-black text-slate-900 dark:text-slate-100 font-mono">
+                                                                            ₱{Number(po.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                        </span>
+                                                                        <div>{getStatusBadge(po.status)}</div>
+                                                                        <div>{getPaidBadge(po.paid || false)}</div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Ordered Items List */}
+                                                                {poItems.length > 0 && (
+                                                                    <div className="pt-1.5 border-t border-slate-300/60 dark:border-white/10 flex items-center gap-2 flex-wrap">
+                                                                        <span className="text-[10px] text-slate-400 font-bold">Items:</span>
+                                                                        {poItems.map((it: any, iIdx: number) => (
+                                                                            <span
+                                                                                key={iIdx}
+                                                                                className="text-[10px] px-2 py-0.5 rounded-md bg-white/70 dark:bg-black/40 text-slate-700 dark:text-slate-300 font-semibold border border-slate-300/50 dark:border-white/5"
+                                                                            >
+                                                                                {Number(it.quantity || it.quantity_ordered || 1)}x {it.name || it.item_name || "Item"}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    });
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="px-6 py-4 border-t border-slate-300/80 dark:border-white/10 bg-[#ebf0f7] dark:bg-[#131522] flex items-center justify-between shrink-0">
+                    <div className="px-6 py-4 border-t border-slate-300/80 dark:border-white/10 bg-[#ebf0f7] dark:bg-[#131522] flex items-center justify-between shrink-0 flex-wrap gap-2">
                         <AppButton
                             type="button"
                             variant="danger"
@@ -821,6 +1022,16 @@ export function SupplierViewModal({
                         </AppButton>
 
                         <div className="flex items-center gap-2">
+                            {onScheduleMeeting && (
+                                <button
+                                    type="button"
+                                    onClick={() => onScheduleMeeting(supplier)}
+                                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    <Video className="w-3.5 h-3.5" />
+                                    <span>Schedule Meeting</span>
+                                </button>
+                            )}
                             <AppButton type="button" variant="neutral" size="sm" onClick={onClose}>
                                 Close
                             </AppButton>

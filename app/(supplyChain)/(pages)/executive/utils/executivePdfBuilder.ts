@@ -586,7 +586,7 @@ export async function generateExecutiveDirectPdf(
             mtdSpend: 0,
             budgetUtilizationPct: 0,
         };
-        const spendFormatted = `$${(proc.mtdSpend ?? 0).toLocaleString()}`;
+        const spendFormatted = `₱${(proc.mtdSpend ?? 0).toLocaleString()}`;
         const procItems = [
             { label: 'Open Purchase Orders', val: `${proc.openPOs ?? 0} POs` },
             { label: 'Pending Management Approvals', val: `${proc.pendingApprovals ?? 0} Requests` },
