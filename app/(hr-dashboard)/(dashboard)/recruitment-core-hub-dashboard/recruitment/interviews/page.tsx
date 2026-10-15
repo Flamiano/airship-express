@@ -24,6 +24,7 @@ type Interview = {
   rating: number | null;
   feedback: string | null;
   outcome: string | null;
+  stage: string;
   created_at: string;
   applicants: Applicant | Applicant[] | null;
 };
@@ -40,6 +41,7 @@ export default function InterviewsPage() {
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [stageFilter, setStageFilter] = useState("ALL");
 
   // ==========================================
   // FETCH INTERVIEWS
@@ -62,6 +64,7 @@ export default function InterviewsPage() {
           rating,
           feedback,
           outcome,
+          stage,
           created_at,
           applicants:hr1_applicants (
             id,
@@ -153,9 +156,11 @@ export default function InterviewsPage() {
       const matchesStatus =
         statusFilter === "ALL" || interview.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      const matchesStage = stageFilter === "ALL" || interview.stage === stageFilter;
+
+      return matchesSearch && matchesStatus && matchesStage;
     });
-  }, [interviews, searchQuery, statusFilter]);
+  }, [interviews, searchQuery, statusFilter, stageFilter]);
 
   // ==========================================
   // BADGE STYLING
@@ -203,7 +208,7 @@ export default function InterviewsPage() {
           <div>
             <h2 className="text-xl sm:text-2xl font-black text-[#121212]">Interviews</h2>
             <p className="mt-1 text-xs text-gray-500">
-              Manage applicant interview schedules, evaluations, ratings, and hiring decisions.
+              Track each applicant through Initial Interview → Assessment → Final Interview, including schedules and results.
             </p>
           </div>
 
@@ -248,6 +253,18 @@ export default function InterviewsPage() {
                 <option value="Completed">Completed</option>
                 <option value="Reschedule">Rescheduled</option>
                 <option value="Cancelled">Cancelled</option>
+              </select>
+              <select
+                value={stageFilter}
+                onChange={(e) => setStageFilter(e.target.value)}
+                className="w-full sm:w-auto rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs text-gray-800 outline-none transition focus:border-[#e5167e]"
+                aria-label="Filter by recruitment stage"
+              >
+                <option value="ALL">All Stages</option>
+                <option value="Initial Interview">Initial Interview</option>
+                <option value="Assessment">Assessment</option>
+                <option value="Final Interview">Final Interview</option>
+                <option value="Legacy / Unspecified">Legacy / Unspecified</option>
               </select>
             </div>
 
@@ -317,6 +334,7 @@ export default function InterviewsPage() {
                 <thead className="border-b border-gray-100 bg-gray-50/70 uppercase tracking-wider text-gray-400 font-semibold">
                   <tr>
                     <th className="px-6 py-3.5">Applicant Name</th>
+                    <th className="px-6 py-3.5">Recruitment Stage</th>
                     <th className="px-6 py-3.5">Schedule Date & Time</th>
                     <th className="px-6 py-3.5">Location / Meeting Link</th>
                     <th className="px-6 py-3.5">Status</th>
@@ -339,6 +357,12 @@ export default function InterviewsPage() {
                         <td className="px-6 py-4">
                           <span className="font-bold text-[#121212]" key={applicantKey}>
                             {getApplicantName(interview.applicants)}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex rounded-full bg-pink-50 px-2.5 py-1 text-[11px] font-semibold text-pink-700 ring-1 ring-inset ring-pink-200">
+                            {interview.stage || "Legacy / Unspecified"}
                           </span>
                         </td>
 

@@ -244,7 +244,7 @@ export default function OnboardingPage() {
               </h3>
 
               <p className="mt-0.5 text-xs text-slate-500">
-                Track submitted requirements and statutory document progress.
+                Send each hired applicant a separate secure onboarding form for requested IDs, diploma, certificates, and other documents. This is separate from the public /apply application form.
               </p>
             </div>
 

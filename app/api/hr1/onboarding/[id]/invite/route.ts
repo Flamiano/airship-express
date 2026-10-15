@@ -70,8 +70,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       await transporter.sendMail({
         from: smtpFrom,
         to: applicant.email,
-        subject: "Complete your Airship Express onboarding form and documents",
-        text: `Hello ${applicant.first_name},\n\nYou have moved to the onboarding stage. Please complete the background investigation form and upload the documents requested by HR using this private link. It expires in ${days} days.\n\n${url}\n\nIf you did not expect this message, contact Human Resources.`,
+        subject: "Action Required: Complete Your Airship Express Onboarding",
+        text: `Dear ${applicant.first_name},\n\nCongratulations on advancing to the onboarding stage with Airship Express.\n\nPlease complete your onboarding form and submit the documents requested by our Human Resources team using your secure, personal link below:\n\n${url}\n\nThis link expires on ${new Date(expiresAt).toLocaleString("en-PH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Manila" })}. For your privacy, please do not share this link with anyone.\n\nAfter you submit the form and documents, Human Resources will review your submission and contact you if any corrections or additional information are needed.\n\nIf you have questions or believe you received this email in error, please contact the Airship Express Human Resources team.\n\nRegards,\nHuman Resources\nAirship Express`,
       });
       emailSent = true;
     } catch (error) {

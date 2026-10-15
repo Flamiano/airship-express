@@ -13,11 +13,15 @@ type Applicant = {
   status: string;
 };
 
+type Stage = "Initial Interview" | "Assessment" | "Final Interview";
+type ExistingStageRecord = { applicant_id: string; stage: string; status: string; outcome: string | null };
+
 export default function NewInterviewPage() {
   const router = useRouter();
   const supabase = createClient();
 
   const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [stageRecords, setStageRecords] = useState<ExistingStageRecord[]>([]);
 
   const [loadingApplicants, setLoadingApplicants] = useState(true);
 
@@ -25,6 +29,7 @@ export default function NewInterviewPage() {
   const [error, setError] = useState("");
 
   const [applicantId, setApplicantId] = useState("");
+  const [stage, setStage] = useState<Stage>("Initial Interview");
   const [interviewerName, setInterviewerName] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [locationOrLink, setLocationOrLink] = useState("");
@@ -89,6 +94,12 @@ export default function NewInterviewPage() {
       );
 
       setApplicants(availableApplicants);
+
+      const { data: existingRecords, error: stageError } = await supabase
+        .from("hr1_interviews")
+        .select("applicant_id, stage, status, outcome");
+      if (stageError) throw stageError;
+      setStageRecords((existingRecords ?? []) as ExistingStageRecord[]);
     } catch (err: unknown) {
       console.error("APPLICANTS EXCEPTION:", err);
 
@@ -104,6 +115,15 @@ export default function NewInterviewPage() {
 
   loadApplicants();
 }, []);
+
+  const eligibleApplicants = applicants.filter((applicant) => {
+    const records = stageRecords.filter((record) => record.applicant_id === applicant.id);
+    const requiredPriorStage = stage === "Assessment" ? "Initial Interview" : stage === "Final Interview" ? "Assessment" : null;
+    const passedPriorStage = !requiredPriorStage || records.some((record) => record.stage === requiredPriorStage
+      && record.status === "Completed" && record.outcome === "Passed");
+    const stageAlreadyRecorded = records.some((record) => record.stage === stage && record.status !== "Cancelled");
+    return passedPriorStage && !stageAlreadyRecorded;
+  });
 
   // ==========================================
   // SUBMIT
@@ -121,6 +141,20 @@ export default function NewInterviewPage() {
 
     if (!applicantId) {
       setError("Please select an applicant.");
+      setSaving(false);
+      return;
+    }
+
+    const requiredPriorStage = stage === "Assessment" ? "Initial Interview" : stage === "Final Interview" ? "Assessment" : null;
+    const applicantStageRecords = stageRecords.filter((record) => record.applicant_id === applicantId);
+    if (requiredPriorStage && !applicantStageRecords.some((record) => record.stage === requiredPriorStage
+      && record.status === "Completed" && record.outcome === "Passed")) {
+      setError(`The applicant must pass the ${requiredPriorStage} before scheduling ${stage}.`);
+      setSaving(false);
+      return;
+    }
+    if (applicantStageRecords.some((record) => record.stage === stage && record.status !== "Cancelled")) {
+      setError(`This applicant already has a ${stage} record. Edit or cancel the existing schedule first.`);
       setSaving(false);
       return;
     }
@@ -146,6 +180,7 @@ export default function NewInterviewPage() {
         .from("hr1_interviews")
         .insert({
           applicant_id: applicantId,
+          stage,
           interviewer_name: interviewerName.trim(),
           scheduled_date: new Date(scheduledDate).toISOString(),
           location_or_link: locationOrLink.trim() || null,
@@ -268,10 +303,10 @@ export default function NewInterviewPage() {
         {/* PAGE HEADING */}
         <div className="mb-6 sm:mb-8 mt-4 sm:mt-6">
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-            Schedule Interview
+            Schedule Recruitment Stage
           </h2>
           <p className="mt-1 text-xs sm:text-sm text-slate-500">
-            Assign an applicant to an interviewer and set the meeting details.
+            Track the required Initial Interview → Assessment → Final Interview sequence.
           </p>
         </div>
 
@@ -286,6 +321,14 @@ export default function NewInterviewPage() {
             {/* SELECTION GRID */}
             <div className="grid grid-cols-1 gap-5 sm:gap-6">
 
+              <div>
+                <label htmlFor="stage" className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-700">Recruitment Stage *</label>
+                <select id="stage" value={stage} onChange={(event) => { setStage(event.target.value as Stage); setApplicantId(""); }} required className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm outline-none focus:border-[#e5167e]">
+                  <option>Initial Interview</option><option>Assessment</option><option>Final Interview</option>
+                </select>
+                <p className="mt-1.5 text-xs text-slate-500">Assessment requires a passed initial interview. Final interview requires a passed assessment.</p>
+              </div>
+
               {/* APPLICANT */}
               <div>
                 <label
@@ -297,7 +340,7 @@ export default function NewInterviewPage() {
 
                 {loadingApplicants ? (
                   <div className="h-11 w-full animate-pulse rounded-xl bg-slate-100" />
-                ) : applicants.length === 0 ? (
+                ) : eligibleApplicants.length === 0 ? (
                   <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs sm:text-sm text-amber-800">
                     <svg
                       className="h-5 w-5 shrink-0 text-amber-600"
@@ -311,7 +354,7 @@ export default function NewInterviewPage() {
                       />
                     </svg>
                     <span>
-                      No applicants available. Please add an applicant first.
+                      {stage === "Initial Interview" ? "No applicants are available to schedule." : `No applicants have passed the prior stage required for ${stage}.`}
                     </span>
                   </div>
                 ) : (
@@ -328,7 +371,7 @@ export default function NewInterviewPage() {
                       Select an applicant
                     </option>
 
-                    {applicants.map((applicant) => (
+                    {eligibleApplicants.map((applicant) => (
                       <option
                         key={applicant.id}
                         value={applicant.id}
