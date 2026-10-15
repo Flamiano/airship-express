@@ -138,9 +138,24 @@ export function SupplierReturnModal({
         }
     }, [supplierResponsibility, resolutionDetails, autoDetectStatus, returnRequest]);
 
+    // Check if the claim process is already resolved, completed, or closed
+    const statusStr = String(returnRequest?.status || "");
+    const isResolvedOrDone =
+        statusStr === "Resolved" ||
+        statusStr === "Claim Closed" ||
+        statusStr === "Closed" ||
+        statusStr === "Rejected" ||
+        returnRequest?.resolution_details?.replacement_receiving_status === "Received & Restocked" ||
+        (returnRequest as any)?.replacement_receiving_status === "Received & Restocked";
+
     const handleSubmitResponse = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!returnRequest) return;
+
+        if (isResolvedOrDone) {
+            toast.info("This claim is already resolved and the process is complete.");
+            return;
+        }
 
         if (
             (supplierResponsibility === "Supplier Not Responsible" ||
@@ -598,9 +613,14 @@ export function SupplierReturnModal({
                                         <textarea
                                             rows={3}
                                             value={replyMessage}
+                                            disabled={isResolvedOrDone}
                                             onChange={(e) => setReplyMessage(e.target.value)}
-                                            placeholder="Type your official acknowledgement, technical clarification, or delivery timeline..."
-                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 resize-none font-sans"
+                                            placeholder={
+                                                isResolvedOrDone
+                                                    ? "This claim is resolved. Further replies are locked."
+                                                    : "Type your official acknowledgement, technical clarification, or delivery timeline..."
+                                            }
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 resize-none font-sans disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
                                     </div>
                                 </div>
@@ -610,6 +630,23 @@ export function SupplierReturnModal({
                         {/* TAB 4: 3. WORKFLOW STATUS & SUPPLIER ACTION */}
                         {activeTab === "status_action" && (
                             <form id="supplierResponseForm" onSubmit={handleSubmitResponse} className="space-y-4">
+                                {isResolvedOrDone && (
+                                    <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-start gap-3">
+                                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                        <div className="text-xs space-y-1">
+                                            <h6 className="font-bold text-sm">Process Completed & Claim Finalized</h6>
+                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                                                This return claim has been closed with status: <strong>{returnRequest.status}</strong>
+                                                {returnRequest.resolution_details?.replacement_receiving_status === "Received & Restocked" ||
+                                                (returnRequest as any)?.replacement_receiving_status === "Received & Restocked"
+                                                    ? " (Items Received & Restocked)"
+                                                    : ""}. 
+                                                Further updates, responsibility changes, and workflow transitions have been disabled.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* 1. Supplier Responsibility Acknowledgment */}
                                 <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3.5">
                                     <h5 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-2">
@@ -629,8 +666,13 @@ export function SupplierReturnModal({
                                             <button
                                                 key={resp}
                                                 type="button"
-                                                onClick={() => setSupplierResponsibility(resp)}
-                                                className={`p-3 rounded-xl border text-left text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                                                disabled={isResolvedOrDone}
+                                                onClick={() => !isResolvedOrDone && setSupplierResponsibility(resp)}
+                                                className={`p-3 rounded-xl border text-left text-xs font-bold transition-all flex items-center justify-between ${
+                                                    isResolvedOrDone
+                                                        ? "cursor-not-allowed opacity-75"
+                                                        : "cursor-pointer"
+                                                } ${
                                                     supplierResponsibility === resp
                                                         ? "border-pink-500 bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 shadow-sm"
                                                         : "border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300 hover:border-slate-300"
@@ -656,11 +698,12 @@ export function SupplierReturnModal({
                                             </label>
                                             <textarea
                                                 rows={2}
+                                                disabled={isResolvedOrDone}
                                                 value={responsibilityNotes}
                                                 onChange={(e) => setResponsibilityNotes(e.target.value)}
                                                 placeholder="Explain why the supplier is not responsible (e.g. carrier transit damage, improper storage) or reasons for dispute..."
                                                 required
-                                                className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-900/50 text-slate-800 dark:text-white focus:outline-none focus:border-rose-500 resize-none font-mono"
+                                                className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-900/50 text-slate-800 dark:text-white focus:outline-none focus:border-rose-500 resize-none font-mono disabled:opacity-60 disabled:cursor-not-allowed"
                                             />
                                         </div>
                                     )}
@@ -683,24 +726,27 @@ export function SupplierReturnModal({
                                                 <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
                                                     RMA / Vendor Ref #
                                                 </label>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setResolutionDetails({
-                                                            ...resolutionDetails,
-                                                            supplier_reference: generateAutoRma(returnRequest),
-                                                        })
-                                                    }
-                                                    title="Auto-generate standard RMA reference"
-                                                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 transition-colors cursor-pointer"
-                                                >
-                                                    <Sparkles className="w-2.5 h-2.5" />
-                                                    <span>Auto-generate</span>
-                                                </button>
+                                                {!isResolvedOrDone && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setResolutionDetails({
+                                                                ...resolutionDetails,
+                                                                supplier_reference: generateAutoRma(returnRequest),
+                                                            })
+                                                        }
+                                                        title="Auto-generate standard RMA reference"
+                                                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 transition-colors cursor-pointer"
+                                                    >
+                                                        <Sparkles className="w-2.5 h-2.5" />
+                                                        <span>Auto-generate</span>
+                                                    </button>
+                                                )}
                                             </div>
                                             <div className="relative">
                                                 <input
                                                     type="text"
+                                                    disabled={isResolvedOrDone}
                                                     placeholder="e.g. RMA-2026-X1"
                                                     value={resolutionDetails.supplier_reference || ""}
                                                     onChange={(e) =>
@@ -709,7 +755,7 @@ export function SupplierReturnModal({
                                                             supplier_reference: e.target.value,
                                                         })
                                                     }
-                                                    className="w-full pl-3 pr-14 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-white focus:outline-none focus:border-pink-500"
+                                                    className="w-full pl-3 pr-14 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-white focus:outline-none focus:border-pink-500 disabled:opacity-60 disabled:cursor-not-allowed"
                                                 />
                                                 {resolutionDetails.supplier_reference && (
                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300 pointer-events-none">
@@ -728,6 +774,8 @@ export function SupplierReturnModal({
                                             </label>
                                             <input
                                                 type="date"
+                                                disabled={isResolvedOrDone}
+                                                min={new Date().toISOString().split("T")[0]}
                                                 value={resolutionDetails.expected_replacement_date || ""}
                                                 onChange={(e) =>
                                                     setResolutionDetails({
@@ -735,7 +783,7 @@ export function SupplierReturnModal({
                                                         expected_replacement_date: e.target.value,
                                                     })
                                                 }
-                                                className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                                                className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
                                             />
                                         </div>
 
@@ -744,6 +792,7 @@ export function SupplierReturnModal({
                                                 Replacement Shipping Status
                                             </label>
                                             <select
+                                                disabled={isResolvedOrDone}
                                                 value={resolutionDetails.replacement_receiving_status || "Awaiting Shipment"}
                                                 onChange={(e) =>
                                                     setResolutionDetails({
@@ -751,7 +800,7 @@ export function SupplierReturnModal({
                                                         replacement_receiving_status: e.target.value,
                                                     })
                                                 }
-                                                className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                                                className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
                                             >
                                                 <option value="Awaiting Shipment">1. Scheduled / Awaiting Dispatch</option>
                                                 <option value="In Transit">2. In Transit (Dispatched to Warehouse)</option>
@@ -773,11 +822,12 @@ export function SupplierReturnModal({
                                             <input
                                                 type="checkbox"
                                                 id="autoDetectToggle"
+                                                disabled={isResolvedOrDone}
                                                 checked={autoDetectStatus}
                                                 onChange={(e) => setAutoDetectStatus(e.target.checked)}
-                                                className="rounded text-pink-600 focus:ring-pink-500"
+                                                className="rounded text-pink-600 focus:ring-pink-500 disabled:opacity-60 disabled:cursor-not-allowed"
                                             />
-                                            <label htmlFor="autoDetectToggle" className="cursor-pointer font-bold text-pink-600 dark:text-pink-400">
+                                            <label htmlFor="autoDetectToggle" className={`font-bold ${isResolvedOrDone ? "text-slate-400 cursor-not-allowed" : "cursor-pointer text-pink-600 dark:text-pink-400"}`}>
                                                 Auto-detect status based on action
                                             </label>
                                         </div>
@@ -788,10 +838,10 @@ export function SupplierReturnModal({
                                             Workflow Status State {autoDetectStatus && <span className="text-pink-500 font-normal">(Auto-calculated)</span>}
                                         </label>
                                         <select
-                                            disabled={autoDetectStatus}
+                                            disabled={autoDetectStatus || isResolvedOrDone}
                                             value={workflowStatus}
                                             onChange={(e) => setWorkflowStatus(e.target.value as SupplierReturnStatus)}
-                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold disabled:opacity-80"
+                                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold disabled:opacity-70 disabled:cursor-not-allowed"
                                         >
                                             <option value="Under Investigation">Under Investigation (Claim Received)</option>
                                             <option value="Approved for Return">Approved for Return (Return Authorized)</option>
@@ -819,13 +869,22 @@ export function SupplierReturnModal({
                         <button
                             type="button"
                             onClick={handleSubmitResponse}
-                            disabled={isSubmitting}
-                            className="px-6 py-2.5 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-black shadow-[0_4px_14px_rgba(236,72,153,0.45)] transition-all cursor-pointer flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                            disabled={isSubmitting || isResolvedOrDone}
+                            className={`px-6 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 active:scale-95 ${
+                                isResolvedOrDone
+                                    ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
+                                    : "bg-pink-500 hover:bg-pink-600 text-white shadow-[0_4px_14px_rgba(236,72,153,0.45)] cursor-pointer disabled:opacity-50"
+                            }`}
                         >
                             {isSubmitting ? (
                                 <>
                                     <Loader2 className="w-4 h-4 animate-spin" />
                                     <span>Submitting Response...</span>
+                                </>
+                            ) : isResolvedOrDone ? (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Process Completed (Resolved)</span>
                                 </>
                             ) : (
                                 <>

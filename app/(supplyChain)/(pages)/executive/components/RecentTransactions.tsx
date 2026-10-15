@@ -49,7 +49,7 @@ export default function RecentTransactions({ transactions }: RecentTransactionsP
                     </div>
                     <span>Recent Purchase Orders</span>
                 </div>
-                <ViewLink link="/purchase-orders" name="Open purchase orders" />
+                <ViewLink link="?tab=issued-pos" name="View All Issued POs" />
             </div>
 
             {/* Table Container */}

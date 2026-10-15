@@ -626,8 +626,8 @@ export function useExecutiveData() {
                     metric: `${anomaliesCount} low stock`,
                     change: 'Restock needed',
                     actionable: true,
-                    actionText: 'View Inventory',
-                    actionLink: '/inventory',
+                    actionText: 'View Operations',
+                    actionLink: '?tab=operations',
                 });
             }
 
@@ -641,7 +641,7 @@ export function useExecutiveData() {
                     change: `₱${mtdSpend.toLocaleString()} spend`,
                     actionable: true,
                     actionText: 'Inspect Orders',
-                    actionLink: '/purchase-orders',
+                    actionLink: '?tab=issued-pos',
                 });
             }
 
@@ -654,8 +654,8 @@ export function useExecutiveData() {
                     metric: `${pendingApprovals} pending`,
                     change: 'Action required',
                     actionable: true,
-                    actionText: 'Review Requests',
-                    actionLink: '/procurement',
+                    actionText: 'Review Pipeline',
+                    actionLink: '?tab=issued-pos',
                 });
             }
 
@@ -667,8 +667,8 @@ export function useExecutiveData() {
                 metric: `${activeSuppliersCount} active`,
                 change: 'Network verified',
                 actionable: true,
-                actionText: 'View Suppliers',
-                actionLink: '/suppliers',
+                actionText: 'View Deep Dive',
+                actionLink: '?tab=kpis',
             });
 
             // tab kpis
@@ -1079,19 +1079,19 @@ export function useExecutiveData() {
         };
     }, [fetchData]);
 
-    // Realtime Supabase subscriptions for live executive updates
+    // Realtime Supabase subscriptions for live executive updates across all charts & metrics
     useEffect(() => {
         let debounceTimer: NodeJS.Timeout | null = null;
 
-        const handleTableChange = () => {
+        const handleTableChange = (payload: any) => {
             if (!isMounted.current) return;
             if (debounceTimer) clearTimeout(debounceTimer);
-            // Coalesce rapid batch changes (e.g. bulk parcel intake)
+            // Coalesce rapid batch changes (e.g. bulk stock movements, defect logging, status changes)
             debounceTimer = setTimeout(() => {
                 if (isMounted.current) {
                     fetchData({ isSilent: true });
                 }
-            }, 600);
+            }, 500);
         };
 
         const channel = supabase
@@ -1099,8 +1099,12 @@ export function useExecutiveData() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_items' }, handleTableChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, handleTableChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, handleTableChange)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, handleTableChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, handleTableChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_damage_incidents' }, handleTableChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_return_requests' }, handleTableChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_quotations' }, handleTableChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_documents' }, handleTableChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements' }, handleTableChange)
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED' && isMounted.current) {
                     setIsRealtimeActive(true);

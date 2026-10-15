@@ -222,7 +222,7 @@ export default function SupplyChainLayout({ children, }: {
     }
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator', 'Executive', 'Supplier']}>
+        <SessionGuard requiredRole={['Superadmin', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator', 'Executive', 'Supplier']}>
             <AIProvider>
                 <LayoutContent>{children}</LayoutContent>
             </AIProvider>

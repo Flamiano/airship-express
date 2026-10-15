@@ -24,6 +24,8 @@ export function useDocuments() {
 
     const [documents, setDocuments] = useState<Document[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const suppliersRef = useRef<Supplier[]>(suppliers);
+    suppliersRef.current = suppliers;
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [searchTerm, setSearchTerm] = useState(initialSearch);
@@ -175,8 +177,17 @@ export function useDocuments() {
                 query = query.eq('category', categoryFilter);
             }
 
-            if (supplierFilter) {
-                query = query.eq('supplier', supplierFilter);
+            if (selectedSupplier && selectedSupplier.id !== 0) {
+                const sId = selectedSupplier.id;
+                const sName = selectedSupplier.name;
+                query = query.or(`supplier_id.eq.${sId},supplier.eq."${sName}",supplier.ilike."%${sName}%"`);
+            } else if (supplierFilter && supplierFilter !== 'All Suppliers') {
+                const matchedSup = suppliersRef.current.find(s => s.name.toLowerCase() === supplierFilter.toLowerCase());
+                if (matchedSup && matchedSup.id !== 0) {
+                    query = query.or(`supplier_id.eq.${matchedSup.id},supplier.eq."${matchedSup.name}",supplier.ilike."%${matchedSup.name}%"`);
+                } else {
+                    query = query.or(`supplier.eq."${supplierFilter}",supplier.ilike."%${supplierFilter}%"`);
+                }
             }
 
             if (dateFrom) {
@@ -244,6 +255,28 @@ export function useDocuments() {
                 }
             }
 
+            // resolve linked suppliers by supplier_id
+            const supplierLookupIds = rawDocs
+                .map((d: any) => d.supplier_id)
+                .filter((id: any): id is number => Boolean(id));
+
+            let supplierLookupMap: Record<number, string> = {};
+            if (supplierLookupIds.length > 0) {
+                try {
+                    const { data: sups } = await supabase
+                        .from('suppliers')
+                        .select('id, name')
+                        .in('id', Array.from(new Set(supplierLookupIds)));
+                    if (sups) {
+                        sups.forEach((s: any) => {
+                            supplierLookupMap[s.id] = s.name;
+                        });
+                    }
+                } catch (supErr) {
+                    console.warn('Could not load linked suppliers:', supErr);
+                }
+            }
+
             const enrichedDocs = rawDocs.map((d: any) => {
                 let displayName = 'System User';
                 if (d.uploaded_by) {
@@ -252,10 +285,31 @@ export function useDocuments() {
                     displayName = userMap[d.user_id] || 'User';
                 }
 
+                const po = d.purchase_id ? (poMap[d.purchase_id] || null) : null;
+                const resolvedSupplierName = d.supplier || (d.supplier_id ? supplierLookupMap[d.supplier_id] : null) || (po?.supplier_name || null);
+                const resolvedFileName = d.file_name || (d.storage_path ? d.storage_path.split('/').pop() : null) || 'document';
+                const resolvedFileType = d.file_type || (resolvedFileName && resolvedFileName.includes('.') ? resolvedFileName.split('.').pop() : 'pdf') || 'unknown';
+                const resolvedTitle = d.title && d.title !== d.id ? d.title : (resolvedFileName || d.document_type || 'Untitled Document');
+
+                let resolvedFileUrl = d.file_url;
+                if (!resolvedFileUrl && d.storage_path) {
+                    const isSupplierDoc = d.storage_path.startsWith('suppliers/') || Boolean(d.supplier_id) || Boolean(d.supplier);
+                    const bucket = isSupplierDoc ? 'supplier_documents' : 'documents';
+                    const { data: { publicUrl } } = supabase.storage
+                        .from(bucket)
+                        .getPublicUrl(d.storage_path);
+                    resolvedFileUrl = publicUrl;
+                }
+
                 return {
                     ...d,
+                    title: resolvedTitle,
+                    file_name: resolvedFileName,
+                    file_type: resolvedFileType,
+                    file_url: resolvedFileUrl,
+                    supplier: resolvedSupplierName,
                     uploaded_by: displayName,
-                    purchase_orders: d.purchase_id ? (poMap[d.purchase_id] || null) : null,
+                    purchase_orders: po,
                     force_user_name: d.force_inserted_by ? (userMap[d.force_inserted_by] || 'Authorized Administrator') : null,
                 };
             });
@@ -276,7 +330,7 @@ export function useDocuments() {
                 setRefreshing(false);
             }
         }
-    }, [debouncedSearch, typeFilter, extensionFilter, categoryFilter, supplierFilter, dateFrom, dateTo, currentPage]);
+    }, [debouncedSearch, typeFilter, extensionFilter, categoryFilter, supplierFilter, selectedSupplier?.id, selectedSupplier?.name, dateFrom, dateTo, currentPage]);
 
 
     // fetch archive count
@@ -343,7 +397,6 @@ export function useDocuments() {
             const { data: suppliersData, error: supError } = await supabase
                 .from('suppliers')
                 .select('*')
-                .eq('is_active', true)
                 .order('name');
 
             if (supError) throw supError;
@@ -353,7 +406,7 @@ export function useDocuments() {
                 .from('supplier_documents')
                 .select('supplier_id, supplier, category, file_size, created_at');
 
-            const statsMap = new Map<string, {
+            const statsMap = new Map<number, {
                 docCount: number;
                 photoCount: number;
                 totalFiles: number;
@@ -361,26 +414,32 @@ export function useDocuments() {
                 latestUpload: string | null;
             }>();
 
+            const nameToIdMap = new Map<string, number>();
+
+            (suppliersData || []).forEach((s: any) => {
+                if (s.id) {
+                    statsMap.set(s.id, {
+                        docCount: 0,
+                        photoCount: 0,
+                        totalFiles: 0,
+                        totalSize: 0,
+                        latestUpload: null,
+                    });
+                }
+                if (s.name) {
+                    nameToIdMap.set(s.name.toLowerCase().trim(), s.id);
+                }
+            });
+
             if (!docsError && docsData) {
                 docsData.forEach((d: any) => {
-                    const idKey = d.supplier_id ? String(d.supplier_id) : '';
-                    const nameKey = d.supplier ? String(d.supplier).toLowerCase().trim() : '';
+                    let targetSupplierId = d.supplier_id ? Number(d.supplier_id) : null;
+                    if (!targetSupplierId && d.supplier) {
+                        targetSupplierId = nameToIdMap.get(String(d.supplier).toLowerCase().trim()) || null;
+                    }
 
-                    [idKey, nameKey].forEach(k => {
-                        if (!k) return;
-                        if (!statsMap.has(k)) {
-                            statsMap.set(k, {
-                                docCount: 0,
-                                photoCount: 0,
-                                totalFiles: 0,
-                                totalSize: 0,
-                                latestUpload: null,
-                            });
-                        }
-                    });
-
-                    const targetStat = (idKey && statsMap.get(idKey)) || (nameKey && statsMap.get(nameKey));
-                    if (targetStat) {
+                    if (targetSupplierId && statsMap.has(targetSupplierId)) {
+                        const targetStat = statsMap.get(targetSupplierId)!;
                         targetStat.totalFiles += 1;
                         if (d.category === 'photos') {
                             targetStat.photoCount += 1;
@@ -398,7 +457,7 @@ export function useDocuments() {
             }
 
             const enrichedSuppliers: Supplier[] = (suppliersData || []).map((s: any) => {
-                const stat = statsMap.get(String(s.id)) || statsMap.get((s.name || '').toLowerCase().trim());
+                const stat = statsMap.get(s.id);
                 return {
                     ...s,
                     document_count: stat ? stat.docCount : 0,
@@ -447,14 +506,28 @@ export function useDocuments() {
     }, []);
 
 
+    // helper to get the public URL of a document (checks file_url, storage bucket routing)
+    const getDocumentPublicUrl = useCallback((doc: { file_url?: string | null; storage_path?: string | null; supplier_id?: any; supplier?: any }): string => {
+        if (doc.file_url) return doc.file_url;
+        if (!doc.storage_path) return '';
+        const isSupplierDoc = doc.storage_path.startsWith('suppliers/') || Boolean(doc.supplier_id) || Boolean(doc.supplier);
+        const bucket = isSupplierDoc ? 'supplier_documents' : 'documents';
+        const { data: { publicUrl } } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(doc.storage_path);
+        return publicUrl;
+    }, []);
+
     // download single file
     const downloadFile = useCallback(async (doc: Document) => {
         try {
             const toastId = toast.loading('Downloading file...');
 
-            const { data: { publicUrl } } = supabase.storage
-                .from('documents')
-                .getPublicUrl(doc.storage_path);
+            const publicUrl = getDocumentPublicUrl(doc);
+            if (!publicUrl) {
+                toast.error('File URL not available', { id: toastId });
+                return;
+            }
 
             const response = await fetch(publicUrl);
             const blob = await response.blob();
@@ -462,7 +535,7 @@ export function useDocuments() {
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = doc.file_name || `${doc.title}.${doc.file_type.split('/').pop() || 'pdf'}`;
+            link.download = doc.file_name || `${doc.title}.${doc.file_type ? doc.file_type.split('/').pop() : 'png'}`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -473,7 +546,7 @@ export function useDocuments() {
             console.error('Download error:', error);
             toast.error('Failed to download file');
         }
-    }, []);
+    }, [getDocumentPublicUrl]);
 
     // delete single document
     const handleDelete = useCallback(async (doc: Document) => {
@@ -537,9 +610,8 @@ export function useDocuments() {
 
             for (const doc of selectedDocs) {
                 try {
-                    const { data: { publicUrl } } = supabase.storage
-                        .from('documents')
-                        .getPublicUrl(doc.storage_path);
+                    const publicUrl = getDocumentPublicUrl(doc);
+                    if (!publicUrl) throw new Error('File URL not found');
 
                     const response = await fetch(publicUrl);
                     const blob = await response.blob();
@@ -547,7 +619,7 @@ export function useDocuments() {
                     const url = window.URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = doc.file_name || `${doc.title}.${doc.file_type.split('/').pop() || 'pdf'}`;
+                    link.download = doc.file_name || `${doc.title}.${doc.file_type ? doc.file_type.split('/').pop() : 'png'}`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
@@ -1472,13 +1544,11 @@ export function useDocuments() {
         setPreviewUrl(null);
 
         try {
-            if (!doc.storage_path) {
+            const publicUrl = getDocumentPublicUrl(doc);
+            if (!publicUrl) {
                 setPreviewLoading(false);
                 return;
             }
-            const { data: { publicUrl } } = supabase.storage
-                .from('documents')
-                .getPublicUrl(doc.storage_path);
 
             setPreviewUrl(publicUrl);
         } catch (error) {
@@ -1497,13 +1567,11 @@ export function useDocuments() {
         setEditPreviewUrl(null);
 
         try {
-            if (!doc.storage_path) {
+            const publicUrl = getDocumentPublicUrl(doc);
+            if (!publicUrl) {
                 setEditPreviewLoading(false);
                 return;
             }
-            const { data: { publicUrl } } = supabase.storage
-                .from('documents')
-                .getPublicUrl(doc.storage_path);
 
             setEditPreviewUrl(publicUrl);
         } catch (error) {
@@ -1595,14 +1663,26 @@ export function useDocuments() {
     };
 
 
+    const isInitialMountRef = useRef(true);
+    const fetchDocsRef = useRef(fetchDocuments);
+    fetchDocsRef.current = fetchDocuments;
+    const fetchStatsRef = useRef(fetchStatistics);
+    fetchStatsRef.current = fetchStatistics;
+    const fetchArchiveRef = useRef(fetchArchiveCount);
+    fetchArchiveRef.current = fetchArchiveCount;
+    const fetchSuppliersRef = useRef(fetchSuppliers);
+    fetchSuppliersRef.current = fetchSuppliers;
+    const fetchPoRef = useRef(fetchPurchaseOrders);
+    fetchPoRef.current = fetchPurchaseOrders;
+
     // initial data load & recurring 5-min pending notification interval
     useEffect(() => {
         getCurrentUser();
-        fetchDocuments(true);
-        fetchStatistics();
-        fetchSuppliers();
-        fetchPurchaseOrders();
-        fetchArchiveCount();
+        fetchDocsRef.current(true);
+        fetchStatsRef.current();
+        fetchSuppliersRef.current();
+        fetchPoRef.current();
+        fetchArchiveRef.current();
         triggerPendingNotifications();
 
         // 5 minutes interval for testing
@@ -1611,10 +1691,15 @@ export function useDocuments() {
         }, 5 * 60 * 1000);
 
         return () => clearInterval(notifInterval);
-    }, [getCurrentUser, fetchDocuments, fetchStatistics, fetchSuppliers, fetchPurchaseOrders, fetchArchiveCount, triggerPendingNotifications]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // refetch on document filter change
     useEffect(() => {
+        if (isInitialMountRef.current) {
+            isInitialMountRef.current = false;
+            return;
+        }
         fetchDocuments(false);
     }, [fetchDocuments]);
 
@@ -1645,18 +1730,28 @@ export function useDocuments() {
 
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-                fetchDocuments(false);
-                fetchStatistics();
-                fetchArchiveCount();
+                fetchDocsRef.current(false);
+                fetchStatsRef.current();
+                fetchArchiveRef.current();
+                fetchSuppliersRef.current();
             }, 300);
         };
 
+        const handleSupplierChange = () => {
+            fetchSuppliersRef.current();
+        };
+
         const channel = supabase
-            .channel(`supplier_documents_realtime_${Date.now()}`)
+            .channel(`documents_page_realtime_${Date.now()}`)
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'supplier_documents' },
                 handleDocumentChange
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'suppliers' },
+                handleSupplierChange
             )
             .subscribe();
 
@@ -1664,7 +1759,7 @@ export function useDocuments() {
             if (debounceTimer) clearTimeout(debounceTimer);
             supabase.removeChannel(channel);
         };
-    }, [fetchDocuments, fetchStatistics, fetchArchiveCount]);
+    }, []);
 
     return {
         documents,

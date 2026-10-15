@@ -185,8 +185,8 @@ export function AddItemModal({
             return;
         }
 
-        if (!formData.supplier) {
-            toast.warning('Please select a supplier');
+        if (!formData.storage_location.trim()) {
+            toast.warning('Please enter a storage location');
             return;
         }
 
@@ -382,20 +382,21 @@ export function AddItemModal({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                                    Storage Location
+                                    Storage Location <span className="text-pink-500 dark:text-pink-400">*</span>
                                 </label>
                                 <input
                                     className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-pink-500 transition-all disabled:opacity-50"
                                     placeholder="e.g., Aisle 3, Rack B, Shelf 2"
                                     value={formData.storage_location}
                                     onChange={(e) => setFormData({ ...formData, storage_location: e.target.value })}
+                                    required
                                     disabled={loading}
                                 />
                             </div>
 
                             <div>
                                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                                    Supplier <span className="text-pink-500 dark:text-pink-400">*</span>
+                                    Supplier <span className="text-slate-400 dark:text-slate-500 text-xs font-normal">(Optional)</span>
                                 </label>
                                 <select
                                     className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-pink-500 transition-all cursor-pointer appearance-none disabled:opacity-50"
@@ -407,10 +408,9 @@ export function AddItemModal({
                                     }}
                                     value={formData.supplier}
                                     onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                                    required
                                     disabled={loading || isLoadingSuppliers}
                                 >
-                                    <option value="">{isLoadingSuppliers ? 'Loading suppliers...' : 'Select supplier'}</option>
+                                    <option value="">{isLoadingSuppliers ? 'Loading suppliers...' : 'Select supplier (optional)'}</option>
                                     {localSuppliers.map((s) => (
                                         <option key={s.id} value={s.name}>{s.name}</option>
                                     ))}

@@ -1075,7 +1075,7 @@ export default function ForecastPage() {
                                 )}
                             </div>
                             <span className="font-mono text-[10px]">
-                                {summary?.has_three_years_history === false ? "Status: Invalid Prediction (0% AI Confidence)" : "Models: Croston SBA, AutoTheta, Holt-Winters Additive"}
+                                {summary?.has_three_years_history === false ? "Status: Invalid Prediction (0% AI Confidence)" : "Tournament: Supervised ML (Gradient Descent), Croston SBA, AutoTheta, Holt-Winters"}
                             </span>
                         </div>
                     </div>

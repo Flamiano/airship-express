@@ -70,6 +70,63 @@ export function useInventory() {
                 .select();
 
             if (error) throw error;
+
+            // Retrieve current user info for audit trail
+            let performedByName = 'Warehouse Staff';
+            let performedById: string | null = null;
+            try {
+                if (typeof window !== 'undefined') {
+                    const localName = localStorage.getItem('user_name');
+                    const localId = localStorage.getItem('user_id');
+                    if (localName) performedByName = localName;
+                    if (localId) performedById = localId;
+                }
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user) {
+                    performedById = authData.user.id || performedById;
+                    performedByName = authData.user.user_metadata?.full_name 
+                        || authData.user.user_metadata?.name 
+                        || authData.user.email 
+                        || performedByName;
+                }
+            } catch (_) {}
+
+            const createdItem = data && data[0] ? data[0] : null;
+            const initialQty = Number(formData.current_stock || 0);
+
+            // Log stock movement audit trail for newly added item
+            try {
+                await logStockMovement({
+                    item_id: createdItem ? String(createdItem.id) : null,
+                    item_code: formData.item_code,
+                    item_name: formData.item_name,
+                    movement_type: initialQty > 0 ? 'Stock In' : 'Adjustment',
+                    quantity: initialQty,
+                    previous_stock: 0,
+                    new_stock: initialQty,
+                    reference_number: `INIT-${Date.now().toString().slice(-6)}`,
+                    reason: formData.description?.trim() 
+                        ? formData.description.trim() 
+                        : (initialQty > 0 
+                            ? `Initial stock registration (${initialQty} ${formData.unit})` 
+                            : 'New inventory item registered (0 initial stock)'),
+                    department: 'Warehouse / Inventory',
+                    performed_by: performedByName,
+                    performed_by_id: performedById,
+                    metadata: {
+                        action: 'ITEM_CREATION_STOCK_MOVEMENT',
+                        category: formData.category,
+                        unit: formData.unit,
+                        storage_location: formData.storage_location || undefined,
+                        supplier: formData.supplier || undefined,
+                        purchase_price: formData.purchase_price || 0,
+                        initial_stock: initialQty,
+                    }
+                });
+            } catch (movementErr) {
+                console.warn('Failed to log stock movement for new item:', movementErr);
+            }
+
             toast.success('Item added successfully!', { id: toastId });
             useInventoryCache = null;
             await fetchInventory(true);

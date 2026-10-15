@@ -32,7 +32,7 @@ import {
 export interface DigitalReceiptData {
     id?: string;
     po_number: string;
-    supplier_name: string;
+    supplier_name?: string;
     supplier_email?: string;
     supplier_phone?: string;
     supplier_location?: string | null;
@@ -72,11 +72,11 @@ export interface DigitalReceiptData {
     verification?: any;
 }
 
-interface DigitalReceiptModalProps {
+export interface DigitalReceiptModalProps {
     isOpen: boolean;
     onClose: () => void;
-    order?: DigitalReceiptData | null;
-    purchaseOrder?: DigitalReceiptData | null;
+    order?: DigitalReceiptData | any | null;
+    purchaseOrder?: DigitalReceiptData | any | null;
 }
 
 export function DigitalReceiptModal({ isOpen, onClose, order: propOrder, purchaseOrder }: DigitalReceiptModalProps) {
@@ -950,7 +950,7 @@ Verified & Certified by Airship Express Procurement Management System
                                             <span className="text-[10.5px] font-extrabold uppercase tracking-wider">Supplier / Vendor</span>
                                         </div>
                                         <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                                            {order.supplier_name}
+                                            {order.supplier_name || 'Registered Supplier'}
                                         </p>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono truncate">
                                             {order.supplier_email || order.supplier_phone || 'Verified Supplier'}

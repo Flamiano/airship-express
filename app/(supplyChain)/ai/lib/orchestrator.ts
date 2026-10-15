@@ -181,18 +181,21 @@ export const SYSTEM_MODULES: ModuleAccessRule[] = [
 ];
 
 export const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
-    '/executive': ['Executive'],
-    '/warehousing': ['Executive', 'Admin', 'Manager', 'Operator'],
-    '/inventory': ['Executive', 'Admin', 'Manager', 'Operator'],
-    '/procurement': ['Executive', 'Admin', 'Manager'],
-    '/suppliers': ['Executive', 'Admin', 'Manager'],
-    '/purchase-orders': ['Executive', 'Admin', 'Manager'],
-    '/documents': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
-    '/forecast': ['Executive', 'Admin'],
-    '/gallery': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
-    '/trash': ['Executive', 'Admin', 'Manager', 'Staff', 'Employee', 'Operator'],
-    '/user-activity': ['Executive', 'Admin'],
-    '/settings': ['Executive', 'Admin'],
+    '/executive': ['Superadmin', 'Executive'],
+    '/warehousing': ['Superadmin', 'Operator'],
+    '/inventory': ['Superadmin', 'Admin'],
+    '/procurement': ['Superadmin', 'Purchase Officer'],
+    '/suppliers': ['Superadmin', 'Purchase Officer'],
+    '/purchase-orders': ['Superadmin', 'Admin', 'Purchase Officer'],
+    '/documents': ['Superadmin', 'Purchase Officer'],
+    '/forecast': ['Superadmin', 'Executive', 'Admin'],
+    '/gallery': ['Superadmin'],
+    '/trash': ['Superadmin', 'Admin', 'Purchase Officer'],
+    '/user-activity': ['Superadmin', 'Executive'],
+    '/settings': ['Superadmin', 'Executive'],
+    '/suppliers_page': ['Supplier'],
+    '/suppliers_page/purchase-orders': ['Supplier'],
+    '/suppliers_page/messages': ['Supplier'],
 };
 
 /**

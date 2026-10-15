@@ -467,9 +467,10 @@ export default function InventoryClient() {
         inventoryCache.invalidateAll();
         await Promise.all([
             fetchDashboardData(true),
-            fetchInventoryData(true, true)
+            fetchInventoryData(true, true),
+            fetchMovementsData(false, true)
         ]);
-    }, [addItem, fetchDashboardData, fetchInventoryData]);
+    }, [addItem, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
 
     const handleUpdateItem = useCallback(async (data: any) => {
         await updateItem(data);

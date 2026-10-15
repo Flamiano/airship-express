@@ -189,8 +189,8 @@ export function EditItemModal({
             return;
         }
 
-        if (!formData.supplier) {
-            toast.warning('Please select a supplier');
+        if (!formData.storage_location.trim()) {
+            toast.warning('Please enter a storage location');
             return;
         }
 
@@ -397,7 +397,7 @@ export function EditItemModal({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                                        Storage Location
+                                        Storage Location <span className="text-rose-500 dark:text-rose-400">*</span>
                                     </label>
                                     <div className="relative">
                                         <i className="fas fa-location-dot absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
@@ -406,6 +406,7 @@ export function EditItemModal({
                                             value={formData.storage_location}
                                             onChange={(e) => setFormData({ ...formData, storage_location: e.target.value })}
                                             placeholder="e.g. Shelf A-04, Zone 2"
+                                            required
                                             disabled={loading}
                                         />
                                     </div>
@@ -413,7 +414,7 @@ export function EditItemModal({
 
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                                        Supplier <span className="text-rose-500 dark:text-rose-400">*</span>
+                                        Supplier <span className="text-slate-400 dark:text-slate-500 text-xs font-normal">(Optional)</span>
                                     </label>
                                     <div className="relative">
                                         <i className="fas fa-building-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
@@ -421,10 +422,9 @@ export function EditItemModal({
                                             className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg pl-9 pr-8 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
                                             value={formData.supplier}
                                             onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                                            required
                                             disabled={loading || isLoadingSuppliers}
                                         >
-                                            <option value="" className="dark:bg-slate-900">{isLoadingSuppliers ? 'Loading suppliers...' : 'Select supplier'}</option>
+                                            <option value="" className="dark:bg-slate-900">{isLoadingSuppliers ? 'Loading suppliers...' : 'Select supplier (optional)'}</option>
                                             {localSuppliers.map((s) => (
                                                 <option key={s.id} value={s.name} className="dark:bg-slate-900">{s.name}</option>
                                             ))}

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function SettingsPage() {
     return (
         <Suspense fallback={<PageSkeleton />}>
-            <SessionGuard requiredRole={['Executive', 'Admin']}>
+            <SessionGuard requiredRole={['Superadmin', 'Executive']}>
                 <SettingsContentWrapper />
             </SessionGuard>
         </Suspense>

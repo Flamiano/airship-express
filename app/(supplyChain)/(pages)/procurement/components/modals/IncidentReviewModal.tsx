@@ -23,7 +23,8 @@ import {
     MessageSquare,
     User,
     Info,
-    ArrowUpRight
+    ArrowUpRight,
+    ShieldCheck
 } from "lucide-react";
 import { toast } from "sonner";
 import Portal from "../../../../components/client/Portal";
@@ -567,33 +568,67 @@ export function IncidentReviewModal({
                                     </div>
                                 </div>
 
-                                {/* Agreed Terms and Conditions & Return Policy */}
-                                <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
-                                    <h5 className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                        <Info className="w-4 h-4 text-pink-500" />
-                                        <span>Recorded Terms & Conditions, Return Policy & Warranty</span>
-                                    </h5>
-                                    <div className="space-y-3 text-xs">
-                                        <div>
-                                            <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">
-                                                Payment & Credit Terms
-                                            </span>
-                                            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px]">
-                                                {returnRequest.po_details?.payment_terms || "Standard Net 30 Terms"}
-                                            </div>
-                                        </div>
+                                 {/* Agreed Terms and Conditions & Return Policy */}
+                                 <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+                                     <div className="flex items-center justify-between">
+                                         <h5 className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                             <Info className="w-4 h-4 text-pink-500" />
+                                             <span>Recorded Terms & Conditions, Return Policy & Warranty</span>
+                                         </h5>
+                                         {returnRequest.po_details?.quotation_id && (
+                                             <span className="text-[10px] font-mono font-bold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/50 px-2 py-0.5 rounded-md border border-pink-200 dark:border-pink-800">
+                                                 Awarded Quotation #{returnRequest.po_details.quotation_id}
+                                             </span>
+                                         )}
+                                     </div>
 
-                                        <div>
-                                            <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">
-                                                Supplier Return Policy & Warranty Terms
-                                            </span>
-                                            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] whitespace-pre-line">
-                                                {returnRequest.po_details?.terms_and_conditions ||
-                                                    "All damaged, non-conforming or defective items must be replaced or credited within 14 calendar days upon formal notice."}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                     <div className="space-y-3.5 text-xs">
+                                         <div>
+                                             <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">
+                                                 Payment & Credit Terms
+                                             </span>
+                                             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px]">
+                                                 {returnRequest.po_details?.payment_terms || "Not specified in purchase order"}
+                                             </div>
+                                         </div>
+
+                                         <div>
+                                             <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">
+                                                 Warranty Coverage & Value-Added Services
+                                             </span>
+                                             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+                                                 <div className="flex items-center gap-2 font-mono text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                                                     <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                     <span>{returnRequest.po_details?.warranty_terms || "Standard Manufacturer / Supplier Warranty"}</span>
+                                                 </div>
+                                                 {returnRequest.po_details?.services_offered && returnRequest.po_details.services_offered.length > 0 && (
+                                                     <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-slate-200/60 dark:border-slate-800">
+                                                         {returnRequest.po_details.services_offered.map((srv, idx) => (
+                                                             <span
+                                                                 key={idx}
+                                                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 text-[10px] font-medium"
+                                                             >
+                                                                 <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                                 {srv}
+                                                             </span>
+                                                         ))}
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         </div>
+
+                                         <div>
+                                             <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">
+                                                 Supplier Return Policy & Terms & Conditions
+                                             </span>
+                                             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] whitespace-pre-line leading-relaxed">
+                                                 {returnRequest.po_details?.terms_and_conditions ||
+                                                     returnRequest.po_details?.quotation_clauses ||
+                                                     "No specific return policy clauses recorded in purchase order."}
+                                             </div>
+                                         </div>
+                                     </div>
+                                 </div>
                             </div>
                         )}
 
@@ -704,6 +739,7 @@ export function IncidentReviewModal({
                                                     </label>
                                                     <input
                                                         type="date"
+                                                        min={new Date().toISOString().split("T")[0]}
                                                         value={resolutionDetails.expected_replacement_date || ""}
                                                         onChange={(e) =>
                                                             setResolutionDetails({

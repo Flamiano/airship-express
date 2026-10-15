@@ -51,10 +51,14 @@ export function DocumentEditModal({
 
     if (!isOpen || !editingDoc) return null;
 
-    const isImage = editingDoc.file_type.toLowerCase().includes('jpg') ||
-        editingDoc.file_type.toLowerCase().includes('jpeg') ||
-        editingDoc.file_type.toLowerCase().includes('png') ||
-        editingDoc.file_type.toLowerCase().includes('heic');
+    const docType = (editingDoc.file_type || '').toLowerCase();
+    const docName = (editingDoc.file_name || '').toLowerCase();
+    const isImage = docType.includes('jpg') ||
+        docType.includes('jpeg') ||
+        docType.includes('png') ||
+        docType.includes('heic') ||
+        docType.includes('webp') ||
+        /\.(jpg|jpeg|png|heic|webp)$/i.test(docName);
 
     return (
         <Portal>

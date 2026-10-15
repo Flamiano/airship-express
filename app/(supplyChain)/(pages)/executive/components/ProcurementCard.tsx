@@ -70,7 +70,7 @@ export default function ProcurementCard({ data }: ProcurementCardProps) {
                         </div>
                         <span>Procurement</span>
                     </div>
-                    <ViewLink link="/procurement" name="view" />
+                    <ViewLink link="?tab=issued-pos" name="view" />
                 </div>
 
                 <ul className="mt-3 divide-y divide-slate-200/50 dark:divide-white/[0.04] text-xs">

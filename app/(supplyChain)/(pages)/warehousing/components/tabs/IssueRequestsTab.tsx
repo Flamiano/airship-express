@@ -1221,21 +1221,10 @@ export function IssueRequestsTab({
                                                         <span className="text-[11px] text-slate-500 font-bold">Qty Dispense:</span>
                                                         <input
                                                             type="number"
-                                                            min={0}
-                                                            max={maxAllowedToDispense}
                                                             value={curVal}
+                                                            readOnly
                                                             disabled={maxAllowedToDispense === 0}
-                                                            onChange={(e) => {
-                                                                const val = Math.max(0, Math.min(maxAllowedToDispense, parseInt(e.target.value, 10) || 0));
-                                                                setIssueForm({
-                                                                    ...issueForm,
-                                                                    issuedItems: {
-                                                                        ...issueForm.issuedItems,
-                                                                        [key]: val,
-                                                                    },
-                                                                });
-                                                            }}
-                                                            className="w-20 px-2 py-1 text-xs text-right font-black rounded-lg bg-white dark:bg-[#1a1c29] border border-slate-300 dark:border-slate-700 text-pink-600 dark:text-pink-400 focus:outline-none focus:border-pink-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            className="w-20 px-2 py-1 text-xs text-right font-black rounded-lg bg-slate-100 dark:bg-[#14151f] border border-slate-300/80 dark:border-slate-700 text-pink-600 dark:text-pink-400 focus:outline-none cursor-default select-none disabled:opacity-50 disabled:cursor-not-allowed shadow-[inset_1px_1px_2px_rgba(0,0,0,0.06)]"
                                                         />
                                                     </div>
                                                 </div>

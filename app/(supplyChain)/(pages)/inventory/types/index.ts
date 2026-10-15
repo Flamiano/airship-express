@@ -174,7 +174,7 @@ export interface AddItemFormData {
     current_stock: number;
     minimum_stock: number;
     storage_location: string;
-    supplier: string;
+    supplier?: string;
     status: string;
     purchase_price: number;
 }

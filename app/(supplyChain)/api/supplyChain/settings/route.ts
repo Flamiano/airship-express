@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
                        process.env.SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
@@ -22,26 +25,29 @@ const DEFAULT_INACTIVITY = {
 
 const DEFAULT_ROLE_REDIRECTS = {
     'Executive': '/executive',
-    'Admin': '/procurement',
-    'Purchase Officer': '/warehousing',
+    'Admin': '/inventory',
+    'Purchase Officer': '/purchase-orders',
     'Operator': '/warehousing',
-    'Staff': '/documents',
-    'Employee': '/documents',
+    'Superadmin': '/executive',
+    'Supplier': '/suppliers_page/purchase-orders',
 };
 
 const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
-    '/executive': ['Executive'],
-    '/warehousing': ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
-    '/inventory': ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
-    '/procurement': ['Executive', 'Admin', 'Purchase Officer'],
-    '/suppliers': ['Executive', 'Admin', 'Purchase Officer'],
-    '/purchase-orders': ['Superadmin', 'Admin', 'Purchase Officer', 'Executive', 'Operator', 'Supervisor', 'Staff', 'Employee'],
-    '/documents': ['Executive', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator'],
-    '/forecast': ['Executive', 'Admin'],
-    '/gallery': ['Executive', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator'],
-    '/trash': ['Executive', 'Admin', 'Purchase Officer', 'Staff', 'Employee', 'Operator'],
-    '/user-activity': ['Executive', 'Admin'],
-    '/settings': ['Executive', 'Admin'],
+    '/executive': ['Superadmin', 'Executive'],
+    '/warehousing': ['Superadmin', 'Operator'],
+    '/inventory': ['Superadmin', 'Admin'],
+    '/procurement': ['Superadmin', 'Purchase Officer'],
+    '/suppliers': ['Superadmin', 'Purchase Officer'],
+    '/purchase-orders': ['Superadmin', 'Admin', 'Purchase Officer'],
+    '/documents': ['Superadmin', 'Purchase Officer'],
+    '/forecast': ['Superadmin', 'Executive', 'Admin'],
+    '/gallery': ['Superadmin'],
+    '/trash': ['Superadmin', 'Admin', 'Purchase Officer'],
+    '/user-activity': ['Superadmin', 'Executive'],
+    '/settings': ['Superadmin', 'Executive'],
+    '/suppliers_page': ['Supplier'],
+    '/suppliers_page/purchase-orders': ['Supplier'],
+    '/suppliers_page/messages': ['Supplier'],
 };
 
 const DEFAULT_CONCURRENCY_SLOTS = {

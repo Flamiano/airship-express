@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import Link from "next/link";
 import { StatusBadge, type BadgeTone } from "../../../components/ui/StatusBadge";
 import { type IssuedPOsAnalyticsData, type IssuedPOAnalyticsItem } from "../hooks/useExecutiveData";
+import ExecutiveInfoModal, { ExecutiveModalContentType } from "./modals/ExecutiveInfoModal";
 
 interface IssuedPurchaseOrdersSectionProps {
     data?: IssuedPOsAnalyticsData;
@@ -16,6 +16,8 @@ export default function IssuedPurchaseOrdersSection({
 }: IssuedPurchaseOrdersSectionProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [selectedPO, setSelectedPO] = useState<IssuedPOAnalyticsItem | null>(null);
+    const [infoModalContent, setInfoModalContent] = useState<ExecutiveModalContentType | null>(null);
 
     const issuedList = data?.issuedOrdersList || [];
 
@@ -71,13 +73,31 @@ export default function IssuedPurchaseOrdersSection({
                         </div>
                     </div>
 
-                    <Link
-                        href="/procurement"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors w-fit"
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setInfoModalContent({
+                                type: "info",
+                                data: {
+                                    title: "Executive Procurement & PO Governance",
+                                    subtitle: "Authorized Workflow & Segregation of Duties",
+                                    icon: "fa-stamp",
+                                    description:
+                                        "Executive role accounts monitor all authoritative purchase orders committed with external suppliers. Full requisition origination, supplier bidding, and quotation awarding occur in the procurement department, with all finalized purchase orders immediately synced into this dashboard in real-time.",
+                                    details: [
+                                        { label: "Active Issued Orders", value: `${data?.issuedOrdersCount ?? 0} POs`, tone: "emerald" },
+                                        { label: "Committed Approved Value", value: `₱${(data?.totalApprovedValue ?? 0).toLocaleString()}`, tone: "blue" },
+                                        { label: "Real-time Verification", value: "Active", tone: "emerald" }
+                                    ],
+                                    note: "Click 'Inspect' on any individual purchase order row to view its complete item breakdown and fulfillment status."
+                                }
+                            })
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors cursor-pointer w-fit"
                     >
-                        <span>Open Procurement Hub</span>
-                        <i className="fas fa-arrow-up-right-from-square text-[10px]" />
-                    </Link>
+                        <i className="fas fa-circle-info text-[11px]" />
+                        <span>Procurement Oversight</span>
+                    </button>
                 </div>
 
                 {/* 2. Top-Level Metric KPI Cards */}
@@ -322,13 +342,14 @@ export default function IssuedPurchaseOrdersSection({
                                             {po.delivery_date || "Open Schedule"}
                                         </td>
                                         <td className="py-3 px-3.5 text-center">
-                                            <Link
-                                                href={`/procurement?search=${encodeURIComponent(po.po_number)}`}
-                                                className="inline-flex items-center gap-1 text-[11px] font-bold text-pink-600 hover:text-pink-700"
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedPO(po)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_4px_rgba(166,175,195,0.25)] hover:text-pink-700 cursor-pointer active:scale-95 transition-all"
                                             >
                                                 <span>Inspect</span>
                                                 <i className="fas fa-chevron-right text-[9px]" />
-                                            </Link>
+                                            </button>
                                         </td>
                                     </tr>
                                 ))
@@ -337,6 +358,15 @@ export default function IssuedPurchaseOrdersSection({
                     </table>
                 </div>
             </div>
+
+            <ExecutiveInfoModal
+                isOpen={!!selectedPO || !!infoModalContent}
+                onClose={() => {
+                    setSelectedPO(null);
+                    setInfoModalContent(null);
+                }}
+                content={selectedPO ? { type: "po", data: selectedPO } : infoModalContent}
+            />
         </div>
     );
 }

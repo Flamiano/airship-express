@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { NAV } from "../../lib/navigation";
 import Image from "next/image";
@@ -57,6 +57,26 @@ export function AceternityNavbar() {
         }
         return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     };
+    const filterNavigation = useCallback((role: string) => {
+        const filtered = (NAV as NavGroup[])
+            .map((group: NavGroup) => {
+                const items = group.items
+                    .filter((item: NavItem) => {
+                        return settingsService.canAccessPage(role, item.href, item.roles);
+                    })
+                    .map((item: NavItem) => ({
+                        ...item,
+                        isAuthorized: true,
+                    }));
+                return {
+                    ...group,
+                    items,
+                };
+            })
+            .filter((group) => group.items.length > 0);
+        setFilteredNav(filtered);
+    }, []);
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const role = user.getRole();
@@ -75,11 +95,24 @@ export function AceternityNavbar() {
 
             const unsubscribe = settingsService.subscribe(() => {
                 const currentRole = user.getRole() || 'User';
+                setUserRole(currentRole);
                 filterNavigation(currentRole);
             });
             return () => unsubscribe();
         }
-    }, []);
+    }, [filterNavigation]);
+
+    // Keep navigation synchronized on page navigation
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const currentRole = user.getRole();
+            if (currentRole) {
+                setUserRole(currentRole);
+                filterNavigation(currentRole);
+            }
+        }
+    }, [pathname, filterNavigation]);
+
     // close dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -90,22 +123,6 @@ export function AceternityNavbar() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [openDropdown]);
-    const filterNavigation = (role: string) => {
-        const filtered = (NAV as NavGroup[]).map((group: NavGroup) => {
-            const items = group.items.map((item: NavItem) => {
-                const isAuthorized = settingsService.canAccessPage(role, item.href, item.roles);
-                return {
-                    ...item,
-                    isAuthorized,
-                };
-            });
-            return {
-                ...group,
-                items,
-            };
-        });
-        setFilteredNav(filtered);
-    };
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = "hidden";
@@ -257,27 +274,24 @@ export function AceternityNavbar() {
                                             </StatusBadge>
                                         </div>
                                         {group.items.map((item: any) => {
-                        const active = isActive(item.href);
-                        const isAuthorized = item.isAuthorized !== false;
-                        return (<Link key={item.id} href={isAuthorized ? item.href : '#'} onClick={(e) => {
-                                if (!isAuthorized) {
-                                    e.preventDefault();
-                                    toast.error('You do not have permission to access this page');
-                                    return;
-                                }
-                                setOpenDropdown(null);
-                            }} className={cn("flex items-center gap-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer", active && isAuthorized
-                                ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
-                                : !isAuthorized
-                                    ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
-                                    : "text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white hover:bg-[#e4eaf3] dark:hover:bg-[#222432] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:hover:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.45),inset_-1px_-1px_3px_rgba(255,255,255,0.04)]")}>
-                                                    <i className={cn(item.icon, !isAuthorized && "opacity-50", active && isAuthorized ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
-                                                    <span className={!isAuthorized ? "line-through" : ""}>
-                                                        {isAuthorized ? item.label : "Unauthorized"}
-                                                    </span>
-                                                    {!isAuthorized && (<IconLock className="h-3.5 w-3.5 ml-auto text-slate-400 dark:text-slate-600"/>)}
-                                                </Link>);
-                    })}
+                                            const active = isActive(item.href);
+                                            return (
+                                                <Link
+                                                    key={item.id}
+                                                    href={item.href}
+                                                    onClick={() => setOpenDropdown(null)}
+                                                    className={cn(
+                                                        "flex items-center gap-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer",
+                                                        active
+                                                            ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
+                                                            : "text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white hover:bg-[#e4eaf3] dark:hover:bg-[#222432] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:hover:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.45),inset_-1px_-1px_3px_rgba(255,255,255,0.04)]"
+                                                    )}
+                                                >
+                                                    <i className={cn(item.icon, active ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
+                                                    <span>{item.label}</span>
+                                                </Link>
+                                            );
+                                        })}
                                     </div>)}
                             </div>);
         })}
@@ -370,29 +384,24 @@ export function AceternityNavbar() {
                                         </div>
                                         <div className="space-y-1.5 mt-1">
                                             {group.items.map((item: any) => {
-                    const active = isActive(item.href);
-                    const isAuthorized = item.isAuthorized !== false;
-                    return (<Link key={item.id} href={isAuthorized ? item.href : '#'} onClick={(e) => {
-                            if (!isAuthorized) {
-                                e.preventDefault();
-                                toast.error('You do not have permission to access this page');
-                                return;
-                            }
-                            setIsOpen(false);
-                        }} className={cn("flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer active:scale-98", active && isAuthorized
-                            ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
-                            : !isAuthorized
-                                ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
-                                : "text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-[#f0f3f8]/70 dark:bg-[#1d1e28]/70 border border-white/60 dark:border-[#2a2b38]/60 shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.03)] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25)] dark:hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)]")}>
-                                                <i className={cn(item.icon, !isAuthorized && "opacity-50", active && isAuthorized ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
-
-                                                <span className={cn(!isAuthorized && "line-through")}>
-                                                    {isAuthorized ? item.label : "Unauthorized"}
-                                                </span>
-
-                                                {!isAuthorized && (<IconLock className="h-3.5 w-3.5 ml-auto text-slate-400 dark:text-slate-600"/>)}
-                                            </Link>);
-                })}
+                                                const active = isActive(item.href);
+                                                return (
+                                                    <Link
+                                                        key={item.id}
+                                                        href={item.href}
+                                                        onClick={() => setIsOpen(false)}
+                                                        className={cn(
+                                                            "flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer active:scale-98",
+                                                            active
+                                                                ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
+                                                                : "text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-[#f0f3f8]/70 dark:bg-[#1d1e28]/70 border border-white/60 dark:border-[#2a2b38]/60 shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.03)] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25)] dark:hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)]"
+                                                        )}
+                                                    >
+                                                        <i className={cn(item.icon, active ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
+                                                        <span>{item.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
                                         </div>
                                     </div>);
         })}

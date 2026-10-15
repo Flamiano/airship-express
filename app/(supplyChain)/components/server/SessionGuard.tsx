@@ -1,13 +1,17 @@
 'use client';
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, createContext, useContext } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import Loader from '../../components/global/Loader';
 import Custom404 from '../global/Custom404';
-import { WifiOff, RefreshCw, Clock } from 'lucide-react';
+import Portal from '../client/Portal';
+import { WifiOff, RefreshCw, Clock, Monitor, ShieldAlert, Check, X, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { user } from '../../lib/services/Class/user';
 import { settingsService } from '../../lib/services/settingsService';
 import { supabase } from '../../lib/services/client/supabase';
+
+const SessionGuardContext = createContext<boolean>(false);
+const globalDismissedChallenges = new Set<string>();
 interface SessionGuardProps {
     children: React.ReactNode;
     requiredRole?: string[];
@@ -316,6 +320,7 @@ const checkDeviceBlocked = async (userId: string, userAgent: string, sessionToke
     }
 };
 export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
+    const isNestedSessionGuard = useContext(SessionGuardContext);
     const router = useRouter();
     const pathname = usePathname();
     const prevPathRef = useRef<string>('');
@@ -348,6 +353,29 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const backupIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const isRestoringRef = useRef<boolean>(false);
+
+    // Concurrent device login approval state
+    const [loginApprovalPrompt, setLoginApprovalPrompt] = useState<{
+        show: boolean;
+        requestId: string;
+        userAgent: string;
+        ipAddress: string;
+        isResponding: boolean;
+        pendingDecision?: 'approve' | 'decline' | null;
+        passwordModalOpen?: boolean;
+    }>({
+        show: false,
+        requestId: '',
+        userAgent: '',
+        ipAddress: '',
+        isResponding: false,
+        pendingDecision: null,
+        passwordModalOpen: false,
+    });
+    const [approvalPasswordInput, setApprovalPasswordInput] = useState('');
+    const [approvalPasswordError, setApprovalPasswordError] = useState<string | null>(null);
+    const [showApprovalPassword, setShowApprovalPassword] = useState(false);
+    const dismissedChallengesRef = useRef<Set<string>>(new Set());
     // initial backup and cleanup
     useEffect(() => {
         cleanupBackups();
@@ -1158,6 +1186,208 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             window.removeEventListener('focus', revalidate);
         };
     }, [guardState, getSessionToken, handleInvalidSession, pathname]);
+
+    // Concurrent device login approval polling (only run on outer-most SessionGuard)
+    useEffect(() => {
+        if (isNestedSessionGuard) return;
+        if (guardState !== 'authorized') return;
+
+        const currentUser = user.getUser();
+        const currentUserId = currentUser?.userId || '';
+        const currentEmail = currentUser?.email || '';
+
+        if (!currentUserId && !currentEmail) return;
+
+        const checkIncomingLoginChallenges = async () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            if (loginApprovalPrompt.show || isLoggingOutRef.current) return;
+            try {
+                const params = new URLSearchParams();
+                if (currentUserId) params.set('userId', currentUserId);
+                if (currentEmail) params.set('email', currentEmail);
+
+                const res = await fetch(`/api/auth/concurrent-login/check-pending?${params.toString()}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                if (data.hasPending && data.challenge) {
+                    const challengeId = data.challenge.requestId;
+                    const isDismissed =
+                        dismissedChallengesRef.current.has(challengeId) ||
+                        globalDismissedChallenges.has(challengeId) ||
+                        (typeof window !== 'undefined' && sessionStorage.getItem(`dismissed_challenge_${challengeId}`) === 'true');
+
+                    if (isDismissed) {
+                        return;
+                    }
+                    setLoginApprovalPrompt({
+                        show: true,
+                        requestId: challengeId,
+                        userAgent: data.challenge.userAgent || 'Unknown Device',
+                        ipAddress: data.challenge.ipAddress || 'Unknown IP',
+                        isResponding: false,
+                        pendingDecision: null,
+                        passwordModalOpen: false,
+                    });
+                }
+            } catch (err) {
+                // Silently ignore background polling error
+            }
+        };
+
+        const onVisibilityChange = () => {
+            if (typeof document !== 'undefined' && !document.hidden) {
+                checkIncomingLoginChallenges();
+            }
+        };
+
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', onVisibilityChange);
+        }
+
+        const pollTimer = setInterval(checkIncomingLoginChallenges, 10000);
+        return () => {
+            clearInterval(pollTimer);
+            if (typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            }
+        };
+    }, [guardState, loginApprovalPrompt.show, isNestedSessionGuard]);
+
+    const handleDirectDecline = async () => {
+        const reqId = loginApprovalPrompt.requestId;
+
+        // If no requestId is present, dismiss immediately
+        if (!reqId) {
+            setLoginApprovalPrompt({
+                show: false,
+                requestId: '',
+                userAgent: '',
+                ipAddress: '',
+                isResponding: false,
+                pendingDecision: null,
+                passwordModalOpen: false,
+            });
+            return;
+        }
+
+        // Show loading state on Decline button and lock buttons
+        setLoginApprovalPrompt(prev => ({
+            ...prev,
+            isResponding: true,
+            pendingDecision: 'decline',
+        }));
+
+        dismissedChallengesRef.current.add(reqId);
+        globalDismissedChallenges.add(reqId);
+        try {
+            sessionStorage.setItem(`dismissed_challenge_${reqId}`, 'true');
+        } catch {}
+
+        try {
+            const res = await fetch('/api/auth/concurrent-login/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    requestId: reqId,
+                    approved: false,
+                }),
+            });
+            if (res.ok) {
+                toast.info('Login attempt from other device was declined.');
+            } else {
+                toast.error('Failed to notify system of decline.');
+            }
+        } catch (err) {
+            console.error('Error declining login challenge:', err);
+            toast.error('Network error while declining.');
+        } finally {
+            // Dismiss and close modal cleanly
+            setLoginApprovalPrompt({
+                show: false,
+                requestId: '',
+                userAgent: '',
+                ipAddress: '',
+                isResponding: false,
+                pendingDecision: null,
+                passwordModalOpen: false,
+            });
+        }
+    };
+
+    const handleInitiateDecision = (decision: 'approve' | 'decline') => {
+        if (decision === 'decline') {
+            handleDirectDecline();
+            return;
+        }
+        setApprovalPasswordInput('');
+        setApprovalPasswordError(null);
+        setShowApprovalPassword(false);
+        setLoginApprovalPrompt(prev => ({
+            ...prev,
+            pendingDecision: 'approve',
+            passwordModalOpen: true,
+        }));
+    };
+
+    const handleConfirmPasswordDecision = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!loginApprovalPrompt.requestId) return;
+
+        if (!approvalPasswordInput.trim()) {
+            setApprovalPasswordError('Please enter your password to confirm.');
+            return;
+        }
+
+        setLoginApprovalPrompt(prev => ({ ...prev, isResponding: true }));
+        setApprovalPasswordError(null);
+
+        try {
+            const res = await fetch('/api/auth/concurrent-login/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    requestId: loginApprovalPrompt.requestId,
+                    approved: true,
+                    password: approvalPasswordInput.trim(),
+                }),
+            });
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                const errMsg = data.message || 'Incorrect password. Verification failed.';
+                setApprovalPasswordError(errMsg);
+                toast.error(errMsg);
+                setLoginApprovalPrompt(prev => ({ ...prev, isResponding: false }));
+                return;
+            }
+
+            toast.success('Access approved for other device. Logging you out...');
+            setLoginApprovalPrompt({
+                show: false,
+                requestId: '',
+                userAgent: '',
+                ipAddress: '',
+                isResponding: false,
+                pendingDecision: null,
+                passwordModalOpen: false,
+            });
+            // Log out current session
+            const token = getSessionToken();
+            if (token) {
+                await deactivateSession(token, 'concurrent_login_transferred', 'CONCURRENT_LOGIN_TRANSFERRED');
+            }
+            clearSessionData();
+            setGuardState('denied');
+            router.push('/scAuth');
+        } catch (err) {
+            console.error('Error responding to login challenge:', err);
+            setApprovalPasswordError('Failed to verify password. Please check your connection.');
+            toast.error('Failed to submit response. Please try again.');
+            setLoginApprovalPrompt(prev => ({ ...prev, isResponding: false }));
+        }
+    };
+
     // unload handling — ONLY back up session data, do NOT call logout
     // (sendBeacon to logout was incorrectly firing on every refresh/navigation,
     //  marking the session inactive in the DB and causing the user to get
@@ -1301,5 +1531,150 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             </div>
         </div>);
     }
-    return <>{children}</>;
+    return (
+        <SessionGuardContext.Provider value={true}>
+            {children}
+            {!isNestedSessionGuard && loginApprovalPrompt.show && (
+                <Portal>
+                    <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                        {!loginApprovalPrompt.passwordModalOpen ? (
+                            /* Step 1: Decision Modal (Approve or Decline) */
+                            <div className="max-w-md w-full bg-[#ebf0f7] dark:bg-[#181926] rounded-3xl p-6 sm:p-8 text-center shadow-none border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                                <div className="relative flex items-center justify-center w-16 h-16 bg-amber-100/90 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl mx-auto mb-4 ring-8 ring-amber-50 dark:ring-amber-950/20">
+                                    <ShieldAlert className="w-8 h-8 animate-pulse" />
+                                </div>
+                                <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight mb-2">
+                                    Someone Is Trying to Log In
+                                </h2>
+                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-5 leading-relaxed">
+                                    Another device is attempting to sign in to your account. Do you want to approve this login and switch devices, or decline?
+                                </p>
+
+                                <div className="bg-white/80 dark:bg-[#11121a]/80 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-800 text-left mb-6 space-y-2.5">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                        <Monitor className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span className="font-mono truncate">{loginApprovalPrompt.userAgent}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                        <span>IP Address: <span className="font-mono text-slate-700 dark:text-slate-300">{loginApprovalPrompt.ipAddress}</span></span>
+                                        <span className="text-amber-600 dark:text-amber-400 font-medium">Action Required</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1">
+                                        You will be asked to verify your password if you choose to approve.
+                                    </p>
+                                </div>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        disabled={loginApprovalPrompt.isResponding}
+                                        onClick={handleDirectDecline}
+                                        className="flex-1 py-3 px-4 bg-[#ebf0f7] dark:bg-[#1e202e] hover:bg-slate-200 dark:hover:bg-slate-800 active:scale-[0.98] text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold transition-all border border-slate-300 dark:border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer shadow-none disabled:opacity-50"
+                                    >
+                                        {loginApprovalPrompt.isResponding && loginApprovalPrompt.pendingDecision === 'decline' ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                                                <span>Declining...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <X className="w-4 h-4 text-red-500" />
+                                                <span>Decline</span>
+                                            </>
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={loginApprovalPrompt.isResponding}
+                                        onClick={() => handleInitiateDecision('approve')}
+                                        className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-[0.98] text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-none disabled:opacity-50"
+                                    >
+                                        <Check className="w-4 h-4" />
+                                        <span>Approve</span>
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Step 2: Password Verification Modal (Approve only) */
+                            <form
+                                onSubmit={handleConfirmPasswordDecision}
+                                className="max-w-md w-full bg-[#ebf0f7] dark:bg-[#181926] rounded-3xl p-6 sm:p-8 text-center shadow-none border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200"
+                            >
+                                <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl mx-auto mb-4 ring-8 bg-emerald-100/90 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 ring-emerald-50 dark:ring-emerald-950/20">
+                                    <Lock className="w-8 h-8" />
+                                </div>
+
+                                <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight mb-2">
+                                    Verify Password to Approve Login
+                                </h2>
+
+                                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-5 leading-relaxed">
+                                    Please enter your password to authorize transferring your active session to the other device. You will be signed out.
+                                </p>
+
+                                <div className="text-left mb-5">
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                                        Your Password
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showApprovalPassword ? 'text' : 'password'}
+                                            value={approvalPasswordInput}
+                                            onChange={(e) => {
+                                                setApprovalPasswordInput(e.target.value);
+                                                setApprovalPasswordError(null);
+                                            }}
+                                            placeholder="Enter account password"
+                                            autoFocus
+                                            className="w-full px-4 py-3 pr-11 bg-white/90 dark:bg-[#10111a] border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-slate-600 transition-all"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowApprovalPassword(!showApprovalPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                                        >
+                                            {showApprovalPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                    {approvalPasswordError && (
+                                        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400 font-medium">
+                                            {approvalPasswordError}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        disabled={loginApprovalPrompt.isResponding}
+                                        onClick={() => setLoginApprovalPrompt(prev => ({ ...prev, passwordModalOpen: false, pendingDecision: null }))}
+                                        className="flex-1 py-3 px-4 bg-[#ebf0f7] dark:bg-[#1e202e] hover:bg-slate-200 dark:hover:bg-slate-800 active:scale-[0.98] text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold transition-all border border-slate-300 dark:border-slate-700 cursor-pointer disabled:opacity-50 shadow-none"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={loginApprovalPrompt.isResponding || !approvalPasswordInput.trim()}
+                                        className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all shadow-none active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                                    >
+                                        {loginApprovalPrompt.isResponding ? (
+                                            <>
+                                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                                Verifying...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Check className="w-4 h-4" />
+                                                Confirm Approval
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+                    </div>
+                </Portal>
+            )}
+        </SessionGuardContext.Provider>
+    );
 }

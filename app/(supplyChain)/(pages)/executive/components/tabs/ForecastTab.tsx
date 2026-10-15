@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import Link from "next/link";
 import Chart from "chart.js/auto";
 import { ExecutiveDataPayload } from "../../hooks/useExecutiveData";
 
@@ -207,25 +206,25 @@ export default function ForecastTab({ data, onOpenModal }: ForecastTabProps) {
                         )}
                     </div>
                     <div className="flex items-center gap-2.5">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Realtime
+                        </span>
                         {loadingForecast && (
                             <span className="text-xs text-slate-400 font-mono animate-pulse">Running Rust/WASM Engine...</span>
                         )}
                         <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onOpenModal('forecast', forecastApiData); }}
-                            className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 hover:underline cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenModal('forecast', forecastApiData);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-sm transition-all cursor-pointer active:scale-95"
+                            title="Inspect WASM Demand & Inventory Forecasting Intelligence"
                         >
-                            Inspect WASM Modal
+                            <span>Inspect Forecast Models</span>
+                            <i className="fas fa-chart-line text-[10px]" />
                         </button>
-                        <Link
-                            href="/forecast"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-sm transition-all"
-                            title="Open full standalone Demand & Inventory Forecasting page"
-                        >
-                            <span>Full Forecast Suite</span>
-                            <i className="fas fa-arrow-up-right-from-square text-[10px]" />
-                        </Link>
                     </div>
                 </div>
                 <div className="h-72 relative">

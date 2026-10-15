@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function DocumentsPage() {
     return (
         <Suspense fallback={<PageSkeleton />}>
-            <SessionGuard requiredRole={['Admin', 'Manager', 'Staff', 'Employee', 'Executive', 'Operator']}>
+            <SessionGuard requiredRole={['Superadmin', 'Purchase Officer']}>
                 <DocumentsContentWrapper />
             </SessionGuard>
         </Suspense>

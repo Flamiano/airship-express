@@ -470,12 +470,8 @@ function ProcurementContent() {
                 const hasAnySupplier = hasOfficialSupplier || hasPreviousSupplier || hasDirectSupplier;
 
                 const remDeficit = sItem.remaining_deficit !== undefined ? sItem.remaining_deficit : sItem.deficit;
-                const effectiveUnitPrice = hasAnySupplier
-                    ? Number(sItem.purchase_price || prevUnitPrice || 0)
-                    : 0;
-                const estimatedCost = hasAnySupplier
-                    ? (remDeficit * effectiveUnitPrice)
-                    : 0;
+                const effectiveUnitPrice = Number(sItem.purchase_price || prevUnitPrice || 0);
+                const estimatedCost = remDeficit * effectiveUnitPrice;
 
                 return {
                     ...sItem,
@@ -865,7 +861,7 @@ function ProcurementContent() {
     }, [shortages, suppliers, quotations, supplierReturnsCount]);
 
     return (
-        <SessionGuard requiredRole={["Admin", "Purchase Officer", "Executive", "Supervisor"]}>
+        <SessionGuard requiredRole={["Superadmin", "Purchase Officer"]}>
             <div className="p-4 sm:p-6 lg:p-7 space-y-6 fade-in bgCard">
                 {/* 1. Master Page Header */}
                 <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-300/80 dark:border-white/10 pb-5">

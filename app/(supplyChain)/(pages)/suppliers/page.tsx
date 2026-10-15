@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function SuppliersPage() {
     return (
-        <SessionGuard requiredRole={['Admin', 'Purchase Officer', 'Executive']}>
+        <SessionGuard requiredRole={['Superadmin', 'Purchase Officer']}>
             <Suspense fallback={<PageSkeleton />}>
                 <SuppliersContentWrapper />
             </Suspense>

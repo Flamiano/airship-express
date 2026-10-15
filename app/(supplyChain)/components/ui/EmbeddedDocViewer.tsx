@@ -194,10 +194,18 @@ export interface EmbeddedDocViewerProps {
     showViewerSwitch?: boolean;
 }
 export default function EmbeddedDocViewer({ url, fileName, title, fileType, storagePath, className = '', minHeight = 'min-h-[480px]', onDownload, zoom = 1, rotation = 0, pan = { x: 0, y: 0 }, onImageError, showViewerSwitch = true, }: EmbeddedDocViewerProps) {
+    const [activeUrl, setActiveUrl] = useState<string>(url || '');
+    const [hasSwappedBucket, setHasSwappedBucket] = useState<boolean>(false);
     const [viewerEngine, setViewerEngine] = useState<'google' | 'direct' | 'office'>('direct');
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [hasError, setHasError] = useState<boolean>(false);
-    const typeInfo = getFileTypeInfo(fileType, fileName, storagePath, url || undefined);
+    const typeInfo = getFileTypeInfo(fileType, fileName, storagePath, activeUrl || undefined);
+
+    useEffect(() => {
+        setActiveUrl(url || '');
+        setHasSwappedBucket(false);
+    }, [url]);
+
     // Default engine: Google docs viewer for docx/xlsx/pptx/rtf/odt, direct for pdf/images
     useEffect(() => {
         if (typeInfo.isDoc) {
@@ -208,8 +216,9 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
         }
         setIsLoading(true);
         setHasError(false);
-    }, [url, fileType, fileName, storagePath]);
-    if (!url) {
+    }, [activeUrl, fileType, fileName, storagePath, typeInfo.isDoc]);
+
+    if (!activeUrl) {
         return (<div className={`w-full flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500 ${minHeight} ${className}`}>
                 <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-3 shadow-inner">
                     <i className="fas fa-file-circle-xmark text-3xl"/>
@@ -218,8 +227,9 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
                 <p className="text-xs text-slate-400 mt-1">Unable to locate file source for preview</p>
             </div>);
     }
-    const encodedUrl = encodeURIComponent(url);
-    let embedSrc = url;
+
+    const encodedUrl = encodeURIComponent(activeUrl);
+    let embedSrc = activeUrl;
     if (typeInfo.isPdf) {
         if (viewerEngine === 'google') {
             embedSrc = `https://docs.google.com/viewer?url=${encodedUrl}&embedded=true`;
@@ -228,7 +238,7 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
             embedSrc = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
         }
         else {
-            embedSrc = `${url}#toolbar=1&navpanes=0`;
+            embedSrc = `${activeUrl}#toolbar=1&navpanes=0`;
         }
     }
     else if (typeInfo.isDoc) {
@@ -236,18 +246,36 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
             embedSrc = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
         }
         else if (viewerEngine === 'direct') {
-            embedSrc = url;
+            embedSrc = activeUrl;
         }
         else {
             embedSrc = `https://docs.google.com/viewer?url=${encodedUrl}&embedded=true`;
         }
     }
+
     const handleIframeLoad = () => {
         setIsLoading(false);
     };
-    const handleIframeError = () => {
+
+    const handleMediaError = () => {
+        if (!hasSwappedBucket && activeUrl) {
+            if (activeUrl.includes('/public/documents/')) {
+                const swapped = activeUrl.replace('/public/documents/', '/public/supplier_documents/');
+                setHasSwappedBucket(true);
+                setActiveUrl(swapped);
+                setIsLoading(true);
+                return;
+            } else if (activeUrl.includes('/public/supplier_documents/')) {
+                const swapped = activeUrl.replace('/public/supplier_documents/', '/public/documents/');
+                setHasSwappedBucket(true);
+                setActiveUrl(swapped);
+                setIsLoading(true);
+                return;
+            }
+        }
         setIsLoading(false);
         setHasError(true);
+        onImageError?.();
     };
     return (<div className={`w-full h-full flex flex-col relative overflow-hidden select-none ${className}`}>
             {/* Top Toolbar for Embedded Documents & PDFs */}
@@ -290,7 +318,7 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
                                     </button>)}
                             </div>)}
 
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs" title="Open in new window">
+                        <a href={activeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs" title="Open in new window">
                             <i className="fas fa-external-link-alt text-[10px]"/>
                             <span className="hidden sm:inline">Open Tab</span>
                         </a>
@@ -323,21 +351,17 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
                             </p>
                         </div>
                         <div className="flex items-center gap-2 mt-2">
-                            <a href={url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-xs font-semibold transition-all shadow-xs">
+                            <a href={activeUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-xs font-semibold transition-all shadow-xs">
                                 Open File Directly
                             </a>
                             {onDownload && (<AppButton type="button" variant="neutral" size="sm" onClick={onDownload}>
                                     Download
                                 </AppButton>)}
                         </div>
-                    </div>) : typeInfo.isPdf || typeInfo.isDoc ? (<iframe key={`${viewerEngine}-${embedSrc}`} src={embedSrc} title={title || fileName || 'Document Viewer'} className="w-full h-full min-h-[460px] sm:min-h-[540px] border-0 bg-white dark:bg-slate-900 rounded-b-xl" onLoad={handleIframeLoad} onError={handleIframeError}/>) : typeInfo.isImage ? (<div className="transition-transform duration-100 ease-out will-change-transform max-w-full max-h-full flex items-center justify-center select-none" style={{
+                    </div>) : typeInfo.isPdf || typeInfo.isDoc ? (<iframe key={`${viewerEngine}-${embedSrc}`} src={embedSrc} title={title || fileName || 'Document Viewer'} className="w-full h-full min-h-[460px] sm:min-h-[540px] border-0 bg-white dark:bg-slate-900 rounded-b-xl" onLoad={handleIframeLoad} onError={handleMediaError}/>) : typeInfo.isImage ? (<div className="transition-transform duration-100 ease-out will-change-transform max-w-full max-h-full flex items-center justify-center select-none" style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`
             }}>
-                        <img src={url} alt={title || fileName || 'Image Preview'} className="max-w-[85vw] sm:max-w-[75vw] max-h-[65vh] object-contain rounded-xl shadow-2xl border border-white/10 select-none pointer-events-none" draggable={false} onLoad={() => setIsLoading(false)} onError={() => {
-                setIsLoading(false);
-                setHasError(true);
-                onImageError?.();
-            }}/>
+                        <img key={activeUrl} src={activeUrl} alt={title || fileName || 'Image Preview'} className="max-w-[85vw] sm:max-w-[75vw] max-h-[65vh] object-contain rounded-xl shadow-2xl border border-white/10 select-none pointer-events-none" draggable={false} onLoad={() => setIsLoading(false)} onError={handleMediaError}/>
                     </div>) : (
         /* Other file types fallback */
         <div className="flex flex-col items-center justify-center text-center p-8 max-w-sm">
@@ -347,7 +371,7 @@ export default function EmbeddedDocViewer({ url, fileName, title, fileType, stor
                         <p className="text-sm font-semibold text-white truncate max-w-xs">{fileName || title || 'Attachment'}</p>
                         <p className="text-xs text-slate-400 mt-1">{typeInfo.typeName}</p>
                         <div className="flex items-center gap-2 mt-4">
-                            <a href={url} target="_blank" rel="noopener noreferrer" className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition-all border border-slate-700 shadow-xs inline-flex items-center gap-1.5">
+                            <a href={activeUrl} target="_blank" rel="noopener noreferrer" className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition-all border border-slate-700 shadow-xs inline-flex items-center gap-1.5">
                                 <i className="fas fa-external-link-alt text-[11px]"/>
                                 <span>Open File</span>
                             </a>

@@ -96,7 +96,7 @@ function ArchiveContent() {
     ];
 
     return (
-        <SessionGuard requiredRole={['Admin', 'Purchase Officer', 'Staff', 'Employee', 'Executive', 'Operator']}>
+        <SessionGuard requiredRole={['Superadmin', 'Admin', 'Purchase Officer']}>
             <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
                 {/* header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-slate-800 pb-5">

@@ -93,7 +93,7 @@ export default function OperationsSummary({ data }: OperationsSummaryProps) {
                         </div>
                         <span>Operations Summary</span>
                     </div>
-                    <ViewLink link="/warehousing" name="view" />
+                    <ViewLink link="?tab=operations" name="view" />
                 </div>
 
                 <ul className="mt-3 divide-y divide-slate-200/50 dark:divide-white/[0.04] text-xs">
