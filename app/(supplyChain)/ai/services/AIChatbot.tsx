@@ -11,7 +11,7 @@ import AppButton from "../../components/ui/AppButton";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { user } from "../../lib/services/Class/user";
 import { settingsService } from "../../lib/services/settingsService";
-import { ShieldAlert, Clock, AlertTriangle, GripVertical, Minus, Maximize2, Minimize2, X, Sparkles, Eye, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, FileText, Image as ImageIcon, FileCheck, Layers, Search, RefreshCw, Copy, Check } from "lucide-react";
+import { ShieldAlert, Clock, AlertTriangle, GripVertical, Minus, Maximize2, Minimize2, X, Sparkles, Eye, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, FileText, Image as ImageIcon, FileCheck, Layers, Search, RefreshCw, Copy, Check, Trophy, ChevronRight } from "lucide-react";
 interface PendingRequestItem {
     name: string;
     quantity: number;
@@ -251,7 +251,18 @@ function OptimizedDocumentPreviewImage({
 }
 
 export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
-    const { openChat, question, setQuestion, isRobotThinking, isRobotResponding, setRobotThinking, setRobotResponding, activeRecommendation } = useAI();
+    const { openChat, question, setQuestion, isRobotThinking, isRobotResponding, setRobotThinking, setRobotResponding, activeRecommendation, openRecommendationChat } = useAI();
+    const [isRecommendationDismissed, setIsRecommendationDismissed] = useState(false);
+    const lastRecIdRef = useRef<any>(null);
+
+    // Auto-unhide when a brand new recommendation arrives
+    useEffect(() => {
+        if (activeRecommendation && activeRecommendation.id !== lastRecIdRef.current) {
+            lastRecIdRef.current = activeRecommendation.id;
+            setIsRecommendationDismissed(false);
+        }
+    }, [activeRecommendation]);
+
     const [messages, setMessages] = useState<Message[]>(() => {
         if (typeof window !== 'undefined') {
             try {
@@ -2387,35 +2398,25 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
         <AnimatePresence>
             {!isOpen && (
                 <motion.div
-                    key="chatbot-floating-robot"
-                    id="grabbable-ai-robot"
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Open AIRY AI Assistant"
+                    key="chatbot-floating-robot-frame"
+                    id="grabbable-ai-robot-frame"
                     drag
                     dragConstraints={dragBounds}
                     dragMomentum={true}
                     dragElastic={0.12}
                     dragTransition={{ power: 0.12, timeConstant: 220, bounceStiffness: 280, bounceDamping: 24 }}
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.94 }}
-                    whileDrag={{ scale: 1.06 }}
                     onDragStart={handleFloatingDragStart}
                     onDragEnd={handleFloatingDragEnd}
-                    onClick={() => {
-                        if (hasDraggedRef.current) return;
-                        openChat();
-                    }}
                     style={{ x: floatX, y: floatY }}
                     initial={{ opacity: 0, scale: 0.85, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.85, y: 10 }}
                     transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
-                    className="fixed bottom-20 right-6 z-50 select-none touch-none cursor-grab active:cursor-grabbing group flex items-center justify-center w-12 h-12 rounded-full bg-[#ebf0f7] dark:bg-[#151620] border border-white/90 dark:border-white/[0.08] shadow-[4px_4px_10px_rgba(166,175,195,0.45),-4px_-4px_10px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[5px_5px_15px_rgba(0,0,0,0.75),-2px_-2px_6px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[2px_2px_6px_rgba(166,175,195,0.35),-2px_-2px_6px_rgba(255,255,255,0.9)] dark:hover:shadow-[3px_3px_10px_rgba(0,0,0,0.6),-1px_-1px_4px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4)] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.8)] transition-shadow duration-200"
+                    className="fixed bottom-20 right-6 z-50 select-none touch-none cursor-grab active:cursor-grabbing flex flex-col items-center"
                 >
-                    {/* Reaction Speech Bubble */}
+                    {/* Reaction Speech Bubble or AI Recommendation Bubble */}
                     <AnimatePresence>
-                        {collisionReaction && (
+                        {collisionReaction ? (
                             <motion.div
                                 key="collision-reaction-bubble"
                                 initial={{ opacity: 0, y: 8, scale: 0.8 }}
@@ -2429,32 +2430,171 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#ebf0f7] dark:bg-[#151620] border-r border-b border-white/90 dark:border-white/[0.08] rotate-45" />
                                 </div>
                             </motion.div>
-                        )}
+                        ) : (activeRecommendation && !isRecommendationDismissed) ? (
+                            <motion.div
+                                key="grabbable-recommendation-bubble"
+                                data-drag-cancel={true}
+                                className="absolute -top-32 left-1/2 -translate-x-1/2 w-64 sm:w-72 z-50 cursor-pointer pointer-events-auto select-none touch-auto"
+                                initial={{ opacity: 0, y: 12, scale: 0.85 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -8, scale: 0.85 }}
+                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onTouchStart={(e) => {
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    // If user clicked the X dismiss button, do not open chat
+                                    if ((e.target as HTMLElement)?.closest?.('[data-dismiss-recommendation]')) {
+                                        return;
+                                    }
+                                    if (hasDraggedRef.current) return;
+                                    openRecommendationChat(activeRecommendation);
+                                }}
+                            >
+                                <div className="bg-white/95 dark:bg-[#1a1b26]/95 rounded-2xl p-2.5 shadow-[0_12px_32px_rgba(236,72,153,0.35),inset_0_1px_0_#ffffff] dark:shadow-[0_12px_32px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.08)] border-2 border-pink-400 dark:border-pink-500 backdrop-blur-md group/rec hover:scale-[1.02] transition-transform">
+                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                        <span className="flex items-center gap-1.5 text-[10.5px] font-bold text-pink-600 dark:text-pink-300">
+                                            <span className="relative flex h-2 w-2">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500"></span>
+                                            </span>
+                                            <Trophy className="w-3 h-3 text-amber-500" />
+                                            AI Best Offer
+                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40">
+                                                {activeRecommendation.overallScore || 96}/100
+                                            </span>
+                                            <button
+                                                type="button"
+                                                data-dismiss-recommendation="true"
+                                                data-drag-cancel={true}
+                                                onPointerDown={(e) => {
+                                                    e.stopPropagation();
+                                                    e.nativeEvent.stopImmediatePropagation();
+                                                }}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    e.nativeEvent.stopImmediatePropagation();
+                                                }}
+                                                onTouchStart={(e) => {
+                                                    e.stopPropagation();
+                                                    e.nativeEvent.stopImmediatePropagation();
+                                                }}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    e.nativeEvent.stopImmediatePropagation();
+                                                    setIsRecommendationDismissed(true);
+                                                }}
+                                                className="w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/60 dark:hover:text-rose-300 transition-colors cursor-pointer shrink-0 z-50 pointer-events-auto"
+                                                title="Hide recommendation"
+                                                aria-label="Hide recommendation"
+                                            >
+                                                <X className="w-3 h-3 pointer-events-none" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start justify-between gap-1.5">
+                                        <div className="min-w-0">
+                                            <p className="text-[11.5px] font-bold text-slate-900 dark:text-white truncate">
+                                                {activeRecommendation.supplierName}
+                                            </p>
+                                            <p className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                                                ₱{activeRecommendation.totalAmount.toLocaleString()} • {activeRecommendation.leadTimeDays || 1}d lead
+                                            </p>
+                                        </div>
+                                        <span className="shrink-0 text-[10px] font-bold text-pink-600 dark:text-pink-400 flex items-center gap-0.5 group-hover/rec:translate-x-0.5 transition-transform mt-0.5">
+                                            Chat <ChevronRight className="w-2.5 h-2.5" />
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="w-0 h-0 mx-auto border-x-8 border-x-transparent border-t-8 border-t-pink-400 dark:border-t-pink-500" />
+                            </motion.div>
+                        ) : (activeRecommendation && isRecommendationDismissed) ? (
+                            <motion.button
+                                key="grabbable-recommendation-pill"
+                                type="button"
+                                data-drag-cancel={true}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onTouchStart={(e) => {
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    setIsRecommendationDismissed(false);
+                                }}
+                                className="absolute -top-7 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full bg-pink-500/95 hover:bg-pink-600 text-white text-[9.5px] font-black shadow-sm flex items-center gap-1 cursor-pointer transition-all hover:scale-105 pointer-events-auto border border-white/60 dark:border-white/20 whitespace-nowrap z-50 touch-auto"
+                                title="Show AI Best Offer"
+                            >
+                                <Trophy className="w-2.5 h-2.5 text-amber-300 pointer-events-none" />
+                                <span className="pointer-events-none">Show Offer</span>
+                            </motion.button>
+                        ) : null}
                     </AnimatePresence>
 
-                    {/* Robot Head with wobble reaction */}
-                    <motion.div
-                        animate={isWobbling ? {
-                            rotate: [-14, 14, -8, 8, -3, 3, 0],
-                            scale: [1, 1.22, 0.94, 1.06, 1],
-                        } : { rotate: 0, scale: 1 }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                        className="pointer-events-none flex items-center justify-center"
+                    {/* Robot Avatar Button */}
+                    <motion.button
+                        type="button"
+                        id="grabbable-ai-robot"
+                        aria-label="Open AIRY AI Assistant"
+                        whileHover={{ scale: 1.08 }}
+                        whileTap={{ scale: 0.94 }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasDraggedRef.current) return;
+                            openChat();
+                        }}
+                        className="relative group flex items-center justify-center w-12 h-12 rounded-full bg-[#ebf0f7] dark:bg-[#151620] border border-white/90 dark:border-white/[0.08] shadow-[4px_4px_10px_rgba(166,175,195,0.45),-4px_-4px_10px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[5px_5px_15px_rgba(0,0,0,0.75),-2px_-2px_6px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[2px_2px_6px_rgba(166,175,195,0.35),-2px_-2px_6px_rgba(255,255,255,0.9)] dark:hover:shadow-[3px_3px_10px_rgba(0,0,0,0.6),-1px_-1px_4px_rgba(255,255,255,0.03)] active:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4)] dark:active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.8)] transition-shadow duration-200 cursor-pointer pointer-events-auto"
                     >
-                        <RobotAvatar size={30} isThinking={isLoading} isResponding={isStreaming} />
-                    </motion.div>
+                        {/* Robot Head with wobble reaction */}
+                        <motion.div
+                            animate={isWobbling ? {
+                                rotate: [-14, 14, -8, 8, -3, 3, 0],
+                                scale: [1, 1.22, 0.94, 1.06, 1],
+                            } : { rotate: 0, scale: 1 }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                            className="pointer-events-none flex items-center justify-center"
+                        >
+                            <RobotAvatar size={30} isThinking={isLoading} isResponding={isStreaming} />
+                        </motion.div>
 
-                    {/* Live Status Dot (Matte, Clean) */}
-                    <span className="absolute bottom-0.5 right-0.5 flex h-2.5 w-2.5 items-center justify-center pointer-events-none">
-                        <span className={`w-2 h-2 rounded-full border border-[#ebf0f7] dark:border-[#151620] ${isLoading || isStreaming ? 'bg-amber-400' : 'bg-emerald-500'}`} />
-                    </span>
-
-                    {/* Unread message badge if there is history */}
-                    {messages.length > 1 && (
-                        <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-pink-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs border border-white dark:border-[#151620] pointer-events-none">
-                            {messages.length - 1}
+                        {/* Live Status Dot (Matte, Clean) */}
+                        <span className="absolute bottom-0.5 right-0.5 flex h-2.5 w-2.5 items-center justify-center pointer-events-none">
+                            <span className={`w-2 h-2 rounded-full border border-[#ebf0f7] dark:border-[#151620] ${isLoading || isStreaming ? 'bg-amber-400' : 'bg-emerald-500'}`} />
                         </span>
-                    )}
+
+                        {/* Unread message badge if there is history */}
+                        {messages.length > 1 && (
+                            <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-pink-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs border border-white dark:border-[#151620] pointer-events-none">
+                                {messages.length - 1}
+                            </span>
+                        )}
+                    </motion.button>
                 </motion.div>
             )}
 

@@ -174,7 +174,8 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
         }
 
         // upload file
-        const fileExt = fileName.split('.').pop() || 'png';
+        const fileExt = fileName.split('.').pop()?.toLowerCase() || 'png';
+        const isPdf = fileType === 'application/pdf' || fileType === 'application/x-pdf' || fileExt === 'pdf';
         const storagePath = `documents/${po.po_number || po_id}_${Date.now()}.${fileExt}`;
         
         // strip base64 prefix
@@ -184,7 +185,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
         const { error: uploadError } = await supabaseAdmin.storage
             .from('documents')
             .upload(storagePath, fileBuffer, {
-                contentType: fileType || 'image/png',
+                contentType: isPdf ? 'application/pdf' : (fileType || 'image/png'),
                 upsert: true,
             });
 
@@ -337,6 +338,8 @@ Return ONLY a valid JSON object matching the following structure without any mar
   ]
 }`;
 
+                const resolvedMimeType = isPdf ? 'application/pdf' : (fileType && fileType.startsWith('image/') ? fileType : 'image/png');
+
                 const response = await generateWithModelFallback(genAI, [
                     {
                         role: 'user',
@@ -345,7 +348,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                             {
                                 inlineData: {
                                     data: pureBase64,
-                                    mimeType: fileType && fileType.startsWith('image/') ? fileType : 'image/png',
+                                    mimeType: resolvedMimeType,
                                 },
                             },
                         ],

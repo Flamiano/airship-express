@@ -27,11 +27,15 @@ import {
     Info,
     Check,
     RotateCw,
+    Scale,
+    Package,
 } from "lucide-react";
 import { SupplierQuotationItem, PotentialSupplierItem, RequestSupplierGroup } from "./PotentialSuppliersTab";
 import { toast } from "sonner";
 import Portal from "../../../../components/client/Portal";
 import { useAI } from "../../../../ai/services/AIContext";
+import { parseQuotationNotes } from "../../utils/termsParser";
+import { VendorQuotationViewModal } from "../modals/VendorQuotationViewModal";
 
 interface RequestQuotationsSummaryProps {
     group: RequestSupplierGroup;
@@ -78,6 +82,27 @@ export function RequestQuotationsSummary({
     const acceptedQuote = useMemo(() => {
         return validQuotes.find((q) => (q.status || "").toLowerCase().includes("accept"));
     }, [validQuotes]);
+
+    const [locallyAwardedId, setLocallyAwardedId] = useState<number | null>(null);
+
+    const isBidAwarded = useMemo(() => {
+        return (
+            locallyAwardedId !== null ||
+            hasAnyAcceptedQuote ||
+            (quotations && quotations.some((q) => {
+                const st = (q.status || "").toLowerCase().trim();
+                return st.includes("accept") || st.includes("award") || (q as any).purchase_order_id != null;
+            })) ||
+            (group.status || "").toLowerCase().includes("award") ||
+            (group.status || "").toLowerCase().includes("complete") ||
+            (group.status || "").toLowerCase().includes("ordered")
+        );
+    }, [locallyAwardedId, hasAnyAcceptedQuote, quotations, group.status]);
+
+    const handleAwardBidAction = async (supplier: PotentialSupplierItem, quote: SupplierQuotationItem) => {
+        setLocallyAwardedId(quote.id);
+        await onAwardBid(supplier, quote);
+    };
 
     // Calculate basic summary metrics
     const metrics = useMemo(() => {
@@ -356,6 +381,63 @@ export function RequestQuotationsSummary({
 
     const winnerRanking = activeAi?.rankings?.find((r: any) => r.id === winningQuote.id);
 
+    // Ranked list of all valid quotes with matched supplier and score
+    const rankedQuotes = useMemo(() => {
+        const list = validQuotes.map((quote) => {
+            const matchedSupplier = group.potentialSuppliers.find(
+                (s) =>
+                    (quote.supplier_id && Number(quote.supplier_id) === Number(s.id)) ||
+                    s.name.toLowerCase().trim() === quote.supplier_name.toLowerCase().trim()
+            ) || {
+                id: String(quote.supplier_id || quote.id),
+                name: quote.supplier_name,
+                category: group.category || "General",
+                location: "Metro Manila, Philippines",
+                distanceKm: 5,
+                source: "Quotation Submission",
+                matchLevel: "exact" as const,
+                coords: { lat: 14.5995, lng: 120.9842, displayName: quote.supplier_name },
+            };
+
+            const quoteRanking = activeAi?.rankings?.find((r: any) => r.id === quote.id);
+            const rank = quoteRanking?.rank || 99;
+            const score = quoteRanking?.overallScore || 70;
+
+            return {
+                quote,
+                ranking: quoteRanking,
+                matchedSupplier,
+                rank,
+                score,
+            };
+        });
+
+        list.sort((a, b) => {
+            if (a.rank !== b.rank) return a.rank - b.rank;
+            return b.score - a.score;
+        });
+
+        list.forEach((item, idx) => {
+            item.rank = idx + 1;
+        });
+
+        return list;
+    }, [validQuotes, activeAi?.rankings, group.potentialSuppliers]);
+
+    const [modalQuoteItem, setModalQuoteItem] = useState<{ supplier: PotentialSupplierItem; quote: SupplierQuotationItem } | null>(null);
+
+    // Always provide 5 fixed podium slots in visual arrangement: [4th, 2nd, 1st, 3rd, 5th]
+    const podiumSlots = useMemo(() => {
+        const slotOrder = [4, 2, 1, 3, 5];
+        return slotOrder.map((rankNum) => {
+            const item = rankedQuotes.find((r) => r.rank === rankNum) || null;
+            return {
+                targetRank: rankNum,
+                data: item,
+            };
+        });
+    }, [rankedQuotes]);
+
     // Synchronize active winning recommendation with global floating AI robot
     useEffect(() => {
         if (winningQuote && !hasAnyAcceptedQuote) {
@@ -566,13 +648,24 @@ export function RequestQuotationsSummary({
                                     <span>Ask AI Advisor in Chat</span>
                                 </button>
 
+                                {/* View Proposal Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setModalQuoteItem({ quote: winningQuote, supplier: winningSupplier })}
+                                    className="px-3 py-2 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                                    title="Inspect vendor quotation, breakdown, and governing terms"
+                                >
+                                    <FileText className="w-3.5 h-3.5 text-pink-500" />
+                                    <span>View Proposal</span>
+                                </button>
+
                                 {/* Award Bid Button */}
                                 {winningQuote.status === "accepted" ? (
                                     <div className="px-3.5 py-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center gap-1.5 border border-emerald-500/30">
                                         <CheckCircle2 className="w-3.5 h-3.5" />
                                         <span>Bid Awarded</span>
                                     </div>
-                                ) : hasAnyAcceptedQuote ? (
+                                ) : hasAnyAcceptedQuote || isBidAwarded ? (
                                     <div className="px-3.5 py-2 rounded-xl bg-slate-200/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-xs font-black flex items-center gap-1.5 border border-slate-300 dark:border-slate-700">
                                         <Award className="w-3.5 h-3.5" />
                                         <span>Bid Awarded</span>
@@ -580,30 +673,17 @@ export function RequestQuotationsSummary({
                                 ) : (
                                     <button
                                         type="button"
-                                        onClick={() => onAwardBid(winningSupplier, winningQuote)}
-                                        disabled={awardingQuoteId === winningQuote.id}
+                                        onClick={() => handleAwardBidAction(winningSupplier, winningQuote)}
+                                        disabled={awardingQuoteId === winningQuote.id || locallyAwardedId !== null}
                                         className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(16,185,129,0.4)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                         title="Award procurement bid to this top AI recommended supplier"
                                     >
-                                        {awardingQuoteId === winningQuote.id ? (
+                                        {awardingQuoteId === winningQuote.id || locallyAwardedId !== null ? (
                                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                                         ) : (
                                             <Award className="w-3.5 h-3.5 text-amber-300" />
                                         )}
                                         <span>Award Bid</span>
-                                    </button>
-                                )}
-
-                                {/* Reorder Button for AI winning offer - ONLY if supplier won bid for this item */}
-                                {onReorder && winningSupplier && (isPreviousWinner ? isPreviousWinner(winningQuote, winningSupplier) : (winningQuote.status === "awarded" || winningQuote.status === "accepted")) && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onReorder(group, winningQuote, winningSupplier)}
-                                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(37,99,235,0.4)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-                                        title="Reorder deficit quantity directly from this supplier"
-                                    >
-                                        <RotateCw className="w-3.5 h-3.5" />
-                                        <span>Reorder</span>
                                     </button>
                                 )}
 
@@ -662,12 +742,25 @@ export function RequestQuotationsSummary({
                         )}
                     </div>
 
-                    {/* All Submitted Quotations Comparison Table / Grid */}
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h5 className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                                Side-by-Side Quotation Comparison ({validQuotes.length} Vendor{validQuotes.length !== 1 ? "s" : ""})
-                            </h5>
+                    {/* Side-by-Side Quotation Comparison • Top 5 Leaderboard Podium (Hidden once a bid is awarded) */}
+                    {!isBidAwarded && (
+                        <div className="space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <Trophy className="w-4 h-4 text-amber-500" />
+                                    <h5 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-100">
+                                        Top 5 Vendor Quotation Podium
+                                    </h5>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-300/40">
+                                        Top {Math.min(5, validQuotes.length)} of {validQuotes.length}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Click any podium pillar to inspect full vendor quotation breakdown, terms &amp; proposal details in modal
+                                </p>
+                            </div>
+
                             <button
                                 type="button"
                                 onClick={() => setShowDeepDiveModal(true)}
@@ -678,219 +771,187 @@ export function RequestQuotationsSummary({
                             </button>
                         </div>
 
-                        {/* Quotation Rows */}
-                        <div className="space-y-3">
-                            {validQuotes.map((quote, idx) => {
-                                const matchedSupplier = group.potentialSuppliers.find(
-                                    (s) =>
-                                        (quote.supplier_id && Number(quote.supplier_id) === Number(s.id)) ||
-                                        s.name.toLowerCase().trim() === quote.supplier_name.toLowerCase().trim()
-                                ) || {
-                                    id: String(quote.supplier_id || quote.id),
-                                    name: quote.supplier_name,
-                                    category: group.category || "General",
-                                    location: "Metro Manila, Philippines",
-                                    distanceKm: 5,
-                                    source: "Quotation Submission",
-                                    matchLevel: "exact" as const,
-                                    coords: { lat: 14.5995, lng: 120.9842, displayName: quote.supplier_name },
-                                };
+                        {/* Interactive Leaderboard Podium Base (Always 5 Slots) */}
+                        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-b from-[#e8eef8]/80 to-[#ebf0f7] dark:from-[#12131f] dark:to-[#161827] border border-white/80 dark:border-white/10 shadow-[inset_2px_2px_6px_rgba(163,177,198,0.25),_inset_-2px_-2px_6px_rgba(255,255,255,0.7)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.5),_inset_-2px_-2px_6px_rgba(255,255,255,0.03)]">
+                            <div className="flex items-end justify-center gap-2 sm:gap-3 md:gap-5 pt-8 pb-3 overflow-x-auto min-w-[320px]">
+                                {podiumSlots.map((slot) => {
+                                    const rankNum = slot.targetRank;
+                                    const item = slot.data;
 
-                                const quoteRanking = aiResult?.rankings?.find((r: any) => r.id === quote.id);
-                                const isWinner = quote.id === winningQuote.id;
-                                const isAwarding = awardingQuoteId === quote.id;
-                                const isAccepted = quote.status === "accepted";
-                                const totalAmt = Number(quote.total_amount || 0);
-                                const lowestPrice = metrics?.lowestPrice || totalAmt;
-                                const delta = totalAmt - lowestPrice;
+                                    // Rank-specific height & color palettes
+                                    let pillarHeight = "h-24 sm:h-32";
+                                    let medalIcon = <Award className="w-4 h-4 text-slate-500" />;
+                                    let medalBg = "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700";
+                                    let pillarBg = "bg-gradient-to-t from-slate-300/40 via-slate-200/25 to-transparent dark:from-slate-800/40 dark:via-slate-900/20 dark:to-transparent border-slate-300/70 dark:border-white/10";
+                                    let rankLabel = `#${rankNum}`;
 
-                                return (
-                                    <div
-                                        key={quote.id || idx}
-                                        className={`p-4 sm:p-5 rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] transition-all ${
-                                            isWinner
-                                                ? "border-2 border-pink-500/70 dark:border-pink-500/60 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(219,39,119,0.2)]"
-                                                : "border border-white/80 dark:border-white/10 shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.5)]"
-                                        } space-y-3`}
-                                    >
-                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                                            {/* Supplier Meta */}
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="font-black text-sm text-slate-900 dark:text-white">
-                                                        {quote.supplier_name}
+                                    if (rankNum === 1) {
+                                        pillarHeight = "h-40 sm:h-52";
+                                        medalIcon = <Trophy className="w-5 h-5 text-amber-500" />;
+                                        medalBg = "bg-gradient-to-tr from-amber-400 to-amber-200 text-amber-950 border-amber-300 shadow-[0_4px_12px_rgba(245,158,11,0.4)]";
+                                        pillarBg = "bg-gradient-to-t from-pink-500/35 via-amber-400/25 to-pink-500/10 dark:from-pink-500/35 dark:via-amber-400/15 dark:to-transparent border-pink-400/70 dark:border-pink-500/50 shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_12px_rgba(236,72,153,0.25)]";
+                                        rankLabel = "🥇 1st Place";
+                                    } else if (rankNum === 2) {
+                                        pillarHeight = "h-32 sm:h-42";
+                                        medalIcon = <Award className="w-4 h-4 text-slate-700 dark:text-slate-200" />;
+                                        medalBg = "bg-gradient-to-tr from-slate-300 to-slate-100 text-slate-800 dark:from-slate-700 dark:to-slate-600 dark:text-slate-100 border-slate-300 dark:border-slate-500 shadow-[0_4px_10px_rgba(148,163,184,0.3)]";
+                                        pillarBg = "bg-gradient-to-t from-slate-300/50 via-slate-200/30 to-transparent dark:from-slate-700/50 dark:via-slate-800/30 dark:to-transparent border-slate-300/80 dark:border-slate-600/50";
+                                        rankLabel = "🥈 2nd Place";
+                                    } else if (rankNum === 3) {
+                                        pillarHeight = "h-26 sm:h-34";
+                                        medalIcon = <Award className="w-4 h-4 text-amber-700 dark:text-amber-300" />;
+                                        medalBg = "bg-gradient-to-tr from-amber-700 to-amber-500 text-white border-amber-600 shadow-[0_4px_10px_rgba(180,83,9,0.3)]";
+                                        pillarBg = "bg-gradient-to-t from-amber-700/25 via-amber-800/15 to-transparent dark:from-amber-900/35 dark:via-amber-950/20 dark:to-transparent border-amber-600/40 dark:border-amber-700/40";
+                                        rankLabel = "🥉 3rd Place";
+                                    } else if (rankNum === 4) {
+                                        pillarHeight = "h-20 sm:h-28";
+                                        rankLabel = "4th";
+                                    } else if (rankNum === 5) {
+                                        pillarHeight = "h-16 sm:h-24";
+                                        rankLabel = "5th";
+                                    }
+
+                                    // Active Vendor Slot
+                                    if (item) {
+                                        const isAccepted = (item.quote.status || "").toLowerCase().includes("accept");
+                                        const totalAmt = Number(item.quote.total_amount || 0);
+
+                                        return (
+                                            <div
+                                                key={`podium-slot-${rankNum}-${item.quote.id}`}
+                                                onClick={() => setModalQuoteItem({ supplier: item.matchedSupplier, quote: item.quote })}
+                                                className="group relative flex flex-col items-center flex-1 max-w-[155px] cursor-pointer select-none transition-all duration-200 hover:-translate-y-1.5 z-10"
+                                                title={`Click to open full quotation proposal modal for ${item.quote.supplier_name}`}
+                                            >
+                                                {/* Top Vendor Card Floating Above Pillar */}
+                                                <div className="flex flex-col items-center text-center space-y-1 mb-2.5 w-full px-1">
+                                                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                                                        {rankLabel}
                                                     </span>
 
-                                                    {isWinner && (
-                                                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30 flex items-center gap-1 shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_2px_rgba(219,39,119,0.2)]">
-                                                            <Trophy className="w-3 h-3 text-amber-500" />
-                                                            <span>AI Best Pick</span>
-                                                        </span>
-                                                    )}
+                                                    {/* Medal Avatar Badge */}
+                                                    <div className={`w-9 h-9 rounded-2xl flex items-center justify-center border ${medalBg} transition-transform group-hover:scale-110 shadow-xs`}>
+                                                        {medalIcon}
+                                                    </div>
 
-                                                    {quoteRanking && (
-                                                        <span className="text-[10px] font-mono font-black text-slate-600 dark:text-slate-300 bg-[#e8ecf4] dark:bg-[#1a1c2d] px-2 py-0.5 rounded-lg border border-slate-300/70 dark:border-white/10 shadow-[inset_1px_1px_2px_rgba(163,177,198,0.3)]">
-                                                            Score: {quoteRanking.overallScore}/100 (Rank #{quoteRanking.rank})
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                    {/* Supplier Name */}
+                                                    <p className="font-black text-xs text-slate-800 dark:text-white truncate max-w-full" title={item.quote.supplier_name}>
+                                                        {item.quote.supplier_name}
+                                                    </p>
 
-                                                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
-                                                    {quote.contact_phone && (
-                                                        <span className="flex items-center gap-1">
-                                                            <Phone className="w-3 h-3 text-pink-500" />
-                                                            {quote.contact_phone}
+                                                    {/* Score & Bid */}
+                                                    <div className="flex items-center gap-1">
+                                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                                                            item.rank === 1
+                                                                ? "bg-pink-500 text-white"
+                                                                : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                                        }`}>
+                                                            {item.score}/100
                                                         </span>
-                                                    )}
-                                                    {quote.contact_email && (
-                                                        <span className="flex items-center gap-1">
-                                                            <Mail className="w-3 h-3 text-pink-500" />
-                                                            {quote.contact_email}
-                                                        </span>
-                                                    )}
-                                                    {matchedSupplier.distanceKm && (
-                                                        <span className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-300">
-                                                            <MapPin className="w-3 h-3 text-pink-500" />
-                                                            {matchedSupplier.distanceKm.toFixed(1)} km from HQ
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Pricing & Commercial Terms */}
-                                            <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
-                                                <div>
-                                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                                                        Offered Unit Price
-                                                    </span>
-                                                    <span className="font-mono text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100">
-                                                        ₱{Number(quote.unit_price).toLocaleString()}
-                                                        <span className="text-[10px] font-bold text-slate-400">/{quote.unit || "unit"}</span>
-                                                    </span>
-                                                </div>
-
-                                                <div>
-                                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                                                        Total Proposal Bid
-                                                    </span>
-                                                    <div className="flex items-baseline gap-1.5">
-                                                        <span className="font-mono text-sm sm:text-base font-black text-pink-600 dark:text-pink-400">
-                                                            ₱{totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                        </span>
-                                                        {delta === 0 ? (
-                                                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                                                                (Lowest)
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-[10px] font-bold text-rose-500">
-                                                                (+₱{delta.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                                        {isAccepted && (
+                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
+                                                                Won
                                                             </span>
                                                         )}
                                                     </div>
-                                                    {(Number(quote.discount || 0) > 0 || Number(quote.shipping_fee || 0) > 0 || Number(quote.tax_amount || 0) > 0 || quote.tax_type) && (
-                                                        <div className="text-[9px] text-slate-400 flex items-center gap-1.5 font-medium mt-0.5">
-                                                            {Number(quote.discount || 0) > 0 && <span className="text-emerald-600 font-bold">Disc -₱{Number(quote.discount).toLocaleString()}</span>}
-                                                            {Number(quote.shipping_fee || 0) > 0 && <span>+₱{Number(quote.shipping_fee).toLocaleString()} ship</span>}
-                                                            {Number(quote.tax_amount || 0) > 0 && <span>+₱{Number(quote.tax_amount).toLocaleString()} tax</span>}
-                                                        </div>
-                                                    )}
-                                                </div>
 
-                                                <div>
-                                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                                                        Lead Time
-                                                    </span>
-                                                    <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-200">
-                                                        {quote.lead_time_days} days
+                                                    <p className="font-mono text-[11px] font-black text-pink-600 dark:text-pink-400">
+                                                        ₱{totalAmt.toLocaleString()}
+                                                    </p>
+                                                    <span className="text-[9.5px] text-slate-500 dark:text-slate-400">
+                                                        {item.quote.lead_time_days}d lead
                                                     </span>
                                                 </div>
 
-                                                <div>
-                                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                                                        Stock Status
-                                                    </span>
-                                                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
-                                                        {quote.availability}
-                                                    </span>
+                                                {/* Stepped Podium Pillar */}
+                                                <div
+                                                    className={`w-full rounded-2xl border transition-all duration-200 flex flex-col justify-between items-center py-3 relative overflow-hidden ${pillarHeight} ${pillarBg} group-hover:border-pink-400/80 group-hover:shadow-[0_0_20px_rgba(236,72,153,0.3)]`}
+                                                >
+                                                    {/* Glass highlight sheen */}
+                                                    <div className="absolute top-0 inset-x-0 h-1/3 bg-gradient-to-b from-white/30 to-transparent pointer-events-none" />
+
+                                                    {/* Embossed Podium Rank Number */}
+                                                    <div className="text-2xl sm:text-3xl font-black text-slate-400/40 dark:text-white/20 select-none">
+                                                        #{item.rank}
+                                                    </div>
+
+                                                    <div className="text-[10px] font-extrabold text-pink-600 dark:text-pink-300 flex items-center gap-0.5 group-hover:underline">
+                                                        <span>View Modal</span>
+                                                        <ExternalLink className="w-2.5 h-2.5" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Empty Slot in Podium
+                                    return (
+                                        <div
+                                            key={`podium-slot-empty-${rankNum}`}
+                                            className="group relative flex flex-col items-center flex-1 max-w-[155px] select-none opacity-60 z-0"
+                                        >
+                                            {/* Empty Card Floating Above Pillar */}
+                                            <div className="flex flex-col items-center text-center space-y-1 mb-2.5 w-full px-1">
+                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600">
+                                                    {rankLabel}
+                                                </span>
+
+                                                {/* Empty Avatar Badge */}
+                                                <div className="w-9 h-9 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-white/10 bg-slate-200/40 dark:bg-slate-800/30 text-slate-400 dark:text-slate-600">
+                                                    <Package className="w-4 h-4 opacity-40" />
                                                 </div>
 
-                                                {/* Award Bid & Reorder Actions */}
-                                                <div className="flex items-center gap-2">
-                                                    {isAccepted ? (
-                                                        <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center gap-1.5 border border-emerald-500/30">
-                                                            <CheckCircle2 className="w-3.5 h-3.5" />
-                                                            <span>Bid Awarded</span>
-                                                        </div>
-                                                    ) : hasAnyAcceptedQuote ? (
-                                                        <div className="px-3.5 py-1.5 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 text-xs font-bold flex items-center gap-1.5 border border-slate-300/40 dark:border-slate-700/40 cursor-not-allowed">
-                                                            <Award className="w-3.5 h-3.5" />
-                                                            <span>Bidding Concluded</span>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => onAwardBid(matchedSupplier, quote)}
-                                                            disabled={isAwarding}
-                                                            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                                                                isWinner
-                                                                    ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_6px_rgba(16,185,129,0.4)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)]"
-                                                                    : "bg-[#ebf0f7] dark:bg-[#191b2b] text-slate-700 dark:text-slate-200 hover:text-emerald-600 border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)]"
-                                                            }`}
-                                                        >
-                                                            {isAwarding ? (
-                                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                                            ) : (
-                                                                <Sparkles className="w-3.5 h-3.5" />
-                                                            )}
-                                                            <span>Award Bid</span>
-                                                        </button>
-                                                    )}
+                                                {/* Empty Supplier Name */}
+                                                <p className="font-semibold text-xs text-slate-400 dark:text-slate-600 italic truncate max-w-full">
+                                                    Empty Slot
+                                                </p>
 
-                                                    {onReorder && (isPreviousWinner ? isPreviousWinner(quote, matchedSupplier) : (quote.status === "awarded" || quote.status === "accepted")) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => onReorder(group, quote, matchedSupplier)}
-                                                            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-                                                            title="Reorder deficit quantity directly from this previous winning supplier"
-                                                        >
-                                                            <RotateCw className="w-3 h-3" />
-                                                            <span>Reorder</span>
-                                                        </button>
-                                                    )}
+                                                <span className="text-[10px] font-medium text-slate-400/80 dark:text-slate-600">
+                                                    No Proposal
+                                                </span>
+
+                                                <p className="font-mono text-[11px] text-slate-400/60 dark:text-slate-700">
+                                                    —
+                                                </p>
+                                                <span className="text-[9.5px] text-slate-400/60 dark:text-slate-700">
+                                                    Awaiting Bid
+                                                </span>
+                                            </div>
+
+                                            {/* Empty Stepped Podium Pillar */}
+                                            <div
+                                                className={`w-full rounded-2xl border-2 border-dashed border-slate-300/70 dark:border-white/10 bg-slate-200/20 dark:bg-slate-900/30 flex flex-col justify-between items-center py-3 relative overflow-hidden ${pillarHeight}`}
+                                            >
+                                                {/* Embossed Podium Rank Number */}
+                                                <div className="text-2xl sm:text-3xl font-black text-slate-300/50 dark:text-white/5 select-none">
+                                                    #{rankNum}
+                                                </div>
+
+                                                <div className="text-[10px] font-bold text-slate-400/70 dark:text-slate-600 select-none">
+                                                    Vacant
                                                 </div>
                                             </div>
                                         </div>
+                                    );
+                                })}
+                            </div>
 
-                                        {/* Products Offered & Services Offered & Notes preview */}
-                                        {(quote.products || (quote.services_offered && quote.services_offered.length > 0) || quote.notes) && (
-                                            <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-300/60 dark:border-white/10 text-xs">
-                                                {quote.products && (
-                                                    <div className="flex items-center gap-1 bg-[#e8ecf4] dark:bg-[#10121b] text-pink-700 dark:text-pink-300 px-2.5 py-1 rounded-xl border border-pink-500/30 font-semibold text-[11px] shadow-[inset_1px_1px_2px_rgba(163,177,198,0.25)]">
-                                                        <span>📦 Products Offered:</span>
-                                                        <span className="font-bold">{quote.products}</span>
-                                                    </div>
-                                                )}
-                                                {quote.services_offered && quote.services_offered.map((svc, sIdx) => (
-                                                    <span
-                                                        key={sIdx}
-                                                        className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#e8ecf4] dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-300/70 dark:border-white/10 shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_2px_rgba(163,177,198,0.2)]"
-                                                    >
-                                                        ✓ {svc}
-                                                    </span>
-                                                ))}
-                                                {quote.notes && (
-                                                    <span className="text-[11px] text-slate-500 dark:text-slate-400 italic ml-1">
-                                                        &ldquo;{quote.notes}&rdquo;
-                                                    </span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                            {/* Podium Shelf Horizon Line */}
+                            <div className="h-2 w-full rounded-full bg-gradient-to-r from-transparent via-slate-300 dark:via-white/10 to-transparent -mt-1 shadow-inner" />
                         </div>
                     </div>
+                )}
                 </div>
+            )}
+
+            {/* Vendor Quotation & Proposal Details Modal when clicking any podium pillar */}
+            {modalQuoteItem && (
+                <VendorQuotationViewModal
+                    supplier={modalQuoteItem.supplier}
+                    initialQuote={modalQuoteItem.quote}
+                    onClose={() => setModalQuoteItem(null)}
+                    onAwardBid={handleAwardBidAction}
+                />
             )}
 
             {/* Modal: Deep-Dive AI Evaluation & Multi-Criteria Matrix */}

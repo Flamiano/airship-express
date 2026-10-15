@@ -493,6 +493,7 @@ export async function GET(req: NextRequest) {
                     else awaitingDelivery++;
 
                     return {
+                        ...po,
                         id: po.id,
                         po_number: po.po_number || `PO-${po.id}`,
                         order_date: po.created_at,
@@ -565,19 +566,38 @@ export async function GET(req: NextRequest) {
                     }
 
                     return {
+                        ...po,
                         id: po.id,
                         po_number: po.po_number || `PO-${po.id}`,
                         order_date: po.created_at,
                         supplier_name: po.supplier_name || 'Vendor',
+                        supplier_email: po.supplier_email,
+                        supplier_phone: po.supplier_phone,
+                        supplier_location: po.supplier_location || po.supplier_address,
+                        category: po.category,
                         status: po.status,
                         financial_approval: po.financial_approval || 'Pending',
+                        financial_approved_at: po.financial_approved_at,
+                        admin_approval: po.admin_approval,
                         subtotal,
+                        discount: disc,
                         discount_amount: disc,
                         tax_amount: tax,
+                        tax_rate: po.tax_rate,
+                        shipping_fee: ship,
                         shipping_amount: ship,
                         total_amount: total,
                         paid: isPaid,
                         payment_status: isPaid ? 'Paid' : 'Unpaid / Pending Payable',
+                        delivery_date: po.delivery_date,
+                        delivery_location: po.delivery_location,
+                        payment_terms: po.payment_terms,
+                        payment_method: po.payment_method,
+                        terms_and_conditions: po.terms_and_conditions,
+                        notes: po.notes,
+                        items: po.items,
+                        created_at: po.created_at,
+                        created_by: po.created_by,
                     };
                 });
 

@@ -965,7 +965,6 @@ function ProcurementContent() {
                                 registeredSuppliers={suppliers}
                                 shortages={shortages}
                                 onSupplierPromoted={() => loadAllProcurementData(true)}
-                                onReorder={handleReorderFromStage3}
                                 onViewPurchaseOrder={(po) => {
                                     if (po) {
                                         setReceiptModalPO(po);

@@ -24,7 +24,9 @@ import {
     MapPin,
     Receipt,
     Percent,
-    FileCheck2
+    FileCheck2,
+    Loader2,
+    ImageIcon
 } from 'lucide-react';
 
 export interface DigitalReceiptData {
@@ -80,6 +82,7 @@ interface DigitalReceiptModalProps {
 export function DigitalReceiptModal({ isOpen, onClose, order: propOrder, purchaseOrder }: DigitalReceiptModalProps) {
     const receiptRef = useRef<HTMLDivElement>(null);
     const [copied, setCopied] = useState(false);
+    const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
     const order = propOrder || purchaseOrder || null;
 
     if (!isOpen || !order) return null;
@@ -156,7 +159,143 @@ export function DigitalReceiptModal({ isOpen, onClose, order: propOrder, purchas
     };
 
     const handlePrint = () => {
-        window.print();
+        if (!receiptRef.current) {
+            window.print();
+            return;
+        }
+
+        // Create an isolated hidden iframe for printing ONLY the receipt to prevent duplicate 3 pages
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (!doc) {
+            window.print();
+            return;
+        }
+
+        // Copy styles & link tags from the main document for pixel-perfect printing
+        const headStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+            .map(el => el.outerHTML)
+            .join('\n');
+
+        const receiptHtml = receiptRef.current.outerHTML;
+
+        doc.open();
+        doc.write(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8" />
+                <title>Receipt_${order.po_number || 'Order'}</title>
+                ${headStyles}
+                <style>
+                    @page {
+                        margin: 10mm;
+                        size: auto;
+                    }
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                        color: #0f172a !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        overflow: visible !important;
+                    }
+                    #printable-digital-receipt {
+                        position: static !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        margin: 0 auto !important;
+                        padding: 16px !important;
+                        background: #ffffff !important;
+                        color: #0f172a !important;
+                        box-shadow: none !important;
+                        border: 1px solid #e2e8f0 !important;
+                        border-radius: 8px !important;
+                    }
+                    .receipt-top-accent {
+                        display: none !important;
+                    }
+                    .receipt-brand-accent {
+                        color: #db2777 !important;
+                        font-weight: 800 !important;
+                    }
+                    .receipt-official-pill {
+                        background-color: #fdf2f8 !important;
+                        color: #db2777 !important;
+                        border-color: #fbcfe8 !important;
+                    }
+                    .receipt-section-title {
+                        color: #db2777 !important;
+                    }
+                    .receipt-card {
+                        background-color: #fafafa !important;
+                        border-color: #e2e8f0 !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
+                    .receipt-table-wrapper {
+                        border-color: #cbd5e1 !important;
+                        background-color: #ffffff !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
+                    .receipt-table-header {
+                        background-color: #fdf2f8 !important;
+                        color: #9d174d !important;
+                        border-bottom: 2px solid #db2777 !important;
+                    }
+                    .receipt-table-header th {
+                        color: #9d174d !important;
+                    }
+                    .receipt-grand-total-amount {
+                        color: #db2777 !important;
+                        font-weight: 900 !important;
+                    }
+                    .receipt-verified-badge {
+                        background-color: #fdf2f8 !important;
+                        color: #db2777 !important;
+                        border-color: #fbcfe8 !important;
+                    }
+                    * {
+                        box-shadow: none !important;
+                        text-shadow: none !important;
+                    }
+                </style>
+            </head>
+            <body>
+                ${receiptHtml}
+            </body>
+            </html>
+        `);
+        doc.close();
+
+        setTimeout(() => {
+            try {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+            } catch (e) {
+                console.error('Error invoking iframe print:', e);
+                window.print();
+            } finally {
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
+                        document.body.removeChild(iframe);
+                    }
+                }, 1000);
+            }
+        }, 300);
     };
 
     const handleCopyDetails = async () => {
@@ -207,45 +346,393 @@ Verified & Certified by Airship Express Procurement Management System
         }
     };
 
-    const handleDownloadTxt = () => {
-        const text = `================================================
-AIRSHIP EXPRESS - OFFICIAL DIGITAL RECEIPT
-================================================
-PO Number: ${order.po_number}
-Status: ${order.status.toUpperCase()}
-Issue Date: ${isFinancialApproved ? `${formattedDate} ${formattedTime}` : 'PENDING'}
-Security Ref: ${securityCode}
-Category: ${order.category || 'General Procurement'}
+    const handleDownloadPdf = async () => {
+        setIsDownloadingPdf(true);
+        const toastId = toast.loading('Generating official PDF receipt...');
 
-Buyer: Airship Express Logistics Corp.
-Buyer Location: ${buyerLocation}
+        try {
+            const { default: jsPDF } = await import('jspdf');
+            const autotableModule = await import('jspdf-autotable');
+            const autoTable = autotableModule.autoTable || (autotableModule.default as any)?.autoTable || autotableModule.default;
 
-Supplier: ${order.supplier_name}
-Supplier Location: ${supplierLocation}
-Delivery Destination: ${buyerLocation}
-Expected Delivery: ${order.delivery_date || 'Standard Schedule'}
-Payment Terms: ${order.payment_terms || 'Net 30 Days (Standard B2B)'}
+            const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 40;
+            let cursorY = 32;
 
-Items:
-${items.map((i, idx) => `${idx + 1}. ${i.name || i.item_name || 'Item'} (Qty: ${i.quantity}) @ ₱${(i.unit_price || 0).toLocaleString()} = ₱${(i.total || (i.quantity * (i.unit_price || 0))).toLocaleString()}`).join('\n')}
+            // Load logo image as base64 data URL
+            const logoBase64 = await new Promise<string | null>((resolve) => {
+                try {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.naturalWidth || 651;
+                            canvas.height = img.naturalHeight || 383;
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) return resolve(null);
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        } catch {
+                            resolve(null);
+                        }
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = '/images/logo-remove-bg.png';
+                } catch {
+                    resolve(null);
+                }
+            });
 
-Items Subtotal: ₱${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Discount: ₱${discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Shipping Fee: ₱${shippingFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-VAT (${taxRate}%): ₱${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Grand Total: ₱${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Notes: ${order.notes || 'None'}
-================================================`;
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `receipt_${order.po_number || 'order'}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast.success('Receipt details downloaded as .txt');
+            // (Top border bar removed as requested)
+
+            // Header Title & Logo
+            let brandStartX = margin;
+            if (logoBase64) {
+                try {
+                    // Logo aspect ratio is 651:383 (~1.7)
+                    const logoH = 28;
+                    const logoW = Math.round(logoH * (651 / 383));
+                    doc.addImage(logoBase64, 'PNG', margin, cursorY + 2, logoW, logoH);
+                    brandStartX = margin + logoW + 10;
+                } catch (e) {
+                    console.warn('Could not render logo in PDF:', e);
+                }
+            }
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(18);
+            doc.setTextColor(15, 23, 42); // Slate 900
+            doc.text('Airship', brandStartX, cursorY + 14);
+            
+            const airshipWidth = doc.getTextWidth('Airship');
+            doc.setTextColor(219, 39, 119); // Pink 600
+            doc.text('Express', brandStartX + airshipWidth + 2, cursorY + 14);
+
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139); // Slate 500
+            doc.text('SUPPLY CHAIN & PROCUREMENT LOGISTICS HUB', brandStartX, cursorY + 26);
+
+            // Document Type & PO Badge (Right Aligned)
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor(15, 23, 42);
+            doc.text('DIGITAL PROCUREMENT RECEIPT', pageWidth - margin, cursorY + 12, { align: 'right' });
+
+            doc.setFontSize(10);
+            doc.setTextColor(219, 39, 119);
+            doc.text(`#${order.po_number || 'PO-000000'}`, pageWidth - margin, cursorY + 24, { align: 'right' });
+
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Status: ${(order.status || 'Active').toUpperCase()} · Issued: ${formattedDate} ${formattedTime}`, pageWidth - margin, cursorY + 35, { align: 'right' });
+
+            cursorY += 46;
+
+            // Horizontal Separator
+            doc.setDrawColor(226, 232, 240); // Slate 200
+            doc.setLineWidth(1);
+            doc.line(margin, cursorY, pageWidth - margin, cursorY);
+            cursorY += 14;
+
+            // Buyer & Vendor Info Cards (Side by Side)
+            const colW = (pageWidth - margin * 2 - 16) / 2;
+            const suppX = margin + colW + 16;
+
+            const buyerLocLines = doc.splitTextToSize(`Delivery Hub: ${buyerLocation}`, colW - 24);
+            const suppLocLines = doc.splitTextToSize(`Facility: ${supplierLocation}`, colW - 24);
+
+            const buyerTextH = buyerLocLines.length * 9.5;
+            const suppTextH = suppLocLines.length * 9.5;
+            const cardBoxH = Math.max(90, 58 + Math.max(buyerTextH, suppTextH));
+
+            // Buyer Box
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(margin, cursorY, colW, cardBoxH, 6, 6, 'FD');
+
+            let bY = cursorY + 15;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8.5);
+            doc.setTextColor(219, 39, 119);
+            doc.text('BUYER DETAILS (CONSIGNEE)', margin + 12, bY);
+            bY += 13;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(15, 23, 42);
+            doc.text('Airship Express Logistics Corp.', margin + 12, bY);
+            bY += 12;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(71, 85, 105);
+            doc.text(buyerLocLines, margin + 12, bY);
+            bY += buyerLocLines.length * 9.5 + 4;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(71, 85, 105);
+            doc.text(`Requisitioned By: ${order.created_by || 'Authorized Officer'}`, margin + 12, bY);
+
+            // Supplier Box
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(suppX, cursorY, colW, cardBoxH, 6, 6, 'FD');
+
+            let sBoxY = cursorY + 15;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8.5);
+            doc.setTextColor(219, 39, 119);
+            doc.text('SUPPLIER / VENDOR', suppX + 12, sBoxY);
+            sBoxY += 13;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(15, 23, 42);
+            doc.text(order.supplier_name || 'Registered Supplier', suppX + 12, sBoxY);
+            sBoxY += 12;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(71, 85, 105);
+            doc.text(suppLocLines, suppX + 12, sBoxY);
+            sBoxY += suppLocLines.length * 9.5 + 4;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(71, 85, 105);
+            doc.text(`Contact: ${order.supplier_email || order.supplier_phone || 'On file'}`, suppX + 12, sBoxY);
+
+            cursorY += cardBoxH + 12;
+
+            // Metadata Bar (Category, Terms, Delivery) - clean 3 equal bounded cells
+            const totalMetaW = pageWidth - margin * 2;
+            const metaColW = totalMetaW / 3;
+            const metaBarH = 26;
+
+            doc.setFillColor(241, 245, 249);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(margin, cursorY, totalMetaW, metaBarH, 4, 4, 'FD');
+
+            // Col 1: Category
+            const c1X = margin + 10;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(100, 116, 139);
+            doc.text('CATEGORY:', c1X, cursorY + 16);
+            const catLabelW = doc.getTextWidth('CATEGORY:') + 4;
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(15, 23, 42);
+            const catVal = order.category || 'General Procurement';
+            const catTruncated = doc.splitTextToSize(catVal, metaColW - catLabelW - 14)[0] || catVal;
+            doc.text(catTruncated, c1X + catLabelW, cursorY + 16);
+
+            // Col 2: Payment Terms
+            const c2X = margin + metaColW + 10;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(100, 116, 139);
+            doc.text('TERMS:', c2X, cursorY + 16);
+            const termsLabelW = doc.getTextWidth('TERMS:') + 4;
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(15, 23, 42);
+            const termsVal = order.payment_terms || 'Net 30 Days';
+            const termsTruncated = doc.splitTextToSize(termsVal, metaColW - termsLabelW - 14)[0] || termsVal;
+            doc.text(termsTruncated, c2X + termsLabelW, cursorY + 16);
+
+            // Col 3: Delivery
+            const c3X = margin + metaColW * 2 + 10;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(100, 116, 139);
+            doc.text('DELIVERY:', c3X, cursorY + 16);
+            const delivLabelW = doc.getTextWidth('DELIVERY:') + 4;
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(15, 23, 42);
+            const delivVal = order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Standard Schedule';
+            const delivTruncated = doc.splitTextToSize(delivVal, metaColW - delivLabelW - 14)[0] || delivVal;
+            doc.text(delivTruncated, c3X + delivLabelW, cursorY + 16);
+
+            cursorY += metaBarH + 12;
+
+            // Itemized Table
+            const tableHead = [['#', 'ITEM & SPECIFICATION', 'QTY', 'UNIT PRICE (PHP)', 'TOTAL (PHP)']];
+            const tableBody = items.map((it, idx) => [
+                String(idx + 1),
+                it.name || it.item_name || 'Purchase Order Item',
+                String(it.quantity || 1),
+                `PHP ${Number(it.unit_price ?? it.price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                `PHP ${Number(it.total ?? ((it.quantity || 1) * Number(it.unit_price ?? it.price ?? 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            ]);
+
+            let finalY = cursorY;
+            autoTable(doc, {
+                startY: cursorY,
+                head: tableHead,
+                body: tableBody,
+                margin: { left: margin, right: margin },
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [219, 39, 119],
+                    textColor: [255, 255, 255],
+                    font: 'helvetica',
+                    fontStyle: 'bold',
+                    fontSize: 8,
+                    cellPadding: 5,
+                },
+                styles: {
+                    font: 'helvetica',
+                    fontSize: 8,
+                    cellPadding: 5,
+                    textColor: [30, 41, 59],
+                    lineColor: [226, 232, 240],
+                    lineWidth: 0.5,
+                    overflow: 'linebreak',
+                },
+                alternateRowStyles: {
+                    fillColor: [248, 250, 252],
+                },
+                columnStyles: {
+                    0: { cellWidth: 24, halign: 'center' },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 38, halign: 'center' },
+                    3: { cellWidth: 100, halign: 'right' },
+                    4: { cellWidth: 100, halign: 'right' },
+                },
+                didDrawPage: (hook: any) => {
+                    finalY = hook.cursor?.y ?? finalY;
+                },
+            });
+
+            cursorY = finalY + 14;
+
+            // Bottom Section: Left Card (Security/Certification) & Right Card (Financial Summary)
+            const summaryW = 230;
+            const summaryX = pageWidth - margin - summaryW;
+            const leftCardW = summaryX - margin - 14;
+
+            const certNote = 'Certified electronic procurement receipt generated by Airship Express Procurement Management System. Valid for audit, inventory reconciliation, and accounting clearance.';
+            const certLines = doc.splitTextToSize(certNote, leftCardW - 20);
+
+            const notesText = order.notes ? `Notes: ${order.notes}` : '';
+            const notesLines = notesText ? doc.splitTextToSize(notesText, leftCardW - 20) : [];
+
+            const leftCardH = 46 + (certLines.length * 9) + (notesLines.length > 0 ? (notesLines.length * 9 + 6) : 0);
+            const summaryH = discount > 0 ? 112 : 98;
+            const bottomSectionH = Math.max(leftCardH, summaryH);
+
+            // Page break check for bottom section
+            if (cursorY + bottomSectionH > pageHeight - 35) {
+                doc.addPage();
+                cursorY = 40;
+            }
+
+            // Left Card: Security & Audit
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(margin, cursorY, leftCardW, bottomSectionH, 6, 6, 'FD');
+
+            let leftY = cursorY + 15;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 116, 139);
+            doc.text('SECURITY VERIFICATION CODE', margin + 10, leftY);
+            leftY += 13;
+
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(8.5);
+            doc.setTextColor(219, 39, 119);
+            doc.text(securityCode, margin + 10, leftY);
+            leftY += 14;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(certLines, margin + 10, leftY);
+            leftY += certLines.length * 9 + 6;
+
+            if (notesLines.length > 0) {
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(7.5);
+                doc.setTextColor(71, 85, 105);
+                doc.text(notesLines, margin + 10, leftY);
+            }
+
+            // Right Card: Financial Summary
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(summaryX, cursorY, summaryW, bottomSectionH, 6, 6, 'FD');
+
+            const sLeft = summaryX + 12;
+            const sRight = summaryX + summaryW - 12;
+            let sY = cursorY + 15;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 116, 139);
+            doc.text('Subtotal:', sLeft, sY);
+            doc.setTextColor(15, 23, 42);
+            doc.text(`PHP ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sRight, sY, { align: 'right' });
+            sY += 13;
+
+            if (discount > 0) {
+                doc.setTextColor(100, 116, 139);
+                doc.text('Discount:', sLeft, sY);
+                doc.setTextColor(225, 29, 72);
+                doc.text(`-PHP ${discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sRight, sY, { align: 'right' });
+                sY += 13;
+            }
+
+            doc.setTextColor(100, 116, 139);
+            doc.text('Shipping & Handling:', sLeft, sY);
+            doc.setTextColor(15, 23, 42);
+            doc.text(shippingFee > 0 ? `PHP ${shippingFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'PHP 0.00 (Included)', sRight, sY, { align: 'right' });
+            sY += 13;
+
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Value Added Tax (${taxRate}%):`, sLeft, sY);
+            doc.setTextColor(15, 23, 42);
+            doc.text(`PHP ${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sRight, sY, { align: 'right' });
+            sY += 16;
+
+            doc.setDrawColor(219, 39, 119);
+            doc.setLineWidth(1);
+            doc.line(sLeft, sY - 4, sRight, sY - 4);
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9.5);
+            doc.setTextColor(15, 23, 42);
+            doc.text('GRAND TOTAL:', sLeft, sY + 8);
+            doc.setTextColor(219, 39, 119);
+            doc.setFontSize(11);
+            doc.text(`PHP ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sRight, sY + 8, { align: 'right' });
+
+            // Footer pagination
+            const pageCount = doc.getNumberOfPages();
+            for (let p = 1; p <= pageCount; p++) {
+                doc.setPage(p);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7.5);
+                doc.setTextColor(148, 163, 184);
+                doc.text('Airship Express · Official Digital Procurement Receipt', margin, pageHeight - 18);
+                doc.text(`Page ${p} of ${pageCount}`, pageWidth - margin, pageHeight - 18, { align: 'right' });
+            }
+
+            const poClean = (order.po_number || 'order').replace(/[^a-zA-Z0-9_-]/g, '_');
+            doc.save(`receipt_${poClean}.pdf`);
+
+            toast.success('Official PDF receipt downloaded successfully', { id: toastId });
+            setIsDownloadingPdf(false);
+        } catch (err: any) {
+            console.error('Failed to generate PDF receipt:', err);
+            toast.error('Failed to export PDF receipt: ' + (err?.message || 'Error creating PDF document'), { id: toastId });
+            setIsDownloadingPdf(false);
+        }
     };
 
     return (
@@ -299,15 +786,20 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                                 <span>{copied ? 'Copied' : 'Copy'}</span>
                             </button>
 
-                            {/* Download TXT Button */}
+                            {/* Download PDF Button */}
                             <button
                                 type="button"
-                                onClick={handleDownloadTxt}
-                                className="hidden sm:inline-flex px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] hover:bg-[#e4ebf5] dark:bg-[#1e1f2c] dark:hover:bg-[#252738] border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] active:scale-95 transition-all items-center gap-1.5 cursor-pointer"
-                                title="Download as .txt file"
+                                onClick={handleDownloadPdf}
+                                disabled={isDownloadingPdf}
+                                className="inline-flex px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] hover:bg-[#e4ebf5] dark:bg-[#1e1f2c] dark:hover:bg-[#252738] border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] active:scale-95 transition-all items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                title="Download official PDF receipt (.pdf)"
                             >
-                                <Download className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
-                                <span>Download</span>
+                                {isDownloadingPdf ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-pink-600 dark:text-pink-400" />
+                                ) : (
+                                    <Download className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                                )}
+                                <span>{isDownloadingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
                             </button>
 
                             {/* Print / PDF Button */}
@@ -340,9 +832,6 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                             id="printable-digital-receipt"
                             className="bg-[#f0f3f8] dark:bg-[#181926] text-slate-900 dark:text-slate-100 rounded-3xl border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_18px_rgba(166,175,195,0.35),-6px_-6px_18px_rgba(255,255,255,0.95)] dark:shadow-[6px_6px_20px_rgba(0,0,0,0.6)] font-sans relative overflow-hidden print:p-0 print:border-none print:shadow-none print:bg-white print:text-black transition-all"
                         >
-                            {/* Minimal Solid Pink Top Accent Strip */}
-                            <div className="h-2 w-full bg-pink-600 receipt-top-accent shadow-[0_2px_6px_rgba(219,39,119,0.4)]" />
-
                             <div className="p-6 sm:p-8 space-y-6">
                                 {/* Header: Brand, Title, Status */}
                                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/80 dark:border-slate-800/80 receipt-header-border">
@@ -654,7 +1143,13 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                                                 </span>
                                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                                             </div>
-                                            <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                            <p className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
+                                                Security Verification Code
+                                            </p>
+                                            <p 
+                                                className="text-[10.5px] font-mono font-bold text-pink-600 dark:text-pink-400 truncate mt-0.5 cursor-help"
+                                                title="Tamper-proof audit hash: [AESC = Airship Express Supply Chain] - [PO Number] - [Approval Timestamp]"
+                                            >
                                                 {securityCode}
                                             </p>
                                         </div>
@@ -705,12 +1200,33 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                 </div>
             </div>
 
-            {/* Print & PDF Styling using Clean Black & Pink Theme */}
+            {/* Print & PDF Styling: Clean 1-Page Layout without duplicate pages */}
             <style jsx global>{`
                 @media print {
                     @page {
-                        margin: 15mm;
+                        margin: 10mm;
                         size: auto;
+                    }
+                    /* Hide everything outside of the active portal/modal */
+                    body > *:not(.supplychain-container) {
+                        display: none !important;
+                    }
+                    /* Reset all fixed positioning on modal ancestors to prevent repetition across multiple pages */
+                    .supplychain-container,
+                    .supplychain-container div[class*="fixed"],
+                    .supplychain-container .fixed {
+                        position: static !important;
+                        inset: auto !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        background: transparent !important;
+                        backdrop-filter: none !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        box-shadow: none !important;
                     }
                     body * {
                         visibility: hidden !important;
@@ -721,12 +1237,12 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                         print-color-adjust: exact !important;
                     }
                     #printable-digital-receipt {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
+                        position: relative !important;
+                        left: auto !important;
+                        top: auto !important;
                         width: 100% !important;
-                        margin: 0 !important;
-                        padding: 20px !important;
+                        margin: 0 auto !important;
+                        padding: 16px !important;
                         background: #ffffff !important;
                         color: #0f172a !important;
                         box-shadow: none !important;
@@ -734,8 +1250,7 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                         border-radius: 8px !important;
                     }
                     .receipt-top-accent {
-                        background-color: #db2777 !important;
-                        height: 4px !important;
+                        display: none !important;
                     }
                     .receipt-brand-accent {
                         color: #db2777 !important;
@@ -752,10 +1267,14 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                     .receipt-card {
                         background-color: #fafafa !important;
                         border-color: #e2e8f0 !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
                     }
                     .receipt-table-wrapper {
                         border-color: #cbd5e1 !important;
                         background-color: #ffffff !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
                     }
                     .receipt-table-header {
                         background-color: #fdf2f8 !important;
@@ -773,6 +1292,10 @@ ${order.terms_and_conditions ? `Terms: ${order.terms_and_conditions}\n` : ''}Not
                         background-color: #fdf2f8 !important;
                         color: #db2777 !important;
                         border-color: #fbcfe8 !important;
+                    }
+                    * {
+                        box-shadow: none !important;
+                        text-shadow: none !important;
                     }
                 }
             `}</style>

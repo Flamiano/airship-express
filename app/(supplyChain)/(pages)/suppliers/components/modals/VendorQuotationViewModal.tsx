@@ -32,6 +32,7 @@ import {
 import Portal from "../../../../components/client/Portal";
 import { supabase } from "../../../../lib/services/client/supabase";
 import type { PotentialSupplierItem, SupplierQuotationItem } from "../tables/PotentialSuppliersTab";
+import { parseQuotationNotes } from "../../utils/termsParser";
 
 interface VendorQuotationViewModalProps {
     supplier: PotentialSupplierItem | null;
@@ -228,17 +229,9 @@ export function VendorQuotationViewModal({
             ? quote.services_offered.split(",").map((s: string) => s.trim())
             : (supplier.services_offered || []));
 
-    // Parse clauses from notes or supplier_terms
-    let rawClauses = quote?.supplier_terms || "";
-    if (!rawClauses && quote?.notes) {
-        if (quote.notes.includes("Clauses:")) {
-            const match = quote.notes.match(/Clauses:\s*([^\]]+)/i);
-            if (match && match[1]) rawClauses = match[1].trim();
-        } else if (quote.notes.includes("--- Terms & Conditions ---")) {
-            const parts = quote.notes.split(/---+\s*Terms\s*&\s*Conditions\s*---+/i);
-            if (parts[1]) rawClauses = parts[1].trim();
-        }
-    }
+    // Parse comprehensive terms and special clauses from notes/quote without truncation
+    const parsedTerms = parseQuotationNotes(quote?.notes, quote);
+    const rawClauses = parsedTerms.clauses || quote?.supplier_terms || "";
 
     const isQuoteAwarded = quote?.status === "accepted" || supplier?.submittedQuote?.status === "accepted";
 
@@ -521,20 +514,26 @@ export function VendorQuotationViewModal({
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
                                         <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
                                             <span className="text-[10px] text-slate-400 font-bold uppercase block">Payment Terms</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200">{quote?.payment_terms || "Standard terms"}</p>
+                                            <p className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2" title={parsedTerms.paymentTerms || quote?.payment_terms || "Standard terms"}>
+                                                {parsedTerms.paymentTerms || quote?.payment_terms || "Standard terms"}
+                                            </p>
                                         </div>
                                         <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
                                             <span className="text-[10px] text-slate-400 font-bold uppercase block">Delivery Terms</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200">{quote?.delivery_terms || "FOB Destination"}</p>
+                                            <p className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2" title={parsedTerms.deliveryTerms || quote?.delivery_terms || "FOB Destination"}>
+                                                {parsedTerms.deliveryTerms || quote?.delivery_terms || "FOB Destination"}
+                                            </p>
                                         </div>
                                         <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
                                             <span className="text-[10px] text-slate-400 font-bold uppercase block">Warranty / Guarantee</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200">{quote?.warranty_terms || "Standard replacement"}</p>
+                                            <p className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2" title={parsedTerms.warrantyTerms || quote?.warranty_terms || "Standard replacement"}>
+                                                {parsedTerms.warrantyTerms || quote?.warranty_terms || "Standard replacement"}
+                                            </p>
                                         </div>
                                         <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
                                             <span className="text-[10px] text-slate-400 font-bold uppercase block">Lead Time / Validity</span>
                                             <p className="font-bold text-slate-800 dark:text-slate-200">
-                                                {quote?.lead_time_days ? `${quote.lead_time_days} days` : "2-3 days"} • {quote?.price_validity || "30 days"}
+                                                {quote?.lead_time_days ? `${quote.lead_time_days} days` : "2-3 days"} • {parsedTerms.priceValidity || quote?.price_validity || "30 days"}
                                             </p>
                                         </div>
                                     </div>
@@ -568,15 +567,72 @@ export function VendorQuotationViewModal({
                                         </div>
                                     )}
 
-                                    {/* Vendor Submitted Clauses */}
-                                    {rawClauses && (
-                                        <div className="p-3.5 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-1.5">
-                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                                                Governing Terms and Conditions and Vendor Submitted Terms &amp; Special Clauses:
-                                            </span>
-                                            <p className="text-[11px] text-slate-800 dark:text-slate-100 font-mono whitespace-pre-line leading-relaxed">
-                                                {rawClauses}
-                                            </p>
+                                    {/* Governing Terms and Conditions and Vendor Submitted Terms & Special Clauses */}
+                                    {(rawClauses || parsedTerms.paymentTerms || parsedTerms.deliveryTerms || parsedTerms.warrantyTerms || parsedTerms.priceValidity || parsedTerms.cleanNotes) && (
+                                        <div className="p-3.5 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-3">
+                                            <div className="flex items-center gap-2 border-b border-slate-300/70 dark:border-white/10 pb-2">
+                                                <Scale className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
+                                                <span className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                                                    Governing Terms and Conditions and Vendor Submitted Terms &amp; Special Clauses:
+                                                </span>
+                                            </div>
+
+                                            {/* Governing Commercial Terms Breakdown */}
+                                            {(parsedTerms.paymentTerms || parsedTerms.deliveryTerms || parsedTerms.warrantyTerms || parsedTerms.priceValidity) && (
+                                                <div className="space-y-2 p-3 rounded-xl bg-white/70 dark:bg-white/5 border border-slate-200/80 dark:border-white/5 text-[11px]">
+                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                                        Governing Commercial Commitments:
+                                                    </span>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 dark:text-slate-200">
+                                                        {parsedTerms.paymentTerms && (
+                                                            <div className="space-y-0.5">
+                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Payment Terms:</span>
+                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.paymentTerms}</p>
+                                                            </div>
+                                                        )}
+                                                        {parsedTerms.deliveryTerms && (
+                                                            <div className="space-y-0.5">
+                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Delivery &amp; Incoterms:</span>
+                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.deliveryTerms}</p>
+                                                            </div>
+                                                        )}
+                                                        {parsedTerms.warrantyTerms && (
+                                                            <div className="space-y-0.5">
+                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Warranty / Guarantee:</span>
+                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.warrantyTerms}</p>
+                                                            </div>
+                                                        )}
+                                                        {parsedTerms.priceValidity && (
+                                                            <div className="space-y-0.5">
+                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Quotation Validity:</span>
+                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.priceValidity}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Vendor Submitted Special Clauses (Full text, 1 to 10+) */}
+                                            {rawClauses && (
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                                        Vendor Submitted Special Clauses &amp; Articles:
+                                                    </span>
+                                                    <div className="p-3 rounded-xl bg-white/70 dark:bg-white/5 border border-slate-200/80 dark:border-white/5 max-h-72 overflow-y-auto">
+                                                        <p className="text-[11px] text-slate-800 dark:text-slate-100 font-mono whitespace-pre-line leading-relaxed">
+                                                            {rawClauses}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Additional General Notes if any */}
+                                            {parsedTerms.cleanNotes && (
+                                                <div className="p-2.5 rounded-xl bg-white/50 dark:bg-white/5 text-[11px] space-y-0.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Additional Vendor Remarks:</span>
+                                                    <p className="text-slate-700 dark:text-slate-300 font-medium">{parsedTerms.cleanNotes}</p>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
