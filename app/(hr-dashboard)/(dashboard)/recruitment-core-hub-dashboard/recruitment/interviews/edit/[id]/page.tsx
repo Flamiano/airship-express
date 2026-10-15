@@ -28,6 +28,7 @@ type Interview = {
   rating: number | null;
   feedback: string | null;
   outcome: string | null;
+  stage: string;
 };
 
 interface EditInterviewPageProps {
@@ -54,6 +55,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const [applicantId, setApplicantId] = useState("");
+  const [stage, setStage] = useState("Legacy / Unspecified");
   const [interviewerId, setInterviewerId] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [locationOrLink, setLocationOrLink] = useState("");
@@ -84,7 +86,8 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
             status,
             rating,
             feedback,
-            outcome
+            outcome,
+            stage
           `)
           .eq("id", interviewId)
           .single();
@@ -96,6 +99,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         const interview = data as Interview;
 
         setApplicantId(interview.applicant_id);
+        setStage(interview.stage || "Legacy / Unspecified");
         setInterviewerId(interview.interviewer_id || "");
 
         // Convert database ISO string to local HTML datetime-local format
@@ -244,9 +248,9 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
 
       if (status === "Completed") {
         if (outcome === "Passed") {
-          applicantStatus = "Interview Passed";
+          applicantStatus = stage === "Final Interview" ? "Interview Passed" : "Interview Scheduled";
         } else if (outcome === "Failed") {
-          applicantStatus = "Interview Failed";
+          applicantStatus = stage === "Assessment" ? "Assessment Failed" : "Interview Failed";
         }
       }
 
@@ -275,9 +279,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
   // Handle status change side-effects
   function handleStatusChange(newStatus: string) {
     setStatus(newStatus);
-    if (newStatus === "Completed" && outcome === "Pending") {
-      setOutcome("Passed");
-    } else if (newStatus !== "Completed") {
+    if (newStatus !== "Completed") {
       setOutcome("Pending");
     }
   }
@@ -358,7 +360,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         </Link>
 
         <div className="mb-6 mt-3">
-          <h2 className="text-xl sm:text-2xl font-black text-[#121212]">Edit Interview</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-[#121212]">Edit {stage}</h2>
           <p className="mt-1 text-xs text-gray-500">
             Update scheduling details, evaluate candidate performance, and record final results.
           </p>
@@ -377,6 +379,11 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         {/* Form Card */}
         <div className="rounded-2xl border border-gray-100 bg-white p-6 sm:p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="rounded-xl border border-pink-100 bg-pink-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-pink-700">Recruitment stage</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{stage}</p>
+              <p className="mt-1 text-xs text-slate-600">The next stage is unlocked only after this stage is completed with a Passed result.</p>
+            </div>
             {/* Applicant Select */}
             <div>
               <label className="mb-1.5 block text-xs font-bold text-gray-700">

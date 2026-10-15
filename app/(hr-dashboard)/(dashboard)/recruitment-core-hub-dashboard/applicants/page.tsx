@@ -604,7 +604,7 @@ export default function ApplicantsPage() {
                             href={`/recruitment-core-hub-dashboard/applicants/${applicant.id}/edit`}
                             className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
                           >
-                            Edit
+                            Profile & Documents
                           </Link>
 
                           <button

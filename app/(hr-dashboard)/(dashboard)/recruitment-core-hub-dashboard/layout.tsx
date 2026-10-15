@@ -10,7 +10,7 @@ const navigation = [
   { label: "Job Postings", href: "/recruitment-core-hub-dashboard/job-posting" },
   { label: "Manpower Requests", href: "/recruitment-core-hub-dashboard/manpower-requests" },
   { label: "Applicants", href: "/recruitment-core-hub-dashboard/applicants" },
-  { label: "Recruitment", href: "/recruitment-core-hub-dashboard/recruitment/interviews" },
+  { label: "Recruitment", href: "/recruitment-core-hub-dashboard/recruitment" },
   { label: "Onboarding", href: "/recruitment-core-hub-dashboard/onboarding" },
   { label: "Employees", href: "/recruitment-core-hub-dashboard/employees" },
   { label: "Reports", href: "/recruitment-core-hub-dashboard/reports" },
