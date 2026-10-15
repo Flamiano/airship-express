@@ -137,6 +137,7 @@ export interface InventoryItem {
     minimum_stock: number;
     min_stock?: number;
     storage_location: string;
+    warehouse_storage_zone_id?: string | null;
     status: 'available' | 'low-stock' | 'out-of-stock';
     updated_at: string;
     description?: string;
@@ -164,6 +165,18 @@ export interface Supplier {
     is_active: boolean;
 }
 
+export interface WarehouseStorageZone {
+    id: string;
+    zone_code: string;
+    zone_name: string;
+    building_or_hub?: string;
+    type?: string;
+    total_capacity_units: number;
+    current_utilized_units: number;
+    aisles?: string[] | string;
+    description?: string;
+    status?: string;
+}
 
 export interface AddItemFormData {
     item_code: string;
@@ -174,6 +187,7 @@ export interface AddItemFormData {
     current_stock: number;
     minimum_stock: number;
     storage_location: string;
+    warehouse_storage_zone_id?: string | null;
     supplier?: string;
     status: string;
     purchase_price: number;
