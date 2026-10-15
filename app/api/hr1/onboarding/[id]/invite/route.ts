@@ -51,24 +51,39 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   });
   if (insertError) return NextResponse.json({ error: "Could not create the onboarding link. Apply the HR1 onboarding SQL migration first." }, { status: 500 });
 
-  const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL_HR
+    || process.env.NEXT_PUBLIC_SITE_URL
+    || process.env.NEXT_PUBLIC_APP_URL;
   const origin = configuredOrigin ? new URL(configuredOrigin).origin : new URL(request.url).origin;
   const url = new URL(`/onboarding/${token}`, origin).toString();
   let emailSent = false;
+  // Use the existing shared HR Gmail account when configured. Fall back to the
+  // repository's existing SMTP configuration without requiring duplicate credentials.
+  const gmailUser = process.env.GMAIL_HR_USER;
+  const gmailPass = process.env.GMAIL_APP_HR_PASSWORD;
   const smtpHost = process.env.HR1_SMTP_HOST || process.env.SMTP_HOST;
   const smtpUser = process.env.HR1_SMTP_USER || process.env.SMTP_USER || process.env.EMAIL_USER;
   const smtpPass = process.env.HR1_SMTP_PASS || process.env.SMTP_PASS || process.env.EMAIL_PASS;
   const smtpFrom = process.env.HR1_SMTP_FROM || process.env.SMTP_FROM || process.env.EMAIL_FROM || smtpUser;
-  if (smtpHost && smtpUser && smtpPass && smtpFrom) {
+  const gmailConfigured = Boolean(gmailUser && gmailPass);
+  const smtpConfigured = Boolean(smtpHost && smtpUser && smtpPass && smtpFrom);
+  if (gmailConfigured || smtpConfigured) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: Number(process.env.HR1_SMTP_PORT || process.env.SMTP_PORT || 587),
-        secure: String(process.env.HR1_SMTP_SECURE || process.env.SMTP_SECURE || "false").toLowerCase() === "true",
-        auth: { user: smtpUser, pass: smtpPass },
-      });
+
+      const transporter = gmailConfigured
+        ? nodemailer.createTransport({
+            service: "gmail",
+            auth: { user: gmailUser!, pass: gmailPass! },
+          })
+        : nodemailer.createTransport({
+            host: smtpHost!,
+            port: Number(process.env.HR1_SMTP_PORT || process.env.SMTP_PORT || 587),
+            secure: String(process.env.HR1_SMTP_SECURE || process.env.SMTP_SECURE || "false").toLowerCase() === "true",
+            auth: { user: smtpUser!, pass: smtpPass! },
+          });
+
       await transporter.sendMail({
-        from: smtpFrom,
+        from: gmailConfigured ? gmailUser : smtpFrom,
         to: applicant.email,
         subject: "Action Required: Complete Your Airship Express Onboarding",
         text: `Dear ${applicant.first_name},\n\nCongratulations on advancing to the onboarding stage with Airship Express.\n\nPlease complete your onboarding form and submit the documents requested by our Human Resources team using your secure, personal link below:\n\n${url}\n\nThis link expires on ${new Date(expiresAt).toLocaleString("en-PH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Manila" })}. For your privacy, please do not share this link with anyone.\n\nAfter you submit the form and documents, Human Resources will review your submission and contact you if any corrections or additional information are needed.\n\nIf you have questions or believe you received this email in error, please contact the Airship Express Human Resources team.\n\nRegards,\nHuman Resources\nAirship Express`,

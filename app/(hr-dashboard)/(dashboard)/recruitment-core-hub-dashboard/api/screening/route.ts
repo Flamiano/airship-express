@@ -163,8 +163,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5. Check the Gemini API key.
-    const apiKey = process.env.GEMINI_API_KEY;
+    // 5. Prefer the HR1-specific key so HR1 can be configured independently.
+    // Keep the shared key as a compatibility fallback for existing deployments.
+    const apiKey = process.env.GEMINI_API_KEY_HR1
+      || process.env.GEMINI_API_KEY_HR
+      || process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
