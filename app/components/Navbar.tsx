@@ -23,6 +23,15 @@ const links: NavLink[] = [
   { label: "Home", href: "/" },
   { label: "About", href: "#about" },
   {
+    label: "Careers",
+    href: "/careers",
+    children: [
+      { label: "Browse Openings", desc: "See vacancies published by HR.", href: "/careers" },
+      { label: "Application Guide", desc: "Learn how to apply and follow next steps.", href: "/application-guide" },
+      { label: "Application Status", desc: "Check progress using your email and reference.", href: "/application-status" },
+    ],
+  },
+  {
     label: "Services",
     href: "#services",
     wide: true,
@@ -139,6 +148,10 @@ interface NavbarProps {
 export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileChild, setMobileChild] = useState<number | null>(null);
+  const closeMobileMenu = () => {
+    setMobileChild(null);
+    setMobileOpen(false);
+  };
   const isOpen = useIsOpenNow();
   const itemRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [scrolled, setScrolled] = useState(false);
@@ -160,7 +173,6 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
 
   useEffect(() => {
     onMenuOpenChangeRef.current?.(mobileOpen);
-    if (!mobileOpen) setMobileChild(null);
 
     if (typeof document === "undefined") return;
     const scrollEl = document.querySelector<HTMLElement>(".scroll-container");
@@ -333,7 +345,7 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
           >
             <ThemeToggle />
             <button
-              onClick={() => setMobileOpen((v) => !v)}
+              onClick={() => (mobileOpen ? closeMobileMenu() : setMobileOpen(true))}
               className="relative flex h-10 w-10 items-center justify-center rounded-full text-ink transition-colors hover:bg-line/40 dark:text-paper dark:hover:bg-paper/10"
               aria-label="Toggle menu"
               aria-expanded={mobileOpen}
@@ -414,7 +426,7 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                     <div className="flex items-center justify-between">
                       <Link
                         href={link.href}
-                        onClick={() => !link.children && setMobileOpen(false)}
+                        onClick={() => !link.children && closeMobileMenu()}
                         className="flex flex-1 items-baseline gap-3 py-3.5"
                       >
                         <span className="font-mono text-[11px] font-semibold text-accent">
@@ -451,7 +463,7 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                             <a
                               key={child.label}
                               href={child.href}
-                              onClick={() => setMobileOpen(false)}
+                              onClick={closeMobileMenu}
                               className="flex items-start gap-2 rounded-lg py-2 pr-2 transition-colors hover:bg-line/40 dark:hover:bg-paper/10"
                             >
                               <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
@@ -511,7 +523,7 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                 <div className="mt-4 flex gap-2.5">
                   <a
                     href="#track"
-                    onClick={() => setMobileOpen(false)}
+                    onClick={closeMobileMenu}
                     className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full border border-line font-rethink text-sm font-medium text-ink dark:border-paper/15 dark:text-paper"
                   >
                     <Search className="h-3.5 w-3.5" />
@@ -521,7 +533,7 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                     href="https://web.facebook.com/profile.php?id=61571986650033"
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => setMobileOpen(false)}
+                    onClick={closeMobileMenu}
                     className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-ink font-rethink text-sm font-semibold text-paper dark:bg-accent"
                   >
                     Book a Delivery

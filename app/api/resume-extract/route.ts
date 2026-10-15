@@ -1,44 +1,62 @@
 import { NextResponse } from "next/server";
+import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
+
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "Resume file is required." },
+        {
+          error: "Resume file is required.",
+        },
         { status: 400 }
       );
     }
 
     const fileName = file.name.toLowerCase();
-    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const buffer = Buffer.from(
+      await file.arrayBuffer()
+    );
 
     let resumeText = "";
 
     // ---------------------------------------------
-    // PDF EXTRACTION
+    // PDF
     // ---------------------------------------------
+
     if (fileName.endsWith(".pdf")) {
-      // Dynamic require to prevent Next.js / Turbopack bundler module errors
-      const pdfParse = require("pdf-parse/lib/pdf-parse.js");
-      const result = await pdfParse(buffer);
-      resumeText = result.text;
-    }
+  const parser = new PDFParse({
+    data: buffer,
+  });
+
+  const result = await parser.getText();
+
+  resumeText = result.text;
+
+  await parser.destroy();
+}
 
     // ---------------------------------------------
-    // DOCX EXTRACTION
+    // DOCX
     // ---------------------------------------------
+
     else if (fileName.endsWith(".docx")) {
-      const result = await mammoth.extractRawText({ buffer: buffer });
+      const result = await mammoth.extractRawText({
+        buffer,
+      });
+
       resumeText = result.value;
     }
 
     // ---------------------------------------------
-    // UNSUPPORTED FORMAT
+    // Unsupported format
     // ---------------------------------------------
+
     else {
       return NextResponse.json(
         {
@@ -66,7 +84,10 @@ export async function POST(request: Request) {
       text: resumeText,
     });
   } catch (error) {
-    console.error("RESUME EXTRACTION ERROR:", error);
+    console.error(
+      "RESUME EXTRACTION ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {

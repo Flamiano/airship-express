@@ -33,77 +33,77 @@ export default function NewInterviewPage() {
   // LOAD APPLICANTS
   // ==========================================
 
-  useEffect(() => {
-    async function loadApplicants() {
-      try {
-        setLoadingApplicants(true);
-        setError("");
+ useEffect(() => {
+  async function loadApplicants() {
+    try {
+      setLoadingApplicants(true);
+      setError("");
 
-        const { data, error } = await supabase
-          .from("hr1_applicants")
-          .select(`
-            id,
-            first_name,
-            last_name,
-            email,
-            status
-          `)
-          .order("first_name", { ascending: true });
+      const { data, error } = await supabase
+        .from("hr1_applicants")
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          status
+        `)
+        .order("first_name", { ascending: true });
 
-        if (error) {
-          console.error("APPLICANTS LOAD ERROR:", {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-            error: error,
-          });
-
-          setError(
-            `Unable to load applicants: ${
-              error.message || "Database query failed."
-            }`
-          );
-
-          return;
-        }
-
-        console.log("ALL APPLICANTS FROM SUPABASE:", data);
-
-        const excludedStatuses = [
-          "Hired",
-          "Completed",
-          "Passed",
-          "Onboarding",
-          "Employee",
-        ];
-
-        const availableApplicants = (data ?? []).filter(
-          (applicant) =>
-            !excludedStatuses.includes(applicant.status)
-        );
-
-        console.log(
-          "AVAILABLE APPLICANTS:",
-          availableApplicants
-        );
-
-        setApplicants(availableApplicants);
-      } catch (err: any) {
-        console.error("APPLICANTS EXCEPTION:", err);
+      if (error) {
+        console.error("APPLICANTS LOAD ERROR:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          error: error,
+        });
 
         setError(
           `Unable to load applicants: ${
-            err?.message || "Unexpected error occurred."
+            error.message || "Database query failed."
           }`
         );
-      } finally {
-        setLoadingApplicants(false);
-      }
-    }
 
-    loadApplicants();
-  }, []);
+        return;
+      }
+
+      console.log("ALL APPLICANTS FROM SUPABASE:", data);
+
+      const excludedStatuses = [
+        "Hired",
+        "Completed",
+        "Passed",
+        "Onboarding",
+        "Employee",
+      ];
+
+      const availableApplicants = (data ?? []).filter(
+        (applicant) =>
+          !excludedStatuses.includes(applicant.status)
+      );
+
+      console.log(
+        "AVAILABLE APPLICANTS:",
+        availableApplicants
+      );
+
+      setApplicants(availableApplicants);
+    } catch (err: unknown) {
+      console.error("APPLICANTS EXCEPTION:", err);
+
+      setError(
+        `Unable to load applicants: ${
+          err?.message || "Unexpected error occurred."
+        }`
+      );
+    } finally {
+      setLoadingApplicants(false);
+    }
+  }
+
+  loadApplicants();
+}, []);
 
   // ==========================================
   // SUBMIT
@@ -199,9 +199,9 @@ export default function NewInterviewPage() {
 
       router.push("/recruitment-core-hub-dashboard/recruitment/interviews");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("SUBMIT EXCEPTION:", err);
-      setError(`An unexpected error occurred: ${err.message || err}`);
+      setError(`An unexpected error occurred: ${err instanceof Error ? err.message : String(err)}`);
       setSaving(false);
     }
   }
@@ -234,7 +234,7 @@ export default function NewInterviewPage() {
                 Administrator
               </p>
             </div>
-            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-gradient-to-tr from-[#E91E8F] to-[#ff52b4] text-xs sm:text-sm font-bold text-white shadow-md shadow-[#E91E8F]/20 ring-2 ring-white">
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-gradient-to-tr from-[#e5167e] to-[#ff52b4] text-xs sm:text-sm font-bold text-white shadow-md shadow-[#e5167e]/20 ring-2 ring-white">
               SA
             </div>
           </div>
@@ -247,7 +247,7 @@ export default function NewInterviewPage() {
         {/* BACK BUTTON */}
         <Link
           href="/recruitment-core-hub-dashboard/recruitment/interviews"
-          className="group inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#E91E8F] transition-colors hover:text-[#c41375]"
+          className="group inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#e5167e] transition-colors hover:text-[#c41375]"
         >
           <svg
             className="h-4 w-4 transition-transform group-hover:-translate-x-1"
@@ -292,7 +292,7 @@ export default function NewInterviewPage() {
                   htmlFor="applicant"
                   className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-700"
                 >
-                  Applicant <span className="text-[#E91E8F]">*</span>
+                  Applicant <span className="text-[#e5167e]">*</span>
                 </label>
 
                 {loadingApplicants ? (
@@ -322,7 +322,7 @@ export default function NewInterviewPage() {
                       setApplicantId(event.target.value)
                     }
                     required
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10"
                   >
                     <option value="">
                       Select an applicant
@@ -348,7 +348,7 @@ export default function NewInterviewPage() {
                   htmlFor="interviewer"
                   className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-700"
                 >
-                  Interviewer <span className="text-[#E91E8F]">*</span>
+                  Interviewer <span className="text-[#e5167e]">*</span>
                 </label>
 
                 <input
@@ -360,7 +360,7 @@ export default function NewInterviewPage() {
                   }
                   required
                   placeholder="e.g. John Dela Cruz"
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10"
                 />
               </div>
 
@@ -371,7 +371,7 @@ export default function NewInterviewPage() {
                   className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-700"
                 >
                   Interview Date & Time{" "}
-                  <span className="text-[#E91E8F]">*</span>
+                  <span className="text-[#e5167e]">*</span>
                 </label>
 
                 <input
@@ -382,7 +382,7 @@ export default function NewInterviewPage() {
                     setScheduledDate(event.target.value)
                   }
                   required
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10"
                 />
               </div>
 
@@ -403,7 +403,7 @@ export default function NewInterviewPage() {
                     setLocationOrLink(event.target.value)
                   }
                   placeholder="e.g. HR Office or Google Meet link"
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10"
                 />
               </div>
 
@@ -471,7 +471,7 @@ export default function NewInterviewPage() {
               <button
                 type="submit"
                 disabled={saving || loadingApplicants}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#E91E8F] px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-[#E91E8F]/20 transition hover:bg-[#d8177f] active:bg-[#be116f] disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#e5167e] px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-[#e5167e]/20 transition hover:bg-[#d8177f] active:bg-[#be116f] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving && (
                   <svg

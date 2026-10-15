@@ -33,7 +33,9 @@ const linkColumns = [
         title: "Company",
         links: [
             { label: "About", href: "#about" },
-            { label: "Careers", href: "#careers" },
+            { label: "Careers & Openings", href: "/careers" },
+            { label: "Application Guide", href: "/application-guide" },
+            { label: "Application Status", href: "/application-status" },
             { label: "Partners", href: "#partners" },
         ],
     },

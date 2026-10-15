@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/app/(hr-dashboard)/supabase/client";
 
@@ -33,7 +33,7 @@ type Employee = {
 };
 
 export default function ReportsPage() {
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = createClient();
 
   const [stats, setStats] = useState<ReportStats>({
     applicants: 0,
@@ -50,7 +50,11 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReports = useCallback(async () => {
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  async function loadReports() {
     setLoading(true);
     setError(null);
 
@@ -308,11 +312,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
-
-  useEffect(() => {
-    loadReports();
-  }, [loadReports]);
+  }
 
   // Helper badge color generator
   const getStatusBadge = (statusStr: string) => {
@@ -335,21 +335,7 @@ export default function ReportsPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#F8FAFC] pb-16 text-[#0F172A]">
-        <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-[#E91E8F]/10 flex items-center justify-center text-[#E91E8F] shrink-0">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-[10px] sm:text-xs font-semibold tracking-wide uppercase text-slate-400">Analytics & Insights</p>
-                <h1 className="text-sm sm:text-lg font-bold text-slate-900 leading-tight">Reports & Executive Overview</h1>
-              </div>
-            </div>
-          </div>
-        </header>
+
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-6 sm:pt-8">
           <div className="animate-pulse space-y-6">
@@ -372,21 +358,7 @@ export default function ReportsPage() {
   if (error) {
     return (
       <main className="min-h-screen bg-[#F8FAFC] pb-16 text-[#0F172A]">
-        <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-[#E91E8F]/10 flex items-center justify-center text-[#E91E8F] shrink-0">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-[10px] sm:text-xs font-semibold tracking-wide uppercase text-slate-400">Analytics & Insights</p>
-                <h1 className="text-sm sm:text-lg font-bold text-slate-900 leading-tight">Reports & Executive Overview</h1>
-              </div>
-            </div>
-          </div>
-        </header>
+
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-12">
           <div className="mx-auto max-w-xl rounded-2xl border border-rose-200 bg-white p-6 sm:p-8 shadow-sm text-center">
@@ -399,7 +371,7 @@ export default function ReportsPage() {
             <p className="mt-1 text-sm text-slate-500">{error}</p>
             <button
               onClick={loadReports}
-              className="mt-6 inline-flex items-center justify-center rounded-xl bg-[#E91E8F] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#d8177f]"
+              className="mt-6 inline-flex items-center justify-center rounded-xl bg-[#e5167e] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#d8177f]"
             >
               Try Again
             </button>
@@ -414,31 +386,7 @@ export default function ReportsPage() {
       {/* --------------------------------------------------
           HEADER
       -------------------------------------------------- */}
-      <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E91E8F]/10 text-[#E91E8F] shrink-0">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-[10px] sm:text-xs font-semibold tracking-wide uppercase text-slate-400">Analytics & Insights</p>
-              <h1 className="text-sm sm:text-lg font-bold text-slate-900 leading-tight">Reports & Executive Overview</h1>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3 pl-4 border-l border-slate-100">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-800 leading-none">Super Admin</p>
-              <p className="text-xs text-slate-400 mt-1">Administrator</p>
-            </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#E91E8F] to-[#f458ad] text-xs font-bold text-white shadow-sm ring-2 ring-white shrink-0">
-              SA
-            </div>
-          </div>
-        </div>
-      </header>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-6 sm:pt-8">
         {/* Title Action Bar */}
@@ -479,7 +427,7 @@ export default function ReportsPage() {
               </div>
             </div>
             <p className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{stats.applicants}</p>
-            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#E91E8F] group-hover:translate-x-0.5 transition-transform">
+            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#e5167e] group-hover:translate-x-0.5 transition-transform">
               View Applicants <span className="ml-1">→</span>
             </p>
           </Link>
@@ -498,7 +446,7 @@ export default function ReportsPage() {
               </div>
             </div>
             <p className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{stats.interviews}</p>
-            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#E91E8F] group-hover:translate-x-0.5 transition-transform">
+            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#e5167e] group-hover:translate-x-0.5 transition-transform">
               View Interviews <span className="ml-1">→</span>
             </p>
           </Link>
@@ -517,7 +465,7 @@ export default function ReportsPage() {
               </div>
             </div>
             <p className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{stats.completedInterviews}</p>
-            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#E91E8F] group-hover:translate-x-0.5 transition-transform">
+            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#e5167e] group-hover:translate-x-0.5 transition-transform">
               View Interviews <span className="ml-1">→</span>
             </p>
           </Link>
@@ -536,7 +484,7 @@ export default function ReportsPage() {
               </div>
             </div>
             <p className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{stats.onboarding}</p>
-            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#E91E8F] group-hover:translate-x-0.5 transition-transform">
+            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#e5167e] group-hover:translate-x-0.5 transition-transform">
               View Onboarding <span className="ml-1">→</span>
             </p>
           </Link>
@@ -555,7 +503,7 @@ export default function ReportsPage() {
               </div>
             </div>
             <p className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{stats.completedOnboarding}</p>
-            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#E91E8F] group-hover:translate-x-0.5 transition-transform">
+            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#e5167e] group-hover:translate-x-0.5 transition-transform">
               View Onboarding <span className="ml-1">→</span>
             </p>
           </Link>
@@ -567,14 +515,14 @@ export default function ReportsPage() {
           >
             <div className="flex items-center justify-between">
               <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Total Employees</p>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-50 text-[#E91E8F] shrink-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-50 text-[#e5167e] shrink-0">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
             </div>
             <p className="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{stats.employees}</p>
-            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#E91E8F] group-hover:translate-x-0.5 transition-transform">
+            <p className="mt-3 inline-flex items-center text-xs font-semibold text-[#e5167e] group-hover:translate-x-0.5 transition-transform">
               View Employees <span className="ml-1">→</span>
             </p>
           </Link>
@@ -593,7 +541,7 @@ export default function ReportsPage() {
 
               <Link
                 href="/recruitment-core-hub-dashboard/applicants"
-                className="text-xs font-semibold text-[#E91E8F] hover:underline shrink-0"
+                className="text-xs font-semibold text-[#e5167e] hover:underline shrink-0"
               >
                 View All
               </Link>
@@ -665,7 +613,7 @@ export default function ReportsPage() {
 
               <Link
                 href="/recruitment-core-hub-dashboard/employees"
-                className="text-xs font-semibold text-[#E91E8F] hover:underline shrink-0"
+                className="text-xs font-semibold text-[#e5167e] hover:underline shrink-0"
               >
                 View All
               </Link>

@@ -58,7 +58,7 @@ export default function ScreeningPage() {
       setError("");
 
       const { data, error } = await supabase
-        .from("applicants")
+        .from("hr1_applicants")
         .select(`
           id,
           first_name,
@@ -66,7 +66,7 @@ export default function ScreeningPage() {
           email,
           resume_text,
           job_position_id,
-          job_positions (
+          job_positions:hr1_job_positions (
             id,
             title
           )
@@ -125,7 +125,7 @@ export default function ScreeningPage() {
 
     try {
       const response = await fetch(
-        "/api/screening",
+        "/recruitment-core-hub-dashboard/api/screening",
         {
           method: "POST",
           headers: {
@@ -245,7 +245,7 @@ export default function ScreeningPage() {
               </p>
             </div>
 
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E91E8F] text-sm font-bold text-white">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e5167e] text-sm font-bold text-white">
               SA
             </div>
 
@@ -259,8 +259,8 @@ export default function ScreeningPage() {
 
         {/* Back */}
         <Link
-          href="/dashboard"
-          className="text-sm font-medium text-[#E91E8F] hover:underline"
+          href="/recruitment-core-hub-dashboard/dashboard"
+          className="text-sm font-medium text-[#e5167e] hover:underline"
         >
           ← Back to Dashboard
         </Link>
@@ -273,7 +273,7 @@ export default function ScreeningPage() {
 
           <p className="mt-2 text-sm text-gray-500">
             Use AI-assisted screening to evaluate an
-            applicant's qualifications against the
+            applicant&apos;s qualifications against the
             applied position.
           </p>
         </div>
@@ -318,7 +318,7 @@ export default function ScreeningPage() {
                   setScreening(null);
                   setError("");
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-2 focus:ring-[#E91E8F]/20"
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/20"
               >
                 <option value="">
                   Select an applicant
@@ -419,7 +419,7 @@ export default function ScreeningPage() {
                 screeningLoading ||
                 loadingApplicants
               }
-              className="rounded-lg bg-[#E91E8F] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d8177f] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-[#e5167e] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d8177f] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {screeningLoading
                 ? "Analyzing Resume..."

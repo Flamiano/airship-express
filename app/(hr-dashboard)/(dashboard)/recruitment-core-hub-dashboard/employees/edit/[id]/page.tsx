@@ -256,9 +256,9 @@ export default function EditEmployeePage() {
             loadedEmployee.department ??
             ""
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("LOAD DATA CATCH ERROR:", err);
-        setError(`An unexpected error occurred: ${err.message || "Unknown error"}`);
+        setError(`An unexpected error occurred: ${err instanceof Error ? err.message : "Unknown error"}`);
       } finally {
         setLoading(false);
       }
@@ -447,9 +447,9 @@ export default function EditEmployeePage() {
 
       router.push("/recruitment-core-hub-dashboard/employees");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("SUBMIT CATCH ERROR:", err);
-      setError(`Save failed: ${err.message || "Unknown error"}`);
+      setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
       setSaving(false);
     }
   }
@@ -499,9 +499,9 @@ export default function EditEmployeePage() {
 
       router.push("/recruitment-core-hub-dashboard/employees");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("DELETE CATCH ERROR:", err);
-      setError(`Delete failed: ${err.message || "Unknown error"}`);
+      setError(`Delete failed: ${err instanceof Error ? err.message : "Unknown error"}`);
       setDeleting(false);
     }
   }
@@ -513,7 +513,7 @@ export default function EditEmployeePage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50/50 p-4">
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200/70">
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[#E91E8F] border-t-transparent" />
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[#e5167e] border-t-transparent" />
           <p className="text-xs font-medium text-gray-500">
             Loading employee...
           </p>
@@ -531,7 +531,7 @@ export default function EditEmployeePage() {
         <header className="sticky top-0 z-10 border-b border-gray-200/80 bg-white/80 backdrop-blur-md">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E91E8F]/10 text-[#E91E8F] font-bold text-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e5167e]/10 text-[#e5167e] font-bold text-sm">
                 HR
               </div>
               <div>
@@ -553,7 +553,7 @@ export default function EditEmployeePage() {
                   Administrator
                 </p>
               </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E91E8F] text-xs font-bold text-white shadow-sm ring-2 ring-white">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e5167e] text-xs font-bold text-white shadow-sm ring-2 ring-white">
                 SA
               </div>
             </div>
@@ -604,7 +604,7 @@ export default function EditEmployeePage() {
       <header className="sticky top-0 z-10 border-b border-gray-200/80 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E91E8F]/10 text-[#E91E8F] font-bold text-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e5167e]/10 text-[#e5167e] font-bold text-sm">
               HR
             </div>
             <div>
@@ -627,7 +627,7 @@ export default function EditEmployeePage() {
               </p>
             </div>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E91E8F] text-xs font-bold text-white shadow-sm ring-2 ring-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e5167e] text-xs font-bold text-white shadow-sm ring-2 ring-white">
               SA
             </div>
           </div>
@@ -683,7 +683,7 @@ export default function EditEmployeePage() {
                       event.target.value
                     )
                   }
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20 font-mono font-medium"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20 font-mono font-medium"
                   required
                 />
               </div>
@@ -707,7 +707,7 @@ export default function EditEmployeePage() {
                         event.target.value
                       )
                     }
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     required
                   />
                 </div>
@@ -729,7 +729,7 @@ export default function EditEmployeePage() {
                         event.target.value
                       )
                     }
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     required
                   />
                 </div>
@@ -754,7 +754,7 @@ export default function EditEmployeePage() {
                         event.target.value
                       )
                     }
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     required
                   />
                 </div>
@@ -776,7 +776,7 @@ export default function EditEmployeePage() {
                         event.target.value
                       )
                     }
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     required
                   />
                 </div>
@@ -800,7 +800,7 @@ export default function EditEmployeePage() {
                     )
                   }
                   rows={3}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                 />
               </div>
 
@@ -828,7 +828,7 @@ export default function EditEmployeePage() {
                         )
                       }
                       required
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     >
                       <option value="">
                         Select a job position
@@ -894,7 +894,7 @@ export default function EditEmployeePage() {
                       )
                     }
                     required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                   />
                 </div>
 
@@ -914,7 +914,7 @@ export default function EditEmployeePage() {
                         event.target.value
                       )
                     }
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                   >
                     {EMPLOYEE_STATUSES.map(
                       (employeeStatus) => (
@@ -958,7 +958,7 @@ export default function EditEmployeePage() {
                           event.target.value
                         )
                       }
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     />
                   </div>
 
@@ -979,7 +979,7 @@ export default function EditEmployeePage() {
                           event.target.value
                         )
                       }
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#E91E8F] focus:bg-white focus:ring-2 focus:ring-[#E91E8F]/20"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-xs sm:text-sm text-gray-900 outline-none transition focus:border-[#e5167e] focus:bg-white focus:ring-2 focus:ring-[#e5167e]/20"
                     />
                   </div>
                 </div>
@@ -1025,7 +1025,7 @@ export default function EditEmployeePage() {
                     deleting ||
                     jobPositions.length === 0
                   }
-                  className="inline-flex items-center justify-center rounded-xl bg-[#E91E8F] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#d8177f] focus:ring-2 focus:ring-[#E91E8F]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center justify-center rounded-xl bg-[#e5167e] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#d8177f] focus:ring-2 focus:ring-[#e5167e]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving
                     ? "Saving..."

@@ -2,18 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { createClient } from "@/app/(hr-dashboard)/supabase/client";
-
-interface Applicant {
-  id: string;
-  status: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string;
-  created_at: string;
-}
 
 const statuses = [
   {
@@ -98,36 +86,6 @@ const steps = [
 ];
 
 export default function ApplicationGuidePage() {
-  const supabase = createClient();
-  const [data, setData] = useState<Applicant[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchApplicants() {
-      try {
-        setLoading(true);
-        // Fixed: Updated table name from applicants to hr1_applicants
-        const { data: applicants, error: fetchError } = await supabase
-          .from("hr1_applicants")
-          .select("*");
-
-        if (fetchError) {
-          throw fetchError;
-        }
-
-        setData(applicants || []);
-      } catch (err: any) {
-        console.error("Error fetching applicants:", err?.message || err?.details || JSON.stringify(err));
-        setError("Unable to load application records at this time.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchApplicants();
-  }, [supabase]);
-
   return (
     <main className="min-h-screen bg-[#F8F9FA] text-[#121212]">
       {/* Header */}
@@ -135,7 +93,7 @@ export default function ApplicationGuidePage() {
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3.5 sm:px-8">
           <Link href="/" className="flex items-center gap-3 transition hover:opacity-90">
             <Image
-              src="/images/logo.jpg"
+              src="/airship-logo.png"
               alt="Airship Express Logo"
               width={48}
               height={48}
@@ -154,21 +112,13 @@ export default function ApplicationGuidePage() {
           </Link>
 
           <Link
-            href="/recruitment-core-hub-dashboard/application-status"
+            href="/application-status"
             className="rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-bold text-gray-700 transition hover:border-[#CB1A8E] hover:text-[#CB1A8E]"
           >
             Check Status
           </Link>
         </div>
       </header>
-
-      {error && (
-        <div className="mx-auto max-w-5xl px-4 pt-4">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-700">
-            {error}
-          </div>
-        </div>
-      )}
 
       {/* Hero */}
       <section className="border-b border-gray-100 bg-white">
@@ -189,14 +139,14 @@ export default function ApplicationGuidePage() {
 
             <div className="mt-6 sm:mt-7 flex flex-col sm:flex-row gap-3">
               <Link
-                href="/recruitment-core-hub-dashboard/apply"
+                href="/apply"
                 className="rounded-xl bg-[#CB1A8E] px-6 py-3.5 text-center text-sm font-bold text-white shadow-sm transition hover:bg-[#a31270]"
               >
                 Apply for a Position
               </Link>
 
               <Link
-                href="/recruitment-core-hub-dashboard/application-status"
+                href="/application-status"
                 className="rounded-xl border border-gray-200 bg-white px-6 py-3.5 text-center text-sm font-bold text-gray-700 transition hover:border-[#CB1A8E] hover:text-[#CB1A8E]"
               >
                 Track My Application
@@ -312,7 +262,7 @@ export default function ApplicationGuidePage() {
                 </div>
 
                 <Link
-                  href="/recruitment-core-hub-dashboard/application-status"
+                  href="/application-status"
                   className="block rounded-xl bg-[#CB1A8E] px-5 py-3.5 text-center text-sm font-bold text-white shadow-sm transition hover:bg-[#a31270]"
                 >
                   Check Application Status
@@ -472,14 +422,14 @@ export default function ApplicationGuidePage() {
 
             <div className="mt-6 sm:mt-7 flex flex-col sm:flex-row justify-center gap-3">
               <Link
-                href="/recruitment-core-hub-dashboard/application-status"
+                href="/application-status"
                 className="rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-[#CB1A8E] shadow-sm transition hover:bg-gray-100"
               >
                 Check Application Status
               </Link>
 
               <Link
-                href="/recruitment-core-hub-dashboard/apply"
+                href="/apply"
                 className="rounded-xl border border-white/30 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-white/10"
               >
                 Submit an Application
