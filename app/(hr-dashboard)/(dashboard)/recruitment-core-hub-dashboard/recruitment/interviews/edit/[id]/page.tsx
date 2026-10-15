@@ -11,6 +11,13 @@ type Applicant = {
   last_name: string;
 };
 
+type Profile = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+};
+
 type Interview = {
   id: string;
   applicant_id: string;
@@ -44,9 +51,10 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
   const [error, setError] = useState<string | null>(null);
 
   const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const [applicantId, setApplicantId] = useState("");
-  const [interviewer, setInterviewer] = useState("");
+  const [interviewerId, setInterviewerId] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [locationOrLink, setLocationOrLink] = useState("");
 
@@ -88,7 +96,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         const interview = data as Interview;
 
         setApplicantId(interview.applicant_id);
-        setInterviewer(interview.interviewer_id || "");
+        setInterviewerId(interview.interviewer_id || "");
 
         // Convert database ISO string to local HTML datetime-local format
         if (interview.scheduled_date) {
@@ -104,7 +112,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         setRating(interview.rating !== null ? String(interview.rating) : "");
         setFeedback(interview.feedback || "");
         setOutcome(interview.outcome || "Pending");
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("INTERVIEW LOAD ERROR:", err);
         setError(err?.message || "Failed to load interview record.");
       } finally {
@@ -118,25 +126,28 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
   }, [interviewId]);
 
   // ==========================================
-  // LOAD APPLICANTS
+  // LOAD APPLICANTS & PROFILES
   // ==========================================
 
   useEffect(() => {
-    async function loadApplicants() {
+    async function loadDropdowns() {
       try {
-        const { data, error } = await supabase
-          .from("hr1_applicants")
-          .select("id, first_name, last_name")
-          .order("first_name");
+        const [applicantsRes, profilesRes] = await Promise.all([
+          supabase.from("hr1_applicants").select("id, first_name, last_name").order("first_name"),
+          supabase.from("profiles").select("id, full_name, email, role").order("full_name"),
+        ]);
 
-        if (error) console.error("APPLICANTS LOAD ERROR:", error);
-        setApplicants(data || []);
+        if (applicantsRes.error) console.error("APPLICANTS LOAD ERROR:", applicantsRes.error);
+        if (profilesRes.error) console.error("PROFILES LOAD ERROR:", profilesRes.error);
+
+        setApplicants(applicantsRes.data || []);
+        setProfiles(profilesRes.data || []);
       } catch (err) {
         console.error("DROPDOWN LOAD ERROR:", err);
       }
     }
 
-    loadApplicants();
+    loadDropdowns();
   }, []);
 
   // ==========================================
@@ -159,8 +170,8 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
       return;
     }
 
-    if (!interviewer.trim()) {
-      setError("Please enter the interviewer's name.");
+    if (!interviewerId) {
+      setError("Please select an interviewer.");
       setSaving(false);
       return;
     }
@@ -213,7 +224,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         .from("hr1_interviews")
         .update({
           applicant_id: applicantId,
-          interviewer_id: interviewer.trim(),
+          interviewer_id: interviewerId,
           scheduled_date: new Date(scheduledDate).toISOString(),
           location_or_link: locationOrLink || null,
           status,
@@ -254,7 +265,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
       // Success redirect
       router.push("/recruitment-core-hub-dashboard/recruitment/interviews");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("SAVE ERROR:", err);
       setError(`Save failed: ${err?.message || "Unexpected error"}`);
       setSaving(false);
@@ -294,8 +305,8 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
         <div className="mx-auto flex min-h-[400px] max-w-4xl items-center justify-center px-4 sm:px-6">
           <div className="flex flex-col items-center gap-3">
             <div className="relative flex h-12 w-12 items-center justify-center">
-              <div className="absolute h-12 w-12 animate-ping rounded-full bg-[#CB1A8E]/10 opacity-75" />
-              <svg className="h-7 w-7 animate-spin text-[#CB1A8E]" fill="none" viewBox="0 0 24 24">
+              <div className="absolute h-12 w-12 animate-ping rounded-full bg-[#e5167e]/10 opacity-75" />
+              <svg className="h-7 w-7 animate-spin text-[#e5167e]" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
@@ -330,7 +341,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
               <p className="text-xs font-bold text-[#121212]">Super Admin</p>
               <p className="text-[10px] text-gray-400">HR Administrator</p>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#CB1A8E] text-xs font-black text-white shadow-sm ring-2 ring-pink-50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e5167e] text-xs font-black text-white shadow-sm ring-2 ring-pink-50">
               SA
             </div>
           </div>
@@ -341,7 +352,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
       <div className="mx-auto max-w-3xl px-4 sm:px-6 pt-6 sm:pt-8">
         <Link
           href="/recruitment-core-hub-dashboard/recruitment/interviews"
-          className="inline-flex items-center text-xs font-bold text-[#CB1A8E] hover:underline"
+          className="inline-flex items-center text-xs font-bold text-[#e5167e] hover:underline"
         >
           ← Back to Interviews
         </Link>
@@ -375,7 +386,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
                 value={applicantId}
                 onChange={(e) => setApplicantId(e.target.value)}
                 required
-                className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15"
               >
                 <option value="">Select an applicant</option>
                 {applicants.map((applicant) => (
@@ -386,19 +397,24 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
               </select>
             </div>
 
-            {/* Interviewer Text Input */}
+            {/* Interviewer Select */}
             <div>
               <label className="mb-1.5 block text-xs font-bold text-gray-700">
                 Interviewer <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                value={interviewer}
-                onChange={(e) => setInterviewer(e.target.value)}
-                placeholder="Enter interviewer name (e.g., John Doe)"
+              <select
+                value={interviewerId}
+                onChange={(e) => setInterviewerId(e.target.value)}
                 required
-                className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15 placeholder:text-gray-400"
-              />
+                className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15"
+              >
+                <option value="">Select an interviewer</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.full_name} ({profile.role})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Date & Time Input */}
@@ -411,7 +427,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
                 value={scheduledDate}
                 onChange={(e) => setScheduledDate(e.target.value)}
                 required
-                className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15"
+                className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15"
               />
             </div>
 
@@ -425,7 +441,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
                 value={locationOrLink}
                 onChange={(e) => setLocationOrLink(e.target.value)}
                 placeholder="e.g. Conference Room A or https://meet.google.com/xyz"
-                className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15 placeholder:text-gray-400"
+                className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15 placeholder:text-gray-400"
               />
             </div>
 
@@ -438,7 +454,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
                 <select
                   value={status}
                   onChange={(e) => handleStatusChange(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15"
                 >
                   <option value="Scheduled">Scheduled</option>
                   <option value="Completed">Completed</option>
@@ -456,7 +472,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
                   value={outcome}
                   onChange={(e) => setOutcome(e.target.value)}
                   disabled={status !== "Completed"}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15 disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15 disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="Pending">Pending</option>
                   <option value="Passed">Passed</option>
@@ -473,7 +489,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
               <select
                 value={rating}
                 onChange={(e) => setRating(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15"
               >
                 <option value="">No rating evaluated</option>
                 <option value="1">★☆☆☆☆ (1 / 5 - Poor)</option>
@@ -494,7 +510,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={5}
                 placeholder="Enter candidate strengths, weaknesses, and key interview takeaways..."
-                className="w-full rounded-xl border border-gray-200 p-3.5 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15 placeholder:text-gray-400"
+                className="w-full rounded-xl border border-gray-200 p-3.5 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15 placeholder:text-gray-400"
               />
             </div>
 
@@ -510,7 +526,7 @@ export default function EditInterviewPage({ params }: EditInterviewPageProps) {
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#CB1A8E] px-6 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#a31270] active:scale-[0.99] disabled:opacity-50"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#e5167e] px-6 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#b3115f] active:scale-[0.99] disabled:opacity-50"
               >
                 {saving ? (
                   <>

@@ -7,6 +7,7 @@ import { createClient } from "@/app/(hr-dashboard)/supabase/client";
 
 type Employee = {
   id: string;
+  applicant_id: string | null;
   employee_id_number: string;
   first_name: string;
   last_name: string;
@@ -18,11 +19,23 @@ type Employee = {
   status: string;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
-  hr1_job_positions:
+  job_positions:
     | {
         title: string;
       }
     | null;
+};
+
+type ApplicantDocument = {
+  id: string;
+  document_type: string;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  submission_status: string;
+  verification_status: string;
+  verification_remarks: string | null;
+  created_at: string;
 };
 
 export default function EmployeeDetailsPage() {
@@ -32,6 +45,9 @@ export default function EmployeeDetailsPage() {
   const employeeId = params.id as string;
 
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [documents, setDocuments] = useState<ApplicantDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -45,6 +61,7 @@ export default function EmployeeDetailsPage() {
           .from("hr1_employees")
           .select(`
             id,
+            applicant_id,
             employee_id_number,
             first_name,
             last_name,
@@ -56,7 +73,7 @@ export default function EmployeeDetailsPage() {
             status,
             emergency_contact_name,
             emergency_contact_phone,
-            hr1_job_positions (
+            job_positions:hr1_job_positions (
               title
             )
           `)
@@ -70,10 +87,29 @@ export default function EmployeeDetailsPage() {
           return;
         }
 
-        setEmployee(data as unknown as Employee);
-      } catch (err: any) {
+        const employeeRecord = data as unknown as Employee;
+        setEmployee(employeeRecord);
+
+        if (employeeRecord.applicant_id) {
+          setDocumentsLoading(true);
+          const { data: documentRows, error: documentsLoadError } = await supabase
+            .from("hr1_applicant_documents")
+            .select("id, document_type, original_filename, mime_type, size_bytes, submission_status, verification_status, verification_remarks, created_at")
+            .eq("applicant_id", employeeRecord.applicant_id)
+            .order("created_at", { ascending: false });
+
+          if (documentsLoadError) {
+            console.error("EMPLOYEE DOCUMENTS LOAD ERROR:", documentsLoadError);
+            setDocumentsError("Could not load this employee's submitted files.");
+          } else {
+            setDocuments((documentRows ?? []) as ApplicantDocument[]);
+          }
+          setDocumentsLoading(false);
+        }
+      } catch (err: unknown) {
         console.error("EMPLOYEE DETAILS CATCH ERROR:", err);
-        setError(`Unable to load employee: ${err.message || "Unknown error"}`);
+        setDocumentsLoading(false);
+        setError(`Unable to load employee: ${err instanceof Error ? err.message : "Unknown error"}`);
       } finally {
         setLoading(false);
       }
@@ -112,11 +148,27 @@ export default function EmployeeDetailsPage() {
     });
   }
 
+  function formatFileSize(sizeBytes: number) {
+    if (sizeBytes < 1024 * 1024) return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function getDocumentTypeLabel(type: string) {
+    const labels: Record<string, string> = {
+      resume: "Resume / CV",
+      government_id: "Government ID",
+      diploma: "Diploma / Certificate of Graduation",
+      academic_record: "Transcript of Records / Grades",
+      other_certificate: "Other Certificate",
+    };
+    return labels[type] ?? type.replaceAll("_", " ");
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50/50 p-4">
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200/70">
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[#E91E8F] border-t-transparent" />
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[#e5167e] border-t-transparent" />
           <p className="text-xs font-medium text-gray-500">
             Loading employee details...
           </p>
@@ -128,37 +180,6 @@ export default function EmployeeDetailsPage() {
   if (error || !employee) {
     return (
       <main className="min-h-screen bg-gray-50/50 pb-12">
-        <header className="sticky top-0 z-10 border-b border-gray-200/80 bg-white/80 backdrop-blur-md">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E91E8F]/10 text-[#E91E8F] font-bold text-sm">
-                HR
-              </div>
-              <div>
-                <h1 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">
-                  Recruitment & Employee Records
-                </h1>
-                <p className="text-[11px] sm:text-xs text-gray-500">
-                  Human Resource Department
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-semibold text-gray-900">
-                  Super Admin
-                </p>
-                <p className="text-[11px] text-gray-500">
-                  Administrator
-                </p>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E91E8F] text-xs font-bold text-white shadow-sm ring-2 ring-white">
-                SA
-              </div>
-            </div>
-          </div>
-        </header>
 
         <div className="mx-auto max-w-4xl px-4 sm:px-6 py-12">
           <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-sm ring-1 ring-gray-200/70 text-center">
@@ -194,38 +215,6 @@ export default function EmployeeDetailsPage() {
   return (
     <main className="min-h-screen bg-gray-50/50 pb-12">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-gray-200/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E91E8F]/10 text-[#E91E8F] font-bold text-sm">
-              HR
-            </div>
-            <div>
-              <h1 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">
-                Recruitment & Employee Records
-              </h1>
-              <p className="text-[11px] sm:text-xs text-gray-500">
-                Human Resource Department
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-semibold text-gray-900">
-                Super Admin
-              </p>
-              <p className="text-[11px] text-gray-500">
-                Administrator
-              </p>
-            </div>
-
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E91E8F] text-xs font-bold text-white shadow-sm ring-2 ring-white">
-              SA
-            </div>
-          </div>
-        </div>
-      </header>
 
       {/* Content */}
       <div className="mx-auto max-w-4xl px-4 sm:px-6 pt-8">
@@ -243,8 +232,8 @@ export default function EmployeeDetailsPage() {
           </Link>
 
           <Link
-            href={`/recruitment-core-hub-dashboard/employees/edit/${employee.id}`}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#E91E8F] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#d8177f] focus:ring-2 focus:ring-[#E91E8F]/30"
+              href={`/recruitment-core-hub-dashboard/employees/edit/${employee.id}`}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#e5167e] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#d8177f] focus:ring-2 focus:ring-[#e5167e]/30"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -275,7 +264,7 @@ export default function EmployeeDetailsPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-gray-300">
-                    {employee.hr1_job_positions?.title || "No position assigned"} • {employee.department}
+                    {employee.job_positions?.title || "No position assigned"} • {employee.department}
                   </p>
                 </div>
               </div>
@@ -327,7 +316,7 @@ export default function EmployeeDetailsPage() {
                   </p>
                   <a
                     href={`mailto:${employee.email}`}
-                    className="mt-1 inline-block text-xs font-medium text-[#E91E8F] hover:underline break-all"
+                    className="mt-1 inline-block text-xs font-medium text-[#e5167e] hover:underline break-all"
                   >
                     {employee.email}
                   </a>
@@ -368,7 +357,7 @@ export default function EmployeeDetailsPage() {
                     Job Position
                   </p>
                   <p className="mt-1 text-xs font-semibold text-gray-900">
-                    {employee.hr1_job_positions?.title || "No position"}
+                    {employee.job_positions?.title || "No position"}
                   </p>
                 </div>
 
@@ -407,6 +396,73 @@ export default function EmployeeDetailsPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Section: Submitted Documents */}
+            <div className="mt-6 border-t border-gray-100 pt-6 sm:mt-8 sm:pt-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                    Submitted Documents
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Files submitted with the employee&apos;s original application.
+                  </p>
+                </div>
+                {employee.applicant_id && (
+                  <Link
+                    href={`/recruitment-core-hub-dashboard/applicants/${employee.applicant_id}/edit`}
+                    className="text-xs font-semibold text-[#e5167e] hover:underline"
+                  >
+                    Open Applicant Profile
+                  </Link>
+                )}
+              </div>
+
+              {documentsLoading ? (
+                <p className="mt-4 rounded-xl bg-gray-50 p-4 text-xs text-gray-500">Loading submitted files…</p>
+              ) : documentsError ? (
+                <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700">{documentsError}</p>
+              ) : !employee.applicant_id ? (
+                <p className="mt-4 rounded-xl bg-gray-50 p-4 text-xs text-gray-500">
+                  This employee record is not linked to an applicant record, so no submitted application files can be shown here.
+                </p>
+              ) : documents.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-gray-50 p-4 text-xs text-gray-500">No files have been submitted for the linked applicant.</p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {documents.map((document) => (
+                    <article key={document.id} className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="break-all text-xs font-semibold text-gray-900">{document.original_filename}</p>
+                        <p className="mt-1 text-[11px] text-gray-500">
+                          {getDocumentTypeLabel(document.document_type)} · {document.mime_type} · {formatFileSize(document.size_bytes)} · Submitted {formatDate(document.created_at.slice(0, 10))}
+                        </p>
+                        <p className="mt-1 text-[11px] font-medium text-gray-600">
+                          {document.submission_status} · {document.verification_status}
+                          {document.verification_remarks ? ` · ${document.verification_remarks}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-4 text-xs font-semibold">
+                        <a
+                          href={`/api/hr1/applicants/${employee.applicant_id}/resume?document=${encodeURIComponent(document.id)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-700 hover:underline"
+                        >
+                          View
+                        </a>
+                        <a
+                          href={`/api/hr1/applicants/${employee.applicant_id}/resume?document=${encodeURIComponent(document.id)}&download=1`}
+                          className="text-blue-700 hover:underline"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Section: Emergency Contact */}

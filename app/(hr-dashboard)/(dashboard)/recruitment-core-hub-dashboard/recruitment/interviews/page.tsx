@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/app/(hr-dashboard)/supabase/client";
@@ -26,7 +25,7 @@ type Interview = {
   feedback: string | null;
   outcome: string | null;
   created_at: string;
-  hr1_applicants: Applicant | Applicant[] | null;
+  applicants: Applicant | Applicant[] | null;
 };
 
 export default function InterviewsPage() {
@@ -64,7 +63,7 @@ export default function InterviewsPage() {
           feedback,
           outcome,
           created_at,
-          hr1_applicants (
+          applicants:hr1_applicants (
             id,
             first_name,
             last_name,
@@ -77,7 +76,7 @@ export default function InterviewsPage() {
       if (fetchError) throw fetchError;
 
       setInterviews((data as unknown as Interview[]) || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("INTERVIEWS LOAD ERROR (FULL):", JSON.stringify(err, null, 2));
       setError(`Unable to load interview schedules: ${err?.message || "Unexpected error"}`);
     } finally {
@@ -86,6 +85,8 @@ export default function InterviewsPage() {
   }
 
   useEffect(() => {
+    // The initial Supabase read hydrates this page after the component mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadInterviews();
   }, []);
 
@@ -128,9 +129,9 @@ export default function InterviewsPage() {
       if (deleteError) throw deleteError;
 
       setInterviews((current) => current.filter((interview) => interview.id !== interviewId));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("INTERVIEW DELETE ERROR:", err);
-      setError(`Delete failed: ${err.message}`);
+      setError(`Delete failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setDeletingId(null);
     }
@@ -142,7 +143,7 @@ export default function InterviewsPage() {
 
   const filteredInterviews = useMemo(() => {
     return interviews.filter((interview) => {
-      const applicantName = getApplicantName(interview.hr1_applicants).toLowerCase();
+      const applicantName = getApplicantName(interview.applicants).toLowerCase();
       const location = (interview.location_or_link || "").toLowerCase();
 
       const matchesSearch =
@@ -193,38 +194,7 @@ export default function InterviewsPage() {
   return (
     <main className="min-h-screen bg-[#F8F9FA] pb-16">
       {/* Top Header */}
-      <header className="sticky top-0 z-25 border-b border-gray-200 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/images/logo.jpg"
-              alt="Logo"
-              width={28}
-              height={28}
-              className="h-7 w-7 shrink-0 rounded-md object-contain"
-              priority
-            />
-            <div>
-              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-gray-400 leading-tight">
-                Human Resource Department
-              </p>
-              <h1 className="text-base sm:text-xl font-black text-[#121212] leading-tight">
-                Recruitment & Applicant Portal
-              </h1>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:block text-right">
-              <p className="text-xs font-bold text-[#121212]">Super Admin</p>
-              <p className="text-[10px] text-gray-400">HR Administrator</p>
-            </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#CB1A8E] text-xs font-black text-white shadow-sm ring-2 ring-pink-50">
-              SA
-            </div>
-          </div>
-        </div>
-      </header>
 
       {/* Main Container */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-6 sm:pt-8">
@@ -239,7 +209,7 @@ export default function InterviewsPage() {
 
           <Link
             href="/recruitment-core-hub-dashboard/recruitment/interviews/new"
-            className="inline-flex items-center justify-center rounded-xl bg-[#CB1A8E] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#a31270] active:scale-[0.99]"
+            className="inline-flex items-center justify-center rounded-xl bg-[#e5167e] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#b3115f] active:scale-[0.99]"
           >
             + Schedule Interview
           </Link>
@@ -265,13 +235,13 @@ export default function InterviewsPage() {
                 placeholder="Search candidate name or venue..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full sm:max-w-xs rounded-xl border border-gray-200 px-3.5 py-2 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E] focus:ring-2 focus:ring-[#CB1A8E]/15 placeholder:text-gray-400"
+                className="w-full sm:max-w-xs rounded-xl border border-gray-200 px-3.5 py-2 text-xs text-gray-800 outline-none transition focus:border-[#e5167e] focus:ring-2 focus:ring-[#e5167e]/15 placeholder:text-gray-400"
               />
 
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full sm:w-auto rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs text-gray-800 outline-none transition focus:border-[#CB1A8E]"
+                className="w-full sm:w-auto rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs text-gray-800 outline-none transition focus:border-[#e5167e]"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="Scheduled">Scheduled</option>
@@ -289,7 +259,7 @@ export default function InterviewsPage() {
             >
               {loading ? (
                 <>
-                  <svg className="h-3.5 w-3.5 animate-spin text-[#CB1A8E]" fill="none" viewBox="0 0 24 24">
+                  <svg className="h-3.5 w-3.5 animate-spin text-[#e5167e]" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -306,8 +276,8 @@ export default function InterviewsPage() {
             <div className="flex min-h-[320px] items-center justify-center p-8">
               <div className="flex flex-col items-center gap-3">
                 <div className="relative flex h-12 w-12 items-center justify-center">
-                  <div className="absolute h-12 w-12 animate-ping rounded-full bg-[#CB1A8E]/10 opacity-75" />
-                  <svg className="h-7 w-7 animate-spin text-[#CB1A8E]" fill="none" viewBox="0 0 24 24">
+                  <div className="absolute h-12 w-12 animate-ping rounded-full bg-[#e5167e]/10 opacity-75" />
+                  <svg className="h-7 w-7 animate-spin text-[#e5167e]" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -332,7 +302,7 @@ export default function InterviewsPage() {
               {!searchQuery && statusFilter === "ALL" && (
                 <Link
                   href="/recruitment-core-hub-dashboard/recruitment/interviews/new"
-                  className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[#CB1A8E] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#a31270]"
+                  className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[#e5167e] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#b3115f]"
                 >
                   + Schedule First Interview
                 </Link>
@@ -342,7 +312,7 @@ export default function InterviewsPage() {
 
           {/* Data Table */}
           {!loading && filteredInterviews.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="max-w-full overflow-x-auto" tabIndex={0} aria-label="Interview records table; scroll horizontally to see all columns">
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-gray-100 bg-gray-50/70 uppercase tracking-wider text-gray-400 font-semibold">
                   <tr>
@@ -358,9 +328,9 @@ export default function InterviewsPage() {
 
                 <tbody className="divide-y divide-gray-100 font-medium text-gray-700">
                   {filteredInterviews.map((interview) => {
-                    const applicantObj = Array.isArray(interview.hr1_applicants) 
-                      ? interview.hr1_applicants[0] 
-                      : interview.hr1_applicants;
+                    const applicantObj = Array.isArray(interview.applicants)
+                      ? interview.applicants[0]
+                      : interview.applicants;
                     const applicantKey = applicantObj?.id || interview.id;
 
                     return (
@@ -368,7 +338,7 @@ export default function InterviewsPage() {
                         {/* APPLICANT */}
                         <td className="px-6 py-4">
                           <span className="font-bold text-[#121212]" key={applicantKey}>
-                            {getApplicantName(interview.hr1_applicants)}
+                            {getApplicantName(interview.applicants)}
                           </span>
                         </td>
 

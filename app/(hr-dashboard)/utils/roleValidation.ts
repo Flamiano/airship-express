@@ -1,4 +1,4 @@
-import { AppRole } from "../(dashboard)/payroll-benefits-dashboard/types";
+import { HR_ROUTES } from "../constants";
 
 // Account types — distinct from HR admin roles.
 // Authentication produces an account type; module authorization checks
@@ -30,11 +30,15 @@ export const ROLE_DASHBOARD_MAP = {
   [HR_ROLES.SUPER_ADMIN]: "/payroll-benefits-dashboard",
   [HR_ROLES.HR_PAYROLL_ADMIN]: "/payroll-benefits-dashboard",
   [HR_ROLES.HR_PERFORMANCE_ADMIN]: "/performance-development-dashboard",
-  [HR_ROLES.HR_RECRUITMENT_ADMIN]: "/recruitment-dashboard",
+  [HR_ROLES.HR_RECRUITMENT_ADMIN]: `${HR_ROUTES.RECRUITMENT_CORE_HUB}/dashboard`,
   [HR_ROLES.HR_WORKFORCE_ADMIN]: "/workforce-management-dashboard",
 } as const;
 
 export const DASHBOARD_ACCESS: Record<string, string[]> = {
+  "/recruitment-core-hub-dashboard": [
+  HR_ROLES.SUPER_ADMIN,
+  HR_ROLES.HR_RECRUITMENT_ADMIN,
+],
   "/payroll-benefits-dashboard": [
     HR_ROLES.SUPER_ADMIN,
     HR_ROLES.HR_PAYROLL_ADMIN,
@@ -86,7 +90,9 @@ export async function validateHRRole(
 }
 
 export function isValidHRRole(role: string): boolean {
-  return Object.values(HR_ROLES).includes(role as any);
+  return Object.values(HR_ROLES).includes(
+    role as (typeof HR_ROLES)[keyof typeof HR_ROLES]
+  );
 }
 
 export function getAllHRRoles(): string[] {

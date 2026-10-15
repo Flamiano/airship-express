@@ -15,6 +15,7 @@ import CoverageArea from "./pages/landingpage/CoverageArea";
 import CommandCenter from "./pages/landingpage/CommandCenter";
 import Footer from "./components/Footer";
 import Hero from "./pages/landingpage/Hero";
+import CareersSection from "./pages/landingpage/CareersSection";
 
 export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -115,6 +116,7 @@ export default function Home() {
 
           <CoverageArea />
           <CommandCenter />
+          <CareersSection />
 
           <Footer />
         </div>
