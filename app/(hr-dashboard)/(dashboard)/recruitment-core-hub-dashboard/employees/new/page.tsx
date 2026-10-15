@@ -152,10 +152,10 @@ export default function NewEmployeePage() {
 
         setApplicants(availableApplicants);
         setJobPositions(positionsResult.data ?? []);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!isMounted) return;
         console.error("UNEXPECTED LOAD ERROR:", err);
-        setError(`An unexpected error occurred: ${err.message || err}`);
+        setError(`An unexpected error occurred: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         if (isMounted) {
           setLoadingData(false);
@@ -302,7 +302,7 @@ export default function NewEmployeePage() {
       /*
        * Create employee record
        */
-      const { data, error: employeeError } = await supabase
+      const { error: employeeError } = await supabase
         .from("hr1_employees")
         .insert({
           applicant_id: applicantId || null,
@@ -318,9 +318,7 @@ export default function NewEmployeePage() {
           status: status,
           emergency_contact_name: emergencyContactName.trim() || null,
           emergency_contact_phone: emergencyContactPhone.trim() || null,
-        })
-        .select()
-        .single();
+        });
 
       if (employeeError) {
         console.error("EMPLOYEE INSERT ERROR:", employeeError);
@@ -345,9 +343,9 @@ export default function NewEmployeePage() {
 
       router.push("/recruitment-core-hub-dashboard/employees");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("UNEXPECTED SAVE ERROR:", err);
-      setError(`An unexpected error occurred: ${err.message || err}`);
+      setError(`An unexpected error occurred: ${err instanceof Error ? err.message : String(err)}`);
       setSaving(false);
     }
   }
@@ -358,7 +356,7 @@ export default function NewEmployeePage() {
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 sm:px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E91E8F]/10 text-[#E91E8F]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e5167e]/10 text-[#e5167e]">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
@@ -378,7 +376,7 @@ export default function NewEmployeePage() {
               </p>
               <p className="text-xs text-slate-400 mt-1">Administrator</p>
             </div>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#E91E8F] to-[#f458ad] text-xs font-bold text-white shadow-sm ring-2 ring-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#e5167e] to-[#f458ad] text-xs font-bold text-white shadow-sm ring-2 ring-white">
               SA
             </div>
           </div>
@@ -391,7 +389,7 @@ export default function NewEmployeePage() {
         <div className="mb-6">
           <Link
             href="/recruitment-core-hub-dashboard/employees"
-            className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[#E91E8F] transition-colors group mb-3"
+            className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[#e5167e] transition-colors group mb-3"
           >
             <span className="mr-1.5 transition-transform group-hover:-translate-x-1">←</span>
             Back to Employees
@@ -417,7 +415,7 @@ export default function NewEmployeePage() {
                   htmlFor="applicant"
                   className="text-sm font-semibold text-slate-800 flex items-center gap-2"
                 >
-                  <svg className="h-4 w-4 shrink-0 text-[#E91E8F]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <svg className="h-4 w-4 shrink-0 text-[#e5167e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   Import From Existing Applicant
@@ -427,7 +425,7 @@ export default function NewEmployeePage() {
 
               {loadingData ? (
                 <div className="flex items-center gap-3 py-3 px-4 rounded-xl border border-slate-200 bg-white/60 text-sm text-slate-500 animate-pulse">
-                  <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-[#E91E8F]" />
+                  <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-[#e5167e]" />
                   <span>Loading eligible applicants...</span>
                 </div>
               ) : applicants.length === 0 ? (
@@ -441,7 +439,7 @@ export default function NewEmployeePage() {
                     id="applicant"
                     value={applicantId}
                     onChange={(e) => handleApplicantChange(e.target.value)}
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 shadow-sm pr-10 truncate"
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 shadow-sm pr-10 truncate"
                   >
                     <option value="">Select an applicant to auto-fill form...</option>
                     {applicants.map((applicant) => (
@@ -484,7 +482,7 @@ export default function NewEmployeePage() {
                   onChange={(e) => setEmployeeIdNumber(e.target.value)}
                   placeholder="EMP-0001"
                   required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                 />
               </div>
 
@@ -504,7 +502,7 @@ export default function NewEmployeePage() {
                     onChange={(e) => setFirstName(e.target.value)}
                     required
                     placeholder="Enter first name"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                   />
                 </div>
 
@@ -522,7 +520,7 @@ export default function NewEmployeePage() {
                     onChange={(e) => setLastName(e.target.value)}
                     required
                     placeholder="Enter last name"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                   />
                 </div>
               </div>
@@ -543,7 +541,7 @@ export default function NewEmployeePage() {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     placeholder="name@example.com"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                   />
                 </div>
 
@@ -561,7 +559,7 @@ export default function NewEmployeePage() {
                     onChange={(e) => setPhone(e.target.value)}
                     required
                     placeholder="09123456789"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                   />
                 </div>
               </div>
@@ -580,7 +578,7 @@ export default function NewEmployeePage() {
                   onChange={(e) => setAddress(e.target.value)}
                   rows={3}
                   placeholder="Street address, city, province, postal code"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400 resize-none"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400 resize-none"
                 />
               </div>
             </div>
@@ -617,7 +615,7 @@ export default function NewEmployeePage() {
                         value={jobPositionId}
                         onChange={(e) => handleJobPositionChange(e.target.value)}
                         required
-                        className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 pr-10"
+                        className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 pr-10"
                       >
                         <option value="">Select a job position</option>
                         {jobPositions.map((position) => (
@@ -668,7 +666,7 @@ export default function NewEmployeePage() {
                     value={dateHired}
                     onChange={(e) => setDateHired(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10"
                   />
                 </div>
 
@@ -684,7 +682,7 @@ export default function NewEmployeePage() {
                       id="status"
                       value={status}
                       onChange={(e) => setStatus(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 pr-10"
+                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 pr-10"
                     >
                       {EMPLOYEE_STATUSES.map((employeeStatus) => (
                         <option key={employeeStatus} value={employeeStatus}>
@@ -723,7 +721,7 @@ export default function NewEmployeePage() {
                     value={emergencyContactName}
                     onChange={(e) => setEmergencyContactName(e.target.value)}
                     placeholder="Enter contact name"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                   />
                 </div>
 
@@ -740,7 +738,7 @@ export default function NewEmployeePage() {
                     value={emergencyContactPhone}
                     onChange={(e) => setEmergencyContactPhone(e.target.value)}
                     placeholder="09123456789"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#E91E8F] focus:ring-4 focus:ring-[#E91E8F]/10 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#e5167e] focus:ring-4 focus:ring-[#e5167e]/10 placeholder:text-slate-400"
                   />
                 </div>
               </div>
@@ -768,7 +766,7 @@ export default function NewEmployeePage() {
                 <button
                   type="submit"
                   disabled={saving || loadingData || jobPositions.length === 0}
-                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-[#E91E8F] px-6 py-2.5 text-xs font-semibold text-white shadow-sm shadow-[#E91E8F]/30 transition hover:bg-[#d8177f] focus:outline-none focus:ring-4 focus:ring-[#E91E8F]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-[#e5167e] px-6 py-2.5 text-xs font-semibold text-white shadow-sm shadow-[#e5167e]/30 transition hover:bg-[#d8177f] focus:outline-none focus:ring-4 focus:ring-[#e5167e]/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? (
                     <>

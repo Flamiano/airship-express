@@ -1,8 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/app/(hr-dashboard)/supabase/client";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type DashboardStats = {
   applicants: number;
@@ -10,6 +22,12 @@ type DashboardStats = {
   onboarding: number;
   activeEmployees: number;
 };
+
+type ApplicantRecord = { status: string | null; created_at: string };
+type InterviewRecord = { status: string | null; outcome: string | null };
+type ChartItem = { name: string; value: number };
+
+const CHART_COLORS = ["#e5167e", "#2563EB", "#F59E0B", "#10B981", "#7C3AED", "#64748B"];
 
 type ActivityItem = {
   id: string;
@@ -20,8 +38,26 @@ type ActivityItem = {
   status: string;
 };
 
+type RecentApplicant = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  created_at: string;
+  status: string | null;
+};
+
+type RecentOnboarding = {
+  id: string;
+  created_at: string;
+  completed_at: string | null;
+  hr1_applicants:
+    | { first_name: string; last_name: string }
+    | { first_name: string; last_name: string }[]
+    | null;
+};
+
 export default function DashboardPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [stats, setStats] = useState<DashboardStats>({
     applicants: 0,
@@ -31,164 +67,125 @@ export default function DashboardPage() {
   });
 
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [applicantStatuses, setApplicantStatuses] = useState<ChartItem[]>([]);
+  const [applicantTrend, setApplicantTrend] = useState<ChartItem[]>([]);
+  const [interviewSummary, setInterviewSummary] = useState({ total: 0, completed: 0, passed: 0, failed: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-  async function loadDashboardData() {
-  setLoading(true);
-  setError(null);
+    try {
+      const [
+        applicantRes,
+        positionRes,
+        onboardingRes,
+        employeeRes,
+        recentApplicantsRes,
+        recentOnboardingsRes,
+        applicantBreakdownRes,
+        interviewsRes,
+      ] = await Promise.all([
+        supabase
+          .from("hr1_applicants")
+          .select("*", { count: "exact", head: true }),
+        supabase
+          .from("hr1_job_positions")
+          .select("*", { count: "exact", head: true })
+          .eq("is_active", true),
+        supabase
+          .from("hr1_onboardings")
+          .select("*", { count: "exact", head: true })
+          .is("completed_at", null),
+        supabase
+  .from("hr1_employees")
+  .select("*", { count: "exact", head: true })
+  .eq("status", "active"),
+supabase
+  .from("hr1_applicants")
+  .select("id, first_name, last_name, created_at, status")
+  .order("created_at", { ascending: false })
+  .limit(5),
+        supabase
+          .from("hr1_onboardings")
+          .select(`
+            id,
+            created_at,
+            completed_at,
+            hr1_applicants(first_name, last_name)
+          `)
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase.from("hr1_applicants").select("status, created_at"),
+        supabase.from("hr1_interviews").select("status, outcome"),
+      ]);
 
-  try {
-    const [
-      applicantRes,
-      positionRes,
-      onboardingRes,
-      employeeRes,
-      recentApplicantsRes,
-      recentOnboardingsRes,
-    ] = await Promise.all([
-      // Total applicants
-      supabase
-        .from("hr1_applicants")
-        .select("*", { count: "exact", head: true }),
+      if (applicantRes.error) throw new Error(`Applicants query failed: ${applicantRes.error.message}`);
+      if (positionRes.error) throw new Error(`Positions query failed: ${positionRes.error.message}`);
+      if (onboardingRes.error) throw new Error(`Onboarding query failed: ${onboardingRes.error.message}`);
+      if (employeeRes.error) throw new Error(`Employees query failed: ${employeeRes.error.message}`);
+      if (applicantBreakdownRes.error) throw new Error(`Applicant chart query failed: ${applicantBreakdownRes.error.message}`);
+      if (interviewsRes.error) throw new Error(`Interview summary query failed: ${interviewsRes.error.message}`);
 
-      // Open positions
-      supabase
-        .from("hr1_job_positions")
-        .select("*", { count: "exact", head: true })
-        .eq("is_active", true),
+      setStats({
+        applicants: applicantRes.count ?? 0,
+        openPositions: positionRes.count ?? 0,
+        onboarding: onboardingRes.count ?? 0,
+        activeEmployees: employeeRes.count ?? 0,
+      });
 
-      // Applicants currently in onboarding
-      supabase
-        .from("hr1_onboardings")
-        .select("*", { count: "exact", head: true })
-        .is("completed_at", null),
+      const applicantRows = (applicantBreakdownRes.data ?? []) as ApplicantRecord[];
+      const statusMap = new Map<string, number>();
+      for (const row of applicantRows) {
+        const label = row.status?.trim() || "Pending";
+        statusMap.set(label, (statusMap.get(label) ?? 0) + 1);
+      }
+      setApplicantStatuses(Array.from(statusMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
 
-      // Active employees
-      supabase
-        .from("hr1_employees")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "active"),
+      const monthKeys = Array.from({ length: 6 }, (_, index) => {
+        const date = new Date();
+        date.setDate(1);
+        date.setMonth(date.getMonth() - (5 - index));
+        return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`, name: date.toLocaleDateString(undefined, { month: "short" }) };
+      });
+      const monthMap = new Map(monthKeys.map((month) => [month.key, 0]));
+      for (const row of applicantRows) {
+        const date = new Date(row.created_at);
+        if (Number.isNaN(date.getTime())) continue;
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        if (monthMap.has(key)) monthMap.set(key, (monthMap.get(key) ?? 0) + 1);
+      }
+      setApplicantTrend(monthKeys.map((month) => ({ name: month.name, value: monthMap.get(month.key) ?? 0 })));
 
-      // Recent applicants
-      supabase
-        .from("hr1_applicants")
-        .select("id, first_name, last_name, created_at, status")
-        .order("created_at", { ascending: false })
-        .limit(5),
+      const interviewRows = (interviewsRes.data ?? []) as InterviewRecord[];
+      setInterviewSummary({
+        total: interviewRows.length,
+        completed: interviewRows.filter((row) => row.status?.toLowerCase() === "completed").length,
+        passed: interviewRows.filter((row) => row.outcome?.toLowerCase() === "passed").length,
+        failed: interviewRows.filter((row) => row.outcome?.toLowerCase() === "failed").length,
+      });
 
-      // Recent onboarding records
-      supabase
-        .from("hr1_onboardings")
-        .select(`
-          id,
-          created_at,
-          completed_at,
-          applicant_id
-        `)
-        .order("created_at", { ascending: false })
-        .limit(5),
-    ]);
-
-    if (applicantRes.error) {
-      throw new Error(
-        `Applicants query failed: ${applicantRes.error.message}`
-      );
-    }
-
-    if (positionRes.error) {
-      throw new Error(
-        `Positions query failed: ${positionRes.error.message}`
-      );
-    }
-
-    if (onboardingRes.error) {
-      throw new Error(
-        `Onboarding query failed: ${onboardingRes.error.message}`
-      );
-    }
-
-    if (employeeRes.error) {
-      throw new Error(
-        `Employees query failed: ${employeeRes.error.message}`
-      );
-    }
-
-    if (recentApplicantsRes.error) {
-      throw new Error(
-        `Recent applicants query failed: ${recentApplicantsRes.error.message}`
-      );
-    }
-
-    if (recentOnboardingsRes.error) {
-      throw new Error(
-        `Recent onboarding query failed: ${recentOnboardingsRes.error.message}`
-      );
-    }
-
-    setStats({
-      applicants: applicantRes.count ?? 0,
-      openPositions: positionRes.count ?? 0,
-      onboarding: onboardingRes.count ?? 0,
-      activeEmployees: employeeRes.count ?? 0,
-    });
-
-    const formattedApplicants: ActivityItem[] =
-      (recentApplicantsRes.data || []).map((item: any) => ({
+      const formattedApplicants: ActivityItem[] = (recentApplicantsRes.data || []).map((item: RecentApplicant) => ({
         id: item.id,
         type: "applicant" as const,
         title: `${item.first_name} ${item.last_name}`,
         subtitle: "Submitted an application",
         date: item.created_at,
-        status: item.status || "applied",
+        status: item.status || "Pending",
       }));
 
-    // Get applicant names for recent onboarding records
-    const applicantIds = (recentOnboardingsRes.data || [])
-      .map((item: any) => item.applicant_id)
-      .filter(Boolean);
-
-    let applicantMap: Record<
-      string,
-      { first_name: string; last_name: string }
-    > = {};
-
-    if (applicantIds.length > 0) {
-      const { data: applicants, error: applicantsError } = await supabase
-        .from("hr1_applicants")
-        .select("id, first_name, last_name")
-        .in("id", applicantIds);
-
-      if (applicantsError) {
-        throw new Error(
-          `Onboarding applicants query failed: ${applicantsError.message}`
-        );
-      }
-
-      applicantMap = Object.fromEntries(
-        (applicants || []).map((applicant: any) => [
-          applicant.id,
-          {
-            first_name: applicant.first_name,
-            last_name: applicant.last_name,
-          },
-        ])
-      );
-    }
-
-    const formattedOnboardings: ActivityItem[] =
-      (recentOnboardingsRes.data || []).map((item: any) => {
-        const applicant = applicantMap[item.applicant_id];
+      const formattedOnboardings: ActivityItem[] = (recentOnboardingsRes.data || []).map((item: RecentOnboarding) => {
+        const relatedApplicant = Array.isArray(item.hr1_applicants)
+          ? item.hr1_applicants[0]
+          : item.hr1_applicants;
 
         return {
           id: item.id,
           type: "onboarding" as const,
-          title: applicant
-            ? `${applicant.first_name} ${applicant.last_name}`
+          title: relatedApplicant
+            ? `${relatedApplicant.first_name} ${relatedApplicant.last_name}`
             : "New Hire",
           subtitle: "Entered onboarding stage",
           date: item.created_at,
@@ -196,31 +193,28 @@ export default function DashboardPage() {
         };
       });
 
-    const combined = [
-      ...formattedApplicants,
-      ...formattedOnboardings,
-    ].sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
-    );
+      const combined = [...formattedApplicants, ...formattedOnboardings].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
 
-    setActivities(combined.slice(0, 6));
-  } catch (err: any) {
-    console.error(
-      "DASHBOARD LOAD ERROR:",
-      JSON.stringify(err, null, 2)
-    );
+      setActivities(combined.slice(0, 6));
+    } catch (err: unknown) {
+      console.error("DASHBOARD LOAD ERROR:", JSON.stringify(err, null, 2));
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load dashboard statistics and activity feed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
 
-    setError(
-      err?.message ||
-        err?.error_description ||
-        "Failed to load dashboard statistics and activity feed."
-    );
-  } finally {
-    setLoading(false);
-  }
-}
+  useEffect(() => {
+    // Initial dashboard hydration runs after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadDashboardData();
+  }, [loadDashboardData]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -286,7 +280,7 @@ export default function DashboardPage() {
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400">
               Total Applicants
             </span>
-            <div className="rounded-xl bg-[#CB1A8E]/10 p-2.5 text-[#CB1A8E]">
+            <div className="rounded-xl bg-[#e5167e]/10 p-2.5 text-[#e5167e]">
               <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
@@ -377,6 +371,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <section className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-2xs">
+          <div className="mb-4"><h2 className="font-bold text-[#121212]">Applicants by Status</h2><p className="mt-1 text-xs text-gray-500">Current application pipeline based on applicant records.</p></div>
+          {loading ? <div className="h-64 animate-pulse rounded-xl bg-gray-50" /> : applicantStatuses.length === 0 ? <p className="py-20 text-center text-sm text-gray-500">No applicant data yet.</p> : <div className="grid items-center gap-3 sm:grid-cols-[1fr_1fr]"><div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={applicantStatuses} dataKey="value" nameKey="name" innerRadius={58} outerRadius={92} paddingAngle={3}>{applicantStatuses.map((item, index) => <Cell key={item.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div><ul className="space-y-2">{applicantStatuses.map((item, index) => <li key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex items-center gap-2 text-gray-600"><i className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />{item.name}</span><strong>{item.value}</strong></li>)}</ul></div>}
+        </div>
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-2xs">
+          <div className="mb-4"><h2 className="font-bold text-[#121212]">Application Trend</h2><p className="mt-1 text-xs text-gray-500">Applications received per month over the last six months.</p></div>
+          {loading ? <div className="h-64 animate-pulse rounded-xl bg-gray-50" /> : <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={applicantTrend} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tickLine={false} axisLine={false} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} /><Tooltip /><Bar dataKey="value" name="Applicants" fill="#e5167e" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-[#121212]">Interview Progress</h2><p className="mt-1 text-xs text-gray-500">Based on scheduled interview records and recorded outcomes.</p></div><Link href="/recruitment-core-hub-dashboard/recruitment/interviews" className="text-sm font-semibold text-[#e5167e] hover:underline">Manage interviews</Link></div>
+        {loading ? <div className="mt-5 h-20 animate-pulse rounded-xl bg-gray-50" /> : <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">{[{ label: "Interview records", value: interviewSummary.total }, { label: "Completed", value: interviewSummary.completed }, { label: "Passed", value: interviewSummary.passed }, { label: "Failed", value: interviewSummary.failed }].map((item) => <div key={item.label} className="rounded-xl bg-gray-50 p-4"><p className="text-xs text-gray-500">{item.label}</p><p className="mt-2 text-2xl font-bold text-gray-900">{item.value}</p></div>)}</div>}
+      </section>
+
       {/* Recent Activity Feed Section */}
       <div className="mt-8 grid gap-8 lg:grid-cols-3">
         {/* Activity List */}
@@ -415,7 +425,7 @@ export default function DashboardPage() {
                   <div key={item.id} className="py-4 flex items-center justify-between gap-4 first:pt-0 last:pb-0 transition hover:bg-gray-50/50 rounded-xl px-2">
                     <div className="flex items-center gap-3.5 min-w-0">
                       <div className={`rounded-xl p-3 text-xs font-black shrink-0 shadow-2xs ${
-                        item.type === 'applicant' ? 'bg-[#CB1A8E]/10 text-[#CB1A8E]' : 'bg-amber-50 text-amber-600'
+                        item.type === 'applicant' ? 'bg-[#e5167e]/10 text-[#e5167e]' : 'bg-amber-50 text-amber-600'
                       }`}>
                         {item.type === 'applicant' ? 'APP' : 'ONB'}
                       </div>
@@ -439,10 +449,10 @@ export default function DashboardPage() {
         {/* Quick Portal Card */}
         <div className="rounded-2xl bg-[#121212] p-6 sm:p-8 text-white shadow-sm flex flex-col justify-between relative overflow-hidden">
           {/* Background decorative glow */}
-          <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-[#CB1A8E]/20 blur-3xl pointer-events-none" />
+          <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-[#e5167e]/20 blur-3xl pointer-events-none" />
 
           <div>
-            <span className="inline-block text-[10px] font-black tracking-widest text-[#E91E8F] uppercase mb-2">
+            <span className="inline-block text-[10px] font-black tracking-widest text-[#e5167e] uppercase mb-2">
               Airship Express
             </span>
             <h2 className="text-xl font-black tracking-tight text-white">
@@ -462,7 +472,7 @@ export default function DashboardPage() {
             </Link>
             <Link
               href="/recruitment-core-hub-dashboard/onboarding"
-              className="w-full rounded-xl bg-[#CB1A8E] px-4 py-3 text-center text-xs font-bold text-white hover:bg-[#a31270] transition shadow-xs active:scale-[0.98]"
+              className="w-full rounded-xl bg-[#e5167e] px-4 py-3 text-center text-xs font-bold text-white hover:bg-[#b3115f] transition shadow-xs active:scale-[0.98]"
             >
               View Onboarding
             </Link>

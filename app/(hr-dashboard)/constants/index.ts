@@ -2,6 +2,7 @@ export const HR_ROUTES = {
   PAYROLL_BENEFITS: "/payroll-benefits-dashboard",
   PERFORMANCE_DEVELOPMENT: "/performance-development-dashboard",
   RECRUITMENT: "/recruitment-dashboard",
+  RECRUITMENT_CORE_HUB: "/recruitment-core-hub-dashboard",
   WORKFORCE: "/workforce-management-dashboard",
   EMPLOYEE_DASHBOARD: "/employee-dashboard",
 
@@ -18,6 +19,7 @@ export const PROTECTED_HR_ROUTES = [
   HR_ROUTES.PAYROLL_BENEFITS,
   HR_ROUTES.PERFORMANCE_DEVELOPMENT,
   HR_ROUTES.RECRUITMENT,
+  HR_ROUTES.RECRUITMENT_CORE_HUB,
   HR_ROUTES.WORKFORCE,
   HR_ROUTES.EMPLOYEE_DASHBOARD,
 ] as const;
