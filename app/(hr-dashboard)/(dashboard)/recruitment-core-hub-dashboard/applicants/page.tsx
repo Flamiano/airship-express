@@ -29,8 +29,6 @@ type ScreeningResult = {
 };
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-
   if (typeof error === "object" && error !== null) {
     const details = error as {
       message?: string;
@@ -39,7 +37,7 @@ function getErrorMessage(error: unknown): string {
       code?: string;
     };
 
-    return [
+    const message = [
       details.message,
       details.details,
       details.hint,
@@ -47,7 +45,11 @@ function getErrorMessage(error: unknown): string {
     ]
       .filter(Boolean)
       .join(" | ");
+
+    if (message) return message;
   }
+
+  if (error instanceof Error) return error.message;
 
   return String(error || "Unknown error");
 }
@@ -251,8 +253,22 @@ export default function ApplicantsPage() {
         setScreeningApplicantName("");
       }
     } catch (err: unknown) {
-      console.error("APPLICANT DELETE ERROR:", err);
-      setError(`Delete failed: ${getErrorMessage(err)}`);
+      const errorCode =
+        typeof err === "object" && err !== null && "code" in err
+          ? String((err as { code?: unknown }).code ?? "")
+          : "";
+      const databaseMessage = getErrorMessage(err);
+      const isLinkedEmployeeError =
+        errorCode === "23503" &&
+        databaseMessage.includes("hr1_employees_applicant_id_fkey");
+      const message = isLinkedEmployeeError
+        ? "This applicant is linked to an employee record, so the database blocked deletion to preserve the employee's hiring history. Keep this applicant record, or review the employee link before removing it."
+        : databaseMessage;
+
+      // Keep expected database failures out of the Next.js dev error overlay;
+      // the actionable message is shown in the page alert below.
+      console.warn("Applicant delete failed:", message);
+      setError(`Delete failed: ${message}`);
     }
   }
 

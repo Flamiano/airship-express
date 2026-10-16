@@ -114,14 +114,22 @@ export default function EmployeesPage() {
       .eq("id", employee.id);
 
     if (deleteError) {
-      console.error(
-        "EMPLOYEE DELETE ERROR:",
-        deleteError
-      );
+      const message =
+        deleteError.code === "23503"
+          ? "This employee is referenced by other HR records, so the database blocked deletion to preserve their history. Set their status to Archived from Edit Employee instead of permanently deleting the record."
+          : [
+              deleteError.message,
+              deleteError.details,
+              deleteError.hint,
+              deleteError.code ? `Code: ${deleteError.code}` : "",
+            ]
+              .filter(Boolean)
+              .join(" | ");
 
-      setError(
-        `Delete failed: ${deleteError.message}`
-      );
+      // Database constraint failures are expected to be handled in the page;
+      // logging the raw object triggers Next.js's development error overlay.
+      console.warn("Employee delete failed:", message);
+      setError(`Delete failed: ${message}`);
 
       return;
     }
