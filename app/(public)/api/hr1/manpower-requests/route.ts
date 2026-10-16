@@ -49,18 +49,51 @@ export async function GET() {
     console.error("HR1 manpower request read failed:", error.message);
     return NextResponse.json({ error: "Unable to load manpower requests" }, { status: 500 });
   }
-  return NextResponse.json({ requests: data ?? [], role: isHrReviewer ? "hr" : "department", department: identity.department });
+  const requests = data ?? [];
+  // HR recruitment reviewers can capture a department request when a department
+  // does not yet have an employee portal account. Keep the actor visible in the UI.
+  const canSubmitOnBehalf = isHrReviewer;
+  const { data: hrAdmins } = isHrReviewer
+    ? await supabaseAdmin.from("hr_admin").select("id")
+    : { data: [] };
+  const hrAdminIds = new Set((hrAdmins ?? []).map((row) => row.id));
+  const departmentsResult = canSubmitOnBehalf
+    ? await supabaseAdmin.from("hr1_employees").select("department").eq("status", "active").not("department", "is", null)
+    : { data: [] };
+  const departments = [...new Set((departmentsResult.data ?? []).map((row) => row.department?.trim()).filter(Boolean))].sort();
+
+  return NextResponse.json({
+    requests: requests.map((row) => ({ ...row, submitted_on_behalf: hrAdminIds.has(row.requested_by) })),
+    role: isHrReviewer ? "hr" : "department",
+    department: identity.department,
+    can_submit_on_behalf: canSubmitOnBehalf,
+    departments,
+  });
 }
 
 export async function POST(request: Request) {
   const identity = await getIdentity();
   if ("error" in identity) return identity.error;
-  if (identity.account.accountType === "hr_admin" || !identity.department) {
-    return NextResponse.json({ error: "An active employee account with an assigned department is required to submit a request" }, { status: 403 });
-  }
 
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
+
+  let requestingDepartment = identity.department;
+  if (identity.account.accountType === "hr_admin") {
+    const selectedDepartment = typeof body.on_behalf_department === "string" ? body.on_behalf_department.trim() : "";
+    if (!HR_REVIEW_ROLES.has(identity.account.role) || !selectedDepartment) {
+      return NextResponse.json({ error: "Only an HR recruitment reviewer may record a department request on its behalf. Choose a department." }, { status: 403 });
+    }
+    const { data: departmentRows, error: departmentError } = await supabaseAdmin
+      .from("hr1_employees").select("department").eq("status", "active").not("department", "is", null);
+    if (departmentError) return NextResponse.json({ error: "Unable to verify the requesting department." }, { status: 503 });
+    const validDepartments = new Set((departmentRows ?? []).map((row) => row.department?.trim()).filter(Boolean));
+    if (!validDepartments.has(selectedDepartment)) return NextResponse.json({ error: "Choose a department with active employee records." }, { status: 400 });
+    requestingDepartment = selectedDepartment;
+  }
+  if (!requestingDepartment) {
+    return NextResponse.json({ error: "An active employee account with an assigned department is required to submit a request" }, { status: 403 });
+  }
 
   const title = typeof body.position_title === "string" ? body.position_title.trim() : "";
   const description = typeof body.job_description === "string" ? body.job_description.trim() : "";
@@ -79,7 +112,7 @@ export async function POST(request: Request) {
   if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return NextResponse.json({ error: "Invalid hiring deadline" }, { status: 400 });
 
   const { data, error } = await supabaseAdmin.from("hr1_manpower_requests").insert({
-    department: identity.department,
+    department: requestingDepartment,
     position_title: title.slice(0, 150),
     number_of_positions: headcount,
     job_description: description.slice(0, 5000),
@@ -114,7 +147,7 @@ export async function PATCH(request: Request) {
   const id = typeof body.id === "string" ? body.id : "";
   const status = body.status;
   const remarks = typeof body.review_remarks === "string" ? body.review_remarks.trim() : "";
-  if (!id || !["Approved", "Rejected", "Revision Requested"].includes(String(status)) || !remarks) {
+  if (!id || !["Approved", "Rejected", "Revision Requested"].includes(String(status))) {
     return NextResponse.json({ error: "Request ID, valid decision, and review remarks are required" }, { status: 400 });
   }
 
@@ -127,7 +160,7 @@ export async function PATCH(request: Request) {
   const { data, error } = await supabaseAdmin.from("hr1_manpower_requests").update({
     status,
     reviewed_by: identity.account.hrAdminId,
-    review_remarks: remarks.slice(0, 3000),
+    review_remarks: remarks ? remarks.slice(0, 3000) : null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", id).select("*").single();

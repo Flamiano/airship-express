@@ -66,17 +66,19 @@ export default function ApplicationStatusPage() {
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.application) {
-        throw new Error(result?.error || "Unable to check application status right now. Please try again later.");
+        setError(result?.error || "Unable to check application status right now. Please try again later.");
+        return;
       }
       setApplication(result.application as ApplicationStatus);
+      setError("");
     } catch (err) {
-      console.error("STATUS CHECK ERROR:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to check application status."
-      );
+      const message = err instanceof Error
+        ? err.message
+        : "Unable to check application status.";
+      // Network and lookup failures are shown inline; logging with console.error
+      // makes Next.js treat an expected form error as a development overlay.
+      console.warn("Status check request failed:", message);
+      setError(message);
     } finally {
       setLoading(false);
     }

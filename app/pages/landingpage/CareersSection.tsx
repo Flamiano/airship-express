@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowRight, BriefcaseBusiness, MapPin } from "lucide-react";
 
@@ -50,9 +49,9 @@ export default function CareersSection() {
               Browse openings approved by the requesting department and published by HR.
             </p>
           </div>
-          <Link href="/careers" className="inline-flex w-fit items-center gap-2 rounded-full bg-accent px-5 py-3 font-rethink text-sm font-semibold text-white transition hover:opacity-90">
+          <a href="/careers" className="inline-flex w-fit items-center gap-2 rounded-full bg-accent px-5 py-3 font-rethink text-sm font-semibold text-white transition hover:opacity-90">
             View all openings <ArrowRight className="h-4 w-4" />
-          </Link>
+          </a>
         </div>
 
         {loading ? (
@@ -62,7 +61,7 @@ export default function CareersSection() {
         ) : error ? (
           <div className="mt-9 rounded-2xl border border-line bg-white p-6 dark:border-white/10 dark:bg-white/5">
             <p className="font-rethink text-sm text-muted dark:text-paper/60">Openings are temporarily unavailable. Please visit the careers page or check again shortly.</p>
-            <Link href="/careers" className="mt-3 inline-flex font-rethink text-sm font-semibold text-accent hover:underline">Open Careers <ArrowRight className="ml-1 h-4 w-4" /></Link>
+            <a href="/careers" className="mt-3 inline-flex font-rethink text-sm font-semibold text-accent hover:underline">Open Careers <ArrowRight className="ml-1 h-4 w-4" /></a>
           </div>
         ) : jobs.length === 0 ? (
           <div className="mt-9 rounded-2xl border border-line bg-white p-7 dark:border-white/10 dark:bg-white/5 sm:p-9">
@@ -72,9 +71,9 @@ export default function CareersSection() {
                 <h3 className="font-bricolage text-xl font-bold text-ink dark:text-paper">No published openings right now</h3>
                 <p className="mt-2 max-w-2xl font-rethink text-sm leading-6 text-muted dark:text-paper/60">Only approved and published vacancies appear here. Check back later, or review the application guide and track an application you already submitted.</p>
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <Link href="/careers" className="rounded-full border border-line px-4 py-2 font-rethink text-sm font-semibold text-ink transition hover:border-accent hover:text-accent dark:border-white/15 dark:text-paper">Careers page</Link>
-                  <Link href="/application-guide" className="rounded-full border border-line px-4 py-2 font-rethink text-sm font-semibold text-ink transition hover:border-accent hover:text-accent dark:border-white/15 dark:text-paper">Application guide</Link>
-                  <Link href="/application-status" className="rounded-full border border-line px-4 py-2 font-rethink text-sm font-semibold text-ink transition hover:border-accent hover:text-accent dark:border-white/15 dark:text-paper">Check application status</Link>
+                  <a href="/careers" className="rounded-full border border-line px-4 py-2 font-rethink text-sm font-semibold text-ink transition hover:border-accent hover:text-accent dark:border-white/15 dark:text-paper">Careers page</a>
+                  <a href="/application-guide" className="rounded-full border border-line px-4 py-2 font-rethink text-sm font-semibold text-ink transition hover:border-accent hover:text-accent dark:border-white/15 dark:text-paper">Application guide</a>
+                  <a href="/application-status" className="rounded-full border border-line px-4 py-2 font-rethink text-sm font-semibold text-ink transition hover:border-accent hover:text-accent dark:border-white/15 dark:text-paper">Check application status</a>
                 </div>
               </div>
             </div>
@@ -90,9 +89,9 @@ export default function CareersSection() {
                   {job.employment_type && <span className="rounded-full bg-[#f3f4f6] px-3 py-1 dark:bg-white/10">{job.employment_type}</span>}
                   {job.work_location && <span className="inline-flex items-center gap-1 rounded-full bg-[#f3f4f6] px-3 py-1 dark:bg-white/10"><MapPin className="h-3 w-3" />{job.work_location}</span>}
                 </div>
-                <Link href={`/apply?position=${encodeURIComponent(job.id)}`} className="mt-6 inline-flex w-fit items-center gap-2 font-rethink text-sm font-semibold text-accent hover:underline">
+                <a href={`/apply?position=${encodeURIComponent(job.id)}`} className="mt-6 inline-flex w-fit items-center gap-2 font-rethink text-sm font-semibold text-accent hover:underline">
                   Apply for this role <ArrowRight className="h-4 w-4" />
-                </Link>
+                </a>
               </article>
             ))}
           </div>
@@ -100,8 +99,8 @@ export default function CareersSection() {
 
         <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line pt-6 font-rethink text-sm dark:border-white/10">
           <span className="text-muted dark:text-paper/50">Applicant resources</span>
-          <Link href="/application-guide" className="font-medium text-ink hover:text-accent dark:text-paper">How to apply</Link>
-          <Link href="/application-status" className="font-medium text-ink hover:text-accent dark:text-paper">Check application status</Link>
+          <a href="/application-guide" className="font-medium text-ink hover:text-accent dark:text-paper">How to apply</a>
+          <a href="/application-status" className="font-medium text-ink hover:text-accent dark:text-paper">Check application status</a>
         </div>
       </div>
     </section>

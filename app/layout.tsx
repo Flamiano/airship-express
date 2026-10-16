@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Rethink_Sans } from "next/font/google";
 import Script from "next/script";
@@ -37,25 +38,21 @@ export default function RootLayout({
       className={`${bricolage.variable} ${rethink.variable} h-full antialiased bg-paper dark:bg-ink`}
       suppressHydrationWarning
     >
-      <head>
-        <Script id="theme-init" strategy="beforeInteractive">
+      <head />
+      <body className="min-h-screen font-rethink bg-paper dark:bg-ink">
+        <Script id="theme-init" strategy="afterInteractive">
           {`
-            (function () {
-              try {
-                var theme = localStorage.getItem('airship-theme');
-                if (theme === 'dark') {
-                  document.documentElement.classList.add('dark');
-                }
-              } catch (e) {}
-            })();
+            try {
+              var theme = localStorage.getItem('airship-theme');
+              if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+              }
+            } catch (e) {}
           `}
         </Script>
-      </head>
-      <body className="min-h-screen font-rethink bg-paper dark:bg-ink">
+
         <ThemeProvider>
-          <ConfirmProvider>
-            {children}
-          </ConfirmProvider>
+          <ConfirmProvider>{children}</ConfirmProvider>
         </ThemeProvider>
 
         <Toaster

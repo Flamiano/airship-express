@@ -51,10 +51,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   });
   if (insertError) return NextResponse.json({ error: "Could not create the onboarding link. Apply the HR1 onboarding SQL migration first." }, { status: 500 });
 
+  const requestUrl = new URL(request.url);
+  const isLocalDevelopmentHost =
+    requestUrl.hostname === "localhost" ||
+    requestUrl.hostname.endsWith(".localhost") ||
+    requestUrl.hostname === "127.0.0.1";
   const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL_HR
     || process.env.NEXT_PUBLIC_SITE_URL
     || process.env.NEXT_PUBLIC_APP_URL;
-  const origin = configuredOrigin ? new URL(configuredOrigin).origin : new URL(request.url).origin;
+  // Local HR testing must stay on the local host even when .env.local contains
+  // the production URL. Never email a localhost link to an applicant.
+  const origin = isLocalDevelopmentHost
+    ? requestUrl.origin
+    : configuredOrigin
+      ? new URL(configuredOrigin).origin
+      : requestUrl.origin;
   const url = new URL(`/onboarding/${token}`, origin).toString();
   let emailSent = false;
   // Use the existing shared HR Gmail account when configured. Fall back to the
@@ -67,7 +78,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const smtpFrom = process.env.HR1_SMTP_FROM || process.env.SMTP_FROM || process.env.EMAIL_FROM || smtpUser;
   const gmailConfigured = Boolean(gmailUser && gmailPass);
   const smtpConfigured = Boolean(smtpHost && smtpUser && smtpPass && smtpFrom);
-  if (gmailConfigured || smtpConfigured) {
+  if (!isLocalDevelopmentHost && (gmailConfigured || smtpConfigured)) {
     try {
 
       const transporter = gmailConfigured
